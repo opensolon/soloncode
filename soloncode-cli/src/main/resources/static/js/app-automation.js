@@ -57,7 +57,7 @@
         load();
     }
     function hide() {
-        if (!viewer || !content.querySelector('.automation-page, .automation-detail')) return;
+        if (!viewer || !content.querySelector('.automation-page')) return;
         viewVersion++;
         viewer.style.display = 'none';
         viewer.classList.remove('mem-overlay');
@@ -89,22 +89,34 @@
             (t.id ? '<button class="memory-btn memory-btn-danger auto-delete" type="button">删除</button>' : '') +
             '</div></div></div>';
     }
+    // 行内右侧图标按钮（对齐循环任务列表的 loop-item-actions 样式：图标 + title 提示）
+    var SVG_PAUSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
+    var SVG_PLAY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
+    var SVG_RUN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
+    var SVG_CHAT = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    function actionBtn(cls, title, svg) {
+        return '<button class="' + cls + '" type="button" title="' + esc(title) + '" aria-label="' + esc(title) + '">' + svg + '</button>';
+    }
     function rowHtml(t, isNew) {
         var open = expandedId === (isNew ? NEW_ID : t.id);
         var state = t.running ? '执行中' : (t.enabled ? '已启用' : '已暂停');
         var stateClass = t.running ? 'running' : (t.enabled ? 'enabled' : 'paused');
+        var actions = '';
+        if (!isNew) {
+            actions = '<div class="automation-row-actions">' +
+                actionBtn('auto-toggle', t.enabled ? '暂停' : '恢复', t.enabled ? SVG_PAUSE : SVG_PLAY) +
+                actionBtn('auto-trigger', '立即执行', SVG_RUN) +
+                actionBtn('auto-session', '查看对话', SVG_CHAT) +
+                '</div>';
+        }
         return '<div class="mem-row automation-row' + (open ? ' open' : '') + '" data-id="' + esc(isNew ? NEW_ID : t.id) + '">' +
             '<div class="mem-row-head automation-row-head" role="button" tabindex="0" aria-expanded="' + open + '">' +
             '<span class="mem-caret"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"></polyline></svg></span>' +
             (isNew ? '<span class="mem-row-key">新建自动任务</span>' :
                 '<span class="automation-status-dot ' + stateClass + '"></span><span class="mem-row-key automation-row-title">' + esc(t.name || '自动任务') + '</span>' +
                 '<span class="automation-row-schedule">' + esc(scheduleText(t)) + '</span><span class="automation-state ' + stateClass + '">' + state + '</span>') +
-            '</div>' + (open ? formHtml(t) : '') +
-            (!isNew ? '<div class="automation-row-summary">' + esc(t.prompt || '') + '</div>' +
-                '<div class="automation-row-actions"><button class="memory-btn auto-toggle" type="button">' + (t.enabled ? '暂停' : '恢复') + '</button>' +
-                '<button class="memory-btn auto-trigger" type="button">立即执行</button>' +
-                '<button class="memory-btn auto-runs" type="button">执行记录</button>' +
-                '<button class="memory-btn auto-session" type="button">查看对话</button></div>' : '') + '</div>';
+            actions +
+            '</div>' + (open ? formHtml(t) : '') + '</div>';
     }
     function renderList() {
         var box = document.getElementById('autoList'); if (!box) return;
@@ -126,14 +138,10 @@
                 if (del) del.onclick = function () { remove(id); };
             }
             if (id === NEW_ID) return;
-            row.querySelector('.auto-toggle').onclick = function () {
-        api('POST', '/web/tasks/toggle', {type:'AUTOMATION', id:id}).then(load).catch(fail);
-            };
-            row.querySelector('.auto-trigger').onclick = function () {
-        api('POST', '/web/tasks/trigger', {type:'AUTOMATION', id:id}).then(function () { toast('已触发'); load(); }).catch(fail);
-            };
-            row.querySelector('.auto-runs').onclick = function () { showRuns(id); };
-            row.querySelector('.auto-session').onclick = function () { showSession(id); };
+            // 行内右侧图标按钮：阻止冒泡，避免误触发行展开/收起
+            row.querySelector('.auto-toggle').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/toggle', {type: 'AUTOMATION', id: id}).then(load).catch(fail); };
+            row.querySelector('.auto-trigger').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/trigger', {type: 'AUTOMATION', id: id}).then(function () { toast('已触发'); load(); }).catch(fail); };
+            row.querySelector('.auto-session').onclick = function (e) { e.stopPropagation(); showSession(id); };
         });
     }
     function save(row, id) {
@@ -181,22 +189,6 @@
                 agent.add(new Option(selected, selected));
             }
             agent.value = selected;
-        }).catch(fail);
-    }
-    function detail(title, body) {
-        content.innerHTML = '<div class="automation-detail"><div class="automation-detail-head"><button class="memory-btn auto-back" type="button">← 返回任务</button><h2>' + esc(title) + '</h2></div>' + body + '</div>';
-        content.querySelector('.auto-back').onclick = function () { viewVersion++; render(); };
-    }
-    function showRuns(id) {
-        var version = ++viewVersion;
-        detail('执行记录', '<div class="automation-empty">正在加载…</div>');
-        api('GET', '/web/tasks/runs?type=AUTOMATION&id=' + encodeURIComponent(id) + '&limit=50').then(function (runs) {
-            if (version !== viewVersion || !content.querySelector('.automation-detail')) return;
-            var rows = Array.isArray(runs) ? runs : [];
-            detail('执行记录', rows.length ? rows.map(function (r) {
-                return '<div class="automation-run"><strong>' + esc(r.status) + '</strong> · ' + esc(r.startedAt || r.at || '') +
-                    '<div>' + esc(r.error || r.result || '') + '</div></div>';
-            }).join('') : '<div class="automation-empty">暂无执行记录</div>');
         }).catch(fail);
     }
     function showSession(id) {

@@ -3511,11 +3511,11 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .model-empty-add-btn:hover { background: var(--accent-fill, var(--accent)); color: #fff; }
 
 /* ===== 自动任务：复用心智记忆行和聊天消息外观 ===== */
-.automation-page, .automation-detail { color: var(--text-primary); white-space: normal; height: 100%; display: flex; flex-direction: column; font-size: var(--fs-md); }
+.automation-page { color: var(--text-primary); white-space: normal; height: 100%; display: flex; flex-direction: column; font-size: var(--fs-md); }
 .automation-list { flex: 1; overflow-y: auto; padding: 8px 16px 24px; }
-.automation-toolbar, .automation-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.automation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .viewer-file-meta { min-width: 0; color: var(--text-secondary); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.automation-title, .automation-detail h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; }
+.automation-title { margin: 0; font-size: var(--fs-xl); font-weight: 600; }
 .automation-subtitle { margin-top: 5px; color: var(--text-secondary); font-size: var(--fs-sm); }
 .automation-row-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 .automation-row-title { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3526,10 +3526,12 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .automation-state { color: var(--text-secondary); font-size: var(--fs-xs); padding: 2px 6px; border-radius: 4px; background: var(--bg-hover); flex-shrink: 0; }
 .automation-state.enabled { color: var(--accent); }
 .automation-state.running { color: #d97706; }
-.automation-row-summary { padding: 0 14px 0 36px; color: var(--text-secondary); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.automation-row.open .automation-row-summary { display: none; }
-.automation-row-actions { display: flex; flex-wrap: wrap; gap: 2px; padding: 2px 14px 8px 30px; }
-.automation-row-actions .memory-btn { height: 28px; padding: 0 8px; font-size: var(--fs-xs); }
+.automation-row-actions { margin-left: auto; display: flex; gap: 2px; flex-shrink: 0; }
+/* 图标按钮样式对齐循环任务列表的 loop-action-btn */
+.automation-row-actions button { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: var(--fs-base); padding: 3px 6px; border-radius: 4px; transition: background 0.12s; display: inline-flex; align-items: center; }
+.automation-row-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
+/* 展开表单时按钮隐藏，避免与表单底部操作重复 */
+.automation-row.open .automation-row-actions { display: none; }
 .automation-form { gap: 16px; }
 .automation-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .automation-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
@@ -3544,13 +3546,9 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
 .automation-empty { padding: 36px 16px; text-align: center; color: var(--text-secondary); font-size: var(--fs-md); line-height: 1.8; }
 .automation-empty span { color: var(--text-tertiary); font-size: var(--fs-sm); }
-.automation-detail-head { justify-content: flex-start; }
-.automation-run { padding: 12px 0; border-bottom: 1px solid var(--border-color); font-size: var(--fs-sm); }
-.automation-run > div { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
     .automation-list { padding: 8px 10px 20px; }
     .automation-toolbar { align-items: flex-start; }
     .automation-form-grid { grid-template-columns: 1fr; }
     .automation-row-schedule { display: none; }
-    .automation-row-actions { padding-left: 14px; }
 }
