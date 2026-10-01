@@ -130,7 +130,7 @@ public class LoopCommand implements Command {
             doResume(ctx, sessionId, ctx.argAt(1));
         } else if ("goal".equals(sub)) {
             // /loop goal <objective> — 简化 Goal 模式（一个参数，立即执行）
-            doScheduleGoal(ctx, sessionId, sessionsRoot, 1);
+            doScheduleGoal(ctx, sessionId, 1);
         } else {
             // Schedule a new task
             doSchedule(ctx, sessionId, sessionsRoot);
@@ -245,7 +245,7 @@ public class LoopCommand implements Command {
         }
 
 
-        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + sessionsRoot.resolve(sessionId).resolve("loop-tasks.json")));
+        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " persisted in workspace tasks.json"));
     }
 
     /**
@@ -253,10 +253,8 @@ public class LoopCommand implements Command {
      */
     void executeGoal(CommandContext ctx) {
         String sessionId = ctx.getSession().getSessionId();
-        HarnessEngine engine = ctx.getEngine();
-        Path wsSessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
-        
-        doScheduleGoal(ctx, sessionId, wsSessionsRoot, 0);
+
+        doScheduleGoal(ctx, sessionId, 0);
     }
 
     /**
@@ -265,7 +263,7 @@ public class LoopCommand implements Command {
      * <p>与 Codex /goal &lt;objective&gt; 对齐：一个参数，立即执行，AI 自主推进。
      * prompt 即目标任务描述，type=GOAL，runNow=true，interval=0（调度器自动转 5 秒安全网）。</p>
      */
-    private void doScheduleGoal(CommandContext ctx, String sessionId, Path sessionsRoot, int promptStartIndex) {
+    private void doScheduleGoal(CommandContext ctx, String sessionId, int promptStartIndex) {
         Long maxTokens = null;
         Long maxDurationMs = null;
         StringBuilder promptBuilder = new StringBuilder();
@@ -378,7 +376,7 @@ public class LoopCommand implements Command {
         } else if (loopCfg.getDefaultMaxDurationMsOrDefault() > 0) {
             ctx.println(ctx.color("  " + MAGENTA + "Max Duration:" + RESET + " " + (loopCfg.getDefaultMaxDurationMsOrDefault() / 60000) + "m"));
         }
-        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " " + sessionsRoot.resolve(sessionId).resolve("loop-tasks.json")));
+        ctx.println(ctx.color("  " + DIM + "State:" + RESET + " persisted in workspace tasks.json"));
     }
 
     private void doList(CommandContext ctx, String sessionId) {

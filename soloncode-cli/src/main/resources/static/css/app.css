@@ -3520,6 +3520,9 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .automation-row-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 8px; }
 .automation-row-title { font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .automation-row-schedule { color: var(--text-secondary); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 来源徽标：区分自动任务（专用会话）与会话内创建的循环任务 */
+.automation-source { color: var(--accent); font-size: var(--fs-xs); padding: 1px 6px; border-radius: 4px; background: color-mix(in srgb, var(--accent) 12%, transparent); flex-shrink: 0; }
+.automation-source.session { color: var(--text-secondary); background: var(--bg-hover); }
 .automation-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary); flex-shrink: 0; }
 .automation-status-dot.enabled { background: var(--accent); }
 .automation-status-dot.running { background: #f59e0b; }

@@ -807,7 +807,8 @@ public class WorkspaceManager {
         GitService gitService = new GitService(workspacePath, engine);
 
         AutomationManager automationManager = new AutomationManager(workspacePath, loopScheduler, sessionManager);
-        // 自动任务配置位于工作区 automations/，恢复后实际执行上下文使用专用 auto- session。
+        // 循环/自动任务统一存于工作区 tasks.json，由 LoopScheduler 启动时全量加载恢复；
+        // 此处仅拉起 scheduler 的加载（含旧版三路数据迁移）。
         automationManager.restore();
         WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, automationManager, this, wsSettings);
 

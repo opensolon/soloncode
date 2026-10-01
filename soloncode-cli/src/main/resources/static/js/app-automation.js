@@ -194,6 +194,9 @@
         var open = expandedId === (isNew ? NEW_ID : t.id);
         var state = t.running ? '执行中' : (t.enabled ? '已启用' : '已暂停');
         var stateClass = t.running ? 'running' : (t.enabled ? 'enabled' : 'paused');
+        // 会话任务（会话内 /loop 或循环表单创建）与自动任务同页展示，用来源徽标区分
+        var isAuto = t.automation !== false;
+        var badgeHtml = isNew ? '' : '<span class="automation-source' + (isAuto ? '' : ' session') + '">' + (isAuto ? '自动' : '会话') + '</span>';
         var actions = '';
         if (!isNew) {
             actions = '<div class="automation-row-actions">' +
@@ -202,11 +205,12 @@
                 actionBtn('auto-session', '查看对话', SVG_CHAT) +
                 '</div>';
         }
-        return '<div class="mem-row automation-row' + (open ? ' open' : '') + '" data-id="' + esc(isNew ? NEW_ID : t.id) + '">' +
+        return '<div class="mem-row automation-row' + (open ? ' open' : '') + '" data-id="' + esc(isNew ? NEW_ID : t.id) + '" data-session="' + esc(t.sessionId || '') + '">' +
             '<div class="mem-row-head automation-row-head" role="button" tabindex="0" aria-expanded="' + open + '">' +
             '<span class="mem-caret"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"></polyline></svg></span>' +
             (isNew ? '<span class="mem-row-key">新建自动任务</span>' :
                 '<span class="automation-status-dot ' + stateClass + '"></span><span class="mem-row-key automation-row-title" title="' + esc(t.prompt || '') + '">' + esc(displayTitle(t)) + '</span>' +
+                badgeHtml +
                 '<span class="automation-row-schedule">' + esc(scheduleText(t)) + '</span><span class="automation-state ' + stateClass + '">' + state + '</span>') +
             actions +
             '</div>' + (open ? formHtml(t) : '') + '</div>';
@@ -215,7 +219,7 @@
         var box = document.getElementById('autoList'); if (!box) return;
         var html = expandedId === NEW_ID ? rowHtml({}, true) : '';
         html += tasks.map(function (t) { return rowHtml(t, false); }).join('');
-        box.innerHTML = html || '<div class="automation-empty">还没有自动任务<br><span>创建一个任务，让它按计划替你工作</span></div>';
+        box.innerHTML = html || '<div class="automation-empty">还没有任务<br><span>创建一个自动任务，让它按计划替你工作</span></div>';
         box.querySelectorAll('.automation-row').forEach(function (row) {
             var id = row.getAttribute('data-id');
             var head = row.querySelector('.automation-row-head');
@@ -242,10 +246,11 @@
                 if (del) del.onclick = function () { remove(id); };
             }
             if (id === NEW_ID) return;
+            var rowSession = row.getAttribute('data-session') || '';
             // 行内右侧图标按钮：阻止冒泡，避免误触发行展开/收起
             row.querySelector('.auto-toggle').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/toggle', {type: 'AUTOMATION', id: id}).then(load).catch(fail); };
             row.querySelector('.auto-trigger').onclick = function (e) { e.stopPropagation(); api('POST', '/web/tasks/trigger', {type: 'AUTOMATION', id: id}).then(function () { toast('已触发'); load(); }).catch(fail); };
-            row.querySelector('.auto-session').onclick = function (e) { e.stopPropagation(); showSession(id); };
+            row.querySelector('.auto-session').onclick = function (e) { e.stopPropagation(); showSession(rowSession); };
         });
     }
     function save(row, id) {
@@ -269,7 +274,7 @@
             .catch(fail).finally(function () { button.disabled = false; });
     }
     function remove(id) {
-        if (!confirm('确定删除这个自动任务吗？专用对话会保留归档。')) return;
+        if (!confirm('确定删除这个任务吗？任务对话会保留归档。')) return;
         api('POST', '/web/tasks/delete', {type:'AUTOMATION', id:id}).then(function () { expandedId = null; load(); }).catch(fail);
     }
     function populateSelectors(row, t) {
@@ -301,26 +306,24 @@
             renderSelItems(agentBox, items, getSel(row, 'agent'), 'main（主代理）', '留空时使用主代理');
         }).catch(fail);
     }
-    function showSession(id) {
-        // 完全复用现有聊天消息列表：解析专用会话后关闭面板，把该会话激活为当前聊天会话。
+    function showSession(sessionId) {
+        // 完全复用现有聊天消息列表：列表数据直接携带 sessionId，关闭面板后把该会话激活为当前聊天会话。
         // 历史与流式均走原有管线（loadMessages / WebSocket 按 sessionId 路由），不另建渲染逻辑。
-        api('GET', '/web/tasks/session?type=AUTOMATION&id=' + encodeURIComponent(id)).then(function (sessionId) {
-            if (!sessionId) { toast('未找到专用会话', 'error'); return; }
-            hide();
-            var sess = getOrCreateSession(sessionId);
-            // 专用会话不在左侧历史栏：进入时清空历史高亮，
-            // 避免"主区显示 auto 会话、侧栏却亮着旧会话"的误导
-            currentChatIndex = -1;
-            updateHistoryUI();
-            setActiveSession(sessionId);
-            if (!inChatMode) switchToChatMode();
-            if (!sess.isStreaming && sess.container.children.length === 0) {
-                loadMessages(sess);
-            } else {
-                scrollToBottom(true);
-                if (typeof scheduleMsgNavRebuild === 'function') scheduleMsgNavRebuild();
-            }
-        }).catch(fail);
+        if (!sessionId) { toast('未找到任务会话', 'error'); return; }
+        hide();
+        var sess = getOrCreateSession(sessionId);
+        // 任务会话可能不在左侧历史栏：进入时清空历史高亮，
+        // 避免"主区显示任务会话、侧栏却亮着旧会话"的误导
+        currentChatIndex = -1;
+        updateHistoryUI();
+        setActiveSession(sessionId);
+        if (!inChatMode) switchToChatMode();
+        if (!sess.isStreaming && sess.container.children.length === 0) {
+            loadMessages(sess);
+        } else {
+            scrollToBottom(true);
+            if (typeof scheduleMsgNavRebuild === 'function') scheduleMsgNavRebuild();
+        }
     }
     function load() {
         var version = viewVersion;

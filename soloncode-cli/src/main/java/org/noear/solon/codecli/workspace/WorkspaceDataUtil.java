@@ -39,7 +39,8 @@ import java.util.List;
  * ~/.soloncode/workspaces/&lt;工作区标识&gt;/
  *     _workspace     工作区绝对路径标记（供反查，工作区改名/移动后人工修复用）
  *     logs/          日志
- *     sessions/      会话（消息 ndjson、快照、TODO.md、loop-tasks.json）
+ *     sessions/      会话（消息 ndjson、快照、TODO.md）
+ *     tasks.json     循环/自动任务统一存储
  * </pre>
  * 用户级资产（settings.json、agents/、skills/、commands/、memory/ 等）仍在 ~/.soloncode/ 一级，不受此处影响。
  *

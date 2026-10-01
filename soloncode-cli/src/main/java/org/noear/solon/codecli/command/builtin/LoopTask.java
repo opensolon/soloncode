@@ -65,6 +65,9 @@ public class LoopTask {
     private Long maxTokens;            // Token 预算（null = 不限制）
     private Long maxDurationMs;        // 时间预算毫秒（null = 不限制）
 
+    // ---- 自动任务覆盖层（null = 普通会话循环任务） ----
+    private volatile AutomationMeta automation;
+
     // ---- 运行时状态 ----
     private volatile boolean running;
     private volatile boolean cancelled;
@@ -183,6 +186,7 @@ public class LoopTask {
         );
         task.running = false;
         task.oneShot = this.oneShot;
+        task.automation = this.automation;
         // 仅在更新后仍为 GOAL 时保留 GoalState；切回 HEARTBEAT 必须清除目标状态。
         // 同时更新 condition 和 maxTokens 以反映新 prompt 和预算。
         if (newType == TaskType.GOAL && this.goalState != null) {
@@ -295,6 +299,13 @@ public class LoopTask {
 
     public void setMaxDurationMs(Long maxDurationMs) { this.maxDurationMs = maxDurationMs; }
     public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+    public AutomationMeta getAutomation() { return automation; }
+
+    public void setAutomation(AutomationMeta automation) { this.automation = automation; }
+
+    /** 是否为自动任务（带 automation 覆盖层）。 */
+    public boolean isAutomation() { return automation != null; }
 
     public void setWrapUpPending(boolean wrapUpPending) { this.wrapUpPending = wrapUpPending; }
 
@@ -493,6 +504,11 @@ public class LoopTask {
         if (stagnationCount > 0) node.set("stagnationCount", stagnationCount);
         if (consecutiveErrors > 0) node.set("consecutiveErrors", consecutiveErrors);
 
+        // ★ 自动任务覆盖层（普通会话循环任务不写该键）
+        if (automation != null) {
+            node.set("automation", automation.toONode());
+        }
+
         return node;
     }
 
@@ -574,6 +590,11 @@ public class LoopTask {
         task.stagnationCount = stagnationCountVal;
         task.consecutiveErrors = consecutiveErrorsVal;
         task.oneShot = oneShotVal;
+
+        // 恢复自动任务覆盖层（缺失 = 普通会话循环任务）
+        if (node.getOrNull("automation") != null) {
+            task.automation = AutomationMeta.fromONode(node.get("automation"));
+        }
 
         // running 是瞬态锁，反序列化后始终为 false
         // （kill -9 场景兜底：若有 future 的注册逻辑需显式调用 finish()）

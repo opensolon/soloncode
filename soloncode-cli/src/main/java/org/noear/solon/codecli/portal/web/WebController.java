@@ -2240,9 +2240,9 @@ public class WebController {
                               @Param(value = "agentName", required = false) String agentName) {
         if (isAutomationType(type)) {
             try {
-                org.noear.solon.codecli.automation.AutomationTask task = automationManager().create(
+                String taskId = automationManager().create(
                         name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName);
-                return Result.succeed(task.getId());
+                return Result.succeed(taskId);
             } catch (IllegalArgumentException | IllegalStateException | IOException e) {
                 return Result.failure(400, e.getMessage());
             }
@@ -2296,18 +2296,6 @@ public class WebController {
                              @Param(value = "sessionId", required = false) String sessionId) {
         if (isAutomationType(type)) return automationDelete(id);
         return loopRemove(sessionId, id);
-    }
-
-    @Get
-    @Mapping("/web/tasks/runs")
-    public Result taskRuns(@Param("type") String type,
-                           @Param("id") String id,
-                           @Param(value = "limit", required = false) Integer limit) {
-        if (!isAutomationType(type)) {
-            return Result.failure(400, "runs are currently supported for AUTOMATION only");
-        }
-        List<Map<String, Object>> runs = automationManager().runs(id, limit == null ? 50 : limit);
-        return runs == null ? Result.failure(404, "Task not found") : Result.succeed(runs);
     }
 
     @Get
