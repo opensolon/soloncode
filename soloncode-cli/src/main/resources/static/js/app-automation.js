@@ -308,6 +308,10 @@
             if (!sessionId) { toast('未找到专用会话', 'error'); return; }
             hide();
             var sess = getOrCreateSession(sessionId);
+            // 专用会话不在左侧历史栏：进入时清空历史高亮，
+            // 避免"主区显示 auto 会话、侧栏却亮着旧会话"的误导
+            currentChatIndex = -1;
+            updateHistoryUI();
             setActiveSession(sessionId);
             if (!inChatMode) switchToChatMode();
             if (!sess.isStreaming && sess.container.children.length === 0) {
