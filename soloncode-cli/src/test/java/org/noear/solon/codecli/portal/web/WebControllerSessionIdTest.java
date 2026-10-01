@@ -22,6 +22,16 @@ class WebControllerSessionIdTest {
     }
 
     @Test
+    void acceptsAutomationSessionIds() throws Exception {
+        // auto- 后缀为 UUID 十六进制（去横杠后 32 位）
+        assertTrue(valid("auto-0123456789abcdef0123456789abcdef"));
+        assertFalse(valid("auto-"));
+        assertFalse(valid("auto-abc"));
+        assertFalse(valid("auto-0123456789ABCDEF"));
+        assertFalse(valid("auto/../secret"));
+    }
+
+    @Test
     void rejectsTraversalAndUnexpectedDesktopIds() throws Exception {
         assertFalse(valid("../42"));
         assertFalse(valid("1/../../secret"));

@@ -73,6 +73,7 @@ public class LoopScheduler {
     private volatile List<TaskHandler> taskHandlers = new ArrayList<>();
     private volatile List<BusyChecker> busyCheckers = new ArrayList<>();
     private final List<GoalListener> goalListeners = new CopyOnWriteArrayList<>();
+    private final List<ExecutionListener> executionListeners = new CopyOnWriteArrayList<>();
 
     /**
      * 任务处理者
@@ -88,6 +89,12 @@ public class LoopScheduler {
     @FunctionalInterface
     public interface BusyChecker {
         boolean isBusy(String sessionId);
+    }
+
+    /** 执行生命周期观察者，供任务级历史记录等上层能力复用。 */
+    public interface ExecutionListener {
+        void onStarted(String sessionId, LoopTask task);
+        void onFinished(String sessionId, LoopTask task, boolean success, Throwable error);
     }
 
     /**
@@ -121,6 +128,12 @@ public class LoopScheduler {
     public void addBusyChecker(BusyChecker busyChecker) {
         if (busyChecker != null) {
             this.busyCheckers.add(busyChecker);
+        }
+    }
+
+    public void addExecutionListener(ExecutionListener listener) {
+        if (listener != null) {
+            this.executionListeners.add(listener);
         }
     }
 
@@ -562,8 +575,13 @@ public class LoopScheduler {
 
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(wsSessionsRoot)) {
             for (Path sessionPath : stream) {
+                String sessionId = sessionPath.getFileName().toString();
+                // 自动任务由 AutomationManager 从 automations/ 配置恢复，避免与隐藏 session 中的镜像任务重复注册。
+                if (sessionId.startsWith("auto-")) {
+                    continue;
+                }
                 if (Files.isDirectory(sessionPath) && Files.exists(sessionPath.resolve(TASKS_FILE))) {
-                    restore(sessionPath.getFileName().toString());
+                    restore(sessionId);
                 }
             }
         } catch (Exception e) {
@@ -689,9 +707,17 @@ public class LoopScheduler {
 
         notifyGoalChanged(sessionId, task, false);
 
+        for (ExecutionListener listener : executionListeners) {
+            try { listener.onStarted(sessionId, task); }
+            catch (Throwable error) { LOG.debug("Execution start listener failed for task '{}': {}", task.getId(), error.getMessage()); }
+        }
+
+        boolean executionSuccess = false;
+        Throwable executionError = null;
         try {
             // ③ 执行一轮（含 prompt 构建、AI 调用、状态评估、持久化）
             GoalRoundOutcome outcome = executeGoalRound(sessionId, task);
+            executionSuccess = true;
 
             // ④ 事件驱动续行：仅 CONTINUE 且 goal 仍活跃时 submit 下一轮
             if (outcome == GoalRoundOutcome.CONTINUE) {
@@ -699,8 +725,13 @@ public class LoopScheduler {
             }
             // ACHIEVED / BUDGET_EXCEEDED / MAX_ITERATIONS 已在 executeGoalRound 内部处理完毕
         } catch (Exception e) {
+            executionError = e;
             handleExecutionError(sessionId, task, e);
         } finally {
+            for (ExecutionListener listener : executionListeners) {
+                try { listener.onFinished(sessionId, task, executionSuccess, executionError); }
+                catch (Throwable error) { LOG.debug("Execution finish listener failed for task '{}': {}", task.getId(), error.getMessage()); }
+            }
             // ★ oneShot 一次性任务：调度触发执行完一轮后自动注销（手动 trigger 不消耗配额）
             if (fromSchedule && task.isOneShot() && !task.isGoalMode()) {
                 unregisterOneShot(sessionId, task);

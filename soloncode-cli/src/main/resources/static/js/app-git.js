@@ -553,6 +553,8 @@
         // 更新 header（显示带工作区前缀的路径）
         if (gitViewerLabel) gitViewerLabel.textContent = I18n.t('gitdiff.fileContent');
         if (gitViewerFile) gitViewerFile.textContent = displayPath;
+        var _autoNewFile = document.getElementById('gitViewerAutoNew');
+        if (_autoNewFile) _autoNewFile.style.display = 'none';
 
         // 清理操作栏
         var oldActions = gitViewer.querySelector('.git-viewer-actions');
@@ -1181,12 +1183,14 @@
         var _copyBtn = document.getElementById('gitViewerCopyBtn');
         var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
         var _memNewBtn = document.getElementById('gitViewerMemNew');
+        var _autoNewBtn = document.getElementById('gitViewerAutoNew');
         var _memClearBtn = document.getElementById('gitViewerMemClear');
         var _memOrganizeBtn = document.getElementById('gitViewerMemOrganize');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
         if (_memNewBtn) _memNewBtn.style.display = 'none';
+        if (_autoNewBtn) _autoNewBtn.style.display = 'none';
         if (_memClearBtn) _memClearBtn.style.display = 'none';
         if (_memOrganizeBtn) _memOrganizeBtn.style.display = 'none';
         // Diff 视图显示「加入对话内容」按钮（支持行号选择）

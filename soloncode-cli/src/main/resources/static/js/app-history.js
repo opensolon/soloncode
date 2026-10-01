@@ -82,6 +82,9 @@ function saveChatToHistory(firstMsg) {
 
 function ensureChatInHistory(sessionId, firstMsg, makeCurrent) {
     if (!sessionId) return;
+    // 自动任务专用会话（auto-）不进左侧历史栏：后端会话列表也不返回它，
+    // 只能从自动任务面板的“查看对话”进入，避免出现刷新即消失的列表项。
+    if (sessionId.indexOf('auto-') === 0) return;
     var label = (firstMsg || I18n.t('history.newConversation')).toString();
     label = label.length > 30 ? label.substring(0, 30) + '...' : label;
     var shouldMakeCurrent = (makeCurrent !== false) && (sessionId === SESSION_ID || sessionId === activeSessionId || currentChatIndex === -1);

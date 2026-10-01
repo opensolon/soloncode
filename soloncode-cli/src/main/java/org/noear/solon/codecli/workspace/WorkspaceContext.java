@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.workspace;
 
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.codecli.automation.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.portal.FileWatchService;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
@@ -31,10 +32,28 @@ public class WorkspaceContext implements Closeable {
     private final GitService gitService;
     private final FileWatchService fileWatchService;
     private final LoopScheduler loopScheduler;
+    private final AutomationManager automationManager;
     private final WorkspaceManager manager;
     private final AgentSettings settings;
     private final List<WebSocket> connections;
     private final ChannelHub channelHub;
+
+    /**
+     * 兼容旧版测试和扩展构造方式：没有自动任务管理器的上下文仍然有效。
+     * 自动任务功能由 WorkspaceManager 创建的正式上下文注入 AutomationManager。
+     */
+    public WorkspaceContext(WorkspaceMeta meta,
+                            HarnessEngine engine,
+                            SessionManager sessionManager,
+                            FileService fileService,
+                            GitService gitService,
+                            FileWatchService fileWatchService,
+                            LoopScheduler loopScheduler,
+                            WorkspaceManager manager,
+                            AgentSettings settings) {
+        this(meta, engine, sessionManager, fileService, gitService, fileWatchService,
+                loopScheduler, null, manager, settings);
+    }
 
     public WorkspaceContext(WorkspaceMeta meta,
                             HarnessEngine engine,
@@ -43,6 +62,7 @@ public class WorkspaceContext implements Closeable {
                             GitService gitService,
                             FileWatchService fileWatchService,
                             LoopScheduler loopScheduler,
+                            AutomationManager automationManager,
                             WorkspaceManager manager,
                             AgentSettings settings) {
         this.meta = meta;
@@ -53,6 +73,7 @@ public class WorkspaceContext implements Closeable {
         this.gitService = gitService;
         this.fileWatchService = fileWatchService;
         this.loopScheduler = loopScheduler;
+        this.automationManager = automationManager;
         this.manager = manager;
         this.settings = settings;
         this.connections = new CopyOnWriteArrayList<>();
@@ -97,6 +118,10 @@ public class WorkspaceContext implements Closeable {
 
     public LoopScheduler getLoopScheduler() {
         return loopScheduler;
+    }
+
+    public AutomationManager getAutomationManager() {
+        return automationManager;
     }
 
     public WebGate getWebGate() {

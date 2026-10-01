@@ -51,6 +51,12 @@ public class SessionMeta {
     private long createdAt;
     /** 会话所有者用户 ID（用户认证启用时设置，用于会话隔离）。 */
     private String ownerUserId;
+    /** 会话用途类型；AUTOMATION 表示自动任务专用会话。 */
+    private String sessionType;
+    /** 自动任务专用会话的拥有者 ID。 */
+    private String ownerAutomationId;
+    /** 是否已归档；归档会话保留历史但不再参与普通会话操作。 */
+    private boolean archived;
 
     public String getLabel() {
         return label;
@@ -82,6 +88,30 @@ public class SessionMeta {
 
     public void setOwnerUserId(String ownerUserId) {
         this.ownerUserId = ownerUserId;
+    }
+
+    public String getSessionType() {
+        return sessionType;
+    }
+
+    public void setSessionType(String sessionType) {
+        this.sessionType = sessionType;
+    }
+
+    public String getOwnerAutomationId() {
+        return ownerAutomationId;
+    }
+
+    public void setOwnerAutomationId(String ownerAutomationId) {
+        this.ownerAutomationId = ownerAutomationId;
+    }
+
+    public boolean isArchived() {
+        return archived;
+    }
+
+    public void setArchived(boolean archived) {
+        this.archived = archived;
     }
 
     /**
@@ -129,6 +159,15 @@ public class SessionMeta {
                         }
                         if (root.hasKey("ownerUserId")) {
                             meta.ownerUserId = root.get("ownerUserId").getString();
+                        }
+                        if (root.hasKey("sessionType")) {
+                            meta.sessionType = root.get("sessionType").getString();
+                        }
+                        if (root.hasKey("ownerAutomationId")) {
+                            meta.ownerAutomationId = root.get("ownerAutomationId").getString();
+                        }
+                        if (root.hasKey("archived")) {
+                            meta.archived = root.get("archived").getBoolean(false);
                         }
                     }
                 }
@@ -206,6 +245,9 @@ public class SessionMeta {
         root.set("pinned", pinned);
         root.set("createdAt", createdAt);
         root.set("ownerUserId", ownerUserId == null ? "" : ownerUserId);
+        root.set("sessionType", sessionType == null ? "" : sessionType);
+        root.set("ownerAutomationId", ownerAutomationId == null ? "" : ownerAutomationId);
+        root.set("archived", archived);
         String json = root.toJson();
 
         Path metaFile = sessionDir.resolve(FILE_NAME);
@@ -248,6 +290,9 @@ public class SessionMeta {
         target.setLabel(meta.getLabel());
         target.setPinned(meta.isPinned());
         target.setOwnerUserId(meta.getOwnerUserId());
+        target.setSessionType(meta.getSessionType());
+        target.setOwnerAutomationId(meta.getOwnerAutomationId());
+        target.setArchived(meta.isArchived());
         target.setCreatedAt(System.currentTimeMillis());
         target.save(targetDir);
     }

@@ -183,6 +183,21 @@ public class SessionMetaTest {
     }
 
     @Test
+    @DisplayName("自动任务会话元数据可持久化")
+    void automationMetadata_roundTrip() throws Exception {
+        SessionMeta meta = new SessionMeta();
+        meta.setSessionType("AUTOMATION");
+        meta.setOwnerAutomationId("auto-001");
+        meta.setArchived(true);
+        meta.save(tempDir);
+
+        SessionMeta loaded = SessionMeta.load(tempDir);
+        assertEquals("AUTOMATION", loaded.getSessionType());
+        assertEquals("auto-001", loaded.getOwnerAutomationId());
+        assertTrue(loaded.isArchived());
+    }
+
+    @Test
     @DisplayName("isEmpty 只看业务字段，不看 createdAt")
     void isEmpty_ignoresCreatedAt() {
         SessionMeta meta = new SessionMeta();

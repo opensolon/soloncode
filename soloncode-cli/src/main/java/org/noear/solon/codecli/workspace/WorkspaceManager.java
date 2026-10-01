@@ -13,6 +13,7 @@ import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.codecli.command.builtin.*;
+import org.noear.solon.codecli.automation.AutomationManager;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.ManagerExtension;
@@ -805,7 +806,10 @@ public class WorkspaceManager {
         FileService fileService = new FileService(workspacePath, engine);
         GitService gitService = new GitService(workspacePath, engine);
 
-        WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, this, wsSettings);
+        AutomationManager automationManager = new AutomationManager(workspacePath, loopScheduler, sessionManager);
+        // 自动任务配置位于工作区 automations/，恢复后实际执行上下文使用专用 auto- session。
+        automationManager.restore();
+        WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, automationManager, this, wsSettings);
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
         // Link.run() 内部有 running CAS 幂等保护，重复调用安全。
@@ -838,7 +842,7 @@ public class WorkspaceManager {
 
         // 会话繁忙守卫：session 正在执行任务时，loop 定时触发跳过本次执行
         loopScheduler.addBusyChecker(sessionId -> {
-            if (sessionId == null || !sessionId.startsWith("web-")) {
+            if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
                 return false;
             }
             WebGate gate = getWebGate();
@@ -846,7 +850,7 @@ public class WorkspaceManager {
         });
 
         loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
-            if (sessionId == null || !sessionId.startsWith("web-")) {
+            if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
                 return null;
             }
             WebGate gate = getWebGate();

@@ -40,7 +40,7 @@
         gitViewer.style.display = 'flex';
 
         if (gitViewerLabel) gitViewerLabel.textContent = I18n.t('memory.title');
-        if (gitViewerFile) gitViewerFile.textContent = '';
+        if (gitViewerFile) gitViewerFile.textContent = '记下重要信息，便于后续对话使用';
 
         // 记忆面板 header 保留「新建」「全屏」「关闭」：显式复位 header 按钮，
         // 避免看过审查/文件详情后 MD 切换、复制按钮的显隐状态残留过来
@@ -48,12 +48,14 @@
         var _copyBtn = document.getElementById('gitViewerCopyBtn');
         var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
         var _memNewBtn = document.getElementById('gitViewerMemNew');
+        var _autoNewBtn = document.getElementById('gitViewerAutoNew');
         var _memClearBtn = document.getElementById('gitViewerMemClear');
         var _memOrganizeBtn = document.getElementById('gitViewerMemOrganize');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
         if (_memNewBtn) _memNewBtn.style.display = '';
+        if (_autoNewBtn) _autoNewBtn.style.display = 'none';
         if (_memClearBtn) _memClearBtn.style.display = '';
         if (_memOrganizeBtn) _memOrganizeBtn.style.display = '';
 

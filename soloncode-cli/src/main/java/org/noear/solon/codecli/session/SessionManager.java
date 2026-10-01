@@ -82,6 +82,41 @@ public class SessionManager implements AgentSessionProvider {
         return WorkspaceDataUtil.sessionsDir(workspace).toPath().resolve(sessionId).normalize();
     }
 
+    /** 标记自动任务专用会话。专用会话保留在 sessions 下，但不再依赖名称前缀判断用途。 */
+    public void markAutomationSession(String sessionId, String automationId) {
+        AgentSession session = getSession(sessionId);
+        Path sessionDir = resolveSessionPath(sessionId);
+        synchronized (session.attrs()) {
+            SessionMeta meta = SessionMeta.load(sessionDir);
+            meta.setSessionType("AUTOMATION");
+            meta.setOwnerAutomationId(automationId);
+            meta.setArchived(false);
+            try {
+                meta.save(sessionDir);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Cannot save automation session metadata", e);
+            }
+        }
+    }
+
+    /** 删除任务时归档专用会话，保留历史消息，避免误删上下文。 */
+    public void archiveAutomationSession(String sessionId, String automationId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) return;
+        AgentSession session = getSession(sessionId);
+        Path sessionDir = resolveSessionPath(sessionId);
+        synchronized (session.attrs()) {
+            SessionMeta meta = SessionMeta.load(sessionDir);
+            meta.setSessionType("AUTOMATION");
+            meta.setOwnerAutomationId(automationId);
+            meta.setArchived(true);
+            try {
+                meta.save(sessionDir);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Cannot archive automation session", e);
+            }
+        }
+    }
+
     public @Nullable AgentSession removeSession(String sessionId) {
         return sessionMap.remove(sessionId);
     }

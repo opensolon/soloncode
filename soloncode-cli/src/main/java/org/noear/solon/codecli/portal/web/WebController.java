@@ -33,6 +33,7 @@ import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.annotation.*;
 import org.noear.solon.codecli.auth.UserAuthConfig;
+import org.noear.solon.codecli.automation.AutomationManager;
 import org.noear.solon.codecli.portal.web.event.WebEvent;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -135,6 +136,10 @@ public class WebController {
 
     private LoopScheduler loopScheduler() {
         return currentContext().getLoopScheduler();
+    }
+
+    private AutomationManager automationManager() {
+        return currentContext().getAutomationManager();
     }
 
     private SessionManager sessionManager() {
@@ -709,6 +714,12 @@ public class WebController {
             return Result.failure(400, "Invalid session path");
         }
         boolean sessionPathExists = Files.exists(sessionPath, java.nio.file.LinkOption.NOFOLLOW_LINKS);
+        if (sessionPathExists) {
+            SessionMeta sessionMeta = SessionMeta.load(sessionPath);
+            if ("AUTOMATION".equals(sessionMeta.getSessionType())) {
+                return Result.failure(409, "Automation session is managed by its task");
+            }
+        }
         if (sessionPathExists && !ownsSession(sessionPath)) {
             return Result.failure(404, "Session not found");
         }
@@ -1092,6 +1103,10 @@ public class WebController {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
+        return messagesForSession(sessionId);
+    }
+
+    private Result<List<Map>> messagesForSession(String sessionId) throws Exception {
         Path sessionPath = currentContext().getSessionPath(sessionId);
         if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
 
@@ -1943,6 +1958,9 @@ public class WebController {
         List<Map> data = new ArrayList<>();
 
         for (Map.Entry<String, List<LoopTask>> entry : tasksBySession.entrySet()) {
+            if (entry.getKey().startsWith("auto-")) {
+                continue;
+            }
             for (LoopTask task : entry.getValue()) {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("sessionId", entry.getKey());
@@ -2112,6 +2130,198 @@ public class WebController {
 
         loopScheduler.update(sessionId, taskId, newTask);
         return Result.succeed();
+    }
+
+    // ==================== 自动任务内部实现（供 /web/tasks/* 统一门面调用，不单独暴露 HTTP） ====================
+
+    private Result automationUpdate(@Param("id") String id,
+                                   @Param(value = "name", required = false) String name,
+                                   @Param(value = "prompt", required = false) String prompt,
+                                   @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                                   @Param(value = "cron", required = false) String cron,
+                                   @Param(value = "type", required = false) String type,
+                                   @Param(value = "runNow", required = false) Boolean runNow,
+                                   @Param(value = "maxTokens", required = false) Long maxTokens,
+                                    @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
+                                    @Param(value = "modelName", required = false) String modelName,
+                                    @Param(value = "agentName", required = false) String agentName) {
+        try {
+            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName);
+            return Result.succeed();
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        } catch (IllegalStateException | IOException e) {
+            return Result.failure(400, e.getMessage());
+        }
+    }
+
+    private Result automationToggle(@Param("id") String id) {
+        try {
+            automationManager().toggle(id);
+            return Result.succeed();
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        } catch (IOException | IllegalStateException e) {
+            return Result.failure(400, e.getMessage());
+        }
+    }
+
+    private Result automationTrigger(@Param("id") String id) {
+        try {
+            automationManager().trigger(id);
+            return Result.succeed();
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        } catch (IllegalStateException e) {
+            return Result.failure(400, e.getMessage());
+        }
+    }
+
+    private Result automationDelete(@Param("id") String id) {
+        try {
+            automationManager().remove(id);
+            return Result.succeed();
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        } catch (IOException e) {
+            return Result.failure(400, e.getMessage());
+        }
+    }
+
+    private Result<String> automationSession(@Param("id") String id) {
+        String sessionId = automationManager().sessionId(id);
+        return sessionId == null ? Result.failure(404, "Automation not found") : Result.succeed(sessionId);
+    }
+
+    // ==================== 统一任务门面 ====================
+
+    /**
+     * 统一读取任务。type=AUTOMATION 时按工作区任务读取，否则按 session 读取循环任务。
+     * 会话内循环任务仍可用旧 /web/chat/loop/* 接口。
+     */
+    @Get
+    @Mapping("/web/tasks/list")
+    public Result taskList(@Param(value = "type", required = false) String type,
+                                      @Param(value = "sessionId", required = false) String sessionId) {
+        if (isAutomationType(type)) {
+            return Result.succeed(automationManager().list());
+        }
+        if (!isValidSessionId(sessionId)) {
+            return Result.failure(400, "sessionId is required for SESSION_LOOP");
+        }
+        return loopList(sessionId);
+    }
+
+    @Get
+    @Mapping("/web/tasks/get")
+    public Result taskGet(@Param("type") String type,
+                          @Param("id") String id,
+                          @Param(value = "sessionId", required = false) String sessionId) {
+        if (isAutomationType(type)) {
+            Map<String, Object> data = automationManager().get(id);
+            return data == null ? Result.failure(404, "Task not found") : Result.succeed(data);
+        }
+        return loopGet(sessionId, id);
+    }
+
+    @Post
+    @Mapping("/web/tasks/create")
+    public Result taskCreate(@Param("type") String type,
+                             @Param("prompt") String prompt,
+                             @Param(value = "name", required = false) String name,
+                             @Param(value = "sessionId", required = false) String sessionId,
+                             @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                             @Param(value = "cron", required = false) String cron,
+                             @Param(value = "taskType", required = false) String taskType,
+                             @Param(value = "runNow", required = false) Boolean runNow,
+                             @Param(value = "maxTokens", required = false) Long maxTokens,
+                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
+                              @Param(value = "modelName", required = false) String modelName,
+                              @Param(value = "agentName", required = false) String agentName) {
+        if (isAutomationType(type)) {
+            try {
+                org.noear.solon.codecli.automation.AutomationTask task = automationManager().create(
+                        name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName);
+                return Result.succeed(task.getId());
+            } catch (IllegalArgumentException | IllegalStateException | IOException e) {
+                return Result.failure(400, e.getMessage());
+            }
+        }
+        return loopAdd(sessionId, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs);
+    }
+
+    @Post
+    @Mapping("/web/tasks/update")
+    public Result taskUpdate(@Param("type") String type,
+                             @Param("id") String id,
+                             @Param(value = "sessionId", required = false) String sessionId,
+                             @Param(value = "name", required = false) String name,
+                             @Param(value = "prompt", required = false) String prompt,
+                             @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
+                             @Param(value = "cron", required = false) String cron,
+                             @Param(value = "taskType", required = false) String taskType,
+                             @Param(value = "runNow", required = false) Boolean runNow,
+                             @Param(value = "maxTokens", required = false) Long maxTokens,
+                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
+                              @Param(value = "modelName", required = false) String modelName,
+                              @Param(value = "agentName", required = false) String agentName) {
+        if (isAutomationType(type)) {
+            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName);
+        }
+        return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, null, runNow, maxTokens, maxDurationMs);
+    }
+
+    @Post
+    @Mapping("/web/tasks/toggle")
+    public Result taskToggle(@Param("type") String type,
+                             @Param("id") String id,
+                             @Param(value = "sessionId", required = false) String sessionId) {
+        if (isAutomationType(type)) return automationToggle(id);
+        return loopToggle(sessionId, id);
+    }
+
+    @Post
+    @Mapping("/web/tasks/trigger")
+    public Result taskTrigger(@Param("type") String type,
+                              @Param("id") String id,
+                              @Param(value = "sessionId", required = false) String sessionId) {
+        if (isAutomationType(type)) return automationTrigger(id);
+        return loopTrigger(sessionId, id);
+    }
+
+    @Post
+    @Mapping("/web/tasks/delete")
+    public Result taskDelete(@Param("type") String type,
+                             @Param("id") String id,
+                             @Param(value = "sessionId", required = false) String sessionId) {
+        if (isAutomationType(type)) return automationDelete(id);
+        return loopRemove(sessionId, id);
+    }
+
+    @Get
+    @Mapping("/web/tasks/runs")
+    public Result taskRuns(@Param("type") String type,
+                           @Param("id") String id,
+                           @Param(value = "limit", required = false) Integer limit) {
+        if (!isAutomationType(type)) {
+            return Result.failure(400, "runs are currently supported for AUTOMATION only");
+        }
+        List<Map<String, Object>> runs = automationManager().runs(id, limit == null ? 50 : limit);
+        return runs == null ? Result.failure(404, "Task not found") : Result.succeed(runs);
+    }
+
+    @Get
+    @Mapping("/web/tasks/session")
+    public Result<String> taskSession(@Param("type") String type,
+                                      @Param("id") String id,
+                                      @Param(value = "sessionId", required = false) String sessionId) {
+        if (isAutomationType(type)) return automationSession(id);
+        if (!isValidSessionId(sessionId)) return Result.failure(400, "sessionId is required for SESSION_LOOP");
+        return Result.succeed(sessionId);
+    }
+
+    private static boolean isAutomationType(String type) {
+        return "AUTOMATION".equalsIgnoreCase(type);
     }
 
     // ==================== Goal 管理端点 (P0) ====================
@@ -2315,10 +2525,12 @@ public class WebController {
         if (sessionId == null || sessionId.isEmpty()) {
             return false;
         }
-        // Web 会话以 web 开头；桌面端的持久化会话使用正整数主键。
-        // 两类均使用严格白名单，保证后续 resolve 后不会出现路径穿越。
+        // Web 会话以 web 开头；桌面端的持久化会话使用正整数主键；
+        // 自动任务专用会话以 auto 开头（UUID 十六进制后缀）。
+        // 三类均使用严格白名单，保证后续 resolve 后不会出现路径穿越。
         return sessionId.matches("^web(-[a-zA-Z0-9._-]+)?$")
-                || sessionId.matches("^[1-9][0-9]{0,18}$");
+                || sessionId.matches("^[1-9][0-9]{0,18}$")
+                || sessionId.matches("^auto-[a-f0-9]{16,64}$");
     }
 
     /**

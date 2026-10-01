@@ -183,9 +183,9 @@ public class LoopTask {
         );
         task.running = false;
         task.oneShot = this.oneShot;
-        // ★ 保留原始 GoalState 运行时状态（consumedTokens、status、startEpochMs 等）
-        //    同时更新 condition 和 maxTokens 以反映新 prompt 和预算
-        if (this.goalState != null) {
+        // 仅在更新后仍为 GOAL 时保留 GoalState；切回 HEARTBEAT 必须清除目标状态。
+        // 同时更新 condition 和 maxTokens 以反映新 prompt 和预算。
+        if (newType == TaskType.GOAL && this.goalState != null) {
             task.goalState = this.goalState;
             task.goalState.setCondition(task.getPrompt());
             if (task.getMaxTokens() != null) {
