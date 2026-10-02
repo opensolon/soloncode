@@ -19,7 +19,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.WebCommandContext;
-import org.noear.solon.codecli.portal.web.SessionQueue;
+import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.codecli.portal.web.SteerInterceptor;
 import org.noear.solon.codecli.portal.web.WebGate;
 import org.noear.solon.core.util.Assert;

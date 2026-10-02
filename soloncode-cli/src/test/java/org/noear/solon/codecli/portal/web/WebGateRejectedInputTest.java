@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
+import org.noear.solon.codecli.session.queue.SessionQueue;
+import org.noear.solon.codecli.session.steer.SteerMessage;
 import org.noear.solon.codecli.portal.web.event.WebEvent;
 import org.noear.solon.codecli.portal.web.event.WebEventNames;
 import org.noear.solon.codecli.workspace.WorkspaceContext;

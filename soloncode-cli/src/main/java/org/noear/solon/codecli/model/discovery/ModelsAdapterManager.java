@@ -1,0 +1,72 @@
+package org.noear.solon.codecli.model.discovery;
+
+import org.noear.solon.codecli.model.discovery.adapter.AnthropicModelsAdapter;
+import org.noear.solon.codecli.model.discovery.adapter.GoogleModelsAdapter;
+import org.noear.solon.codecli.model.discovery.adapter.OllamaModelsAdapter;
+import org.noear.solon.codecli.model.discovery.adapter.OpenAIModelsAdapter;
+import org.noear.solon.core.util.Assert;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * ModelProvider 工厂
+ * 管理不同类型的模型提供商实现
+ */
+public class ModelsAdapterManager {
+    private static ModelsAdapterManager instance;
+
+    public static ModelsAdapterManager getInstance() {
+        if (instance == null) {
+            instance = new ModelsAdapterManager();
+        }
+
+        return instance;
+    }
+
+    //-------
+
+    private final Map<String, ModelsAdapter> adapterMap = new HashMap<>();
+    private ModelsAdapter defaultAdapter;
+
+    private ModelsAdapterManager() {
+        OpenAIModelsAdapter openAIModelProvider = new OpenAIModelsAdapter();
+        AnthropicModelsAdapter anthropicModelsAdapter = new AnthropicModelsAdapter();
+        OllamaModelsAdapter ollamaModelsAdapter = new OllamaModelsAdapter();
+        GoogleModelsAdapter googleModelsAdapter = new GoogleModelsAdapter();
+
+        adapterMap.put(openAIModelProvider.getStandard(), openAIModelProvider);
+        adapterMap.put("openai-responses", openAIModelProvider);
+        adapterMap.put(anthropicModelsAdapter.getStandard(), anthropicModelsAdapter);
+        adapterMap.put("claude", anthropicModelsAdapter);
+        adapterMap.put(ollamaModelsAdapter.getStandard(), ollamaModelsAdapter);
+        adapterMap.put(googleModelsAdapter.getStandard(), googleModelsAdapter);
+        adapterMap.put("google-models", googleModelsAdapter);
+        adapterMap.put("gemini", googleModelsAdapter);
+        adapterMap.put("gemini-models", googleModelsAdapter);
+        defaultAdapter = openAIModelProvider;
+    }
+
+    /**
+     * 根据接口规范获取对应的 ModelsAdapter
+     *
+     * @param standard 接口规范（如 openai、ollama、anthropic 等）
+     * @return 对应的 ModelsAdapter，如果不存在则返回默认的 OpenAI 提供商
+     */
+    public ModelsAdapter getAdapter(String standard) {
+        String normalized = ModelApiUrl.normalizeStandard(standard);
+        if (Assert.isEmpty(normalized)) {
+            return defaultAdapter;
+        }
+        return adapterMap.getOrDefault(normalized, defaultAdapter);
+    }
+
+    /**
+     * 注册自定义 ModelsAdapter
+     *
+     * @param adapter 要注册的提供商实现
+     */
+    public void registerAdapter(ModelsAdapter adapter) {
+        adapterMap.put(adapter.getStandard(), adapter);
+    }
+}

@@ -22,7 +22,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.codecli.portal.web.SessionQueue;
+import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 import reactor.core.Disposable;

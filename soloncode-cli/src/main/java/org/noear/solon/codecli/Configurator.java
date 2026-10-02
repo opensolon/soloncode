@@ -12,6 +12,7 @@ import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.portal.*;
+import org.noear.solon.codecli.workspace.fs.FileWatchService;
 import org.noear.solon.codecli.portal.acp.AcpLink;
 import org.noear.solon.codecli.portal.cli.CliShell;
 import org.noear.solon.codecli.portal.help.HelpMode;

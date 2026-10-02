@@ -10,6 +10,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
+import org.noear.solon.codecli.session.steer.SteerMessage;
 
 import java.util.ArrayList;
 import java.util.List;

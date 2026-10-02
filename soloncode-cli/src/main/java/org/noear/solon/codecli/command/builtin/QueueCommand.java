@@ -18,7 +18,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.codecli.portal.web.SessionQueue;
+import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.core.util.Assert;
 
 /**

@@ -16,7 +16,7 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.util.MountPathUtil;
-import org.noear.solon.codecli.portal.FileWatchService;
+import org.noear.solon.codecli.workspace.fs.FileWatchService;
 import org.noear.solon.codecli.util.OsOpenUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceManager;

@@ -5,7 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import org.noear.solon.codecli.portal.web.SteerMessage;
+import org.noear.solon.codecli.session.steer.SteerMessage;
 
 import java.io.Serializable;
 import java.util.List;
