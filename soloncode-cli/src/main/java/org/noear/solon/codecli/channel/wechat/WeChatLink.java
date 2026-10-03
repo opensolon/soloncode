@@ -17,6 +17,8 @@ package org.noear.solon.codecli.channel.wechat;
 
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
+import org.noear.solon.codecli.channel.ImMessages;
+import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.core.util.Assert;
@@ -66,8 +68,6 @@ public class WeChatLink implements Channel, Runnable {
 
     private static final int TYPING_ON = 1;
     private static final int TYPING_OFF = 2;
-
-    private static final String BUSY_HINT = "⏳ 正在处理上一条消息，请稍候再试";
 
     /**
      * 同一会话「无回复目标」告警的最小间隔，避免一轮多段回复刷爆日志
@@ -537,12 +537,14 @@ public class WeChatLink implements Channel, Runnable {
         String fromUserId = msg.get("from_user_id");
         String contextToken = msg.get("context_token");
 
-        if (Assert.isEmpty(text)) {
-            return false;
-        }
         if (Assert.isEmpty(contextToken)) {
             // 没有 context_token 就无法回复，直接处理只会产生"已读不回"
             LOG.warn("[WeChat] Inbound message from {} has no context_token, dropped", fromUserId);
+            return false;
+        }
+        if (Assert.isEmpty(text)) {
+            // 统一回执：非文本消息不能静默丢弃（与飞书/钉钉一致）
+            transport.sendMessage(binding.baseUrl, binding.botToken, fromUserId, contextToken, ImMessages.HINT_NON_TEXT);
             return false;
         }
 
@@ -564,10 +566,8 @@ public class WeChatLink implements Channel, Runnable {
             // safeChatInput 只负责投递、不等 AI 生成完成，
             // 所以「正在输入」要一直保持到最终回复发出（见 sendReplyDo 的 isFinal 分支）
             startTypingKeeper(sessionId, binding, target);
-        } else {
-            // 会话繁忙，向用户发送提示而不是静默丢弃
-            transport.sendMessage(binding.baseUrl, binding.botToken, fromUserId, contextToken, BUSY_HINT);
         }
+        // 未受理（如队列已满）已由 safeChatInput 统一回执 ImStatus.REJECTED，此处不再重复提示。
         return true;
     }
 
@@ -687,6 +687,42 @@ public class WeChatLink implements Channel, Runnable {
                 sendReplyDo(sessionId, binding, target, reply, isFinal);
             } catch (Exception e) {
                 LOG.error("[WeChat] Reply error for session {}: {}", sessionId, e.getMessage(), e);
+            }
+        });
+    }
+
+    /**
+     * 交互状态信号：只下发非流式提示文本。
+     *
+     * <p>微信有「正在输入」typing，已表达「处理中」，故忽略 {@link ImStatus#ACCEPTED}，
+     * 只在下发排队/长任务/拒收等 typing 表达不了的状态时补一条文本。</p>
+     */
+    @Override
+    public void sendStatus(String sessionId, ImStatus status, String detail,
+                           String sourceUserId, String replyTarget, String messageId) {
+        if (status == ImStatus.ACCEPTED) {
+            // typing 已表达，避免多余文本
+            return;
+        }
+        WeChatBinding binding = bindings.get(sessionId);
+        if (binding == null) {
+            return;
+        }
+        String text = ImMessages.textOf(status, detail);
+        if (text == null) {
+            return;
+        }
+        ReplyTarget target = replyTarget == null ? binding.replyTarget : new ReplyTarget(sourceUserId, replyTarget);
+        if (target == null) {
+            // iLink 不支持主动推送，无 context_token 时发不出去
+            warnNoReplyTarget(sessionId);
+            return;
+        }
+        submitSend(sessionId, () -> {
+            try {
+                transport.sendMessage(binding.baseUrl, binding.botToken, target.userId, target.contextToken, text);
+            } catch (Exception e) {
+                LOG.warn("[WeChat] Status({}) send error for session {}: {}", status, sessionId, e.getMessage());
             }
         });
     }

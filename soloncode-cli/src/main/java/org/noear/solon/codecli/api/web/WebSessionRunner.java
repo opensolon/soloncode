@@ -111,6 +111,8 @@ class WebSessionRunner {
         gate.getQueueDispatcher().finishQueuedTurn(session, false);
 
         gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));
+        // 失败终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
+        gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
 
         if (composite != null) {
             //本轮未挂上任何流（self=null）：仅当槽位已无其它活跃流时才清空
@@ -195,6 +197,7 @@ class WebSessionRunner {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofError(e));
+                    gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
                     gate.getQueueDispatcher().finishQueuedTurn(session, true);
@@ -281,6 +284,7 @@ class WebSessionRunner {
                     LOG.error("Task fail: {}", e.getMessage(), e);
 
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofError(e));
+                    gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
                     releaseStreamSlot(session, composite, selfRef.get());  // 只摘自己那条流

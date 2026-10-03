@@ -15,6 +15,8 @@
  */
 package org.noear.solon.codecli.channel.wechat;
 
+import org.noear.solon.codecli.channel.ImMessages;
+import org.noear.solon.codecli.channel.ImStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -185,15 +187,42 @@ class WeChatLinkBindingTest {
     }
 
     @Test
-    void busySession_shouldSendHintInsteadOfSilence() {
+    void busySession_linkDoesNotSendItsOwnHint() {
+        // 忙态/拒收回执已收敛到统一出口（safeChatInput → Channel.sendStatus(REJECTED)），
+        // Link 不再各自发提示，避免与统一回执重复。
         link.acceptDispatch = false;
         link.bindSession("s1", "tk", "bot", "user");
         transport.enqueueUpdate("C1", "user", "ctx-1", "在忙吗");
 
         link.pollOnce("s1");
 
+        assertEquals(0, transport.sent.size());
+    }
+
+    @Test
+    void rejectedStatusSendsUnifiedHint() {
+        link.bindSession("s1", "tk", "bot", "user");
+        transport.enqueueUpdate("C1", "user", "ctx-1", "在忙吗");
+        link.pollOnce("s1"); // 建立回信目标（context_token）
+        transport.sent.clear();
+
+        link.sendStatus("s1", ImStatus.REJECTED, null, "user", "ctx-1", null);
+
         assertEquals(1, transport.sent.size());
-        assertTrue(transport.sent.get(0).text.contains("正在处理上一条消息"), transport.sent.get(0).text);
+        // 断言文案与统一出口保持一致（文案措辞会演进，测试不应把字面量写死）
+        assertTrue(transport.sent.get(0).text.contains(ImMessages.REJECTED), transport.sent.get(0).text);
+    }
+
+    @Test
+    void acceptedStatusIsSkippedBecauseTypingCoversIt() {
+        link.bindSession("s1", "tk", "bot", "user");
+        transport.enqueueUpdate("C1", "user", "ctx-1", "在忙吗");
+        link.pollOnce("s1");
+        transport.sent.clear();
+
+        link.sendStatus("s1", ImStatus.ACCEPTED, null, "user", "ctx-1", null);
+
+        assertEquals(0, transport.sent.size());
     }
 
     @Test

@@ -33,6 +33,8 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
+import org.noear.solon.codecli.channel.ImMessages;
+import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
@@ -145,9 +147,11 @@ class WebChatInputHandler {
             if (Assert.isNotEmpty(selectedModel)) {
                 session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
             }
-            // 写入会话级子代理选择（与模型一样的持久化逻辑）
-            session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED,
-                    selectedAgent != null ? selectedAgent : "");
+            // 写入会话级子代理选择（仅在显式指定时）。
+            // IM 等未携带该字段的输入传 null，不能把 web 端已选的子代理清空。
+            if (selectedAgent != null) {
+                session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, selectedAgent);
+            }
             boolean effortProvided = reasoningEffort != null;
             org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionEffort(session, reasoningEffort, effortProvided);
             boolean modeProvided = thinkingMode != null;
@@ -256,6 +260,8 @@ class WebChatInputHandler {
                 throw new IllegalStateException("Queued task could not start", e);
             }
             gate.emitToClient(wsContext, sessionId, WebEvent.ofError(e));
+            // 失败终态同步到 IM（与 web 一致）
+            gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
             // 流可能尚未建立：有 session 走去重出口，否则直接发 done
             if (session != null) {
                 gate.getEventPublisher().emitDoneGuarded(wsContext, session);
@@ -340,8 +346,10 @@ class WebChatInputHandler {
         if (command == null) {
             return false;
         }
-        if (command.cliOnly()) {
-            LOG.warn("[WebGate] CLI-only command /{} rejected from Web source {}", cmdName, source);
+        if (command.cliOnly() && !isImSource(source)) {
+            // CLI-only 命令放行 IM：模型/推理等会话设置必须能从任一终端切换（改的是同一个 session）。
+            // web 侧仍走选择器 UI，不走命令文本。
+            LOG.warn("[WebGate] CLI-only command /{} rejected from source {}", cmdName, source);
             return true;
         }
 
@@ -467,10 +475,17 @@ class WebChatInputHandler {
                 int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId);
                 if (position >= 0) {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+                    // IM 侧感知补齐：web 能看到排队状态，IM 看不到；把位次主动推给来源端。
+                    // position 为入队后的队列长度，本项位居队尾，故前面还有 position-1 条。
+                    gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.QUEUED,
+                            ImMessages.queued(position - 1), source, sourceUserId, replyTarget, messageId);
                     gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
                     return true;
                 }
                 LOG.warn("[WebGate] {} event could not be queued for busy session {}", source, sessionId);
+                // 入队失败（队列满/落盘失败）：明确告知来源端本轮未被接收，不能让其以为发出去了。
+                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.REJECTED,
+                        null, source, sourceUserId, replyTarget, messageId);
                 return false;
             }
 
@@ -486,6 +501,13 @@ class WebChatInputHandler {
         // 回复目标仅在 onChatInput 真正受理本轮时设置；提前写入会覆盖运行任务。
         // 先推送用户消息到前端，确保对话记录中显示用户侧消息
         gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+
+        // IM 侧感知补齐：空闲受理后给来源端一条「已收到」，否则 IM 用户只能盲等。
+        // 斜杠命令自带回执（isCommand 内部经 replyToBoundChannel 投递），不重复提示。
+        if (input == null || !input.startsWith("/")) {
+            gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.ACCEPTED,
+                    null, source, sourceUserId, replyTarget, messageId);
+        }
 
         onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
                 null, null, null, sourceUserId, replyTarget, messageId);
@@ -514,6 +536,8 @@ class WebChatInputHandler {
 
         // 前端流门解封由 performAgentTaskSync → beginStreamTurn 统一下发（system.reset），
         // 此处不再重复发送；user_input 先到也会解封，二者不冲突。
+        // Loop 发起：清掉上一轮残留的 IM 定向路由（Loop 不是 IM 来源，过程消息不外发）
+        setReplyRoute(session, source, null, null, null);
         gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
 
         String agentName = null;
@@ -583,6 +607,8 @@ class WebChatInputHandler {
             // 参照 rewind 路径（见 isCommand 中 /rewind 处理）的做法。
             session.updateSnapshot();
             gate.emitToClient(wsContext, sessionId, WebEvent.ofError("用户已取消任务."));
+            // 取消终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
+            gate.getStreamBuilder().replyCanceledToBoundChannels(wsContext, session);
 
             if (trace != null) {
                 Long totalTokens = (trace.getMetrics() != null) ? trace.getMetrics().getTotalTokens() : 0L;
@@ -640,16 +666,19 @@ class WebChatInputHandler {
         return null;
     }
 
+    /** 是否为 IM 通道来源（wechat / feishu / dingtalk）。 */
+    private static boolean isImSource(String source) {
+        return source != null && ("wechat".equalsIgnoreCase(source)
+                || "feishu".equalsIgnoreCase(source) || "dingtalk".equalsIgnoreCase(source));
+    }
+
     private static void setReplyRoute(AgentSession session, String source, String sourceUserId, String replyTarget, String messageId) {
         if (session == null) return;
-        boolean imSource = false;
-        if (source != null) {
-            imSource = "wechat".equalsIgnoreCase(source) || "feishu".equalsIgnoreCase(source)
-                    || "dingtalk".equalsIgnoreCase(source);
-        }
-        if (!imSource) {
+        // 新一轮输入受理：重置 IM 终态去重门（final/error/canceled 共用），保证本轮终态仍能落 IM。
+        session.attrs().remove(WebStreamBuilder.ATTR_IM_TERMINAL_SENT);
+        if (!isImSource(source)) {
             // WEB/Loop 等来源没有 IM 定向目标：清掉上一轮残留的路由即可。
-            // 回复仍会广播到所有绑定该会话的 IM 通道（见 WebStreamBuilder.replyToBoundChannel），
+            // 终态仍会广播到所有绑定该会话的 IM 通道（见 WebStreamBuilder.replyToBoundChannel），
             // 以实现多终端（web/im）内容同步，各通道退回到绑定用户（binding.openId）。
             session.attrs().remove("session.replyRoute");
             return;

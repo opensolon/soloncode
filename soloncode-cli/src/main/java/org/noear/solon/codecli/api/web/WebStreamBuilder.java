@@ -9,6 +9,7 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
+import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.pipeline.SessionMetricsRecorder;
@@ -20,8 +21,13 @@ import org.noear.solon.codecli.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
+import org.noear.solon.core.util.RunUtil;
 import reactor.core.publisher.Flux;
 
+import java.util.Map;
+import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
 /**
@@ -41,6 +47,30 @@ public class WebStreamBuilder {
         this(null);
     }
 
+    /** IM 非流式终态去重标记：一轮只允许一条终态消息（final/error/canceled）落 IM。 */
+    public static final String ATTR_IM_TERMINAL_SENT = "session.im.terminal.sent";
+
+    /** 长任务心跳定时器句柄（终态时取消）。 */
+    private static final String ATTR_IM_HEARTBEAT = "session.im.heartbeat";
+
+    /** 受理后多久仍无终态，就向来源端补一条「仍在处理」。 */
+    private static final long LONG_RUNNING_DELAY_MS = 60_000L;
+
+    /** 去掉终端 ANSI 转义序列（IM 无法渲染，命令回执如 /model 会带）。 */
+    public static String stripAnsi(String text) {
+        if (text == null) {
+            return null;
+        }
+        return text.replaceAll("\u001B\\[[0-9;]*[A-Za-z]", "");
+    }
+
+    /**
+     * 终态消息（最终答复 / 失败 / 取消）：广播到所有绑定该会话的 IM 通道。
+     *
+     * <p>web 与 IM 都是同一 session 的输出端，终态必须全端一致。入站来源通道带上定向参数
+     * （群聊 / 消息线程回复），其它通道（含 WEB/Loop 发起时 route 为空）退回到绑定用户
+     * （binding.openId）。一轮只投递一条终态，避免 final 与 error 重复刷屏。</p>
+     */
     public void replyToBoundChannel(WorkspaceContext wsContext, String sessionId, String text, boolean isFinal) {
         if (sessionId == null) return;
         AgentSession session = wsContext.getEngine().getSession(sessionId);
@@ -48,7 +78,7 @@ public class WebStreamBuilder {
         java.util.Map<String, String> route = session == null ? null
                 : (java.util.Map<String, String>) session.attrs().get("session.replyRoute");
 
-        // 多终端（web/im）同步：无论本轮由谁发起（IM / WEB / Loop），都把回复广播到
+        // 多终端（web/im）同步：无论本轮由谁发起（IM / WEB / Loop），都把终态广播到
         // 所有绑定该会话的 IM 通道。入站来源通道带上定向参数（群聊/消息线程回复），
         // 其它通道（含 WEB/Loop 发起时 route 为空的情况）退回到绑定用户（binding.openId）。
         String routeSource = route == null ? null : route.get("source");
@@ -56,14 +86,26 @@ public class WebStreamBuilder {
         String replyTarget = route == null ? null : route.get("replyTarget");
         String messageId = route == null ? null : route.get("messageId");
 
-        for (Channel link : wsContext.getChannelHub().getImLinks()) {
-            if (!link.isBound(sessionId)) {
-                continue;
-            }
-            if (routeSource != null && routeSource.equalsIgnoreCase(link.getChannelName())) {
-                link.sendReply(sessionId, text, isFinal, sourceUserId, replyTarget, messageId);
-            } else {
-                link.sendReply(sessionId, text, isFinal);
+        boolean allowSend = true;
+        if (isFinal && session != null) {
+            // 终态去重门：final / error / canceled 共用，保证 IM 每轮只收一条终态。
+            Object prev = session.attrs().put(ATTR_IM_TERMINAL_SENT, Boolean.TRUE);
+            allowSend = !Boolean.TRUE.equals(prev);
+            // 本轮已收尾，停掉长任务心跳（若尚未触发）。
+            cancelLongRunningWatch(session);
+        }
+
+        if (allowSend) {
+            String imText = stripAnsi(text);
+            for (Channel link : wsContext.getChannelHub().getImLinks()) {
+                if (!link.isBound(sessionId)) {
+                    continue;
+                }
+                if (routeSource != null && routeSource.equalsIgnoreCase(link.getChannelName())) {
+                    link.sendReply(sessionId, imText, isFinal, sourceUserId, replyTarget, messageId);
+                } else {
+                    link.sendReply(sessionId, imText, isFinal);
+                }
             }
         }
 
@@ -72,14 +114,119 @@ public class WebStreamBuilder {
         }
     }
 
+    /**
+     * 过程消息（ReasonEndEvent）：只投递给发起本轮的那个 IM 通道。
+     *
+     * <p>IM 不接收流式分片，过程消息是它唯一能拿到的中间产物；但它属于「噪音」，
+     * 只回来源端，避免 web / 其它 IM 端被同一段过程刷屏。WEB/Loop 发起时 route 为空，
+     * 过程消息不下发任何 IM。</p>
+     */
+    public void replyPartialToOriginChannel(WorkspaceContext wsContext, String sessionId, String text) {
+        if (sessionId == null || Assert.isEmpty(text)) return;
+        AgentSession session = wsContext.getEngine().getSession(sessionId);
+        @SuppressWarnings("unchecked")
+        Map<String, String> route = session == null ? null
+                : (Map<String, String>) session.attrs().get("session.replyRoute");
+        if (route == null) {
+            return;
+        }
+        String routeSource = route.get("source");
+        if (routeSource == null) {
+            return;
+        }
+        String imText = stripAnsi(text);
+        for (Channel link : wsContext.getChannelHub().getImLinks()) {
+            if (link.isBound(sessionId) && routeSource.equalsIgnoreCase(link.getChannelName())) {
+                link.sendReply(sessionId, imText, false,
+                        route.get("sourceUserId"), route.get("replyTarget"), route.get("messageId"));
+                return;
+            }
+        }
+    }
+
+    /** 失败终态：以非流式终态语义同步到 IM（与 final 共用去重门与投递通道）。 */
+    public void replyErrorToBoundChannels(WorkspaceContext wsContext, AgentSession session, Throwable e) {
+        if (session == null) return;
+        String msg = e == null ? null : e.getMessage();
+        if (Assert.isEmpty(msg)) {
+            msg = e == null ? "未知错误" : e.getClass().getSimpleName();
+        }
+        msg = stripAnsi(msg).replaceAll("[\\r\\n]+", " ").trim();
+        if (msg.length() > 200) {
+            msg = msg.substring(0, 200) + "...";
+        }
+        replyToBoundChannel(wsContext, session.getSessionId(), "任务执行失败：" + msg, true);
+    }
+
+    /** 取消终态：与失败同路，保证 IM 端不会停在「已读不回」。 */
+    public void replyCanceledToBoundChannels(WorkspaceContext wsContext, AgentSession session) {
+        if (session == null) return;
+        replyToBoundChannel(wsContext, session.getSessionId(), "用户已取消任务。", true);
+    }
+
     /** 命令在已有任务运行时使用自己的回复目标，不覆盖运行任务的路由。 */
     public void replyToBoundChannel(WorkspaceContext wsContext, String sessionId, String text, boolean isFinal,
                                     String source, String sourceUserId, String replyTarget, String messageId) {
         if (sessionId == null || source == null) return;
+        if (isFinal) {
+            cancelLongRunningWatch(wsContext.getEngine() == null ? null : wsContext.getEngine().getSession(sessionId));
+        }
+        String imText = stripAnsi(text);
         for (Channel link : wsContext.getChannelHub().getImLinks()) {
             if (link.isBound(sessionId) && source.equalsIgnoreCase(link.getChannelName())) {
-                link.sendReply(sessionId, text, isFinal, sourceUserId, replyTarget, messageId);
+                link.sendReply(sessionId, imText, isFinal, sourceUserId, replyTarget, messageId);
             }
+        }
+    }
+
+    /**
+     * 交互状态信号：只投递给发起本轮的那个 IM 通道。
+     *
+     * <p>IM 的感知远不如 web（看不到排队、loading）。这些信号属于「状态」而非「会话内容」，
+     * 不参与历史、不走流式（IM 只收非流式的 ReasonEndEvent / RunEndEvent）。
+     * WEB/Loop 发起时没有匹配通道，自然不下发任何 IM。</p>
+     */
+    public void signalOriginChannel(WorkspaceContext wsContext, String sessionId, ImStatus status, String detail,
+                                    String source, String sourceUserId, String replyTarget, String messageId) {
+        if (sessionId == null || source == null || status == null || wsContext == null) return;
+        if (wsContext.getChannelHub() == null) return;
+        for (Channel link : wsContext.getChannelHub().getImLinks()) {
+            if (link.isBound(sessionId) && source.equalsIgnoreCase(link.getChannelName())) {
+                link.sendStatus(sessionId, status, detail, sourceUserId, replyTarget, messageId);
+                if (status == ImStatus.ACCEPTED) {
+                    // 受理即挂长任务心跳；终态投递时取消。
+                    startLongRunningWatch(wsContext, sessionId, source, sourceUserId, replyTarget, messageId);
+                }
+                return;
+            }
+        }
+    }
+
+    /**
+     * 长任务心跳：受理后超过 {@link #LONG_RUNNING_DELAY_MS} 仍无终态，补一条「仍在处理」提醒，
+     * 避免用户在长任务期间以为消息丢了。只触发一次，终态投递时取消。
+     */
+    private void startLongRunningWatch(WorkspaceContext wsContext, String sessionId, String source,
+                                       String sourceUserId, String replyTarget, String messageId) {
+        AgentSession session = wsContext.getEngine() == null ? null : wsContext.getEngine().getSession(sessionId);
+        if (session == null) return;
+        cancelLongRunningWatch(session);
+        try {
+            ScheduledFuture<?> future = RunUtil.timer().schedule(
+                    () -> signalOriginChannel(wsContext, sessionId, ImStatus.LONG_RUNNING, null,
+                            source, sourceUserId, replyTarget, messageId),
+                    LONG_RUNNING_DELAY_MS, TimeUnit.MILLISECONDS);
+            session.attrs().put(ATTR_IM_HEARTBEAT, future);
+        } catch (Throwable e) {
+            log.debug("IM long-running watch schedule failed: {}", e.getMessage());
+        }
+    }
+
+    private void cancelLongRunningWatch(AgentSession session) {
+        if (session == null) return;
+        Object value = session.attrs().remove(ATTR_IM_HEARTBEAT);
+        if (value instanceof Future) {
+            ((Future<?>) value).cancel(false);
         }
     }
 
@@ -199,6 +346,9 @@ public class WebStreamBuilder {
                 .doOnNext(metricsRecorder::record)
                 .onErrorResume(e -> {
                     log.error("Stream execution error", e);
+                    //IM 与 web 是同一 session 的输出端：流式 error 仅 web 可见，
+                    //这里再补一条非流式终态给 IM，否则 IM 端会永久停在「已读不回」。
+                    replyErrorToBoundChannels(wsContext, session, e);
                     //只发 error：done 统一由订阅侧 doFinally 走 emitDoneOnce 去重门发出。
                     //此处再拼一个 ofDone 会绕过去重门直推给前端，造成同一轮双 done。
                     return Flux.just(WebEvent.ofError(e));

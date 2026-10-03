@@ -55,7 +55,7 @@ class WebEventMapperChannelReplyTest {
     }
 
     @Test
-    void toolAndSubAgentReasonEndsDoNotSendProcessRepliesToIm() {
+    void processReasonEndsGoOnlyThroughOriginChannelPath() {
         WebStreamBuilder streamBuilder = mock(WebStreamBuilder.class);
         WorkspaceContext wsContext = mock(WorkspaceContext.class);
         AgentSession session = mock(AgentSession.class);
@@ -83,7 +83,14 @@ class WebEventMapperChannelReplyTest {
 
         assertFalse(WebEvent.isNotEmpty(mapper.mapEvent(toolReasonEnd).get(0)));
         assertFalse(WebEvent.isNotEmpty(mapper.mapEvent(subAgentReasonEnd).get(0)));
-        verifyNoInteractions(streamBuilder);
+
+        // 过程消息只走「仅来源端」通道，绝不走全端广播
+        verify(streamBuilder, times(1))
+                .replyPartialToOriginChannel(wsContext, "s1", "工具调用前的过程答复");
+        verify(streamBuilder, times(1))
+                .replyPartialToOriginChannel(wsContext, "s1", "子代理过程答复");
+        verify(streamBuilder, never())
+                .replyToBoundChannel(any(), anyString(), anyString(), anyBoolean());
 
         mapper.mapEvent(runEnd);
         verify(streamBuilder, times(1))

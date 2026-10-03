@@ -19,6 +19,8 @@ import org.noear.java_websocket.client.SimpleWebSocketClient;
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
+import org.noear.solon.codecli.channel.ImMessages;
+import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
@@ -133,6 +135,22 @@ public class DingTalkLink implements Channel, Runnable {
         // （WebSocket Stream 回复仅用于同步 ACK，不适用于异步 AI 响应场景。
         //   ACK 阶段已用 data="{}" 回复了 CALLBACK，再用同一 messageId 发消息会被钉钉服务器丢弃。）
         sendReplyViaApi(binding, reply);
+    }
+
+    /**
+     * 交互状态信号：只下发非流式提示文本，不走流式分片。
+     */
+    @Override
+    public void sendStatus(String sessionId, ImStatus status, String detail,
+                           String sourceUserId, String replyTarget, String messageId) {
+        DingTalkBinding binding = replyBinding(bindings.get(sessionId), sourceUserId, replyTarget);
+        if (binding == null || binding.userId == null || binding.userId.isEmpty()) {
+            return;
+        }
+        String text = ImMessages.textOf(status, detail);
+        if (text != null) {
+            sendHintToBinding(binding, text);
+        }
     }
 
     // 固定本次收件人及机器人凭据，不能从后来变化的绑定或 CALLBACK 通道取目标。
@@ -483,6 +501,8 @@ public class DingTalkLink implements Channel, Runnable {
                 sessionId = conn.pendingSessionId;
             } else {
                 LOG.warn("[DingTalk] Received message from unbound user (no pending session): userId={}", userId);
+                // 统一引导：静默丢弃会让用户完全不知道自己没绑上
+                sendHint(conn, userId, ImMessages.HINT_UNBOUND);
                 return;
             }
         }
@@ -496,6 +516,8 @@ public class DingTalkLink implements Channel, Runnable {
         }
 
         if (text == null || text.isEmpty()) {
+            // 统一回执：非文本消息不能静默丢弃
+            sendHint(conn, userId, ImMessages.HINT_NON_TEXT);
             return;
         }
 
@@ -519,10 +541,8 @@ public class DingTalkLink implements Channel, Runnable {
                     if (finalMsgId != null) {
                         finalBinding.lastMessageId = finalMsgId;
                     }
-                } else {
-                    // 会话繁忙，向用户发送提示而不是静默丢弃
-                    sendBusyNotification(finalBinding);
                 }
+                // 未受理（如队列已满）已由 safeChatInput 统一回执 ImStatus.REJECTED，此处不再重复提示。
             } catch (Exception e) {
                 LOG.error("[DingTalk] Message processing error: {}", e.getMessage(), e);
             }
@@ -530,6 +550,50 @@ public class DingTalkLink implements Channel, Runnable {
     }
 
     // ==================== 消息发送 ====================
+
+    /**
+     * 直接向指定用户发送一条轻量提示（不依赖会话绑定，走 OpenAPI）。
+     *
+     * <p>用于未绑定用户引导与非文本消息回执：这些场景还没有 session，走不了 sendReply 的绑定路径。</p>
+     */
+    private void sendHint(StreamConnection conn, String userId, String text) {
+        if (conn == null || userId == null || userId.isEmpty()) {
+            return;
+        }
+        final String appKey = conn.appKey;
+        final String appSecret = conn.appSecret;
+        RunUtil.async(() -> {
+            try {
+                String token = DingTalkClient.getAccessToken(appKey, appSecret);
+                if (token != null) {
+                    DingTalkClient.sendSingleMarkdownMessage(token, appKey, userId, "提示", text);
+                }
+            } catch (Exception e) {
+                LOG.warn("[DingTalk] Hint send error: {}", e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 按绑定直接发送一条轻量提示（走 OpenAPI，不依赖连接）。
+     */
+    private void sendHintToBinding(DingTalkBinding binding, String text) {
+        final String appKey = binding.appKey;
+        final String appSecret = binding.appSecret;
+        final String robotCode = binding.robotCode != null && !binding.robotCode.isEmpty()
+                ? binding.robotCode : binding.appKey;
+        final String userId = binding.userId;
+        RunUtil.async(() -> {
+            try {
+                String token = DingTalkClient.getAccessToken(appKey, appSecret);
+                if (token != null) {
+                    DingTalkClient.sendSingleMarkdownMessage(token, robotCode, userId, "提示", text);
+                }
+            } catch (Exception e) {
+                LOG.warn("[DingTalk] Hint send error: {}", e.getMessage());
+            }
+        });
+    }
 
     /**
      * 降级方案：通过 API 发送回复（当 WebSocket Stream 不可用时）
@@ -627,23 +691,6 @@ public class DingTalkLink implements Channel, Runnable {
     private void sendReplyViaQrPending(String sessionId, String reply) {
         LOG.warn("[DingTalk] Cannot send reply to session {}: QR binding pending, " +
                 "user needs to send a DingTalk message first", sessionId);
-    }
-
-    /**
-     * 发送简洁的繁忙提示消息（轻量，不经过 ChunkedSender）
-     */
-    private void sendBusyNotification(DingTalkBinding binding) {
-        try {
-            String token = DingTalkClient.getAccessToken(binding.appKey, binding.appSecret);
-            if (token != null) {
-                String robotCode = binding.robotCode != null && !binding.robotCode.isEmpty()
-                        ? binding.robotCode : binding.appKey;
-                DingTalkClient.sendSingleMarkdownMessage(token, robotCode, binding.userId,
-                        "提示", "⏳ 正在处理上一条消息，请稍候再试");
-            }
-        } catch (Exception e) {
-            LOG.warn("[DingTalk] Busy notification error: {}", e.getMessage());
-        }
     }
 
     // ==================== WebSocket 回复通道 ====================

@@ -42,4 +42,17 @@ public interface Channel {
     /** 使用入站消息的回复目标快照；实现方负责在目标缺失时兼容会话绑定。 */
     void sendReply(String sessionId, String text, boolean isFinal,
                    String sourceUserId, String replyTarget, String messageId);
+
+    /**
+     * 下发一条交互状态信号（非聊天内容，不进历史、不走流式）。
+     *
+     * <p>IM 的感知远不如 web：排队、长任务、拒收这些 web 侧的可见状态，
+     * 需要主动推给来源端。默认空实现，通道按自身能力渲染或忽略。</p>
+     *
+     * @param status 状态类型
+     * @param detail 文案；为空时通道可回退到 {@link ImMessages#textOf}
+     */
+    default void sendStatus(String sessionId, ImStatus status, String detail,
+                            String sourceUserId, String replyTarget, String messageId) {
+    }
 }

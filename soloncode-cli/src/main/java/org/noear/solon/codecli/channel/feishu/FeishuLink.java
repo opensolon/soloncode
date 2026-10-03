@@ -25,6 +25,8 @@ import org.noear.java_websocket.client.SimpleWebSocketClient;
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
+import org.noear.solon.codecli.channel.ImMessages;
+import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
@@ -125,6 +127,22 @@ public class FeishuLink implements Channel, Runnable {
                 LOG.error("[Feishu] Reply error: {}", e.getMessage(), e);
             }
         });
+    }
+
+    /**
+     * 交互状态信号：只下发非流式提示文本，不走流式分片。
+     */
+    @Override
+    public void sendStatus(String sessionId, ImStatus status, String detail,
+                           String sourceUserId, String replyTarget, String messageId) {
+        FeishuBinding binding = replyBinding(bindings.get(sessionId), sourceUserId, replyTarget);
+        if (binding == null || binding.appId == null || binding.appSecret == null) {
+            return;
+        }
+        String text = ImMessages.textOf(status, detail);
+        if (text != null) {
+            sendHint(binding.appId, binding.appSecret, binding.openId, text);
+        }
     }
 
     // 发送前固定收件人和凭据，避免异步任务读取后来变更的绑定。
@@ -524,6 +542,8 @@ public class FeishuLink implements Channel, Runnable {
 
         if (text == null || text.isEmpty()) {
             LOG.debug("[Feishu] Ignored non-text message from {}", openId);
+            // 统一回执：web 支持附件，IM 暂不支持时不能让用户以为消息已发出
+            sendHint(conn.appId, conn.appSecret, openId, ImMessages.HINT_NON_TEXT);
             return;
         }
 
@@ -538,6 +558,8 @@ public class FeishuLink implements Channel, Runnable {
         String sessionId = openIdToSession.get(openId);
         if (sessionId == null) {
             LOG.warn("[Feishu] Received message from unbound user: openId={}", openId);
+            // 统一引导：静默丢弃会让用户完全不知道自己没绑上
+            sendHint(conn.appId, conn.appSecret, openId, ImMessages.HINT_UNBOUND);
             return;
         }
 
@@ -570,10 +592,8 @@ public class FeishuLink implements Channel, Runnable {
                     if (finalMsgId != null) {
                         finalBinding.lastMessageId = finalMsgId;
                     }
-                } else {
-                    // 会话繁忙，向用户发送提示而不是静默丢弃
-                    sendBusyNotification(finalBinding);
                 }
+                // 未受理（如队列已满）已由 safeChatInput 统一回执 ImStatus.REJECTED，此处不再重复提示。
             } catch (Exception e) {
                 LOG.error("[Feishu] Message processing error: {}", e.getMessage(), e);
             }
@@ -673,18 +693,24 @@ public class FeishuLink implements Channel, Runnable {
     }
 
     /**
-     * 发送简洁的繁忙提示消息（轻量，不经过 ChunkedSender）
+     * 直接向指定用户发送一条轻量提示（不依赖会话绑定）。
+     *
+     * <p>用于未绑定用户引导与非文本消息回执：这些场景还没有 session，走不了 sendReply 的绑定路径。</p>
      */
-    private void sendBusyNotification(FeishuBinding binding) {
-        try {
-            String token = FeishuClient.getTenantAccessToken(binding.appId, binding.appSecret);
-            if (token != null) {
-                FeishuClient.sendMessage(token, "open_id", binding.openId,
-                        "⏳ 正在处理上一条消息，请稍候再试");
-            }
-        } catch (Exception e) {
-            LOG.warn("[Feishu] Busy notification error: {}", e.getMessage());
+    private void sendHint(String appId, String appSecret, String openId, String text) {
+        if (appId == null || appSecret == null || openId == null) {
+            return;
         }
+        RunUtil.async(() -> {
+            try {
+                String token = FeishuClient.getTenantAccessToken(appId, appSecret);
+                if (token != null) {
+                    FeishuClient.sendMessage(token, "open_id", openId, text);
+                }
+            } catch (Exception e) {
+                LOG.warn("[Feishu] Hint send error: {}", e.getMessage());
+            }
+        });
     }
 
     /**
