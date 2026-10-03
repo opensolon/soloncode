@@ -477,8 +477,10 @@ class WebChatInputHandler {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
                     // IM 侧感知补齐：web 能看到排队状态，IM 看不到；把位次主动推给来源端。
                     // position 为入队后的队列长度，本项位居队尾，故前面还有 position-1 条。
+                    // 命令引导（/steer、/interrupt）同一轮忙态只教学一次，避免连发多条时刷屏。
+                    boolean withCommandHint = gate.getStreamBuilder().claimCommandHint(session);
                     gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.QUEUED,
-                            ImMessages.queued(position - 1), source, sourceUserId, replyTarget, messageId);
+                            ImMessages.queued(position - 1, withCommandHint), source, sourceUserId, replyTarget, messageId);
                     gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
                     return true;
                 }

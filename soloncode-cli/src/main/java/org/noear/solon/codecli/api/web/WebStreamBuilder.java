@@ -53,6 +53,9 @@ public class WebStreamBuilder {
     /** 长任务心跳定时器句柄（终态时取消）。 */
     private static final String ATTR_IM_HEARTBEAT = "session.im.heartbeat";
 
+    /** 本轮忙态命令引导是否已提示过：同一轮只教学一次，避免连发多条时重复刷屏。 */
+    private static final String ATTR_IM_CMD_HINT_SHOWN = "session.im.cmdHint.shown";
+
     /** 受理后多久仍无终态，就向来源端补一条「仍在处理」。 */
     private static final long LONG_RUNNING_DELAY_MS = 60_000L;
 
@@ -93,6 +96,8 @@ public class WebStreamBuilder {
             allowSend = !Boolean.TRUE.equals(prev);
             // 本轮已收尾，停掉长任务心跳（若尚未触发）。
             cancelLongRunningWatch(session);
+            // 本轮已收尾，忙态命令引导标记复位：下一轮忙态重新教学一次。
+            resetCommandHint(session);
         }
 
         if (allowSend) {
@@ -194,12 +199,35 @@ public class WebStreamBuilder {
             if (link.isBound(sessionId) && source.equalsIgnoreCase(link.getChannelName())) {
                 link.sendStatus(sessionId, status, detail, sourceUserId, replyTarget, messageId);
                 if (status == ImStatus.ACCEPTED) {
+                    AgentSession session = wsContext.getEngine() == null ? null
+                            : wsContext.getEngine().getSession(sessionId);
+                    // 新一轮从空闲开始：重置引导标记，下轮忙态重新教学一次。
+                    resetCommandHint(session);
                     // 受理即挂长任务心跳；终态投递时取消。
                     startLongRunningWatch(wsContext, sessionId, source, sourceUserId, replyTarget, messageId);
                 }
                 return;
             }
         }
+    }
+
+    /**
+     * 取用「本轮忙态命令引导」的提示机会：首次调用返回 true 并置位，其后返回 false。
+     *
+     * <p>同一轮忙态里用户可能连发多条，命令引导（/steer、/interrupt）只随第一条下发，
+     * 后续只报位次，避免把回执刷成教学广告。标记在本轮终态或下一轮受理时复位。</p>
+     */
+    public boolean claimCommandHint(AgentSession session) {
+        if (session == null) {
+            return true;
+        }
+        Object prev = session.attrs().put(ATTR_IM_CMD_HINT_SHOWN, Boolean.TRUE);
+        return !Boolean.TRUE.equals(prev);
+    }
+
+    private void resetCommandHint(AgentSession session) {
+        if (session == null) return;
+        session.attrs().remove(ATTR_IM_CMD_HINT_SHOWN);
     }
 
     /**

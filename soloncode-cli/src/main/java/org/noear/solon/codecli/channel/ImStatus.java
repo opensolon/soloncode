@@ -34,7 +34,7 @@ public enum ImStatus {
      */
     ACCEPTED,
     /**
-     * 会话繁忙、输入已进入统一队列
+     * 会话繁忙、输入已作为新任务进入统一队列
      */
     QUEUED,
     /**

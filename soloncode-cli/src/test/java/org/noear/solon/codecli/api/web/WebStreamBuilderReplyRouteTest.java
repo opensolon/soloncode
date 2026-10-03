@@ -5,6 +5,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChannelHub;
+import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 
@@ -179,5 +180,50 @@ class WebStreamBuilderReplyRouteTest {
 
         builder.replyToBoundChannel(context, "s1", "done", true);
         org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey("session.im.heartbeat"));
+    }
+
+    @Test
+    void busyCommandHintIsTaughtOncePerRoundAndResetsAfterTerminal() {
+        // 同一轮忙态连发多条：命令引导（/steer、/interrupt）只随第一条下发，后续只报位次；
+        // 终态收尾后标记复位，下一轮忙态重新教学一次。
+        WorkspaceContext context = mock(WorkspaceContext.class);
+        HarnessEngine engine = mock(HarnessEngine.class);
+        AgentSession session = mock(AgentSession.class);
+        ChannelHub hub = mock(ChannelHub.class);
+        Channel feishu = mock(Channel.class);
+        Map<String, Object> attrs = new HashMap<>();
+        when(context.getEngine()).thenReturn(engine);
+        when(engine.getSession("s1")).thenReturn(session);
+        when(session.attrs()).thenReturn(attrs);
+        when(context.getChannelHub()).thenReturn(hub);
+        when(hub.getImLinks()).thenReturn(Arrays.asList(feishu));
+        when(feishu.isBound("s1")).thenReturn(true);
+        when(feishu.getChannelName()).thenReturn("feishu");
+
+        WebStreamBuilder builder = new WebStreamBuilder();
+        org.junit.jupiter.api.Assertions.assertTrue(builder.claimCommandHint(session));
+        org.junit.jupiter.api.Assertions.assertFalse(builder.claimCommandHint(session));
+
+        builder.replyToBoundChannel(context, "s1", "done", true);
+        org.junit.jupiter.api.Assertions.assertTrue(builder.claimCommandHint(session));
+    }
+
+    @Test
+    void queuedTextStatesQueueSemanticsAndCarriesCommandHint() {
+        // 忙态直发的默认语义是「新任务排队」，不是「插话」；插话入口（/steer）要一并给出。
+        String withHint = ImMessages.queued(2, true);
+        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("新任务排队"), withHint);
+        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("前面还有 2 条"), withHint);
+        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("/steer"), withHint);
+        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("/interrupt"), withHint);
+
+        // 后续入队只报位次，不重复教学；且不引导 /queue（忙态直发即排队）。
+        String brief = ImMessages.queued(2, false);
+        org.junit.jupiter.api.Assertions.assertTrue(brief.contains("前面还有 2 条"), brief);
+        org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/steer"), brief);
+        org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/queue"), brief);
+
+        // 位次为 0 时不说「前面还有 0 条」
+        org.junit.jupiter.api.Assertions.assertEquals("收到，已作为新任务排队，马上轮到你了。", ImMessages.queued(0, false));
     }
 }
