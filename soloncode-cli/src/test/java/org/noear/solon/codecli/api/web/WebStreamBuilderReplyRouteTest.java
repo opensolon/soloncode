@@ -11,6 +11,7 @@ import org.noear.solon.codecli.workspace.WorkspaceContext;
 
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.mockito.Mockito.*;
@@ -210,20 +211,55 @@ class WebStreamBuilderReplyRouteTest {
 
     @Test
     void queuedTextStatesQueueSemanticsAndCarriesCommandHint() {
-        // 忙态直发的默认语义是「新任务排队」，不是「插话」；插话入口（/steer）要一并给出。
-        String withHint = ImMessages.queued(2, true);
-        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("新任务排队"), withHint);
-        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("前面还有 2 条"), withHint);
-        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("/steer"), withHint);
-        org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("/interrupt"), withHint);
+        // 文案已国际化，这里固定简体中文断言正文语义（英文解析见 messagesResolveByLocale）
+        ImMessages.setLocale(Locale.SIMPLIFIED_CHINESE);
+        try {
+            // 忙态直发的默认语义是「新任务排队」，不是「插话」；插话入口（/steer）要一并给出。
+            String withHint = ImMessages.queued(2, true);
+            org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("新任务排队"), withHint);
+            org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("前面还有 2 条"), withHint);
+            org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("/steer"), withHint);
+            org.junit.jupiter.api.Assertions.assertTrue(withHint.contains("/interrupt"), withHint);
 
-        // 后续入队只报位次，不重复教学；且不引导 /queue（忙态直发即排队）。
-        String brief = ImMessages.queued(2, false);
-        org.junit.jupiter.api.Assertions.assertTrue(brief.contains("前面还有 2 条"), brief);
-        org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/steer"), brief);
-        org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/queue"), brief);
+            // 后续入队只报位次，不重复教学；且不引导 /queue（忙态直发即排队）。
+            String brief = ImMessages.queued(2, false);
+            org.junit.jupiter.api.Assertions.assertTrue(brief.contains("前面还有 2 条"), brief);
+            org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/steer"), brief);
+            org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/queue"), brief);
 
-        // 位次为 0 时不说「前面还有 0 条」
-        org.junit.jupiter.api.Assertions.assertEquals("收到，已作为新任务排队，马上轮到你了。", ImMessages.queued(0, false));
+            // 位次为 0 时不说「前面还有 0 条」
+            org.junit.jupiter.api.Assertions.assertEquals("收到，已作为新任务排队，马上轮到你了。", ImMessages.queued(0, false));
+        } finally {
+            ImMessages.setLocale(null);
+        }
+    }
+
+    @Test
+    void messagesResolveByLocale() {
+        // 国际化：同一组消息按地区解析
+        ImMessages.setLocale(Locale.ENGLISH);
+        try {
+            String en = ImMessages.queued(2, true);
+            org.junit.jupiter.api.Assertions.assertTrue(en.contains("queued as a new task"), en);
+            org.junit.jupiter.api.Assertions.assertTrue(en.contains("2 ahead of you"), en);
+            org.junit.jupiter.api.Assertions.assertTrue(en.contains("/steer"), en);
+            org.junit.jupiter.api.Assertions.assertFalse(en.contains("新任务排队"), en);
+
+            // 占位符被替换为空串时不留首尾空白
+            org.junit.jupiter.api.Assertions.assertEquals("Got it, queued as a new task, and it is your turn right now.",
+                    ImMessages.queued(0, false));
+
+            // 无参文案同样按地区解析
+            org.junit.jupiter.api.Assertions.assertFalse(ImMessages.REJECTED().contains("还有任务"), ImMessages.REJECTED());
+        } finally {
+            ImMessages.setLocale(Locale.FRENCH);
+        }
+
+        try {
+            // 未提供 _fr 资源：回退到资源包默认语言（简体中文）
+            org.junit.jupiter.api.Assertions.assertTrue(ImMessages.REJECTED().contains("还有任务"), ImMessages.REJECTED());
+        } finally {
+            ImMessages.setLocale(null);
+        }
     }
 }

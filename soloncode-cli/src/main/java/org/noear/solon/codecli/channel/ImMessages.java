@@ -15,6 +15,15 @@
  */
 package org.noear.solon.codecli.channel;
 
+import org.noear.solon.Solon;
+import org.noear.solon.i18n.I18nBundle;
+import org.noear.solon.i18n.I18nUtil;
+
+import java.text.MessageFormat;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+
 /**
  * IM 交互文案统一出口。
  *
@@ -29,47 +38,172 @@ package org.noear.solon.codecli.channel;
  * 「插话到当前任务」，两端默认不同，用户无从推断。故入队回执主动点明排队语义，
  * 并给出插话入口（/steer）与中断入口（/interrupt）；但同一轮只教学一次。</p>
  *
+ * <p>文案已国际化：正文放在 classpath 的 {@code i18n/im-messages*.properties}，
+ * 由 solon i18n 按 {@link #getLocale()} 解析。为了让「文案可随地区变化」，
+ * 本类对外由常量改为方法（名字保持不变，调用点补一对括号即可）。</p>
+ *
  * @author noear 2026/5/9 created
  */
 public final class ImMessages {
     /**
+     * 资源包名，对应 classpath 下的 {@code i18n/im-messages*.properties}。
+     *
+     * <p>无后缀文件即「默认语言」（简体中文），其它语言以 {@code _<lang>} 覆盖。</p>
+     */
+    public static final String BUNDLE_NAME = "i18n.im-messages";
+
+    /**
      * 空闲受理成功
      */
-    public static final String ACCEPTED = "收到，马上开始处理";
+    private static final String KEY_ACCEPTED = "im.accepted";
     /**
      * 长任务心跳
      */
-    public static final String LONG_RUNNING = "还在处理中，请再稍等一下";
+    private static final String KEY_LONG_RUNNING = "im.longRunning";
     /**
-     * 入队失败（队列满等）：此时唯一能自救的是中断当前任务，故直接给出命令。
+     * 入队失败（队列满等）
      */
-    public static final String REJECTED = "还有任务没忙完，暂时接不了新的。想立刻处理，可发送 /interrupt 中断当前任务";
+    private static final String KEY_REJECTED = "im.rejected";
     /**
      * 未绑定用户引导
      */
-    public static final String HINT_UNBOUND = "还没有绑定会话，请先在 Web 端扫码绑定，然后我就能陪你聊了。";
+    private static final String KEY_HINT_UNBOUND = "im.hint.unbound";
     /**
      * 非文本消息回执
      */
-    public static final String HINT_NON_TEXT = "我暂时只看得懂文字，换文字发给我吧。";
+    private static final String KEY_HINT_NON_TEXT = "im.hint.nonText";
+    /**
+     * 忙态插话引导
+     */
+    private static final String KEY_HINT_STEER = "im.hint.steer";
+    /**
+     * 忙态中断引导
+     */
+    private static final String KEY_HINT_INTERRUPT = "im.hint.interrupt";
+    /**
+     * 忙态命令引导组合
+     */
+    private static final String KEY_HINT_BUSY_COMMAND = "im.hint.busyCommand";
+    /**
+     * 入队回执（前面还有人）
+     */
+    private static final String KEY_QUEUED_BEHIND = "im.queued.behind";
+    /**
+     * 入队回执（马上轮到）
+     */
+    private static final String KEY_QUEUED_IMMEDIATE = "im.queued.immediate";
+
+    /**
+     * 兜底文案，与资源包默认语言保持一致。
+     *
+     * <p>资源包缺失或加载失败时仍给出可读文本，绝不让资源键或占位符泄漏给用户；
+     * 同时也是「改文案不改代码」时的安全网。增删资源键请同步这里。</p>
+     */
+    private static final Map<String, String> FALLBACK = new HashMap<String, String>();
+
+    static {
+        FALLBACK.put(KEY_ACCEPTED, "收到，马上开始处理");
+        FALLBACK.put(KEY_LONG_RUNNING, "还在处理中，请再稍等一下");
+        FALLBACK.put(KEY_REJECTED, "还有任务没忙完，暂时接不了新的。想立刻处理，可发送 /interrupt 中断当前任务");
+        FALLBACK.put(KEY_HINT_UNBOUND, "还没有绑定会话，请先在 Web 端扫码绑定，然后我就能陪你聊了。");
+        FALLBACK.put(KEY_HINT_NON_TEXT, "我暂时只看得懂文字，换文字发给我吧。");
+        FALLBACK.put(KEY_HINT_STEER, "想补充或调整当前任务，可发送 /steer <内容>");
+        FALLBACK.put(KEY_HINT_INTERRUPT, "想中断当前任务，可发送 /interrupt");
+        FALLBACK.put(KEY_HINT_BUSY_COMMAND, "{0}；{1}");
+        FALLBACK.put(KEY_QUEUED_BEHIND, "收到，已作为新任务排队，前面还有 {1} 条，处理完就轮到你。{0}");
+        FALLBACK.put(KEY_QUEUED_IMMEDIATE, "收到，已作为新任务排队，马上轮到你了。{0}");
+    }
+
+    /**
+     * 显式地区；非空时优先于运行时解析（供测试与嵌入式场景固定语言）
+     */
+    private static volatile Locale localeOverride;
+
+    private ImMessages() {
+    }
+
+    /**
+     * 固定文案地区；传 null 表示恢复运行时解析。
+     */
+    public static void setLocale(Locale locale) {
+        localeOverride = locale;
+    }
+
+    /**
+     * 当前文案地区：显式指定 &gt; solon.locale 配置 &gt; JVM 默认。
+     */
+    public static Locale getLocale() {
+        Locale locale = localeOverride;
+        if (locale != null) {
+            return locale;
+        }
+
+        try {
+            locale = Solon.cfg().locale();
+        } catch (Throwable ignored) {
+            // Solon 未初始化等异常场景，落到 JVM 默认地区
+        }
+
+        return locale == null ? Locale.getDefault() : locale;
+    }
+
+    /**
+     * 空闲受理成功
+     */
+    public static String ACCEPTED() {
+        return msg(KEY_ACCEPTED);
+    }
+
+    /**
+     * 长任务心跳
+     */
+    public static String LONG_RUNNING() {
+        return msg(KEY_LONG_RUNNING);
+    }
+
+    /**
+     * 入队失败（队列满等）：此时唯一能自救的是中断当前任务，故直接给出命令。
+     */
+    public static String REJECTED() {
+        return msg(KEY_REJECTED);
+    }
+
+    /**
+     * 未绑定用户引导
+     */
+    public static String HINT_UNBOUND() {
+        return msg(KEY_HINT_UNBOUND);
+    }
+
+    /**
+     * 非文本消息回执
+     */
+    public static String HINT_NON_TEXT() {
+        return msg(KEY_HINT_NON_TEXT);
+    }
 
     /**
      * 忙态插话引导
      */
-    public static final String STEER_HINT = "想补充或调整当前任务，可发送 /steer <内容>";
+    public static String STEER_HINT() {
+        return msg(KEY_HINT_STEER);
+    }
+
     /**
      * 忙态中断引导
      */
-    public static final String INTERRUPT_HINT = "想中断当前任务，可发送 /interrupt";
+    public static String INTERRUPT_HINT() {
+        return msg(KEY_HINT_INTERRUPT);
+    }
+
     /**
      * 忙态命令引导（插话 + 中断），附在首条入队回执末尾。
      *
      * <p>这里刻意不引导 /queue：IM 忙态直发消息即自动排队，再教一个显式排队命令，
      * 反而会让用户以为「不敲命令消息就会丢」。/steer 才是 IM 真正缺的能力补位。</p>
      */
-    public static final String BUSY_COMMAND_HINT = STEER_HINT + "；" + INTERRUPT_HINT;
-
-    private ImMessages() {
+    public static String BUSY_COMMAND_HINT() {
+        return msg(KEY_HINT_BUSY_COMMAND, STEER_HINT(), INTERRUPT_HINT());
     }
 
     /**
@@ -92,18 +226,16 @@ public final class ImMessages {
      */
     public static String queued(int ahead, boolean withCommandHint) {
         int n = Math.max(0, ahead);
-        StringBuilder sb = new StringBuilder("收到，已作为新任务排队，");
+        // 命令引导为空串时 {0} 位置自然留白，中英文都不必特判
+        String hint = withCommandHint ? BUSY_COMMAND_HINT() : "";
+
         if (n == 0) {
             // 前面没别的，说明马上轮到，不必提「还有 0 条」
-            sb.append("马上轮到你了");
-        } else {
-            sb.append("前面还有 ").append(n).append(" 条，处理完就轮到你");
+            return msg(KEY_QUEUED_IMMEDIATE, hint);
         }
-        sb.append("。");
-        if (withCommandHint) {
-            sb.append(BUSY_COMMAND_HINT);
-        }
-        return sb.toString();
+
+        // 数字以字符串传入，避免 MessageFormat 按地区加千分位
+        return msg(KEY_QUEUED_BEHIND, hint, String.valueOf(n));
     }
 
     /**
@@ -120,14 +252,43 @@ public final class ImMessages {
         }
         switch (status) {
             case ACCEPTED:
-                return ACCEPTED;
+                return ACCEPTED();
             case LONG_RUNNING:
-                return LONG_RUNNING;
+                return LONG_RUNNING();
             case REJECTED:
-                return REJECTED;
+                return REJECTED();
             default:
                 // QUEUED 需要位次，必须由调用方提供 detail
                 return null;
         }
+    }
+
+    /**
+     * 按当前地区解析文案，资源包缺失时回退到 {@link #FALLBACK}。
+     */
+    private static String msg(String key, Object... args) {
+        Locale locale = getLocale();
+        String pattern = null;
+
+        try {
+            I18nBundle bundle = I18nUtil.getBundle(BUNDLE_NAME, locale);
+            pattern = bundle.get(key);
+        } catch (Throwable ignored) {
+            // 资源缺失/加载失败：走兜底文案
+        }
+
+        if (pattern == null) {
+            pattern = FALLBACK.get(key);
+        }
+        if (pattern == null) {
+            // 兜底也没有（键写错），退回键名以便定位，不让调用方拿到 null
+            return key;
+        }
+        if (args == null || args.length == 0) {
+            return pattern;
+        }
+
+        // 占位符可能被替换为空串（如无需命令引导时），去掉因此产生的首尾空白
+        return new MessageFormat(pattern, locale).format(args).trim();
     }
 }

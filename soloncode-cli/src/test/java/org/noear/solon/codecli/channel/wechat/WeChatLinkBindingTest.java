@@ -210,7 +210,7 @@ class WeChatLinkBindingTest {
 
         assertEquals(1, transport.sent.size());
         // 断言文案与统一出口保持一致（文案措辞会演进，测试不应把字面量写死）
-        assertTrue(transport.sent.get(0).text.contains(ImMessages.REJECTED), transport.sent.get(0).text);
+        assertTrue(transport.sent.get(0).text.contains(ImMessages.REJECTED()), transport.sent.get(0).text);
     }
 
     @Test

@@ -543,7 +543,7 @@ public class FeishuLink implements Channel, Runnable {
         if (text == null || text.isEmpty()) {
             LOG.debug("[Feishu] Ignored non-text message from {}", openId);
             // 统一回执：web 支持附件，IM 暂不支持时不能让用户以为消息已发出
-            sendHint(conn.appId, conn.appSecret, openId, ImMessages.HINT_NON_TEXT);
+            sendHint(conn.appId, conn.appSecret, openId, ImMessages.HINT_NON_TEXT());
             return;
         }
 
@@ -559,7 +559,7 @@ public class FeishuLink implements Channel, Runnable {
         if (sessionId == null) {
             LOG.warn("[Feishu] Received message from unbound user: openId={}", openId);
             // 统一引导：静默丢弃会让用户完全不知道自己没绑上
-            sendHint(conn.appId, conn.appSecret, openId, ImMessages.HINT_UNBOUND);
+            sendHint(conn.appId, conn.appSecret, openId, ImMessages.HINT_UNBOUND());
             return;
         }
 

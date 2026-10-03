@@ -502,7 +502,7 @@ public class DingTalkLink implements Channel, Runnable {
             } else {
                 LOG.warn("[DingTalk] Received message from unbound user (no pending session): userId={}", userId);
                 // 统一引导：静默丢弃会让用户完全不知道自己没绑上
-                sendHint(conn, userId, ImMessages.HINT_UNBOUND);
+                sendHint(conn, userId, ImMessages.HINT_UNBOUND());
                 return;
             }
         }
@@ -517,7 +517,7 @@ public class DingTalkLink implements Channel, Runnable {
 
         if (text == null || text.isEmpty()) {
             // 统一回执：非文本消息不能静默丢弃
-            sendHint(conn, userId, ImMessages.HINT_NON_TEXT);
+            sendHint(conn, userId, ImMessages.HINT_NON_TEXT());
             return;
         }
 

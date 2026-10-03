@@ -544,7 +544,7 @@ public class WeChatLink implements Channel, Runnable {
         }
         if (Assert.isEmpty(text)) {
             // 统一回执：非文本消息不能静默丢弃（与飞书/钉钉一致）
-            transport.sendMessage(binding.baseUrl, binding.botToken, fromUserId, contextToken, ImMessages.HINT_NON_TEXT);
+            transport.sendMessage(binding.baseUrl, binding.botToken, fromUserId, contextToken, ImMessages.HINT_NON_TEXT());
             return false;
         }
 
