@@ -21,7 +21,7 @@ import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.entity.*;
 import org.noear.solon.codecli.memory.MemoryProvider;
 import org.noear.solon.codecli.workspace.fs.FileWatchService;
-import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.codecli.workspace.file.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionJanitor;
@@ -53,7 +53,7 @@ import java.util.function.BiFunction;
  *
  * @author noear
  */
-public class WorkspaceManager {
+public class WorkspaceManager implements WorkspaceRegistry {
     private static final Logger LOG = LoggerFactory.getLogger(WorkspaceManager.class);
     /**
      * jdtls 启动所需的最低 JDK 主版本
@@ -82,7 +82,9 @@ public class WorkspaceManager {
 
     private final AgentSettings defaultSettings;
     private WorkspaceContext defaultContext;
-    private WebGate webGate;
+    /** 入口运行时端口；旧版 WebGate 仅作为兼容实现暴露。 */
+    private volatile WorkspaceRuntimePort runtimePort;
+    private volatile WorkspaceMessageGateway messageGateway;
 
     /**
      * 闲置释放阈值：30 分钟无访问且无连接
@@ -114,18 +116,53 @@ public class WorkspaceManager {
     }
 
     public synchronized void setWebGate(WebGate webGate) {
-        this.webGate = webGate;
-        // WebGate 就绪后才拉起默认工作区的 IM 长连接：acp/cli 等无 WebGate 的模式下
-        // 不启动 IM 连接，避免抢走飞书 WS 路由却无处投递消息（createWorkspaceContext
-        // 里已按 gate 是否就绪拦截过早期拉起，此处补拉起就绪前创建的默认工作区）。
-        if (webGate != null && defaultContext != null) {
+        setRuntimePort(webGate);
+    }
+
+    /**
+     * 绑定入口运行时端口。
+     *
+     * <p>WebGate 只是当前 Web 模式的一个实现；WorkspaceManager 不应把入口实现
+     * 作为工作区内部协作的唯一类型。</p>
+     */
+    public synchronized void setRuntimePort(WorkspaceRuntimePort runtimePort) {
+        this.runtimePort = runtimePort;
+        this.messageGateway = runtimePort;
+        for (WorkspaceContext context : contexts.values()) {
+            context.setMessageGateway(runtimePort);
+        }
+        // 运行时端口就绪后才拉起默认工作区的 IM 长连接：acp/cli 等无入口端口的模式下
+        // 不启动 IM 连接，避免抢走飞书 WS 路由却无处投递消息。
+        if (runtimePort != null && defaultContext != null) {
             RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(defaultContext.getMeta().getPath(),
                     defaultContext.getChannelHub()::start));
         }
     }
 
+    /**
+     * 获取工作区运行时端口。
+     */
+    public WorkspaceRuntimePort getRuntimePort() {
+        return this.runtimePort;
+    }
+
+    /**
+     * 兼容旧版 Web 入口。
+     *
+     * <p>运行时状态以 {@link #runtimePort} 为唯一来源；只有当前端口确实由
+     * {@link WebGate} 实现时，旧 getter 才返回非空。</p>
+     */
+    @Deprecated
     public WebGate getWebGate() {
-        return this.webGate;
+        WorkspaceRuntimePort port = this.runtimePort;
+        return port instanceof WebGate ? (WebGate) port : null;
+    }
+
+    /**
+     * 获取工作区消息入口端口，供 WorkspaceContext 和 Channel 使用。
+     */
+    public WorkspaceMessageGateway getMessageGateway() {
+        return this.messageGateway;
     }
 
     private void releaseIdleWorkspaces() {
@@ -181,6 +218,7 @@ public class WorkspaceManager {
      *
      * @param workspaceIdOrPath 工作区ID或物理绝对路径
      */
+    @Override
     public synchronized WorkspaceContext getOrCreate(String workspaceIdOrPath) {
         workspaceIdOrPath = normalizeWorkspaceKey(workspaceIdOrPath);
         if (workspaceIdOrPath == null || workspaceIdOrPath.isEmpty() || ID_DEFAULT.equals(workspaceIdOrPath)) {
@@ -313,6 +351,7 @@ public class WorkspaceManager {
     /**
      * 仅查内存缓存，不创建（供 WS onClose 等回调用，防止复活已释放工作区）
      */
+    @Override
     public WorkspaceContext getContextsCached(String workspaceIdOrPath) {
         workspaceIdOrPath = normalizeWorkspaceKey(workspaceIdOrPath);
         if (Assert.isEmpty(workspaceIdOrPath) || ID_DEFAULT.equals(workspaceIdOrPath)) {
@@ -746,7 +785,7 @@ public class WorkspaceManager {
 
 
         // 为本工作区的 LoopScheduler 就地注册 web 端执行器与忙碌检查。
-        // 注意：此处不能捕获 webGate 字段快照——默认工作区在 webServe 阶段（setWebGate）之前创建，
+        // 注意：此处不能捕获 runtimePort 字段快照——默认工作区在入口绑定之前创建，
         // 快照为 null 会导致注册被跳过；改为 lambda 内动态取值，注入完成后自然生效。
         registerWebLoopExecutor(engine, meta.getId(), loopScheduler);
 
@@ -764,10 +803,10 @@ public class WorkspaceManager {
         fileWatchService.addRoot("workspace", Paths.get(workspacePath).toAbsolutePath().normalize())
                 .shallow(shallowWatch)
                 .addHandler(changes -> {
-                    // 动态取 gate：默认工作区创建早于 setWebGate，字段快照可能为 null
-                    WebGate gate = getWebGate();
-                    if (gate != null) {
-                        gate.broadcastRaw(meta.getId(), FileWatchService.buildFrontendJson(changes));
+                    // 动态取端口：默认工作区创建早于入口绑定，字段快照可能为 null
+                    WorkspaceRuntimePort runtime = getRuntimePort();
+                    if (runtime != null) {
+                        runtime.broadcastRaw(meta.getId(), FileWatchService.buildFrontendJson(changes));
                     }
                 });
 
@@ -786,9 +825,9 @@ public class WorkspaceManager {
             switch (mount.getType()) {
                 case FILES:
                     root.addHandler(changes -> {
-                        WebGate gate = getWebGate();
-                        if (gate != null) {
-                            gate.broadcastRaw(meta.getId(), FileWatchService.buildFrontendJson(changes));
+                        WorkspaceRuntimePort runtime = getRuntimePort();
+                        if (runtime != null) {
+                            runtime.broadcastRaw(meta.getId(), FileWatchService.buildFrontendJson(changes));
                         }
                     });
                     break;
@@ -814,17 +853,17 @@ public class WorkspaceManager {
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
         // Link.run() 内部有 running CAS 幂等保护，重复调用安全。
-        // 仅 web 模式（WebGate 已就绪）才拉起：acp/cli 模式无 WebGate，连接收到消息后
-        // 无法投递（safeChatInput 会 NPE），且会抢走飞书/钉钉服务端的消息路由。
-        if (getWebGate() != null) {
+        // 仅入口运行时就绪后才拉起：acp/cli 模式没有消息运行时，连接收到消息后
+        // 无法投递，且会抢走飞书/钉钉服务端的消息路由。
+        if (getRuntimePort() != null) {
             RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, context.getChannelHub()::start));
         }
 
         // 上下文完整建成：retention 由 EPHEMERAL 提升为 PERSISTENT（失败不回滚，见方案 7.4）
         promoteWorkspaceMeta(workspacePath);
-        WebGate gate = getWebGate();
-        if (gate != null) {
-            gate.recoverSessionQueues(context);
+        WorkspaceRuntimePort runtime = getRuntimePort();
+        if (runtime != null) {
+            runtime.recoverSessionQueues(context);
         }
 
         return context;
@@ -833,8 +872,8 @@ public class WorkspaceManager {
     /**
      * 为指定工作区的 LoopScheduler 注册 web 端任务执行器与忙碌检查器。
      *
-     * <p>每个工作区拥有独立的 LoopScheduler 与 WebGate，执行器必须就地绑定本工作区的
-     * WebGate，以保证定时触发的 AI 响应推送到本工作区的连接池，而非默认工作区。</p>
+     * <p>每个工作区拥有独立的 LoopScheduler 与入口运行时，执行器必须动态绑定当前工作区
+     * 的运行时端口，以保证定时触发的 AI 响应推送到本工作区的连接池，而非默认工作区。</p>
      */
     private void registerWebLoopExecutor(HarnessEngine engine, String workspaceId, LoopScheduler loopScheduler) {
         if (loopScheduler == null) {
@@ -846,16 +885,16 @@ public class WorkspaceManager {
             if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
                 return false;
             }
-            WebGate gate = getWebGate();
-            return gate != null && gate.isSessionBusy(engine, sessionId);
+            WorkspaceRuntimePort runtime = getRuntimePort();
+            return runtime != null && runtime.isSessionBusy(engine, sessionId);
         });
 
         loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
             if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
                 return null;
             }
-            WebGate gate = getWebGate();
-            if (gate == null) {
+            WorkspaceRuntimePort runtime = getRuntimePort();
+            if (runtime == null) {
                 return null;
             }
             // 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
@@ -864,8 +903,7 @@ public class WorkspaceManager {
                 effectiveInput = "@" + agentName + " " + prompt;
             }
             // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本
-            return gate.safeChatInputAndCaptureLoop(workspaceId, sessionId, effectiveInput, "Loop");
-        });
+            return runtime.runLoop(workspaceId, sessionId, effectiveInput, "Loop");        });
     }
 
     private void addServers(HarnessEngine engine, AgentSettings wsSettings) {

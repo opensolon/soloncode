@@ -11,24 +11,36 @@ import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.portal.*;
+import org.noear.solon.codecli.api.web.*;
+import org.noear.solon.codecli.entry.cli.*;
 import org.noear.solon.codecli.workspace.fs.FileWatchService;
-import org.noear.solon.codecli.portal.acp.AcpLink;
-import org.noear.solon.codecli.portal.cli.CliShell;
-import org.noear.solon.codecli.portal.help.HelpMode;
-import org.noear.solon.codecli.portal.desktop.WsController;
-import org.noear.solon.codecli.portal.printmode.PrintMode;
-import org.noear.solon.codecli.portal.printmode.PrintModeOptions;
-import org.noear.solon.codecli.portal.printmode.StreamMode;
-import org.noear.solon.codecli.portal.desktop.WsGate;
-import org.noear.solon.codecli.portal.web.WebChannel;
-import org.noear.solon.codecli.portal.web.WebController;
-import org.noear.solon.codecli.portal.web.MemoryController;
-import org.noear.solon.codecli.portal.web.run.RunController;
-import org.noear.solon.codecli.portal.web.WebSettingsController;
-import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.entry.acp.AcpLink;
+import org.noear.solon.codecli.entry.cli.CliShell;
+import org.noear.solon.codecli.entry.cli.HelpMode;
+import org.noear.solon.codecli.api.desktop.controller.AbstractDesktopController;
+import org.noear.solon.codecli.api.desktop.controller.DesktopGoalController;
+import org.noear.solon.codecli.api.desktop.controller.DesktopModelController;
+import org.noear.solon.codecli.api.desktop.controller.DesktopSessionController;
+import org.noear.solon.codecli.api.desktop.controller.DesktopVersionController;
+import org.noear.solon.codecli.api.desktop.WsGate;
+import org.noear.solon.codecli.entry.headless.PrintMode;
+import org.noear.solon.codecli.entry.headless.PrintModeOptions;
+import org.noear.solon.codecli.entry.headless.StreamMode;
+import org.noear.solon.codecli.api.web.WebChannel;
+import org.noear.solon.codecli.api.web.controller.PageWebController;
+import org.noear.solon.codecli.api.web.controller.WorkspaceWebController;
+import org.noear.solon.codecli.api.web.controller.SessionWebController;
+import org.noear.solon.codecli.api.web.controller.ChatWebController;
+import org.noear.solon.codecli.api.web.controller.GitWebController;
+import org.noear.solon.codecli.api.web.controller.LoopWebController;
+import org.noear.solon.codecli.api.web.controller.QueueWebController;
+import org.noear.solon.codecli.api.web.controller.FilerWebController;
+import org.noear.solon.codecli.api.web.MemoryController;
+import org.noear.solon.codecli.api.web.run.RunController;
+import org.noear.solon.codecli.api.web.WebSettingsController;
+import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.codecli.auth.*;
-import org.noear.solon.codecli.portal.web.settings.*;
+import org.noear.solon.codecli.api.web.settings.*;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -212,9 +224,19 @@ public class Configurator {
         WsGate wsGate = new WsGate(agentRuntime, settings, loopScheduler);
         WebSocketRouter.getInstance().of("/desktop/ws", wsGate);
 
-        //serve desktop controller
-        BeanWrap desktopBean = Solon.context().wrapAndPut(WsController.class,
-                new WsController(agentRuntime, settings, wsGate, loopScheduler, sessionManager));
+        //serve desktop controllers（原单一 WsController 按领域拆分：版本/模型/会话/Goal）
+        BeanWrap desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
+                new DesktopVersionController(agentRuntime, loopScheduler, sessionManager));
+        Solon.app().router().add(desktopBean);
+        desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
+                new DesktopModelController(agentRuntime, settings, loopScheduler, sessionManager));
+        Solon.app().router().add(desktopBean);
+        desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
+                new DesktopSessionController(agentRuntime, wsGate, loopScheduler, sessionManager));
+        Solon.app().router().add(desktopBean);
+        // Goal Controller 构造时向 LoopScheduler 注册桌面端 BusyChecker/TaskExecutor
+        desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
+                new DesktopGoalController(agentRuntime, wsGate, loopScheduler, sessionManager));
         Solon.app().router().add(desktopBean);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());
@@ -262,8 +284,15 @@ public class Configurator {
         Solon.context().wrapAndPut(UserAuthConfig.class, userAuthConfig);
 
         //web
-        BeanWrap webController = Solon.context().wrapAndPut(WebController.class, new WebController(workspaceManager));
-        Solon.app().router().add(webController);
+        //web（原 WebController 已按领域拆分为 controller 包下的 7 个 Controller，路由不变）
+        addWebBean(new PageWebController(workspaceManager));
+        addWebBean(new WorkspaceWebController(workspaceManager));
+        addWebBean(new SessionWebController(workspaceManager));
+        addWebBean(new ChatWebController(workspaceManager));
+        addWebBean(new GitWebController(workspaceManager));
+        addWebBean(new LoopWebController(workspaceManager));
+        addWebBean(new QueueWebController(workspaceManager));
+        addWebBean(new FilerWebController(workspaceManager));
 
         addWebBean(new WebSettingsController(workspaceManager));
         addWebBean(new AgentSettingsController(workspaceManager));

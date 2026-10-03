@@ -17,8 +17,8 @@ package org.noear.solon.codecli.channel.wechat;
 
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
-import org.noear.solon.codecli.portal.web.event.WebEvent;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
@@ -584,22 +584,24 @@ public class WeChatLink implements Channel, Runnable {
             return dispatchToAgent(sessionId, text);
         }
 
-        // WebGate 仅在 web 模式下初始化，判空防 NPE 静默吞消息（与飞书通道一致）
-        if (wsContext.getWebGate() == null) {
-            LOG.warn("[WeChat] WebGate not ready, drop message for session {}", sessionId);
+        // 消息入口仅在 web 模式下初始化，判空防 NPE 静默吞消息（与飞书通道一致）
+        WorkspaceMessageGateway gateway = wsContext.getMessageGateway();
+        if (gateway == null) {
+            LOG.warn("[WeChat] message gateway not ready, drop message for session {}", sessionId);
             return false;
         }
 
-        return wsContext.getWebGate().safeChatInput(wsContext, sessionId, text, "WeChat", sourceUserId, replyTarget, null);
+        return gateway.acceptInput(wsContext, sessionId, text, "WeChat", sourceUserId, replyTarget, null);
     }
 
     /**
      * 通知前端凭据已过期（测试可覆写）
      */
     protected void notifyExpired(String sessionId) {
-        wsContext.getWebGate().emitToClient(wsContext, sessionId,
-                WebEvent.ofError("微信连接已过期，请重新扫码绑定"));
-        wsContext.getWebGate().emitToClient(wsContext, sessionId, WebEvent.ofDone());
+        WorkspaceMessageGateway gateway = wsContext.getMessageGateway();
+        if (gateway != null) {
+            gateway.emitErrorAndDone(wsContext, sessionId, "微信连接已过期，请重新扫码绑定");
+        }
     }
 
     // ==================== 「正在输入」状态 ====================

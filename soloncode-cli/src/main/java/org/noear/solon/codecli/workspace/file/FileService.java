@@ -41,7 +41,7 @@ import java.util.*;
  *   <li>通过 workspace 路径构造，所有文件操作均基于此路径</li>
  *   <li>内部维护排除目录列表，自动过滤构建产物、IDE 配置等无需展示的目录</li>
  *   <li>支持多工作区：可通过 workspaceId 切换到 FILES 挂载点浏览</li>
- *   <li>供 WebController 直接调用，Controller 层仅做参数解析和结果转发</li>
+ *   <li>供 Web 领域 Controller 直接调用，Controller 层仅做参数解析和结果转发</li>
  * </ul>
  *
  * @author noear 2026-5-30

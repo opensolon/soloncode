@@ -44,7 +44,7 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>通过 workspace 路径构造，所有 Git 命令均在此路径下执行</li>
  *   <li>内部封装 {@link ProcessResult} 和 {@link #runGitCommand} 统一进程调用</li>
- *   <li>供 WebController 或其他模块直接调用，无需关心 Git 命令细节</li>
+ *   <li>供 Web 领域 Controller 或其他模块直接调用，无需关心 Git 命令细节</li>
  * </ul>
  *
  * @author noear 2026-5-30

@@ -6,7 +6,7 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.codecli.session.queue.SessionQueueItem;
-import org.noear.solon.codecli.portal.web.SteerInterceptor;
+import org.noear.solon.codecli.session.steer.SteerInterceptor;
 import reactor.core.Disposable;
 import reactor.core.Disposables;
 

@@ -5,7 +5,7 @@ import org.noear.solon.codecli.automation.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.fs.FileWatchService;
 import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.portal.web.WebGate;
+import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.codecli.workspace.file.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionManager;
@@ -34,6 +34,7 @@ public class WorkspaceContext implements Closeable {
     private final LoopScheduler loopScheduler;
     private final AutomationManager automationManager;
     private final WorkspaceManager manager;
+    private volatile WorkspaceMessageGateway messageGateway;
     private final AgentSettings settings;
     private final List<WebSocket> connections;
     private final ChannelHub channelHub;
@@ -75,6 +76,7 @@ public class WorkspaceContext implements Closeable {
         this.loopScheduler = loopScheduler;
         this.automationManager = automationManager;
         this.manager = manager;
+        this.messageGateway = manager == null ? null : manager.getMessageGateway();
         this.settings = settings;
         this.connections = new CopyOnWriteArrayList<>();
         this.channelHub = new ChannelHub(this);
@@ -124,6 +126,26 @@ public class WorkspaceContext implements Closeable {
         return automationManager;
     }
 
+    /**
+     * 获取当前工作区的消息入口端口。
+     *
+     * <p>正式 Web 模式启动后由 WorkspaceManager 动态绑定；CLI/headless 模式下可以为空。</p>
+     */
+    public WorkspaceMessageGateway getMessageGateway() {
+        return messageGateway;
+    }
+
+    /**
+     * 更新工作区消息入口。仅由 WorkspaceManager 在入口就绪时调用。
+     */
+    void setMessageGateway(WorkspaceMessageGateway messageGateway) {
+        this.messageGateway = messageGateway;
+    }
+
+    /**
+     * 兼容旧版扩展：新的 Channel 代码应使用 {@link #getMessageGateway()}。
+     */
+    @Deprecated
     public WebGate getWebGate() {
         return manager != null ? manager.getWebGate() : null;
     }

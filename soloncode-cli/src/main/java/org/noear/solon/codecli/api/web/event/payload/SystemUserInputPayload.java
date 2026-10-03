@@ -1,0 +1,21 @@
+package org.noear.solon.codecli.api.web.event.payload;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class SystemUserInputPayload implements Serializable {
+    private String id;
+    private String text;
+    private String source;
+    private String sourceLabel;
+    private List<String> images;
+}

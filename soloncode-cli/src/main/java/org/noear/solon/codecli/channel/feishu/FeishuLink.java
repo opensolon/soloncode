@@ -27,6 +27,7 @@ import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
+import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
@@ -557,11 +558,12 @@ public class FeishuLink implements Channel, Runnable {
             try {
                 // WebGate 仅在 web 模式下初始化；acp/cli 等模式恢复的绑定不应持有长连接
                 //（由 ChannelHub.start 的调用方保证），此处判空防 NPE 静默吞消息。
-                if (wsContext.getWebGate() == null) {
-                    LOG.warn("[Feishu] WebGate not ready, drop message from {}", finalOpenId);
+                WorkspaceMessageGateway gateway = wsContext.getMessageGateway();
+                if (gateway == null) {
+                    LOG.warn("[Feishu] message gateway not ready, drop message from {}", finalOpenId);
                     return;
                 }
-                boolean accepted = wsContext.getWebGate().safeChatInput(wsContext, finalSessionId, finalText, "Feishu", finalOpenId, null, finalMsgId);
+                boolean accepted = gateway.acceptInput(wsContext, finalSessionId, finalText, "Feishu", finalOpenId, null, finalMsgId);
                 if (accepted) {
                     // 消息被接受进入处理流程后才记录 lastMessageId，
                     // 避免 WS 断连重试时因 lastMessageId 已设置而跳过未处理的消息
