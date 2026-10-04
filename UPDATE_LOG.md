@@ -1,4 +1,11 @@
 
+
+### v2026.10.4
+
+* 添加 soloncode web 全局自动任务
+* 优化 soloncode web im `插话`与`排队`支持
+* 细节优化
+
 ### v2026.9.29
 
 * 添加 soloncode web im `插话`与`排队`支持
