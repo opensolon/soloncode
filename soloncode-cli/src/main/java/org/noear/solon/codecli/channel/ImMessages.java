@@ -89,7 +89,7 @@ public final class ImMessages {
      */
     private static final String KEY_QUEUED_BEHIND = "im.queued.behind";
     /**
-     * 入队回执（马上轮到）
+     * 入队回执（当前任务完成后即轮到）
      */
     private static final String KEY_QUEUED_IMMEDIATE = "im.queued.immediate";
 
@@ -104,14 +104,14 @@ public final class ImMessages {
     static {
         FALLBACK.put(KEY_ACCEPTED, "收到，马上开始处理");
         FALLBACK.put(KEY_LONG_RUNNING, "还在处理中，请再稍等一下");
-        FALLBACK.put(KEY_REJECTED, "还有任务没忙完，暂时接不了新的。想立刻处理，可发送 /interrupt 中断当前任务");
+        FALLBACK.put(KEY_REJECTED, "这条消息没排上队，我还没收到，稍后请重发一次。想先中断当前任务，可发送 /interrupt");
         FALLBACK.put(KEY_HINT_UNBOUND, "还没有绑定会话，请先在 Web 端扫码绑定，然后我就能陪你聊了。");
         FALLBACK.put(KEY_HINT_NON_TEXT, "我暂时只看得懂文字，换文字发给我吧。");
         FALLBACK.put(KEY_HINT_STEER, "想补充或调整当前任务，可发送 /steer <内容>");
         FALLBACK.put(KEY_HINT_INTERRUPT, "想中断当前任务，可发送 /interrupt");
         FALLBACK.put(KEY_HINT_BUSY_COMMAND, "{0}；{1}");
         FALLBACK.put(KEY_QUEUED_BEHIND, "收到，已作为新任务排队，前面还有 {1} 条，处理完就轮到你。{0}");
-        FALLBACK.put(KEY_QUEUED_IMMEDIATE, "收到，已作为新任务排队，马上轮到你了。{0}");
+        FALLBACK.put(KEY_QUEUED_IMMEDIATE, "收到，已作为新任务排队，当前任务完成后就轮到你。{0}");
     }
 
     /**
@@ -162,7 +162,8 @@ public final class ImMessages {
     }
 
     /**
-     * 入队失败（队列满等）：此时唯一能自救的是中断当前任务，故直接给出命令。
+     * 入队失败（队列满等）：明确告知本轮未被接收、稍后需重发；此时唯一能自救的是
+     * 中断当前任务，故直接给出命令。
      */
     public static String REJECTED() {
         return msg(KEY_REJECTED);
@@ -230,7 +231,8 @@ public final class ImMessages {
         String hint = withCommandHint ? BUSY_COMMAND_HINT() : "";
 
         if (n == 0) {
-            // 前面没别的，说明马上轮到，不必提「还有 0 条」
+            // 前面没别的待执行；但当前任务仍在跑，须点明「当前任务完成后才轮到」，
+            // 不能让用户以为马上开始，也不必提「还有 0 条」
             return msg(KEY_QUEUED_IMMEDIATE, hint);
         }
 

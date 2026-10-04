@@ -490,7 +490,7 @@
         html += '<span class="loop-cron-hint">' + I18n.t('loop.cronExamples') + '</span> ';
         html += '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">' + I18n.t('loop.cronEvery2h') + '</a>';
         html += '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">' + I18n.t('loop.cronDaily22') + '</a> ';
-        html += '<a class="loop-cron-link" data-cron="0 0 0 ? * 1 *">' + I18n.t('loop.cronWeeklyMon') + '</a> ';
+        html += '<a class="loop-cron-link" data-cron="0 0 0 ? * 2 *">' + I18n.t('loop.cronWeeklyMon') + '</a> ';
         html += '</div>';
         html += '</div>';
         html += '</div>';  // 结束 loop-form-schedule

@@ -3556,7 +3556,20 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
  .auto-schedule-group { position: relative; }
  .auto-schedule-group .model-name { max-width: 150px; }
  .auto-schedule-group .auto-schedule-pop { left: auto; right: -8px; min-width: 286px; width: 286px; padding: 12px; overflow: visible; color: var(--text-primary); }
- /* 调度面板在空间不足时由 JS 改为 fixed 定位，脱离行和滚动容器，避免向上展开被顶部/父级裁剪 */
+ /* 可视化（定时定点）面板：字段行 = 标签 + 控件组，左对齐，行距紧凑 */
+ .auto-schedule-visual .auto-visual-row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; color: var(--text-secondary); font-size: var(--fs-sm); }
+ .auto-schedule-visual .auto-visual-row + .auto-visual-row { margin-top: 8px; }
+ .auto-schedule-visual .auto-visual-label { flex: 0 0 auto; }
+  /* 频率联动：仅 weekly 显示周几行、仅 monthly 显示几号行；hidden 优先级须高于行级 display:flex */
+  .auto-schedule-visual .auto-visual-row.hidden { display: none; }
+ .auto-schedule-visual .auto-repeat-pills { flex: 1 1 auto; min-width: 0; }
+ .auto-schedule-visual input[type=time] { width: 96px; height: 30px; box-sizing: border-box; padding: 3px 6px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); font: inherit; font-size: var(--fs-sm); outline: none; }
+ .auto-schedule-visual input[type=time]:focus { border-color: var(--accent); }
+ .auto-schedule-visual .auto-dom { width: 54px; height: 30px; box-sizing: border-box; padding: 4px 7px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); text-align: center; font: inherit; outline: none; }
+ .auto-schedule-visual .auto-dom:focus { border-color: var(--accent); }
+ .auto-schedule-visual .auto-dom-suffix { color: var(--text-tertiary); }
+  .auto-dow-pills { flex: 1 1 auto; }
+  /* 调度面板在空间不足时由 JS 改为 fixed 定位，脱离行和滚动容器，避免向上展开被顶部/父级裁剪 */
  .auto-schedule-group .auto-schedule-pop.is-fixed { position: fixed; left: auto; right: auto; top: auto; bottom: auto; max-height: calc(100vh - 20px); overflow-y: auto; z-index: 10005; }
  .auto-schedule-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
  .auto-schedule-tabs { display: flex; gap: 3px; padding: 3px; margin-bottom: 12px; border-radius: 8px; background: var(--bg-hover); }
@@ -3570,8 +3583,9 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
   .auto-interval-pills { justify-content: flex-start; margin-top: 10px; }
  .auto-interval-pills button { min-width: 30px; }
  .auto-schedule-cron .auto-cron { width: 100%; box-sizing: border-box; height: 32px; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-xs); outline: none; }
- .auto-cron-links { display: flex; gap: 10px; margin-top: 8px; }
- .auto-cron-links .loop-cron-link { font-size: var(--fs-xs); }
+  .auto-cron-links { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; row-gap: 6px; }
+  .auto-cron-links .loop-cron-hint { flex-basis: auto; }
+  .auto-cron-links .loop-cron-link { font-size: var(--fs-xs); }
  .auto-schedule-select.open .auto-schedule-pop { display: flex; flex-direction: column; }
  .auto-schedule-select.open .auto-schedule-pop { animation: none; }
  .auto-schedule-pop.is-fixed .auto-schedule-tabs,

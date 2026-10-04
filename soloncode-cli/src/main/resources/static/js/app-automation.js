@@ -68,8 +68,14 @@
         if (newView) newView.style.display = '';
         if (chatView && chatView.classList.contains('active') && newView) newView.style.display = 'none';
     }
+    function cronToText(cron) {
+        var v = cronToVisual(cron);
+        if (v) return visualToText(v);
+        return 'cron: ' + cron;
+    }
     function scheduleText(t) {
-        return t.cron ? 'cron: ' + t.cron : I18n.t('loop.every', {n: t.intervalMinutes || 5});
+        if (t.cron) return cronToText(t.cron);
+        return I18n.t('loop.every', {n: t.intervalMinutes || 5});
     }
     function render() {
         if (!content) return;
@@ -103,8 +109,75 @@
     var SVG_AGENT_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg>';
     var SVG_MODEL_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>';
     var SVG_SCHEDULE_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M7 3 5 5M17 3l2 2M9 21h6"/></svg>';
+    // ===== 定时定点（可视化 cron）=====
+    // 后端 java-cron 为 Quartz 语义：周几 1=周日 … 7=周六（SUN=1, MON=2, ... SAT=7）
+    var DOW_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    var DOW_CRON = {sun: 1, mon: 2, tue: 3, wed: 4, thu: 5, fri: 6, sat: 7};
+    // 可视化状态 → cron（7 位：秒 分 时 日 月 周 年）；周几至少保留一个由 UI 防呆保证
+    function visualToCron(v) {
+        var parts = String(v.time || '09:00').split(':');
+        var hh = parseInt(parts[0], 10); var mm = parseInt(parts[1] || '0', 10);
+        if (!(hh >= 0 && hh <= 23) || !(mm >= 0 && mm <= 59)) return '';
+        var sec = '0', hour = String(hh), minute = String(mm);
+        if (v.freq === 'monthly') {
+            var day = parseInt(v.dom, 10);
+            if (!(day >= 1 && day <= 31)) return '';
+            return [sec, minute, hour, String(day), '*', '?', '*'].join(' ');
+        }
+        if (v.freq === 'weekly') {
+            var dows = (v.days || []).map(function (d) { return DOW_CRON[d]; }).filter(function (n) { return !!n; }).sort(function (a, b) { return a - b; });
+            if (!dows.length) return '';
+            return [sec, minute, hour, '?', '*', dows.join(','), '*'].join(' ');
+        }
+        return [sec, minute, hour, '*', '*', '?', '*'].join(' ');
+    }
+    // cron → 可视化状态（仅识别可视化可生成的三种形态；步进、区间、L 等高级表达式返回 null → 停在 Cron Tab）
+    function cronToVisual(cron) {
+        var f = String(cron || '').trim().split(/\s+/);
+        if (f.length !== 7 || f[0] !== '0' || f[6] !== '*') return null;
+        var hour = parseInt(f[2], 10), minute = parseInt(f[1], 10);
+        if (!(hour >= 0 && hour <= 23) || !(minute >= 0 && minute <= 59)) return null;
+        var time = (hour < 10 ? '0' : '') + hour + ':' + (minute < 10 ? '0' : '') + minute;
+        if (f[3] === '*' && f[4] === '*' && f[5] === '?' ) {
+            return {freq: 'daily', time: time};
+        }
+        if (f[3] === '?' && f[4] === '*' && f[5] !== '*' && f[5] !== '?') {
+            var days = [];
+            var toks = f[5].split(',');
+            for (var i = 0; i < toks.length; i++) {
+                var n = parseInt(toks[i], 10);
+                if (!(n >= 1 && n <= 7)) return null;
+                var hit = false;
+                for (var k in DOW_CRON) if (DOW_CRON[k] === n) { days.push(k); hit = true; break; }
+                if (!hit) return null;
+            }
+            if (!days.length) return null;
+            return {freq: 'weekly', time: time, days: days};
+        }
+        if (f[3] !== '*' && f[3] !== '?' && f[4] === '*' && f[5] === '?') {
+            var dom = parseInt(f[3], 10);
+            if (!(dom >= 1 && dom <= 31)) return null;
+            return {freq: 'monthly', time: time, dom: dom};
+        }
+        return null;
+    }
+    // 可视化状态 → 摘要文案（触发器与行头共用）
+    function visualToText(v) {
+        if (v.freq === 'weekly') {
+            var names = (v.days || []).slice().sort(function (a, b) { return DOW_KEYS.indexOf(a) - DOW_KEYS.indexOf(b); })
+                .map(function (d) { return I18n.t('loop.dow.' + d); });
+            return I18n.t('loop.scheduleSummary.weekly', {days: names.join(I18n.t('loop.dayJoinSep')), time: v.time});
+        }
+        if (v.freq === 'monthly') return I18n.t('loop.scheduleSummary.monthly', {day: v.dom, time: v.time});
+        return I18n.t('loop.scheduleSummary.daily', {time: v.time});
+    }
     function scheduleSummary(cron, interval) {
-        return cron ? 'cron: ' + cron : I18n.t('loop.every', {n: interval || 5});
+        if (cron) {
+            var v = cronToVisual(cron);
+            if (v) return visualToText(v);
+            return 'cron: ' + cron;
+        }
+        return I18n.t('loop.every', {n: interval || 5});
     }
     // 拆 loop.everyRunOnce 模板（如 "每隔{n}分钟执行一次"）的前后缀，供浮层行内句式 "每隔 [5] 分钟执行一次" 使用；
     // 哨兵字符避免与真实内容冲突，ja 等语言前缀可能为空字符串。
@@ -112,20 +185,52 @@
         var parts = String(I18n.t('loop.everyRunOnce', {n: '\u0000'})).split('\u0000');
         return { pre: parts[0] || '', post: parts[1] || '' };
     }
+    // Cron 快捷模板：单行 3 个即可（间隔/天/周各一，够示意且不换行）；全部保留在可视化解析集内无意义——
+    // 点击行为只填充表达式、不跳 Tab，日常类频率由“定时定点”面板承担
+    var CRON_TEMPLATES = [
+        {key: 'loop.cronEvery2h', cron: '0 0 */2 * * ? *'},
+        {key: 'loop.cronDaily22', cron: '0 0 22 * * ? *'},
+        {key: 'loop.cronWeeklyMon', cron: '0 0 0 ? * 2 *'}
+    ];
     function scheduleSelHtml(cron, interval) {
         var isCron = !!cron;
+        var visual = cron ? cronToVisual(cron) : null;
+        var isVisual = !!visual;
         var summary = scheduleSummary(cron, interval);
         var ev = everyParts();
+        var v = visual || {freq: 'daily', time: '09:00', days: ['mon'], dom: 1};
+        var dowBtns = DOW_KEYS.map(function (d) {
+            var on = (v.days || []).indexOf(d) !== -1;
+            return '<button type="button" class="' + (on ? 'active' : '') + '" data-dow="' + d + '" aria-label="' + esc(I18n.t('loop.dow.' + d)) + '">' + esc(I18n.t('loop.dow.' + d)) + '</button>';
+        }).join('');
         return '<div class="toolbar-selector-group auto-schedule-group">' + SVG_SCHEDULE_ICON +
             '<div class="model-selector auto-select auto-schedule-select" data-kind="schedule">' +
             '<div class="model-selector-current auto-select-current" tabindex="0" role="button" aria-label="' + esc(I18n.t('loop.scheduleMethod')) + '">' +
             '<span class="model-name auto-schedule-summary">' + esc(summary) + '</span><i class="layui-icon layui-icon-down model-arrow"></i></div>' +
             '<div class="model-dropdown auto-schedule-pop">' +
             '<div class="auto-schedule-title">' + I18n.t('loop.scheduleMethod') + '</div>' +
-            '<div class="auto-schedule-tabs"><button type="button" class="auto-schedule-tab' + (isCron ? '' : ' active') + '" data-schedule="interval">' + I18n.t('loop.fixedInterval') + '</button><button type="button" class="auto-schedule-tab' + (isCron ? ' active' : '') + '" data-schedule="cron">' + I18n.t('loop.cronExpression') + '</button></div>' +
-            '<div class="auto-schedule-panel auto-schedule-interval' + (isCron ? ' hidden' : '') + '"><div class="auto-schedule-line"><span class="auto-interval-pre">' + esc(ev.pre) + '</span><input type="number" class="auto-interval" min="1" value="' + esc(interval) + '"/><span>' + esc(ev.post) + '</span></div><div class="model-option-pills auto-interval-pills"><button type="button" data-minutes="1">1</button><button type="button" data-minutes="5">5</button><button type="button" data-minutes="15">15</button><button type="button" data-minutes="30">30</button><button type="button" data-minutes="60">60</button></div></div>' +
-            '<div class="auto-schedule-panel auto-schedule-cron' + (isCron ? '' : ' hidden') + '"><input type="text" class="auto-cron" value="' + esc(cron) + '" placeholder="0 */5 * * * ? *" title="' + esc(I18n.t('loop.cronExpression')) + '"/><div class="auto-cron-links"><span class="loop-cron-hint">' + I18n.t('loop.cronExamples') + '</span><a class="loop-cron-link" data-cron="0 0 */2 * * ? *">' + I18n.t('loop.cronEvery2h') + '</a><a class="loop-cron-link" data-cron="0 0 22 * * ? *">' + I18n.t('loop.cronDaily22') + '</a></div></div>' +
+            '<div class="auto-schedule-tabs"><button type="button" class="auto-schedule-tab' + (!isCron ? ' active' : '') + '" data-schedule="interval">' + I18n.t('loop.fixedInterval') + '</button><button type="button" class="auto-schedule-tab' + (isVisual ? ' active' : '') + '" data-schedule="visual">' + I18n.t('loop.visual') + '</button><button type="button" class="auto-schedule-tab' + (isCron && !isVisual ? ' active' : '') + '" data-schedule="cron">' + I18n.t('loop.cronExpression') + '</button></div>' +
+            '<div class="auto-schedule-panel auto-schedule-interval' + (!isCron ? '' : ' hidden') + '"><div class="auto-schedule-line"><span class="auto-interval-pre">' + esc(ev.pre) + '</span><input type="number" class="auto-interval" min="1" value="' + esc(interval) + '"/><span>' + esc(ev.post) + '</span></div><div class="model-option-pills auto-interval-pills"><button type="button" data-minutes="1">1</button><button type="button" data-minutes="5">5</button><button type="button" data-minutes="15">15</button><button type="button" data-minutes="30">30</button><button type="button" data-minutes="60">60</button></div></div>' +
+            '<div class="auto-schedule-panel auto-schedule-visual' + (isVisual ? '' : ' hidden') + '">' +
+            '<div class="auto-visual-row"><span class="auto-visual-label">' + I18n.t('loop.repeat') + '</span><div class="model-option-pills auto-repeat-pills">' +
+            ['daily', 'weekly', 'monthly'].map(function (fq) {
+                return '<button type="button" class="' + (v.freq === fq ? 'active' : '') + '" data-freq="' + fq + '">' + I18n.t('loop.' + fq) + '</button>';
+            }).join('') + '</div></div>' +
+            '<div class="auto-visual-row"><span class="auto-visual-label">' + I18n.t('loop.time') + '</span><input type="time" class="auto-visual-time" value="' + esc(v.time) + '"/></div>' +
+            '<div class="auto-visual-row auto-visual-weekly' + (v.freq === 'weekly' ? '' : ' hidden') + '"><span class="auto-visual-label">' + I18n.t('loop.weekly') + '</span><div class="model-option-pills auto-dow-pills">' + dowBtns + '</div></div>' +
+            '<div class="auto-visual-row auto-visual-monthly' + (v.freq === 'monthly' ? '' : ' hidden') + '"><span class="auto-visual-label">' + I18n.t('loop.monthly') + '</span><input type="number" class="auto-dom" min="1" max="31" value="' + esc(v.dom || 1) + '"/><span class="auto-dom-suffix">' + I18n.t('loop.dayOfMonthSuffix') + '</span></div></div>' +
+            '<div class="auto-schedule-panel auto-schedule-cron' + (isCron && !isVisual ? '' : ' hidden') + '"><input type="text" class="auto-cron" value="' + esc(cron) + '" placeholder="0 */5 * * * ? *" title="' + esc(I18n.t('loop.cronExpression')) + '"/><div class="auto-cron-links"><span class="loop-cron-hint">' + I18n.t('loop.cronExamples') + '</span>' + CRON_TEMPLATES.map(function (tpl) { return '<a class="loop-cron-link" data-cron="' + tpl.cron + '">' + I18n.t(tpl.key) + '</a>'; }).join('') + '</div></div>' +
             '</div></div></div>';
+    }
+    // 从面板 DOM 读当前可视化状态（预览刷新与保存共用单一数据源）
+    function readVisualState(box) {
+        var freqBtn = box.querySelector('.auto-repeat-pills button.active');
+        var freq = (freqBtn && freqBtn.getAttribute('data-freq')) || 'daily';
+        var time = box.querySelector('.auto-visual-time').value || '09:00';
+        var days = [];
+        box.querySelectorAll('.auto-dow-pills button.active').forEach(function (b) { days.push(b.getAttribute('data-dow')); });
+        var dom = parseInt(box.querySelector('.auto-dom').value, 10) || 1;
+        return {freq: freq, time: time, days: days.length ? days : ['mon'], dom: dom};
     }
     function selHtml(kind, value, placeholder) {
         var shown = value ? esc(value) : esc(placeholder);
@@ -280,11 +385,49 @@
     function bindSchedule(row, t) {
         var box = row.querySelector('.auto-schedule-select');
         if (!box) return;
-        var isCron = !!(t && t.cron);
-        var interval = (t && t.intervalMinutes) || 5;
-        row.setAttribute('data-schedule-type', isCron ? 'cron' : 'interval');
+        // 三模式：interval 固定间隔 / visual 定时定点（生成 cron）/ cron 手写表达式
+        var mode = 'interval';
+        var origCron = (t && t.cron) || '';
+        var parsed = origCron ? cronToVisual(origCron) : null;
+        if (parsed) mode = 'visual'; else if (origCron) mode = 'cron';
         var current = box.querySelector('.auto-select-current');
-        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) { o.classList.remove('open'); var p = o.querySelector('.auto-schedule-pop'); if (p) p.classList.remove('is-fixed'); } }); }
+        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) { o.classList.remove('open'); var p = o.querySelector('.auto-schedule-pop'); if (p) { p.classList.remove('is-fixed'); p.style.left = ''; p.style.top = ''; p.style.maxHeight = ''; } } }); }
+        // 展开方向在打开瞬间一次性锁定（按三种模式中最高面板判断），切换 tab / 重复粒度时不再上下翻转
+        var placeDir = null, openMaxHeight = 0;
+        function captureOpenHeight() {
+            var pop = box.querySelector('.auto-schedule-pop');
+            if (!pop) return;
+            var panels = pop.querySelectorAll('.auto-schedule-panel');
+            var savedPanels = [];
+            panels.forEach(function (p) { savedPanels.push(p.classList.contains('hidden')); });
+            var weekly = pop.querySelector('.auto-visual-weekly');
+            var monthly = pop.querySelector('.auto-visual-monthly');
+            var savedWeekly = weekly ? weekly.classList.contains('hidden') : true;
+            var savedMonthly = monthly ? monthly.classList.contains('hidden') : true;
+            var max = 0;
+            panels.forEach(function (p, i) {
+                panels.forEach(function (q, j) { q.classList.toggle('hidden', j !== i); });
+                if (p.classList.contains('auto-schedule-visual')) {
+                    // 周几行与几号行互斥，分别测各自最高状态
+                    if (weekly && monthly) {
+                        weekly.classList.remove('hidden'); monthly.classList.add('hidden');
+                        max = Math.max(max, pop.offsetHeight);
+                        monthly.classList.remove('hidden'); weekly.classList.add('hidden');
+                        max = Math.max(max, pop.offsetHeight);
+                    } else if (weekly) {
+                        weekly.classList.remove('hidden');
+                    } else if (monthly) {
+                        monthly.classList.remove('hidden');
+                    }
+                }
+                var h = pop.offsetHeight;
+                if (h > max) max = h;
+            });
+            panels.forEach(function (p, i) { p.classList.toggle('hidden', savedPanels[i]); });
+            if (weekly) weekly.classList.toggle('hidden', savedWeekly);
+            if (monthly) monthly.classList.toggle('hidden', savedMonthly);
+            openMaxHeight = max;
+        }
         function placePopover() {
             var pop = box.querySelector('.auto-schedule-pop');
             if (!pop || !box.classList.contains('open')) return;
@@ -292,14 +435,16 @@
             var gap = 6, margin = 10;
             var width = pop.offsetWidth || 286;
             var height = pop.offsetHeight || 260;
+            if (!placeDir) placeDir = (anchor.top - (openMaxHeight || height) - gap >= margin) ? 'up' : 'down';
             var left = Math.min(Math.max(margin, anchor.right - width), window.innerWidth - width - margin);
-            var top = anchor.top - height - gap;
-            var maxHeight;
-            if (top < margin) {
+            var top, maxHeight;
+            if (placeDir === 'up') {
+                // 向上：底边锚定触发器，高度变化只向上生长
+                top = anchor.top - height - gap;
+                maxHeight = Math.max(160, anchor.top - gap - margin);
+            } else {
                 top = anchor.bottom + gap;
                 maxHeight = Math.max(160, window.innerHeight - top - margin);
-            } else {
-                maxHeight = Math.max(160, anchor.top - gap - margin);
             }
             pop.style.left = Math.round(left) + 'px';
             pop.style.top = Math.round(Math.max(margin, top)) + 'px';
@@ -309,18 +454,42 @@
         function clearPopoverPosition() {
             var pop = box.querySelector('.auto-schedule-pop');
             if (pop) { pop.classList.remove('is-fixed'); pop.style.left = ''; pop.style.top = ''; pop.style.maxHeight = ''; }
+            placeDir = null;
+            openMaxHeight = 0;
+        }
+        // 可视化面板 → 触发器摘要同步；非法中间态时摘要回退原始 cron
+        function refreshVisual() {
+            var v = readVisualState(box);
+            var cron = visualToCron(v);
+            return {v: v, cron: cron};
         }
         function update() {
-            var cron = box.querySelector('.auto-cron').value.trim();
             var minutes = box.querySelector('.auto-interval').value || 5;
-            box.querySelector('.auto-schedule-summary').textContent = scheduleSummary(isCron ? cron : '', minutes);
-            row.setAttribute('data-schedule-type', isCron ? 'cron' : 'interval');
+            var summary;
+            if (mode === 'interval') summary = scheduleSummary('', minutes);
+            else if (mode === 'visual') {
+                var r = refreshVisual();
+                summary = r.cron ? visualToText(r.v) : (origCron ? 'cron: ' + origCron : '');
+            } else {
+                var raw = box.querySelector('.auto-cron').value.trim() || origCron;
+                summary = raw ? scheduleSummary(raw, minutes) : I18n.t('loop.cronExpression');
+            }
+            box.querySelector('.auto-schedule-summary').textContent = summary;
+            row.setAttribute('data-schedule-type', mode === 'interval' ? 'interval' : 'cron');
         }
-        function setMode(mode) {
-            isCron = mode === 'cron';
-            box.querySelectorAll('.auto-schedule-tab').forEach(function (tab) { tab.classList.toggle('active', tab.getAttribute('data-schedule') === mode); });
-            box.querySelector('.auto-schedule-interval').classList.toggle('hidden', isCron);
-            box.querySelector('.auto-schedule-cron').classList.toggle('hidden', !isCron);
+        function setFreq(freq) {
+            box.querySelectorAll('.auto-repeat-pills button').forEach(function (b) { b.classList.toggle('active', b.getAttribute('data-freq') === freq); });
+            box.querySelector('.auto-visual-weekly').classList.toggle('hidden', freq !== 'weekly');
+            box.querySelector('.auto-visual-monthly').classList.toggle('hidden', freq !== 'monthly');
+            update();
+            if (box.classList.contains('open')) requestAnimationFrame(placePopover);
+        }
+        function setMode(next) {
+            mode = next;
+            box.querySelectorAll('.auto-schedule-tab').forEach(function (tab) { tab.classList.toggle('active', tab.getAttribute('data-schedule') === next); });
+            box.querySelector('.auto-schedule-interval').classList.toggle('hidden', next !== 'interval');
+            box.querySelector('.auto-schedule-visual').classList.toggle('hidden', next !== 'visual');
+            box.querySelector('.auto-schedule-cron').classList.toggle('hidden', next !== 'cron');
             update();
             if (box.classList.contains('open')) requestAnimationFrame(placePopover);
         }
@@ -329,7 +498,7 @@
             var opening = !box.classList.contains('open');
             closeOthers();
             box.classList.toggle('open', opening);
-            if (opening) requestAnimationFrame(placePopover); else clearPopoverPosition();
+            if (opening) { placeDir = null; captureOpenHeight(); requestAnimationFrame(placePopover); } else clearPopoverPosition();
         };
         current.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); current.onclick(e); } };
         window.addEventListener('resize', function () { if (box.classList.contains('open')) placePopover(); });
@@ -337,18 +506,41 @@
         box.querySelectorAll('.auto-schedule-tab').forEach(function (tab) { tab.onclick = function () { setMode(tab.getAttribute('data-schedule')); }; });
         box.querySelector('.auto-interval').oninput = update;
         box.querySelector('.auto-cron').oninput = update;
+        box.querySelector('.auto-visual-time').oninput = update;
+        box.querySelector('.auto-dom').oninput = update;
         box.querySelectorAll('.auto-interval-pills button').forEach(function (button) { button.onclick = function () { box.querySelector('.auto-interval').value = button.getAttribute('data-minutes'); setMode('interval'); }; });
-        box.querySelectorAll('.loop-cron-link').forEach(function (link) { link.onclick = function (e) { e.preventDefault(); box.querySelector('.auto-cron').value = link.getAttribute('data-cron'); setMode('cron'); }; });
+        box.querySelectorAll('.auto-repeat-pills button').forEach(function (button) { button.onclick = function () { setFreq(button.getAttribute('data-freq')); }; });
+        // 周几多选，防呆：至少保留一个（最后一个不可取消）
+        box.querySelectorAll('.auto-dow-pills button').forEach(function (button) { button.onclick = function () {
+            if (button.classList.contains('active') && box.querySelectorAll('.auto-dow-pills button.active').length <= 1) return;
+            button.classList.toggle('active');
+            update();
+        }; });
+        box.querySelectorAll('.loop-cron-link').forEach(function (link) { link.onclick = function (e) { e.preventDefault();
+            var c = link.getAttribute('data-cron');
+            box.querySelector('.auto-cron').value = c;
+            update();
+        }; });
         box.querySelector('.auto-schedule-pop').onclick = function (e) { e.stopPropagation(); if (!e.target.closest('input')) placePopover(); };
-        update();
+        setMode(mode);
     }
     function save(row, id) {
-        // 调度方式与后端契约一致：cron 或 intervalMinutes 必须提供一个（后端 validate：另一个可为空）
-        var schedule = row.getAttribute('data-schedule-type') || (row.querySelector('.auto-cron').value.trim() ? 'cron' : 'interval');
-        var isCron = schedule === 'cron';
+        // 调度方式与后端契约一致：cron 或 intervalMinutes 必须提供一个（后端 validate：另一个可为空）。
+        // 三模式统一归约：visual 在提交时实时生成 cron；row 上 data-schedule-type 仅存 cron/interval。
+        var schedBox = row.querySelector('.auto-schedule-select');
+        var activeTab = schedBox.querySelector('.auto-schedule-tab.active');
+        var mode = (activeTab && activeTab.getAttribute('data-schedule')) || 'interval';
+        var isCron = mode !== 'interval';
+        var cron = '';
+        if (mode === 'visual') {
+            cron = visualToCron(readVisualState(schedBox));
+            if (!cron) { toast(I18n.t('automation.cronRequired'), 'error'); return; }
+        } else if (mode === 'cron') {
+            cron = schedBox.querySelector('.auto-cron').value.trim();
+        }
         var data = {type: 'AUTOMATION', prompt: row.querySelector('.auto-prompt').value.trim(),
             intervalMinutes: isCron ? '' : row.querySelector('.auto-interval').value,
-            cron: isCron ? row.querySelector('.auto-cron').value.trim() : '',
+            cron: isCron ? cron : '',
             // 自动任务统一按定时任务创建；不传 taskType，创建走默认、更新时保留旧任务的底层类型。
             // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',

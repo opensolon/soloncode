@@ -209,8 +209,9 @@ class WebStreamBuilderReplyRouteTest {
             org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/steer"), brief);
             org.junit.jupiter.api.Assertions.assertFalse(brief.contains("/queue"), brief);
 
-            // 位次为 0 时不说「前面还有 0 条」
-            org.junit.jupiter.api.Assertions.assertEquals("收到，已作为新任务排队，马上轮到你了。", ImMessages.queued(0, false));
+            // 位次为 0 时不说「前面还有 0 条」；且须点明「当前任务完成后才轮到」，
+            // 不能让用户误以为马上开始（当前任务仍在执行）
+            org.junit.jupiter.api.Assertions.assertEquals("收到，已作为新任务排队，当前任务完成后就轮到你。", ImMessages.queued(0, false));
         } finally {
             ImMessages.setLocale(null);
         }
@@ -227,19 +228,20 @@ class WebStreamBuilderReplyRouteTest {
             org.junit.jupiter.api.Assertions.assertTrue(en.contains("/steer"), en);
             org.junit.jupiter.api.Assertions.assertFalse(en.contains("新任务排队"), en);
 
-            // 占位符被替换为空串时不留首尾空白
-            org.junit.jupiter.api.Assertions.assertEquals("Got it, queued as a new task, and it is your turn right now.",
+            // 占位符被替换为空串时不留首尾空白；英文同样点明「当前任务结束后才开始」
+            org.junit.jupiter.api.Assertions.assertEquals("Got it, queued as a new task. It will start as soon as the current task finishes.",
                     ImMessages.queued(0, false));
 
-            // 无参文案同样按地区解析
-            org.junit.jupiter.api.Assertions.assertFalse(ImMessages.REJECTED().contains("还有任务"), ImMessages.REJECTED());
+            // 无参文案同样按地区解析；英文回执须交代消息未被接收
+            org.junit.jupiter.api.Assertions.assertTrue(ImMessages.REJECTED().contains("was not queued"), ImMessages.REJECTED());
+            org.junit.jupiter.api.Assertions.assertFalse(ImMessages.REJECTED().contains("没排上队"), ImMessages.REJECTED());
         } finally {
             ImMessages.setLocale(Locale.FRENCH);
         }
 
         try {
             // 未提供 _fr 资源：回退到资源包默认语言（简体中文）
-            org.junit.jupiter.api.Assertions.assertTrue(ImMessages.REJECTED().contains("还有任务"), ImMessages.REJECTED());
+            org.junit.jupiter.api.Assertions.assertTrue(ImMessages.REJECTED().contains("没排上队"), ImMessages.REJECTED());
         } finally {
             ImMessages.setLocale(null);
         }
