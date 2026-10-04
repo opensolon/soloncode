@@ -3536,35 +3536,41 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 /* 展开表单时按钮隐藏，避免与表单底部操作重复 */
 .automation-row.open .automation-row-actions { display: none; }
 .automation-form { gap: 16px; }
-.automation-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+/* 展开行改溢出可见：一体卡片内下拉需向下弹出，避免被 mem-row 圆角裁剪；
+   head 自身补圆角，hover 背景不会溢出直角；展开行整体置顶防止后续行遮挡 */
+.automation-row .mem-row-head { border-radius: 10px; }
+.automation-row.open { overflow: visible; position: relative; z-index: 5; }
+.automation-row.open .mem-row-head { border-radius: 10px 10px 0 0; }
+/* 自动任务表单：任务描述/智能体/模型 合成聊天输入面板式一体卡片 */
+.auto-input-box { background: var(--bg-input-box); border: 1px solid var(--border-input); border-radius: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; transition: all 0.25s; }
+.auto-input-box:focus-within { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 3px rgba(79,110,247,0.06); }
+.auto-input-box .auto-prompt { border: none; outline: none; resize: vertical; background: transparent; padding: 12px 14px 4px; font-family: var(--font-sans); font-size: var(--fs-md); color: var(--text-primary); min-height: calc(44px * var(--font-scale)); line-height: 1.6; box-sizing: border-box; }
+.auto-input-box .auto-prompt::placeholder { color: var(--text-secondary); }
+/* 一体卡片内选择器：复用 toolbar-selector-group，下拉向下弹（编辑区在页面中部，不同于输入面板的向上弹） */
+.auto-select-group .model-dropdown { bottom: auto; top: 100%; margin-top: 6px; margin-bottom: 0; left: -26px; min-width: 320px; width: max-content; animation: none; }
+.auto-select-group .model-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.auto-select .agent-item-name, .auto-select .model-item-name { font-weight: 500; }
 .automation-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .automation-field > span { color: var(--text-secondary); font-size: var(--fs-sm); font-weight: 600; }
 .automation-field b { color: var(--color-danger); font-weight: 500; }
 .automation-field em { color: var(--text-tertiary); font-style: normal; font-weight: 400; }
 .automation-field input, .automation-field select, .automation-field textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--fs-md); outline: none; }
 .automation-field input, .automation-field select { height: 34px; padding: 0 11px; }
-/* 任务描述：两行高度，可手动拉高 */
-.automation-field textarea.auto-prompt { min-height: 0; height: calc(2 * 1.6em + 20px); padding: 10px 11px; line-height: 1.6; resize: vertical; }
-.automation-field input:focus, .automation-field select:focus, .automation-field textarea:focus { border-color: var(--accent); }
 .automation-field small { color: var(--text-tertiary); font-size: var(--fs-xs); }
 /* 调度输入框：对齐定时心跳的 loop-input-sm 长度（不拉满） */
 .automation-schedule .auto-interval { max-width: 90px; }
 .automation-schedule .auto-cron { max-width: 170px; }
-/* 输入面板风格下拉选择器：agent-dropdown 项带两行（名称+描述），复用 agents-model-selector 全宽样式 */
-.automation-field .auto-select { width: 100%; }
-.auto-select .agent-item-name, .auto-select .model-item-name { font-weight: 500; }
-.auto-select .agent-item-desc { font-size: var(--fs-xs); color: var(--text-secondary); }
 .automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
 /* 调度方式：复用 loop-radio / loop-cron-link 全局样式，仅需补充容器间距与单位文案 */
 .automation-schedule { display: flex; flex-direction: column; gap: 4px; }
 .automation-schedule .loop-interval-row { margin-bottom: 0; }
 .automation-schedule-unit { color: var(--text-tertiary); font-size: var(--fs-sm); white-space: nowrap; }
 .automation-form .loop-cron-link { font-size: var(--fs-xs); }
-.automation-empty { padding: 36px 16px; text-align: center; color: var(--text-secondary); font-size: var(--fs-md); line-height: 1.8; }
-.automation-empty span { color: var(--text-tertiary); font-size: var(--fs-sm); }
 @media (max-width: 700px) {
     .automation-list { padding: 8px 10px 20px; }
     .automation-toolbar { align-items: flex-start; }
-    .automation-form-grid { grid-template-columns: 1fr; }
     .automation-row-schedule { display: none; }
 }
+.automation-empty { padding: 36px 16px; text-align: center; color: var(--text-secondary); font-size: var(--fs-md); line-height: 1.8; }
+.automation-empty span { color: var(--text-tertiary); font-size: var(--fs-sm); }
+

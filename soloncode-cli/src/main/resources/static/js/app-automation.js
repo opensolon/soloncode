@@ -82,9 +82,16 @@
     }
     function formHtml(t) {
         var cronVal = t.cron || '';
+        // 任务描述 + 智能体 + 模型：合成聊天输入面板式一体卡片（无边框 textarea 在上、内联选择器 toolbar 在下）
         // 调度方式：对齐定时心跳表单（radio 单选 + 输入联动），radio 按行内唯一表单命名，避免多任务 DOM 冲突
         return '<div class="mem-row-body"><div class="automation-form mem-form">' +
-            '<label class="automation-field"><span>' + I18n.t('loop.taskDesc') + ' <b>*</b></span><textarea class="auto-prompt" rows="2" placeholder="' + I18n.t('automation.promptPlaceholder') + '">' + esc(t.prompt || '') + '</textarea></label>' +
+            '<div class="auto-input-box">' +
+            '<textarea class="auto-prompt" rows="2" placeholder="' + I18n.t('automation.promptPlaceholder') + '">' + esc(t.prompt || '') + '</textarea>' +
+            '<div class="input-toolbar"><div class="toolbar-left">' +
+            selHtml('agent', t.agentName || '', I18n.t('automation.agentPlaceholder')) +
+            selHtml('model', t.modelName || '', I18n.t('automation.modelPlaceholder')) +
+            '</div></div>' +
+            '</div>' +
             '<div class="automation-field"><span>' + I18n.t('loop.scheduleMethod') + '</span><div class="automation-schedule">' +
             '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="interval"' + (cronVal ? '' : ' checked') + '/> ' + I18n.t('loop.fixedInterval') + '</label>' +
             '<input type="number" class="loop-input loop-input-sm auto-interval" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5" title="' + I18n.t('automation.minutes') + '"/>' +
@@ -93,27 +100,27 @@
             '<input type="text" class="loop-input loop-input-sm auto-cron" value="' + esc(cronVal) + '" placeholder="0 */5 * * * ? *"/>' +
             '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">' + I18n.t('loop.cronEvery2h') + '</a>' +
             '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">' + I18n.t('loop.cronDaily22') + '</a>' +
-            '</div></div></div>' +
-            '<div class="automation-form-grid">' +
-            '<label class="automation-field"><span>' + I18n.t('automation.agent') + '</span>' + selHtml('agent', t.agentName || '', I18n.t('automation.agentPlaceholder')) + '</label>' +
-            '<label class="automation-field"><span>' + I18n.t('automation.model') + '</span>' + selHtml('model', t.modelName || '', I18n.t('automation.modelPlaceholder')) + '</label>' +
-            '</div>' +
+            '</div></div>' +
             '<div class="mem-actions"><button class="memory-btn memory-btn-primary auto-save" type="button">' + I18n.t('automation.saveTask') + '</button>' +
             '<button class="memory-btn auto-cancel" type="button">' + I18n.t('common.cancel') + '</button>' +
             (t.id ? '<button class="memory-btn memory-btn-danger auto-delete" type="button">' + I18n.t('common.delete') + '</button>' : '') +
             '</div></div></div>';
     }
-    // 输入面板风格的下拉选择器（复用 agents-model-selector 全宽向下弹出样式：搜索框 + active 高亮）
+    // 输入面板式内联选择器（复用 toolbar-selector-group / model-dropdown 样式：图标 + 名称 + 箭头，hover 显背景）
     // getModelItem/getAgentItem：row 私有数据（存 data-* 属性，行重建不丢失）；setXxx 同步回写
+    var SVG_AGENT_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg>';
+    var SVG_MODEL_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>';
     function selHtml(kind, value, placeholder) {
         var shown = value ? esc(value) : esc(placeholder);
-        return '<div class="model-selector agents-model-selector auto-select" data-kind="' + kind + '">' +
+        var icon = kind === 'agent' ? SVG_AGENT_ICON : SVG_MODEL_ICON;
+        return '<div class="toolbar-selector-group auto-select-group">' + icon +
+            '<div class="model-selector auto-select" data-kind="' + kind + '">' +
             '<div class="model-selector-current auto-select-current" tabindex="0" role="button">' +
             '<span class="model-name">' + shown + '</span>' +
             '<i class="layui-icon layui-icon-down model-arrow"></i></div>' +
             '<div class="model-dropdown">' +
             '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="' + I18n.t('automation.search') + '"/></div>' +
-            '<div class="model-dropdown-items"></div></div></div>';
+            '<div class="model-dropdown-items"></div></div></div></div>';
     }
     function setSel(row, kind, value, placeholder) {
         row.setAttribute('data-' + kind, value || '');
