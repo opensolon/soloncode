@@ -1,9 +1,8 @@
-package org.noear.solon.codecli.api.web.market.impl;
+package org.noear.solon.codecli.market.impl;
 
 import org.junit.jupiter.api.*;
 import org.noear.solon.codecli.market.MarketDetail;
 import org.noear.solon.codecli.market.MarketItem;
-import org.noear.solon.codecli.market.impl.SkillhubMarket;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.file.Files;

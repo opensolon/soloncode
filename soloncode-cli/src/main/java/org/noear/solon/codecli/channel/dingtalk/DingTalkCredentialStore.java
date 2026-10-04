@@ -47,10 +47,23 @@ public class DingTalkCredentialStore {
 
     private final Path storePath;
 
+    /** 绑定归属的工作区 ID；null 表示不做工作区过滤（兼容旧行为）。 */
+    private final String workspaceId;
+
     public DingTalkCredentialStore(HarnessEngine engine) {
+        this(engine, null);
+    }
+
+    public DingTalkCredentialStore(HarnessEngine engine, String workspaceId) {
         storePath = Paths.get(engine.getUserDir(),
                 engine.getHarnessChannels(),
                 STORE_FILE).toAbsolutePath();
+        this.workspaceId = workspaceId;
+    }
+
+    /** 供 Link 在装载后回写归属标记。 */
+    public String workspaceId() {
+        return workspaceId;
     }
 
     /**
@@ -80,6 +93,7 @@ public class DingTalkCredentialStore {
                     binding.lastMessageId = node.get("lastMessageId").getString();
                     binding.appKey = node.get("appKey").getString();
                     binding.appSecret = node.get("appSecret").getString();
+                    binding.workspaceId = node.get("workspaceId").getString();
 
                     if (binding.userId != null && !binding.userId.isEmpty()) {
                         result.put(sessionId, binding);
@@ -99,7 +113,24 @@ public class DingTalkCredentialStore {
      * 保存所有绑定凭据到文件
      */
     public void save(Map<String, DingTalkLink.DingTalkBinding> bindings) {
-        if (bindings == null || bindings.isEmpty()) {
+        if (bindings == null) {
+            return;
+        }
+
+        // 合并持久化：全局文件里可能还有其它工作区的绑定。
+        // 旧实现直接整文件覆盖本工作区视角的 map，会把其它工作区的绑定一并抹掉（重启即丢失）。
+        // 注意 load() 在文件不存在时返回 emptyMap()（不可变），必须包装为可变 map。
+        Map<String, DingTalkLink.DingTalkBinding> all = new LinkedHashMap<>(load());
+        Set<String> mine = new HashSet<>(bindings.keySet());
+        for (String sessionId : new HashSet<>(all.keySet())) {
+            DingTalkLink.DingTalkBinding existing = all.get(sessionId);
+            if (existing != null && isMine(existing) && !mine.contains(sessionId)) {
+                all.remove(sessionId);
+            }
+        }
+        all.putAll(bindings);
+
+        if (all.isEmpty()) {
             File file = storePath.toFile();
             if (file.exists()) {
                 file.delete();
@@ -111,7 +142,7 @@ public class DingTalkCredentialStore {
             Files.createDirectories(storePath.getParent());
 
             ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
-            for (Map.Entry<String, DingTalkLink.DingTalkBinding> entry : bindings.entrySet()) {
+            for (Map.Entry<String, DingTalkLink.DingTalkBinding> entry : all.entrySet()) {
                 String sessionId = entry.getKey();
                 DingTalkLink.DingTalkBinding binding = entry.getValue();
 
@@ -121,14 +152,28 @@ public class DingTalkCredentialStore {
                 node.set("lastMessageId", binding.lastMessageId);
                 node.set("appKey", binding.appKey);
                 node.set("appSecret", binding.appSecret);
+                if (binding.workspaceId != null) {
+                    node.set("workspaceId", binding.workspaceId);
+                }
 
                 root.set(sessionId, node);
             }
 
             Files.write(storePath, root.toJson().getBytes());
-            LOG.debug("[DingTalkStore] Saved {} bindings to {}", bindings.size(), storePath);
+            LOG.debug("[DingTalkStore] Saved {} bindings (mine={}) to {}", all.size(), bindings.size(), storePath);
         } catch (IOException e) {
             LOG.error("[DingTalkStore] Failed to save credentials to {}: {}", storePath, e.toString());
         }
+    }
+
+    /**
+     * 绑定是否归属本工作区：null 归属（未指定 workspaceId，测试或旧路径）不做过滤，
+     * 视为可全量管理；显式归属以 workspaceId 相等为准。
+     */
+    private boolean isMine(DingTalkLink.DingTalkBinding binding) {
+        if (workspaceId == null) {
+            return true;
+        }
+        return workspaceId.equals(binding.workspaceId);
     }
 }

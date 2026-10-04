@@ -26,6 +26,7 @@ import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -80,6 +81,9 @@ public class WeChatLink implements Channel, Runnable {
     private final WeChatCredentialStore credentialStore;
     private final Transport transport;
 
+    /** 本工作区 ID：绑定归属标记，多工作区同 botToken 会双长轮询重复消费，必须隔离。 */
+    private final String workspaceId;
+
     /**
      * sessionId -> WeChatBinding
      */
@@ -111,7 +115,7 @@ public class WeChatLink implements Channel, Runnable {
     private volatile ScheduledExecutorService typingScheduler;
 
     public WeChatLink(WorkspaceContext wsContext) {
-        this(wsContext, new WeChatCredentialStore(wsContext.getEngine()), DEFAULT_TRANSPORT);
+        this(wsContext, new WeChatCredentialStore(wsContext.getEngine(), wsContext.getMeta().getId()), DEFAULT_TRANSPORT);
     }
 
     /**
@@ -121,6 +125,8 @@ public class WeChatLink implements Channel, Runnable {
         this.wsContext = wsContext;
         this.credentialStore = credentialStore;
         this.transport = transport;
+        // wsContext 为空（测试）时从注入的 store 继承归属，保证过滤语义可用
+        this.workspaceId = wsContext != null ? wsContext.getMeta().getId() : credentialStore.workspaceId();
     }
 
     // ==================== 绑定管理 ====================
@@ -173,6 +179,7 @@ public class WeChatLink implements Channel, Runnable {
         binding.ilinkUserId = ilinkUserId;
         binding.baseUrl = WeChatClient.normalizeBaseUrl(baseUrl);
         binding.cursor = "";
+        binding.workspaceId = workspaceId;
 
         // 一个 ilinkUserId 只能有一个 session 绑定（自己除外）
         List<String> staleSessionIds = new ArrayList<>();
@@ -239,6 +246,22 @@ public class WeChatLink implements Channel, Runnable {
     }
 
     /**
+     * 判断 botToken 是否已被任意绑定使用（跨工作区冲突检查，供 Web 层在绑定时提示）。
+     * 注：本工作区内存 map 看不到其它工作区的绑定，全局视角需直接查存储文件。
+     */
+    public boolean isBotTokenInUse(String botToken) {
+        if (botToken == null || botToken.isEmpty()) {
+            return false;
+        }
+        for (WeChatBinding binding : bindings.values()) {
+            if (botToken.equals(binding.botToken)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * 获取所有已绑定会话 ID
      */
     public Set<String> getBoundSessionIds() {
@@ -253,28 +276,56 @@ public class WeChatLink implements Channel, Runnable {
     }
 
     /**
-     * 从持久化存储恢复所有已绑定的会话
+     * 从持久化存储恢复所有已绑定的会话。
+     *
+     * <p>绑定按 workspaceId 归属过滤：只装载归属本工作区的条目。历史遗留条目（无归属字段）
+     * 按会话目录探测认领——sessions/&lt;sessionId&gt; 目录存在于本工作区即视为本工作区资产，
+     * 认领后回写归属并持久化。不过滤时多工作区同 botToken 会各起一条长轮询，
+     * 同一条消息被两个工作区重复处理、游标互相覆盖回退。</p>
      */
     public void loadBindings() {
         Map<String, WeChatBinding> saved = credentialStore.load();
         if (saved.isEmpty()) return;
 
         LOG.info("[WeChat] Restoring {} saved binding(s)", saved.size());
+        boolean migrated = false;
         for (Map.Entry<String, WeChatBinding> entry : saved.entrySet()) {
             String sessionId = entry.getKey();
-            bindings.put(sessionId, entry.getValue());
-            startPolling(sessionId);
+            WeChatBinding binding = entry.getValue();
+
+            if (!ownsBinding(sessionId, binding)) {
+                LOG.info("[WeChat] Skip binding of other workspace: session {} (owner={})", sessionId, binding.workspaceId);
+                continue;
+            }
+            if (binding.workspaceId == null) {
+                // 遗留条目认领：打上本工作区标记，后续保存会把归属写回文件
+                binding.workspaceId = workspaceId;
+                migrated = true;
+            }
+            bindings.put(sessionId, binding);
             LOG.info("[WeChat] Restored session {}", sessionId);
+            startPolling(sessionId);
         }
+        if (migrated) {
+            credentialStore.save(bindings);
+        }
+    }
+
+    /** 绑定是否归属本工作区：显式归属以 workspaceId 为准；遗留无归属条目按会话目录探测认领。 */
+    boolean ownsBinding(String sessionId, WeChatBinding binding) {
+        if (binding.workspaceId != null) {
+            return workspaceId != null && workspaceId.equals(binding.workspaceId);
+        }
+        // 历史数据兼容：本工作区 sessions 目录下存在该会话目录则认领；
+        // wsContext 为空（测试）或目录不存在时不认领，避免误据他人无主条目
+        return wsContext != null && Files.isDirectory(wsContext.getSessionsRoot().resolve(sessionId));
     }
 
     /**
      * 启动通道：恢复已保存的绑定。
      *
-     * <p><b>注意</b>：本方法由 {@code ChannelHub.start()} 调用，而后者目前在代码库中
-     * 没有任何调用点，因此重启后的绑定恢复实际未生效（长轮询本身不依赖它，扫码绑定后
-     * 会立即开始工作）。修复需要在工作区初始化处补上 ChannelHub 的 start，涉及飞书、
-     * 钉钉三个通道的连接时机，宜单独评估。</p>
+     * <p>由 {@code ChannelHub.start()} 调用，而后者由工作区初始化处拉起
+     * （见 WorkspaceManager），重启后已保存的绑定会自动恢复并开始长轮询。</p>
      */
     @Override
     public void run() {
@@ -419,8 +470,7 @@ public class WeChatLink implements Channel, Runnable {
 
             try {
                 // 循环存续只取决于「本 worker 未被取消」与「绑定仍在」：
-                // 不能再依赖 running —— ChannelHub.start() 目前无人调用，run() 不会被执行，
-                // 若把 running 作为前置条件，扫码绑定后的轮询会直接空转。
+                // 不依赖 running 标志（run() 可能尚未被调用，扫码绑定后轮询应立即可用），
                 // 关闭路径由 stop() 显式 cancel 每个 worker 保证。
                 while (active.get() && bindings.containsKey(sessionId)) {
                     long startedAt = System.currentTimeMillis();
@@ -912,6 +962,10 @@ public class WeChatLink implements Channel, Runnable {
         public String botToken;
         public String ilinkBotId;
         public String ilinkUserId;
+        /**
+         * 绑定归属的工作区 ID（多工作区同 botToken 会双长轮询重复消费，必须隔离）
+         */
+        public String workspaceId;
         /**
          * 服务端指派的接入点，null 表示使用默认地址
          */

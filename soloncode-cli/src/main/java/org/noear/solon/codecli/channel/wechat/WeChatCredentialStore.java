@@ -58,20 +58,38 @@ public class WeChatCredentialStore {
 
     private final Path storePath;
 
+    /** 绑定归属的工作区 ID；null 表示不做工作区过滤（测试用）。 */
+    private final String workspaceId;
+
     private final AtomicLong lastSaveAt = new AtomicLong(0);
     private final AtomicBoolean flushPending = new AtomicBoolean(false);
 
     public WeChatCredentialStore(HarnessEngine engine) {
+        this(engine, null);
+    }
+
+    public WeChatCredentialStore(HarnessEngine engine, String workspaceId) {
         this(Paths.get(engine.getUserDir(),
                 engine.getHarnessChannels(),
-                STORE_FILE).toAbsolutePath());
+                STORE_FILE).toAbsolutePath(), workspaceId);
     }
 
     /**
      * 测试用构造：直接指定存储文件
      */
     WeChatCredentialStore(Path storePath) {
+        this(storePath, null);
+    }
+
+    /** 测试用构造：直接指定存储文件与工作区归属。 */
+    WeChatCredentialStore(Path storePath, String workspaceId) {
         this.storePath = storePath;
+        this.workspaceId = workspaceId;
+    }
+
+    /** 绑定归属的工作区 ID，供 Link 在装载后回写归属标记。 */
+    public String workspaceId() {
+        return workspaceId;
     }
 
     /**
@@ -102,6 +120,7 @@ public class WeChatCredentialStore {
                     binding.ilinkUserId = node.get("ilinkUserId").getString();
                     binding.baseUrl = WeChatClient.normalizeBaseUrl(node.get("baseUrl").getString());
                     binding.cursor = node.get("cursor").getString();
+                    binding.workspaceId = node.get("workspaceId").getString();
                     binding.restoreReplyTarget(
                             node.get("lastFromUserId").getString(),
                             node.get("lastContextToken").getString());
@@ -141,12 +160,30 @@ public class WeChatCredentialStore {
     }
 
     /**
-     * 保存所有绑定凭据到文件
+     * 保存所有绑定凭据到文件。
+     *
+     * <p><b>合并持久化</b>：存储文件是全局单文件，可能还包含其它工作区的绑定。
+     * 旧实现直接整文件覆盖本工作区视角的 map，会把其它工作区的绑定一并抹掉（重启即丢失）。
+     * 必须先读全局、只删本工作区已解绑的条目、再覆盖本工作区的绑定。</p>
      */
     public void save(Map<String, WeChatLink.WeChatBinding> bindings) {
         lastSaveAt.set(System.currentTimeMillis());
 
-        if (bindings == null || bindings.isEmpty()) {
+        if (bindings == null) {
+            return;
+        }
+
+        Map<String, WeChatLink.WeChatBinding> all = new LinkedHashMap<>(load());
+        Set<String> mine = new HashSet<>(bindings.keySet());
+        for (String sessionId : new HashSet<>(all.keySet())) {
+            WeChatLink.WeChatBinding existing = all.get(sessionId);
+            if (existing != null && isMine(existing) && !mine.contains(sessionId)) {
+                all.remove(sessionId);
+            }
+        }
+        all.putAll(bindings);
+
+        if (all.isEmpty()) {
             File file = storePath.toFile();
             if (file.exists() && !file.delete()) {
                 LOG.warn("[WeChatStore] Failed to delete {}", storePath);
@@ -162,7 +199,7 @@ public class WeChatCredentialStore {
             }
 
             ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
-            for (Map.Entry<String, WeChatLink.WeChatBinding> entry : bindings.entrySet()) {
+            for (Map.Entry<String, WeChatLink.WeChatBinding> entry : all.entrySet()) {
                 String sessionId = entry.getKey();
                 WeChatLink.WeChatBinding binding = entry.getValue();
 
@@ -174,15 +211,29 @@ public class WeChatCredentialStore {
                 node.set("cursor", binding.cursor);
                 node.set("lastContextToken", binding.getLastContextToken());
                 node.set("lastFromUserId", binding.getLastFromUserId());
+                if (binding.workspaceId != null) {
+                    node.set("workspaceId", binding.workspaceId);
+                }
 
                 root.set(sessionId, node);
             }
 
             writeAtomic(root.toJson());
-            LOG.debug("[WeChatStore] Saved {} bindings to {}", bindings.size(), storePath);
+            LOG.debug("[WeChatStore] Saved {} bindings (mine={}) to {}", all.size(), bindings.size(), storePath);
         } catch (IOException e) {
             LOG.error("[WeChatStore] Failed to save credentials to {}: {}", storePath, e.toString());
         }
+    }
+
+    /**
+     * 绑定是否归属本工作区：null 归属（未指定 workspaceId，测试或旧路径）不做过滤，
+     * 视为可全量管理；显式归属以 workspaceId 相等为准。
+     */
+    private boolean isMine(WeChatLink.WeChatBinding binding) {
+        if (workspaceId == null) {
+            return true;
+        }
+        return workspaceId.equals(binding.workspaceId);
     }
 
     /**

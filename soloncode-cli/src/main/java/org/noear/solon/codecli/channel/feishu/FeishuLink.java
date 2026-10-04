@@ -18,6 +18,7 @@ package org.noear.solon.codecli.channel.feishu;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -64,6 +65,8 @@ public class FeishuLink implements Channel, Runnable {
 
     private final WorkspaceContext wsContext;
     private final FeishuCredentialStore credentialStore;
+    /** 本工作区 ID；绑定归属与连接归属都以它为准。 */
+    private final String workspaceId;
 
     /**
      * appId -> StreamConnection（每个 appId 独立一条 WebSocket 连接）
@@ -84,7 +87,8 @@ public class FeishuLink implements Channel, Runnable {
 
     public FeishuLink(WorkspaceContext wsContext) {
         this.wsContext = wsContext;
-        this.credentialStore = new FeishuCredentialStore(wsContext.getEngine());
+        this.workspaceId = wsContext.getMeta().getId();
+        this.credentialStore = new FeishuCredentialStore(wsContext.getEngine(), workspaceId);
 
         // 尝试恢复已保存的绑定（含 appId/appSecret）
         loadBindings();
@@ -267,6 +271,7 @@ public class FeishuLink implements Channel, Runnable {
             // 扫码轮询与首条消息可能同时完成绑定；同一绑定必须幂等，
             // 尤其不能先 unbind 自己，否则 unbindSession 会关闭唯一的 Stream 连接。
             current.appSecret = appSecret;
+            current.workspaceId = workspaceId;
             StreamConnection conn = connections.get(appId);
             if (conn != null && sessionId.equals(conn.pendingSessionId)) {
                 conn.pendingSessionId = null;
@@ -275,12 +280,13 @@ public class FeishuLink implements Channel, Runnable {
             LOG.debug("[Feishu] Session {} is already bound to Feishu user {}", sessionId, openId);
             return;
         }
-
+        
         FeishuBinding binding = new FeishuBinding();
         binding.openId = openId;
         binding.lastMessageId = "";
         binding.appId = appId;
         binding.appSecret = appSecret;
+        binding.workspaceId = workspaceId;
 
         // 一个 openId 只能绑定一个 session（与微信行为一致）
         Set<String> unbindSessionIds = new HashSet<>();
@@ -332,20 +338,47 @@ public class FeishuLink implements Channel, Runnable {
     }
 
     /**
-     * 从持久化存储恢复所有已绑定的会话
+     * 从持久化存储恢复所有已绑定的会话。
+     *
+     * <p>绑定按 workspaceId 归属过滤：只装载归属本工作区的条目。历史遗留条目（无归属字段）
+     * 按会话目录探测认领——sessions/&lt;sessionId&gt; 目录存在于本工作区即视为本工作区资产，
+     * 认领后回写归属并持久化，其它工作区不再可见（杜绝多工作区同 appId 双连接随机路由）。</p>
      */
     public void loadBindings() {
         Map<String, FeishuBinding> restored = credentialStore.load();
         if (restored.isEmpty()) return;
 
         LOG.info("[Feishu] Restoring {} saved binding(s)", restored.size());
+        boolean migrated = false;
         for (Map.Entry<String, FeishuBinding> entry : restored.entrySet()) {
             String sessionId = entry.getKey();
             FeishuBinding binding = entry.getValue();
+
+            if (!ownsBinding(sessionId, binding)) {
+                LOG.info("[Feishu] Skip binding of other workspace: session {} (owner={})", sessionId, binding.workspaceId);
+                continue;
+            }
+            if (binding.workspaceId == null) {
+                // 遗留条目认领：打上本工作区标记，后续保存会把归属写回文件
+                binding.workspaceId = workspaceId;
+                migrated = true;
+            }
             bindings.put(sessionId, binding);
             openIdToSession.put(binding.openId, sessionId);
             LOG.info("[Feishu] Restored session {} -> openId {}", sessionId, binding.openId);
         }
+        if (migrated) {
+            credentialStore.save(bindings);
+        }
+    }
+
+    /** 绑定是否归属本工作区：显式归属以 workspaceId 为准；遗留无归属条目按会话目录探测认领。 */
+    boolean ownsBinding(String sessionId, FeishuBinding binding) {
+        if (binding.workspaceId != null) {
+            return workspaceId.equals(binding.workspaceId);
+        }
+        // 历史数据兼容：本工作区 sessions 目录下存在该会话目录则认领
+        return Files.isDirectory(wsContext.getSessionsRoot().resolve(sessionId));
     }
 
     /**
@@ -980,5 +1013,6 @@ public class FeishuLink implements Channel, Runnable {
         public volatile String lastMessageId;  // 最后处理的消息 ID（防重复，volatile 保证多线程可见性）
         public String appId;          // 飞书应用 App ID（凭据，随绑定一起持久化）
         public String appSecret;      // 飞书应用 App Secret（凭据，随绑定一起持久化）
+        public String workspaceId;    // 绑定归属的工作区 ID（多工作区同 appId 会双连接随机路由，必须隔离）
     }
 }

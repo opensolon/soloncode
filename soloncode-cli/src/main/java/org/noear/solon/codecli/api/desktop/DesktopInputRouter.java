@@ -196,7 +196,11 @@ final class DesktopInputRouter {
         String modelName = req.getModel();
         ChatModel chatModel = engine.getModelOrDefInstance(modelName);
 
-        session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+        // 会话级模型选择只记录显式指定的值：桌面端未携带 model 时保持已有选择，
+        // 否则 HITL 恢复等后续轮次会因 null 覆盖回落默认模型（与 WebChatInputHandler 守卫一致）。
+        if (Assert.isNotEmpty(modelName)) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+        }
         if (req.getReasoningEffort() != null) {
             ReasoningSupportUtil.putSessionEffort(session,
                     req.getReasoningEffort(), true);

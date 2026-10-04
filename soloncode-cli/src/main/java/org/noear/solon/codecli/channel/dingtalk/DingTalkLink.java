@@ -57,6 +57,8 @@ public class DingTalkLink implements Channel, Runnable {
 
     private final WorkspaceContext wsContext;
     private final DingTalkCredentialStore credentialStore;
+    /** 本工作区 ID；绑定归属与连接归属都以它为准。 */
+    private final String workspaceId;
 
     /**
      * appKey -> StreamConnection（每个 appKey 独立一条 WebSocket 连接）
@@ -81,7 +83,8 @@ public class DingTalkLink implements Channel, Runnable {
 
     public DingTalkLink(WorkspaceContext wsContext) {
         this.wsContext = wsContext;
-        this.credentialStore = new DingTalkCredentialStore(wsContext.getEngine());
+        this.workspaceId = wsContext.getMeta().getId();
+        this.credentialStore = new DingTalkCredentialStore(wsContext.getEngine(), workspaceId);
 
         // 尝试恢复已保存的绑定（含 appKey/appSecret）
         loadBindings();
@@ -280,6 +283,7 @@ public class DingTalkLink implements Channel, Runnable {
             // 补全 QR 半绑定
             binding.userId = userId;
             binding.robotCode = robotCode != null ? robotCode : appKey;
+            binding.workspaceId = workspaceId;
             LOG.info("[DingTalk] QR half-binding completed for session {}, userId={}", sessionId, userId);
         } else {
             // 正常绑定（手动输入）
@@ -288,6 +292,7 @@ public class DingTalkLink implements Channel, Runnable {
             binding.robotCode = robotCode != null ? robotCode : appKey;
             binding.appKey = appKey;
             binding.appSecret = appSecret;
+            binding.workspaceId = workspaceId;
             bindings.put(sessionId, binding);
         }
 
@@ -363,21 +368,48 @@ public class DingTalkLink implements Channel, Runnable {
     }
 
     /**
-     * 从持久化存储恢复所有已绑定的会话
+     * 从持久化存储恢复所有已绑定的会话。
+     *
+     * <p>绑定按 workspaceId 归属过滤：只装载归属本工作区的条目。历史遗留条目（无归属字段）
+     * 按会话目录探测认领——sessions/&lt;sessionId&gt; 目录存在于本工作区即视为本工作区资产，
+     * 认领后回写归属并持久化，其它工作区不再可见（杜绝多工作区同 appKey 双连接随机路由）。</p>
      */
     private void loadBindings() {
         Map<String, DingTalkBinding> saved = credentialStore.load();
         if (saved.isEmpty()) return;
 
         LOG.info("[DingTalk] Restoring {} saved binding(s)", saved.size());
+        boolean migrated = false;
         for (Map.Entry<String, DingTalkBinding> entry : saved.entrySet()) {
             String sessionId = entry.getKey();
             DingTalkBinding binding = entry.getValue();
+
+            if (!ownsBinding(sessionId, binding)) {
+                LOG.info("[DingTalk] Skip binding of other workspace: session {} (owner={})", sessionId, binding.workspaceId);
+                continue;
+            }
+            if (binding.workspaceId == null) {
+                // 遗留条目认领：打上本工作区标记，后续保存会把归属写回文件
+                binding.workspaceId = workspaceId;
+                migrated = true;
+            }
             bindings.put(sessionId, binding);
             userIdToSession.put(binding.userId, sessionId);
 
             LOG.info("[DingTalk] Restored session {} -> userId {}", sessionId, binding.userId);
         }
+        if (migrated) {
+            credentialStore.save(bindings);
+        }
+    }
+
+    /** 绑定是否归属本工作区：显式归属以 workspaceId 为准；遗留无归属条目按会话目录探测认领。 */
+    boolean ownsBinding(String sessionId, DingTalkBinding binding) {
+        if (binding.workspaceId != null) {
+            return workspaceId.equals(binding.workspaceId);
+        }
+        // 历史数据兼容：本工作区 sessions 目录下存在该会话目录则认领
+        return java.nio.file.Files.isDirectory(wsContext.getSessionsRoot().resolve(sessionId));
     }
 
     /**
@@ -930,5 +962,6 @@ public class DingTalkLink implements Channel, Runnable {
         public volatile String lastMessageId;   // 最后处理的消息 ID（防重复，volatile 保证多线程可见性）
         public String appKey;          // 保存的 AppKey（用于重启后恢复 Stream 连接）
         public String appSecret;       // 保存的 AppSecret
+        public String workspaceId;     // 绑定归属的工作区 ID（多工作区同 appKey 会双连接随机路由，必须隔离）
     }
 }

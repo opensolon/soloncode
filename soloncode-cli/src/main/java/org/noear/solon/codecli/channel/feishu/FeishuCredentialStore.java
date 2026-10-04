@@ -47,10 +47,28 @@ public class FeishuCredentialStore {
 
     private final Path storePath;
 
+    /** 绑定归属的工作区 ID；null 表示不做工作区过滤（兼容旧行为）。 */
+    private final String workspaceId;
+
     public FeishuCredentialStore(HarnessEngine engine) {
-        storePath = Paths.get(engine.getUserDir(),
+        this(engine, null);
+    }
+
+    public FeishuCredentialStore(HarnessEngine engine, String workspaceId) {
+        this(Paths.get(engine.getUserDir(),
                 engine.getHarnessChannels(),
-                STORE_FILE).toAbsolutePath();
+                STORE_FILE).toAbsolutePath(), workspaceId);
+    }
+
+    /** 测试友好：直接指定存储文件路径。 */
+    FeishuCredentialStore(Path storePath, String workspaceId) {
+        this.storePath = storePath;
+        this.workspaceId = workspaceId;
+    }
+
+    /** 供 Link 在装载后回写归属标记。 */
+    public String workspaceId() {
+        return workspaceId;
     }
 
     /**
@@ -79,6 +97,7 @@ public class FeishuCredentialStore {
                     binding.lastMessageId = node.get("lastMessageId").getString();
                     binding.appId = node.get("appId").getString();
                     binding.appSecret = node.get("appSecret").getString();
+                    binding.workspaceId = node.get("workspaceId").getString();
 
                     if (binding.openId != null && !binding.openId.isEmpty()) {
                         result.put(sessionId, binding);
@@ -98,7 +117,24 @@ public class FeishuCredentialStore {
      * 保存所有绑定凭据到文件
      */
     public void save(Map<String, FeishuLink.FeishuBinding> bindings) {
-        if (bindings == null || bindings.isEmpty()) {
+        if (bindings == null) {
+            return;
+        }
+
+        // 合并持久化：全局文件里可能还有其它工作区的绑定。
+        // 旧实现直接整文件覆盖本工作区视角的 map，会把其它工作区的绑定一并抹掉（重启即丢失）。
+        Map<String, FeishuLink.FeishuBinding> all = new LinkedHashMap<>(load());
+        // 先移除本工作区要删除的条目（被 unbind 的），再覆盖本工作区的绑定。
+        Set<String> mine = new HashSet<>(bindings.keySet());
+        for (String sessionId : new HashSet<>(all.keySet())) {
+            FeishuLink.FeishuBinding existing = all.get(sessionId);
+            if (existing != null && isMine(existing) && !mine.contains(sessionId)) {
+                all.remove(sessionId);
+            }
+        }
+        all.putAll(bindings);
+
+        if (all.isEmpty()) {
             File file = storePath.toFile();
             if (file.exists()) {
                 file.delete();
@@ -110,7 +146,7 @@ public class FeishuCredentialStore {
             Files.createDirectories(storePath.getParent());
 
             ONode root = new ONode(Options.of(Feature.Write_PrettyFormat));
-            for (Map.Entry<String, FeishuLink.FeishuBinding> entry : bindings.entrySet()) {
+            for (Map.Entry<String, FeishuLink.FeishuBinding> entry : all.entrySet()) {
                 String sessionId = entry.getKey();
                 FeishuLink.FeishuBinding binding = entry.getValue();
 
@@ -119,14 +155,28 @@ public class FeishuCredentialStore {
                 node.set("lastMessageId", binding.lastMessageId != null ? binding.lastMessageId : "");
                 node.set("appId", binding.appId);
                 node.set("appSecret", binding.appSecret);
+                if (binding.workspaceId != null) {
+                    node.set("workspaceId", binding.workspaceId);
+                }
 
                 root.set(sessionId, node);
             }
 
             Files.write(storePath, root.toJson().getBytes());
-            LOG.debug("[FeishuStore] Saved {} bindings to {}", bindings.size(), storePath);
+            LOG.debug("[FeishuStore] Saved {} bindings (mine={}) to {}", all.size(), bindings.size(), storePath);
         } catch (IOException e) {
             LOG.error("[FeishuStore] Failed to save credentials to {}: {}", storePath, e.toString());
         }
+    }
+
+    /**
+     * 绑定是否归属本工作区：null 归属（未指定 workspaceId，测试或旧路径）不做过滤，
+     * 视为可全量管理；显式归属以 workspaceId 相等为准。
+     */
+    private boolean isMine(FeishuLink.FeishuBinding binding) {
+        if (workspaceId == null) {
+            return true;
+        }
+        return workspaceId.equals(binding.workspaceId);
     }
 }
