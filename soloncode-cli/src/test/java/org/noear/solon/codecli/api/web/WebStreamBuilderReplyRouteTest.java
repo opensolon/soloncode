@@ -240,10 +240,22 @@ class WebStreamBuilderReplyRouteTest {
         }
 
         try {
-            // 未提供 _fr 资源：回退到资源包默认语言（简体中文）
-            org.junit.jupiter.api.Assertions.assertTrue(ImMessages.REJECTED().contains("没排上队"), ImMessages.REJECTED());
+            // 前端已有法语资源，后端应使用对应语言，而不是回退到默认中文
+            org.junit.jupiter.api.Assertions.assertTrue(ImMessages.REJECTED().contains("n'a pas été mis en file"), ImMessages.REJECTED());
         } finally {
             ImMessages.setLocale(null);
         }
+    }
+
+    @Test
+    void messagesHaveFrontendLocaleBundles() {
+        String[] locales = {"ar", "bn", "br", "bs", "da", "de", "en", "es", "fr", "gr", "it", "ja", "ko", "nl", "no", "pl", "ru", "th", "tr", "uk", "vi"};
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        for (String locale : locales) {
+            org.junit.jupiter.api.Assertions.assertNotNull(
+                    loader.getResource("i18n/im-messages_" + locale + ".properties"),
+                    "Missing IM bundle for frontend locale: " + locale);
+        }
+        org.junit.jupiter.api.Assertions.assertNotNull(loader.getResource("i18n/im-messages.properties"));
     }
 }
