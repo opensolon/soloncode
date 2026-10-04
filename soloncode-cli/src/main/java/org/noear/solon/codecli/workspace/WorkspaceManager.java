@@ -648,11 +648,18 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 "  @build: " + AgentFlags.getVersion() + "\n" +
                 "-->\n\n";
 
+        // AGENTS.md 按本工作区路径解析（工作区有则用工作区的，没有才回退用户目录）；
+        // 不能用 AgentFlags.getAgentsMd()：它基于进程启动目录，多工作区下会读到别的目录的配置
+        String agentsMd = AgentFlags.getAgentsMd(workspacePath);
+        String systemPrompt = (agentsMd == null || agentsMd.length() == 0)
+                ? stealthIdentity
+                : stealthIdentity + agentsMd;
+
         // 初始化 HTTP 代理配置已移至构造函数（进程级一次性），见 WorkspaceManager(settings)
 
         HarnessEngine engine = HarnessEngine.of(workspacePath, AgentFlags.getHarnessHome())
                 .userAgent(wsSettings.getGeneral().getUserAgent())
-                .systemPrompt(stealthIdentity + AgentFlags.getAgentsMd())
+                .systemPrompt(systemPrompt)
                 .maxTurns(wsSettings.getGeneral().getMaxTurns())
                 .autoRethink(wsSettings.getGeneral().isAutoRethink())
                 .sessionWindowSize(wsSettings.getGeneral().getSessionWindowSize())

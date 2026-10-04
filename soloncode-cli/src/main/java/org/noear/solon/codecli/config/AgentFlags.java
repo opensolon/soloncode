@@ -142,9 +142,45 @@ public class AgentFlags {
         return null;
     }
 
+    /**
+     * 按指定工作区路径解析 AGENTS.md：工作区有则用工作区的，没有才回退用户目录。
+     *
+     * <p>多工作区场景下必须用本方法（而不是 {@link #getAgentsUrl()}）：后者基于进程启动目录
+     * （user.dir），通过 web/API 打开非启动目录的项目时，会错误地读到启动目录的配置。</p>
+     */
+    public static URL getAgentsUrl(String workspacePath) throws MalformedURLException {
+        if (workspacePath != null && workspacePath.length() > 0) {
+            //1. 工作区配置
+            Path path = Paths.get(workspacePath, getHarnessHome(), NAME_AGENTS_MD);
+            if (Files.exists(path)) {
+                return path.toUri().toURL();
+            }
+        }
+
+        //2. 用户目录区配置
+        Path path = Paths.get(getUserHome(), getHarnessHome(), NAME_AGENTS_MD);
+
+        if (Files.exists(path)) {
+            return path.toUri().toURL();
+        }
+
+        return null;
+    }
+
     public static String getAgentsMd() {
+        return getAgentsMd("");
+    }
+
+    /**
+     * 按指定工作区路径加载 AGENTS.md（工作区优先，没有才回退用户目录），用于工作区上下文创建。
+     *
+     * @param workspacePath 工作区物理路径；null 或空串时退化为按进程启动目录解析（与 {@link #getAgentsMd()} 同语义）
+     */
+    public static String getAgentsMd(String workspacePath) {
+        boolean byStartupDir = workspacePath == null || workspacePath.trim().length() == 0;
+
         try {
-            URL agentsUrl = getAgentsUrl();
+            URL agentsUrl = byStartupDir ? getAgentsUrl() : getAgentsUrl(workspacePath);
 
             if (agentsUrl != null) {
                 try (InputStream is = agentsUrl.openStream()) {
