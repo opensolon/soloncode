@@ -82,25 +82,16 @@
     }
     function formHtml(t) {
         var cronVal = t.cron || '';
-        // 任务描述 + 智能体 + 模型：合成聊天输入面板式一体卡片（无边框 textarea 在上、内联选择器 toolbar 在下）
-        // 调度方式：对齐定时心跳表单（radio 单选 + 输入联动），radio 按行内唯一表单命名，避免多任务 DOM 冲突
+        var intervalVal = t.intervalMinutes || 5;
         return '<div class="mem-row-body"><div class="automation-form mem-form">' +
             '<div class="auto-input-box">' +
             '<textarea class="auto-prompt" rows="2" placeholder="' + I18n.t('automation.promptPlaceholder') + '">' + esc(t.prompt || '') + '</textarea>' +
             '<div class="input-toolbar"><div class="toolbar-left">' +
             selHtml('agent', t.agentName || '', I18n.t('automation.agentPlaceholder')) +
             selHtml('model', t.modelName || '', I18n.t('automation.modelPlaceholder')) +
+            scheduleSelHtml(cronVal, intervalVal) +
             '</div></div>' +
             '</div>' +
-            '<div class="automation-field"><span>' + I18n.t('loop.scheduleMethod') + '</span><div class="automation-schedule">' +
-            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="interval"' + (cronVal ? '' : ' checked') + '/> ' + I18n.t('loop.fixedInterval') + '</label>' +
-            '<input type="number" class="loop-input loop-input-sm auto-interval" min="1" value="' + esc(t.intervalMinutes || 5) + '" placeholder="5" title="' + I18n.t('automation.minutes') + '"/>' +
-            '<span class="automation-schedule-unit">' + I18n.t('automation.minutes') + '</span></div>' +
-            '<div class="loop-interval-row"><label class="loop-radio"><input type="radio" name="autoScheduleType" value="cron"' + (cronVal ? ' checked' : '') + '/> ' + I18n.t('loop.cronExpression') + '</label>' +
-            '<input type="text" class="loop-input loop-input-sm auto-cron" value="' + esc(cronVal) + '" placeholder="0 */5 * * * ? *"/>' +
-            '<a class="loop-cron-link" data-cron="0 0 */2 * * ? *">' + I18n.t('loop.cronEvery2h') + '</a>' +
-            '<a class="loop-cron-link" data-cron="0 0 22 * * ? *">' + I18n.t('loop.cronDaily22') + '</a>' +
-            '</div></div>' +
             '<div class="mem-actions"><button class="memory-btn memory-btn-primary auto-save" type="button">' + I18n.t('automation.saveTask') + '</button>' +
             '<button class="memory-btn auto-cancel" type="button">' + I18n.t('common.cancel') + '</button>' +
             (t.id ? '<button class="memory-btn memory-btn-danger auto-delete" type="button">' + I18n.t('common.delete') + '</button>' : '') +
@@ -110,6 +101,24 @@
     // getModelItem/getAgentItem：row 私有数据（存 data-* 属性，行重建不丢失）；setXxx 同步回写
     var SVG_AGENT_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg>';
     var SVG_MODEL_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>';
+    var SVG_SCHEDULE_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M7 3 5 5M17 3l2 2M9 21h6"/></svg>';
+    function scheduleSummary(cron, interval) {
+        return cron ? 'cron: ' + cron : I18n.t('loop.every', {n: interval || 5});
+    }
+    function scheduleSelHtml(cron, interval) {
+        var isCron = !!cron;
+        var summary = scheduleSummary(cron, interval);
+        return '<div class="toolbar-selector-group auto-schedule-group">' + SVG_SCHEDULE_ICON +
+            '<div class="model-selector auto-select auto-schedule-select" data-kind="schedule">' +
+            '<div class="model-selector-current auto-select-current" tabindex="0" role="button" aria-label="' + esc(I18n.t('loop.scheduleMethod')) + '">' +
+            '<span class="model-name auto-schedule-summary">' + esc(summary) + '</span><i class="layui-icon layui-icon-down model-arrow"></i></div>' +
+            '<div class="model-dropdown auto-schedule-pop">' +
+            '<div class="auto-schedule-title">' + I18n.t('loop.scheduleMethod') + '</div>' +
+            '<div class="auto-schedule-tabs"><button type="button" class="auto-schedule-tab' + (isCron ? '' : ' active') + '" data-schedule="interval">' + I18n.t('loop.fixedInterval') + '</button><button type="button" class="auto-schedule-tab' + (isCron ? ' active' : '') + '" data-schedule="cron">' + I18n.t('loop.cronExpression') + '</button></div>' +
+            '<div class="auto-schedule-panel auto-schedule-interval' + (isCron ? ' hidden' : '') + '"><div class="auto-schedule-line"><span>' + I18n.t('loop.every', {n: ''}) + '</span><input type="number" class="auto-interval" min="1" value="' + esc(interval) + '"/><span>' + I18n.t('automation.minutes') + '</span></div><div class="model-option-pills auto-interval-pills"><button type="button" data-minutes="1">1</button><button type="button" data-minutes="5">5</button><button type="button" data-minutes="15">15</button><button type="button" data-minutes="30">30</button><button type="button" data-minutes="60">60</button></div></div>' +
+            '<div class="auto-schedule-panel auto-schedule-cron' + (isCron ? '' : ' hidden') + '"><input type="text" class="auto-cron" value="' + esc(cron) + '" placeholder="0 */5 * * * ? *"/><div class="auto-cron-links"><a class="loop-cron-link" data-cron="0 0 */2 * * ? *">' + I18n.t('loop.cronEvery2h') + '</a><a class="loop-cron-link" data-cron="0 0 22 * * ? *">' + I18n.t('loop.cronDaily22') + '</a></div><div class="auto-schedule-hint">秒 分 时 日 月 周 年</div></div>' +
+            '</div></div></div>';
+    }
     function selHtml(kind, value, placeholder) {
         var shown = value ? esc(value) : esc(placeholder);
         var icon = kind === 'agent' ? SVG_AGENT_ICON : SVG_MODEL_ICON;
@@ -242,17 +251,7 @@
             if (row.classList.contains('open')) {
                 var t = tasks.find(function (x) { return x.id === id; }) || {};
                 populateSelectors(row, t);
-                // 调度方式 radio 联动：对齐定时心跳表单（选中另一种时禁用无关输入）
-                row.querySelectorAll('input[name=autoScheduleType]').forEach(function (radio) {
-                    radio.onchange = function () {
-                        var isCron = row.querySelector('input[name=autoScheduleType]:checked').value === 'cron';
-                        row.querySelector('.auto-interval').disabled = isCron;
-                        row.querySelector('.auto-cron').disabled = !isCron;
-                    };
-                });
-                row.querySelectorAll('.loop-cron-link').forEach(function (link) {
-                    link.onclick = function (e) { e.preventDefault(); row.querySelector('.auto-cron').value = link.getAttribute('data-cron'); };
-                });
+                bindSchedule(row, t);
                 row.querySelector('.auto-save').onclick = function () { save(row, id); };
                 row.querySelector('.auto-cancel').onclick = function () { expandedId = null; renderList(); };
                 var del = row.querySelector('.auto-delete');
@@ -270,9 +269,41 @@
             row.querySelector('.auto-session').onclick = function (e) { e.stopPropagation(); showSession(rowSession); };
         });
     }
+    function bindSchedule(row, t) {
+        var box = row.querySelector('.auto-schedule-select');
+        if (!box) return;
+        var isCron = !!(t && t.cron);
+        var interval = (t && t.intervalMinutes) || 5;
+        row.setAttribute('data-schedule-type', isCron ? 'cron' : 'interval');
+        var current = box.querySelector('.auto-select-current');
+        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) o.classList.remove('open'); }); }
+        function update() {
+            var cron = box.querySelector('.auto-cron').value.trim();
+            var minutes = box.querySelector('.auto-interval').value || 5;
+            box.querySelector('.auto-schedule-summary').textContent = scheduleSummary(isCron ? cron : '', minutes);
+            row.setAttribute('data-schedule-type', isCron ? 'cron' : 'interval');
+        }
+        function setMode(mode) {
+            isCron = mode === 'cron';
+            box.querySelectorAll('.auto-schedule-tab').forEach(function (tab) { tab.classList.toggle('active', tab.getAttribute('data-schedule') === mode); });
+            box.querySelector('.auto-schedule-interval').classList.toggle('hidden', isCron);
+            box.querySelector('.auto-schedule-cron').classList.toggle('hidden', !isCron);
+            update();
+        }
+        current.onclick = function (e) { e.stopPropagation(); var opening = !box.classList.contains('open'); closeOthers(); box.classList.toggle('open', opening); };
+        current.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); current.onclick(e); } };
+        box.querySelectorAll('.auto-schedule-tab').forEach(function (tab) { tab.onclick = function () { setMode(tab.getAttribute('data-schedule')); }; });
+        box.querySelector('.auto-interval').oninput = update;
+        box.querySelector('.auto-cron').oninput = update;
+        box.querySelectorAll('.auto-interval-pills button').forEach(function (button) { button.onclick = function () { box.querySelector('.auto-interval').value = button.getAttribute('data-minutes'); setMode('interval'); }; });
+        box.querySelectorAll('.loop-cron-link').forEach(function (link) { link.onclick = function (e) { e.preventDefault(); box.querySelector('.auto-cron').value = link.getAttribute('data-cron'); setMode('cron'); }; });
+        box.querySelector('.auto-schedule-pop').onclick = function (e) { e.stopPropagation(); };
+        update();
+    }
     function save(row, id) {
         // 调度方式与后端契约一致：cron 或 intervalMinutes 必须提供一个（后端 validate：另一个可为空）
-        var isCron = row.querySelector('input[name=autoScheduleType]:checked').value === 'cron';
+        var schedule = row.getAttribute('data-schedule-type') || (row.querySelector('.auto-cron').value.trim() ? 'cron' : 'interval');
+        var isCron = schedule === 'cron';
         var data = {type: 'AUTOMATION', prompt: row.querySelector('.auto-prompt').value.trim(),
             intervalMinutes: isCron ? '' : row.querySelector('.auto-interval').value,
             cron: isCron ? row.querySelector('.auto-cron').value.trim() : '',

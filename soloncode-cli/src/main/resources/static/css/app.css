@@ -3550,22 +3550,30 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .auto-select-group .model-dropdown { bottom: auto; top: 100%; margin-top: 6px; margin-bottom: 0; left: -26px; min-width: 320px; width: max-content; animation: none; }
 .auto-select-group .model-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .auto-select .agent-item-name, .auto-select .model-item-name { font-weight: 500; }
-.automation-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.automation-field > span { color: var(--text-secondary); font-size: var(--fs-sm); font-weight: 600; }
-.automation-field b { color: var(--color-danger); font-weight: 500; }
-.automation-field em { color: var(--text-tertiary); font-style: normal; font-weight: 400; }
-.automation-field input, .automation-field select, .automation-field textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--fs-md); outline: none; }
-.automation-field input, .automation-field select { height: 34px; padding: 0 11px; }
-.automation-field small { color: var(--text-tertiary); font-size: var(--fs-xs); }
-/* 调度输入框：对齐定时心跳的 loop-input-sm 长度（不拉满） */
-.automation-schedule .auto-interval { max-width: 90px; }
-.automation-schedule .auto-cron { max-width: 170px; }
-.automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
-/* 调度方式：复用 loop-radio / loop-cron-link 全局样式，仅需补充容器间距与单位文案 */
-.automation-schedule { display: flex; flex-direction: column; gap: 4px; }
-.automation-schedule .loop-interval-row { margin-bottom: 0; }
-.automation-schedule-unit { color: var(--text-tertiary); font-size: var(--fs-sm); white-space: nowrap; }
-.automation-form .loop-cron-link { font-size: var(--fs-xs); }
+ .automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
+ /* 调度浮层：与智能体/模型选择器共用触发器，内容采用紧凑的分段 + 胶囊布局 */
+ .auto-schedule-group { position: relative; }
+ .auto-schedule-group .model-name { max-width: 150px; }
+ .auto-schedule-group .auto-schedule-pop { left: auto; right: -8px; min-width: 286px; width: 286px; padding: 12px; overflow: visible; color: var(--text-primary); }
+ .auto-schedule-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
+ .auto-schedule-tabs { display: flex; gap: 3px; padding: 3px; margin-bottom: 12px; border-radius: 8px; background: var(--bg-hover); }
+ .auto-schedule-tab { flex: 1; border: 0; border-radius: 6px; padding: 6px 8px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-xs); cursor: pointer; transition: all .15s; }
+ .auto-schedule-tab:hover { color: var(--text-primary); }
+ .auto-schedule-tab.active { background: var(--bg-input-box); color: var(--accent); box-shadow: var(--shadow); font-weight: 600; }
+ .auto-schedule-panel.hidden { display: none; }
+ .auto-schedule-line { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-secondary); font-size: var(--fs-sm); }
+ .auto-schedule-line .auto-interval { width: 58px; height: 30px; box-sizing: border-box; padding: 4px 7px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); text-align: center; font: inherit; outline: none; }
+ .auto-schedule-line .auto-interval:focus, .auto-schedule-cron .auto-cron:focus { border-color: var(--accent); }
+ .auto-interval-pills { justify-content: center; margin-top: 10px; }
+ .auto-interval-pills button { min-width: 30px; }
+ .auto-schedule-cron .auto-cron { width: 100%; box-sizing: border-box; height: 32px; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-xs); outline: none; }
+ .auto-cron-links { display: flex; gap: 10px; margin-top: 8px; }
+ .auto-cron-links .loop-cron-link { font-size: var(--fs-xs); }
+ .auto-schedule-hint { margin-top: 8px; color: var(--text-tertiary); font-size: var(--fs-2xs); letter-spacing: .02em; }
+ .auto-schedule-select.open .auto-schedule-pop { display: flex; flex-direction: column; }
+ .auto-schedule-select.open .auto-schedule-pop { animation: none; }
+ .auto-schedule-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+ @media (max-width: 700px) { .auto-schedule-group .auto-schedule-pop { right: -60px; max-width: calc(100vw - 32px); } }
 @media (max-width: 700px) {
     .automation-list { padding: 8px 10px 20px; }
     .automation-toolbar { align-items: flex-start; }
