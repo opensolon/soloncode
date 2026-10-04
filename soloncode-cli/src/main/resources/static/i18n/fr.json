@@ -484,6 +484,7 @@
   "loop.empty": "Aucune automatisation",
   "loop.enable": "Activer",
   "loop.every": "Toutes les {n} minutes",
+  "loop.everyRunOnce": "Exécuter toutes les {n} minutes",
   "loop.executedTimes": "Exécutée {n} fois",
   "loop.fillTemplate": "Remplir le modèle",
   "loop.fixedInterval": "Intervalle fixe",

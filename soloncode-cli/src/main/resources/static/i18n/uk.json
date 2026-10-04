@@ -479,6 +479,7 @@
   "loop.empty": "Немає автоматизацій",
   "loop.enable": "Увімкнути",
   "loop.every": "Кожні {n} хв",
+  "loop.everyRunOnce": "Виконувати кожні {n} хв",
   "loop.executedTimes": "Виконано {n} разів",
   "loop.fillTemplate": "Заповнити шаблон",
   "loop.fixedInterval": "Фіксований інтервал",

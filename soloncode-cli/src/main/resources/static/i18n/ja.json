@@ -484,6 +484,7 @@
   "loop.empty": "自動タスクがありません",
   "loop.enable": "有効化",
   "loop.every": "{n}分ごと",
+  "loop.everyRunOnce": "{n}分ごとに1回実行",
   "loop.executedTimes": "{n}回実行済み",
   "loop.fillTemplate": "テンプレートを入力",
   "loop.fixedInterval": "固定間隔",

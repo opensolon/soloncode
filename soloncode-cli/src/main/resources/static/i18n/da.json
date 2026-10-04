@@ -479,6 +479,7 @@
   "loop.empty": "Ingen automatiseringer",
   "loop.enable": "Aktivér",
   "loop.every": "Hver {n} min",
+  "loop.everyRunOnce": "Kør hvert {n} min",
   "loop.executedTimes": "Udført {n} gange",
   "loop.fillTemplate": "Udfyld skabelon",
   "loop.fixedInterval": "Fast interval",

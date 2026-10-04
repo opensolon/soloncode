@@ -479,6 +479,7 @@
   "loop.empty": "Otomasyon görevi yok",
   "loop.enable": "Etkinleştir",
   "loop.every": "Her {n} dakikada bir",
+  "loop.everyRunOnce": "Her {n} dakikada bir çalıştır",
   "loop.executedTimes": "{n} kez çalıştırıldı",
   "loop.fillTemplate": "Şablonu doldur",
   "loop.fixedInterval": "Sabit aralık",

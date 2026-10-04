@@ -106,10 +106,10 @@
     function scheduleSummary(cron, interval) {
         return cron ? 'cron: ' + cron : I18n.t('loop.every', {n: interval || 5});
     }
-    // 拆 loop.every 模板（如 "每{n}分钟"）的前后缀，供浮层行内句式 "每 [5] 分钟" 使用；
+    // 拆 loop.everyRunOnce 模板（如 "每隔{n}分钟执行一次"）的前后缀，供浮层行内句式 "每隔 [5] 分钟执行一次" 使用；
     // 哨兵字符避免与真实内容冲突，ja 等语言前缀可能为空字符串。
     function everyParts() {
-        var parts = String(I18n.t('loop.every', {n: '\u0000'})).split('\u0000');
+        var parts = String(I18n.t('loop.everyRunOnce', {n: '\u0000'})).split('\u0000');
         return { pre: parts[0] || '', post: parts[1] || '' };
     }
     function scheduleSelHtml(cron, interval) {

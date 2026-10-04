@@ -516,6 +516,7 @@
   "loop.empty": "No automation tasks",
   "loop.enable": "Enable",
   "loop.every": "Every {n} min",
+  "loop.everyRunOnce": "Run once every {n} min",
   "loop.executedTimes": "Executed {n} times",
   "loop.fillTemplate": "Fill template",
   "loop.fixedInterval": "Fixed interval",

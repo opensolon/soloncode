@@ -479,6 +479,7 @@
   "loop.empty": "Nema automatizacija",
   "loop.enable": "Omogući",
   "loop.every": "Svakih {n} minuta",
+  "loop.everyRunOnce": "Izvršavaj svakih {n} minuta",
   "loop.executedTimes": "Izvršeno {n} puta",
   "loop.fillTemplate": "Popuni predložak",
   "loop.fixedInterval": "Fiksni interval",

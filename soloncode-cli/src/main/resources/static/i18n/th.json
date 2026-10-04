@@ -479,6 +479,7 @@
   "loop.empty": "ยังไม่มีงานอัตโนมัติ",
   "loop.enable": "เปิดใช้งาน",
   "loop.every": "ทุก {n} นาที",
+  "loop.everyRunOnce": "ทำงานทุก {n} นาที",
   "loop.executedTimes": "ดำเนินการแล้ว {n} ครั้ง",
   "loop.fillTemplate": "เติมเทมเพลต",
   "loop.fixedInterval": "ช่วงเวลาคงที่",

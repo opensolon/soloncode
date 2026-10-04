@@ -479,6 +479,7 @@
   "loop.empty": "Нет автоматизаций",
   "loop.enable": "Включить",
   "loop.every": "Каждые {n} мин",
+  "loop.everyRunOnce": "Выполнять каждые {n} мин",
   "loop.executedTimes": "Выполнено раз: {n}",
   "loop.fillTemplate": "Заполнить шаблон",
   "loop.fixedInterval": "Фиксированный интервал",

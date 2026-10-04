@@ -479,6 +479,7 @@
   "loop.empty": "Δεν υπάρχουν αυτοματοποιήσεις",
   "loop.enable": "Ενεργοποίηση",
   "loop.every": "Κάθε {n} λεπτά",
+  "loop.everyRunOnce": "Εκτέλεση κάθε {n} λεπτά",
   "loop.executedTimes": "Εκτελέστηκε {n} φορές",
   "loop.fillTemplate": "Συμπλήρωση προτύπου",
   "loop.fixedInterval": "Σταθερό διάστημα",

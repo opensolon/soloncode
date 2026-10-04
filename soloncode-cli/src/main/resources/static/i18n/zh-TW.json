@@ -479,6 +479,7 @@
   "loop.empty": "暫無自動任務",
   "loop.enable": "啓用",
   "loop.every": "每{n}分鐘",
+  "loop.everyRunOnce": "每隔{n}分鐘執行一次",
   "loop.executedTimes": "已執行{n}次",
   "loop.fillTemplate": "填入範本",
   "loop.fixedInterval": "固定間隔",

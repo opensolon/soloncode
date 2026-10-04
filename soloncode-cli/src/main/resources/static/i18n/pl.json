@@ -479,6 +479,7 @@
   "loop.empty": "Brak automatyzacji",
   "loop.enable": "Włącz",
   "loop.every": "Co {n} min",
+  "loop.everyRunOnce": "Wykonuj co {n} min",
   "loop.executedTimes": "Wykonano {n} razy",
   "loop.fillTemplate": "Wypełnij szablon",
   "loop.fixedInterval": "Stały interwał",

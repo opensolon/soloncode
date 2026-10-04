@@ -516,6 +516,7 @@
   "loop.empty": "暂无自动任务",
   "loop.enable": "启用",
   "loop.every": "每{n}分钟",
+  "loop.everyRunOnce": "每隔{n}分钟执行一次",
   "loop.executedTimes": "已执行{n}次",
   "loop.fillTemplate": "填充模板",
   "loop.fixedInterval": "固定间隔",

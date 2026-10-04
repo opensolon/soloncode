@@ -3564,10 +3564,10 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
  .auto-schedule-tab:hover { color: var(--text-primary); }
  .auto-schedule-tab.active { background: var(--bg-input-box); color: var(--accent); box-shadow: var(--shadow); font-weight: 600; }
  .auto-schedule-panel.hidden { display: none; }
- .auto-schedule-line { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-secondary); font-size: var(--fs-sm); }
+  .auto-schedule-line { display: flex; align-items: center; justify-content: flex-start; gap: 6px; color: var(--text-secondary); font-size: var(--fs-sm); }
  .auto-schedule-line .auto-interval { width: 58px; height: 30px; box-sizing: border-box; padding: 4px 7px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); text-align: center; font: inherit; outline: none; }
  .auto-schedule-line .auto-interval:focus, .auto-schedule-cron .auto-cron:focus { border-color: var(--accent); }
- .auto-interval-pills { justify-content: center; margin-top: 10px; }
+  .auto-interval-pills { justify-content: flex-start; margin-top: 10px; }
  .auto-interval-pills button { min-width: 30px; }
  .auto-schedule-cron .auto-cron { width: 100%; box-sizing: border-box; height: 32px; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-xs); outline: none; }
  .auto-cron-links { display: flex; gap: 10px; margin-top: 8px; }

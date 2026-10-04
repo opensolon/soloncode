@@ -479,6 +479,7 @@
   "loop.empty": "কোনো অটোমেশন টাস্ক নেই",
   "loop.enable": "সক্রিয় করুন",
   "loop.every": "প্রতি {n} মিনিট",
+  "loop.everyRunOnce": "প্রতি {n} মিনিটে একবার চালান",
   "loop.executedTimes": "{n} বার সম্পাদিত",
   "loop.fillTemplate": "টেমপ্লেট পূরণ",
   "loop.fixedInterval": "নির্দিষ্ট ব্যবধান",

@@ -479,6 +479,7 @@
   "loop.empty": "Chưa có tác vụ tự động",
   "loop.enable": "Bật",
   "loop.every": "Mỗi {n} phút",
+  "loop.everyRunOnce": "Chạy mỗi {n} phút",
   "loop.executedTimes": "Đã chạy {n} lần",
   "loop.fillTemplate": "Điền mẫu",
   "loop.fixedInterval": "Khoảng thời gian cố định",

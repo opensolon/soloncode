@@ -479,6 +479,7 @@
   "loop.empty": "자동 작업이 없습니다",
   "loop.enable": "활성화",
   "loop.every": "{n}분마다",
+  "loop.everyRunOnce": "{n}분마다 한 번 실행",
   "loop.executedTimes": "{n}회 실행됨",
   "loop.fillTemplate": "템플릿 채우기",
   "loop.fixedInterval": "고정 간격",

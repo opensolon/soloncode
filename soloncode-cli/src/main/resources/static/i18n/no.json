@@ -479,6 +479,7 @@
   "loop.empty": "Ingen automatiseringer",
   "loop.enable": "Aktiver",
   "loop.every": "Hvert {n} minutt",
+  "loop.everyRunOnce": "Kjør hvert {n} minutt",
   "loop.executedTimes": "Utført {n} ganger",
   "loop.fillTemplate": "Fyll inn mal",
   "loop.fixedInterval": "Fast intervall",
