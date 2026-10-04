@@ -314,17 +314,16 @@ public class WebEventMapper {
         String resultContent = event.getText();
 
         if (Assert.isNotEmpty(resultContent)) {
-            // 过程消息只同步给发起本轮的 IM 来源端；不跨端广播，避免 web / 其它 IM 被刷屏。
-            // 主代理最终答复统一由 RunEndEvent 分发。
+            // 推送过程消息（过程思考的结果）。主代理最终答复统一由 RunEndEvent 分发。
             if (event.isToolCalls()) {
-                streamBuilder.replyPartialToOriginChannel(wsContext, sessionId, resultContent);
+                streamBuilder.replyToBoundChannel(wsContext, sessionId, resultContent, false);
             } else {
                 String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
                 String eventAgentName = event.getTrace() == null ? null : event.getTrace().getAgentName();
 
                 if (eventAgentName == null || !eventAgentName.equals(agentSelectedTmp)) {
                     // 次代理结果属于过程消息；源代理结果留给 RunEndEvent 统一广播。
-                    streamBuilder.replyPartialToOriginChannel(wsContext, sessionId, resultContent);
+                    streamBuilder.replyToBoundChannel(wsContext, sessionId, resultContent, false);
                 }
             }
         }

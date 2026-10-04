@@ -36,24 +36,6 @@ class WebStreamBuilderReplyRouteTest {
     }
 
     @Test
-    void webTurnDoesNotPushPartialToBoundIm() {
-        // 过程消息只回来源端：web 发起时 route 为空，不得下发任何 IM
-        WorkspaceContext context = mock(WorkspaceContext.class);
-        HarnessEngine engine = mock(HarnessEngine.class);
-        AgentSession session = mock(AgentSession.class);
-        ChannelHub hub = mock(ChannelHub.class);
-        Channel im = mock(Channel.class);
-        when(context.getEngine()).thenReturn(engine);
-        when(engine.getSession("s1")).thenReturn(session);
-        when(session.attrs()).thenReturn(new HashMap<>());
-        when(context.getChannelHub()).thenReturn(hub);
-        when(hub.getImLinks()).thenReturn(Arrays.asList(im));
-        when(im.isBound("s1")).thenReturn(true);
-        new WebStreamBuilder().replyPartialToOriginChannel(context, "s1", "过程叙述");
-        verifyNoInteractions(im);
-    }
-
-    @Test
     void terminalMessageIsDeliveredOnlyOncePerTurn() {
         // 终态去重门：final / error / canceled 共用，IM 每轮只收一条终态
         WorkspaceContext context = mock(WorkspaceContext.class);

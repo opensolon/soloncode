@@ -55,49 +55,6 @@ class WebEventMapperChannelReplyTest {
     }
 
     @Test
-    void processReasonEndsGoOnlyThroughOriginChannelPath() {
-        WebStreamBuilder streamBuilder = mock(WebStreamBuilder.class);
-        WorkspaceContext wsContext = mock(WorkspaceContext.class);
-        AgentSession session = mock(AgentSession.class);
-        Map<String, Object> attrs = new HashMap<>();
-        attrs.put("_agent_selected_tmp", "main");
-        when(session.getSessionId()).thenReturn("s1");
-        when(session.attrs()).thenReturn(attrs);
-
-        ReasonEndEvent toolReasonEnd = mock(ReasonEndEvent.class);
-        when(toolReasonEnd.getText()).thenReturn("工具调用前的过程答复");
-        when(toolReasonEnd.isToolCalls()).thenReturn(true);
-
-        ReActTrace subAgentTrace = mock(ReActTrace.class);
-        when(subAgentTrace.getAgentName()).thenReturn("sub-agent");
-        ReasonEndEvent subAgentReasonEnd = mock(ReasonEndEvent.class);
-        when(subAgentReasonEnd.getTrace()).thenReturn(subAgentTrace);
-        when(subAgentReasonEnd.getText()).thenReturn("子代理过程答复");
-
-        ReActTrace runTrace = mock(ReActTrace.class);
-        when(runTrace.getFinalAnswer()).thenReturn("整轮最终答复");
-        RunEndEvent runEnd = mock(RunEndEvent.class);
-        when(runEnd.getTrace()).thenReturn(runTrace);
-
-        WebEventMapper mapper = new WebEventMapper(streamBuilder, wsContext, session, null);
-
-        assertFalse(WebEvent.isNotEmpty(mapper.mapEvent(toolReasonEnd).get(0)));
-        assertFalse(WebEvent.isNotEmpty(mapper.mapEvent(subAgentReasonEnd).get(0)));
-
-        // 过程消息只走「仅来源端」通道，绝不走全端广播
-        verify(streamBuilder, times(1))
-                .replyPartialToOriginChannel(wsContext, "s1", "工具调用前的过程答复");
-        verify(streamBuilder, times(1))
-                .replyPartialToOriginChannel(wsContext, "s1", "子代理过程答复");
-        verify(streamBuilder, never())
-                .replyToBoundChannel(any(), anyString(), anyString(), anyBoolean());
-
-        mapper.mapEvent(runEnd);
-        verify(streamBuilder, times(1))
-                .replyToBoundChannel(wsContext, "s1", "整轮最终答复", true);
-    }
-
-    @Test
     void abnormalRunDoesNotCreateASecondFinalReplyPath() {
         WebStreamBuilder streamBuilder = mock(WebStreamBuilder.class);
         WorkspaceContext wsContext = mock(WorkspaceContext.class);
