@@ -1160,7 +1160,7 @@ body {
 
 /* Cron 快捷示例 */
 .loop-cron-examples { padding: 4px 0 0; font-size: var(--fs-xs); color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
-.loop-cron-hint { opacity: 0.7; }
+.loop-cron-hint { opacity: 0.7; } .auto-schedule-pop .loop-cron-hint { font-size: var(--fs-xs); }
 .loop-cron-link { color: var(--accent); cursor: pointer; text-decoration: none; padding: 1px 6px; border-radius: 4px; background: var(--bg-hover); transition: background 0.12s; }
 .loop-cron-link:hover { background: var(--border-color); }
 
@@ -3544,7 +3544,8 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 /* 自动任务表单：任务描述/智能体/模型 合成聊天输入面板式一体卡片 */
 .auto-input-box { background: var(--bg-input-box); border: 1px solid var(--border-input); border-radius: 14px; box-shadow: var(--shadow); display: flex; flex-direction: column; transition: all 0.25s; }
 .auto-input-box:focus-within { border-color: var(--accent); box-shadow: var(--shadow), 0 0 0 3px rgba(79,110,247,0.06); }
-.auto-input-box .auto-prompt { border: none; outline: none; resize: vertical; background: transparent; padding: 12px 14px 4px; font-family: var(--font-sans); font-size: var(--fs-md); color: var(--text-primary); min-height: calc(44px * var(--font-scale)); line-height: 1.6; box-sizing: border-box; }
+ .auto-input-box .auto-prompt-label { padding: 10px 14px 0; color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.4; }
+ .auto-input-box .auto-prompt { border: none; outline: none; resize: vertical; background: transparent; padding: 4px 14px 4px; font-family: var(--font-sans); font-size: var(--fs-md); color: var(--text-primary); min-height: calc(44px * var(--font-scale)); line-height: 1.6; box-sizing: border-box; }
 .auto-input-box .auto-prompt::placeholder { color: var(--text-secondary); }
 /* 一体卡片内选择器：复用 toolbar-selector-group，下拉向下弹（编辑区在页面中部，不同于输入面板的向上弹） */
 .auto-select-group .model-dropdown { bottom: auto; top: 100%; margin-top: 6px; margin-bottom: 0; left: -26px; min-width: 320px; width: max-content; animation: none; }
@@ -3555,6 +3556,8 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
  .auto-schedule-group { position: relative; }
  .auto-schedule-group .model-name { max-width: 150px; }
  .auto-schedule-group .auto-schedule-pop { left: auto; right: -8px; min-width: 286px; width: 286px; padding: 12px; overflow: visible; color: var(--text-primary); }
+ /* 调度面板在空间不足时由 JS 改为 fixed 定位，脱离行和滚动容器，避免向上展开被顶部/父级裁剪 */
+ .auto-schedule-group .auto-schedule-pop.is-fixed { position: fixed; left: auto; right: auto; top: auto; bottom: auto; max-height: calc(100vh - 20px); overflow-y: auto; z-index: 10005; }
  .auto-schedule-title { font-size: var(--fs-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
  .auto-schedule-tabs { display: flex; gap: 3px; padding: 3px; margin-bottom: 12px; border-radius: 8px; background: var(--bg-hover); }
  .auto-schedule-tab { flex: 1; border: 0; border-radius: 6px; padding: 6px 8px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-xs); cursor: pointer; transition: all .15s; }
@@ -3569,9 +3572,10 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
  .auto-schedule-cron .auto-cron { width: 100%; box-sizing: border-box; height: 32px; padding: 5px 8px; border: 1px solid var(--border-color); border-radius: 7px; background: var(--bg-input); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-xs); outline: none; }
  .auto-cron-links { display: flex; gap: 10px; margin-top: 8px; }
  .auto-cron-links .loop-cron-link { font-size: var(--fs-xs); }
- .auto-schedule-hint { margin-top: 8px; color: var(--text-tertiary); font-size: var(--fs-2xs); letter-spacing: .02em; }
  .auto-schedule-select.open .auto-schedule-pop { display: flex; flex-direction: column; }
  .auto-schedule-select.open .auto-schedule-pop { animation: none; }
+ .auto-schedule-pop.is-fixed .auto-schedule-tabs,
+ .auto-schedule-pop.is-fixed .auto-schedule-title { flex-shrink: 0; }
  .auto-schedule-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
  @media (max-width: 700px) { .auto-schedule-group .auto-schedule-pop { right: -60px; max-width: calc(100vw - 32px); } }
 @media (max-width: 700px) {
