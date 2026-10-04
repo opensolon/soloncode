@@ -16,7 +16,7 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.util.MountPathUtil;
-import org.noear.solon.codecli.workspace.fs.FileWatchService;
+import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.codecli.util.OsOpenUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -502,7 +502,7 @@ public class MountSettingsController extends BaseSettingsController {
 
         switch (mount.getType()) {
             case FILES:
-                root.addHandler(changes -> webGate().broadcastRaw(wsContext, FileWatchService.buildFrontendJson(changes)));
+                root.addHandler(changes -> runtimePort().broadcastRaw(wsContext, FileWatchService.buildFrontendJson(changes)));
                 break;
             case SKILLS:
                 root.addHandler(changes -> engine().getSkillCatalog().refreshByMount(mount.getAlias()));

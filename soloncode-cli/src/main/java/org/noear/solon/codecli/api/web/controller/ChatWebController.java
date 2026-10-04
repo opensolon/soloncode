@@ -396,7 +396,7 @@ public class ChatWebController extends AbstractWebController {
             }
 
             // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）
-            webGate().onChatInput(currentContext(), sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null,
+            runtimePort().onChatInput(currentContext(), sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null,
                     reasoningEffort, thinkingMode, selectedAgent);
 
             // 返回简单 JSON，前端通过 WebSocket 接收 AI 结果
@@ -473,7 +473,7 @@ public class ChatWebController extends AbstractWebController {
             String input = payload.toJson();
 
             // 复用既有输入通道：作为一条来源为 web 的用户消息下发
-            webGate().onChatInput(currentContext(), sessionId, sessionCwd, input, model, null, null, null, "web",
+            runtimePort().onChatInput(currentContext(), sessionId, sessionCwd, input, model, null, null, null, "web",
                     null, null, selectedAgent);
 
             return Result.succeed();
@@ -521,7 +521,7 @@ public class ChatWebController extends AbstractWebController {
                 && steerId.trim().length() > SteerInterceptor.MAX_ID_LENGTH) {
             return Result.failure(400, "INVALID_STEER_ID");
         }
-        if (!webGate().isSessionBusy(engine(), sessionId)) {
+        if (!runtimePort().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "NOT_RUNNING");
         }
 
@@ -540,7 +540,7 @@ public class ChatWebController extends AbstractWebController {
         // source 传 null：Web 插话被 dropped 时由前端转排队，无需后端兑底。
         SteerInterceptor.SteerResult result = SteerInterceptor.steer(
                 session, runId, steerId, text, null,
-                () -> webGate().isSessionBusy(engine(), sessionId));
+                () -> runtimePort().isSessionBusy(engine(), sessionId));
 
         switch (result.getStatusCode()) {
             case "STEERED": {

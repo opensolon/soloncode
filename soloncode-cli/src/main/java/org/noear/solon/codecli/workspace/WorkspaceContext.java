@@ -1,12 +1,11 @@
 package org.noear.solon.codecli.workspace;
 
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.automation.AutomationManager;
+import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
-import org.noear.solon.codecli.workspace.fs.FileWatchService;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.api.web.WebGate;
-import org.noear.solon.codecli.workspace.file.FileService;
+import org.noear.solon.codecli.workspace.filer.FileWatchService;
+import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -143,11 +142,12 @@ public class WorkspaceContext implements Closeable {
     }
 
     /**
-     * 兼容旧版扩展：新的 Channel 代码应使用 {@link #getMessageGateway()}。
+     * 当前工作区的入口运行时端口。
+     *
+     * <p>正式 Web 模式启动后由 WorkspaceManager 动态绑定；CLI/headless 模式下可以为空。</p>
      */
-    @Deprecated
-    public WebGate getWebGate() {
-        return manager != null ? manager.getWebGate() : null;
+    public WorkspaceRuntimePort getRuntimePort() {
+        return manager != null ? manager.getRuntimePort() : null;
     }
 
     public List<WebSocket> getConnections() {

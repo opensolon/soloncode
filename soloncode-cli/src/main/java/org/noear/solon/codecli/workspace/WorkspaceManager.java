@@ -13,16 +13,14 @@ import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.codecli.command.builtin.*;
-import org.noear.solon.codecli.automation.AutomationManager;
+import org.noear.solon.codecli.loop.*;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.ManagerExtension;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.entity.*;
-import org.noear.solon.codecli.memory.MemoryProvider;
-import org.noear.solon.codecli.workspace.fs.FileWatchService;
-import org.noear.solon.codecli.api.web.WebGate;
-import org.noear.solon.codecli.workspace.file.FileService;
+import org.noear.solon.codecli.workspace.filer.FileWatchService;
+import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionManager;
@@ -115,10 +113,6 @@ public class WorkspaceManager implements WorkspaceRegistry {
         sweeper.scheduleWithFixedDelay(this::releaseIdleWorkspaces, 10, 10, java.util.concurrent.TimeUnit.MINUTES);
     }
 
-    public synchronized void setWebGate(WebGate webGate) {
-        setRuntimePort(webGate);
-    }
-
     /**
      * 绑定入口运行时端口。
      *
@@ -144,18 +138,6 @@ public class WorkspaceManager implements WorkspaceRegistry {
      */
     public WorkspaceRuntimePort getRuntimePort() {
         return this.runtimePort;
-    }
-
-    /**
-     * 兼容旧版 Web 入口。
-     *
-     * <p>运行时状态以 {@link #runtimePort} 为唯一来源；只有当前端口确实由
-     * {@link WebGate} 实现时，旧 getter 才返回非空。</p>
-     */
-    @Deprecated
-    public WebGate getWebGate() {
-        WorkspaceRuntimePort port = this.runtimePort;
-        return port instanceof WebGate ? (WebGate) port : null;
     }
 
     /**

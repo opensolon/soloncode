@@ -21,7 +21,7 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;

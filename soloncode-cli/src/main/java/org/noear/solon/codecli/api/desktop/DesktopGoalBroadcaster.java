@@ -17,8 +17,8 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.codecli.command.builtin.GoalState;
-import org.noear.solon.codecli.command.builtin.LoopTask;
+import org.noear.solon.codecli.loop.GoalState;
+import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.ai.harness.HarnessEngine;
 

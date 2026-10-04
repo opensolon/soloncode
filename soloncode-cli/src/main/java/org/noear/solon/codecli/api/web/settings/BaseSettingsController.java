@@ -16,8 +16,8 @@ import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.model.discovery.ModelSpecService;
 import org.noear.solon.codecli.model.discovery.ModelsAdapterManager;
-import org.noear.solon.codecli.workspace.fs.FileWatchService;
-import org.noear.solon.codecli.api.web.WebGate;
+import org.noear.solon.codecli.workspace.filer.FileWatchService;
+import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
 import org.noear.solon.codecli.util.MountPathUtil;
 import org.noear.solon.codecli.market.MarketManager;
 import org.noear.solon.codecli.api.web.service.SkinService;
@@ -69,7 +69,7 @@ public class BaseSettingsController {
     protected final ModelSpecService modelSpecService;
 
 
-    // fileWatchService()/webGate() 从当前工作区上下文动态提取；
+    // fileWatchService()/runtimePort() 从当前工作区上下文动态提取；
     // 不再构造注入全局实例——注入字段从未被使用，且跨工作区场景下全局实例语义也是错的
 
     // 动态提取所属工作区的引擎和服务
@@ -90,7 +90,7 @@ public class BaseSettingsController {
     protected HarnessEngine engine() { return currentContext().getEngine(); }
     protected AgentSettings settings() { return currentContext().getSettings(); }
     protected FileWatchService fileWatchService() { return currentContext().getFileWatchService(); }
-    protected WebGate webGate() { return currentContext().getWebGate(); }
+    protected WorkspaceRuntimePort runtimePort() { return currentContext().getRuntimePort(); }
 
     protected WorkspaceManager workspaceManager() { return workspaceManager; }
 

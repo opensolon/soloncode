@@ -33,7 +33,7 @@ import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.WebCommandContext;
-import org.noear.solon.codecli.command.builtin.LoopTask;
+import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;

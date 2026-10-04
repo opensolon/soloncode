@@ -23,7 +23,7 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.model.discovery.ModelApiUrl;
 import org.noear.solon.codecli.model.discovery.ModelInfo;

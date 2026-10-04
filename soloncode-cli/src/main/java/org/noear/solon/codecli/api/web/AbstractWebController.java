@@ -15,16 +15,15 @@
  */
 package org.noear.solon.codecli.api.web;
 
-import org.noear.solon.codecli.api.web.WebGate;
-import org.noear.solon.codecli.api.web.WebSessionIds;
-import org.noear.solon.codecli.automation.AutomationManager;
+import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
-import org.noear.solon.codecli.workspace.file.FileService;
+import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
+import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopScheduler;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -33,13 +32,13 @@ import java.nio.file.Path;
  * Web 领域 Controller 共享基类。
  *
  * <p>原 WebController（3000+ 行、70 路由）按领域拆分后，各子 Controller 复用同一组
- * 工作区访问辅助：currentContext / engine / webGate / loopScheduler 等。这些辅助
+ * 工作区访问辅助：currentContext / engine / runtimePort / loopScheduler 等。这些辅助
  * 全部依赖「当前请求工作区」语义（多工作区下按请求路由到对应上下文），因此收敛到
  * 本基类统一提供，避免每个领域 Controller 重复持有 WorkspaceManager 并复制取数逻辑。</p>
  *
- * <p>子类只做参数解析、安全校验和结果转发；业务委派给 WebGate / 领域服务。</p>
+ * <p>子类只做参数解析、安全校验和结果转发；业务委派给运行时端口 / 领域服务。</p>
  *
- * @see WebGate        WebSocket 推送网关
+ * @see WorkspaceRuntimePort 入口运行时端口（Web/Desktop 等入口的适配能力）
  * @see WorkspaceManager 工作区管理器
  */
 public abstract class AbstractWebController {
@@ -64,8 +63,13 @@ public abstract class AbstractWebController {
         return currentContext().getEngine();
     }
 
-    protected WebGate webGate() {
-        return currentContext().getWebGate();
+    /**
+     * 当前工作区的入口运行时端口（输入受理、会话繁忙判断、中断、原始广播等）。
+     *
+     * <p>正式 Web 模式下由 WebGate 实现；headless 等无入口模式返回 null。</p>
+     */
+    protected WorkspaceRuntimePort runtimePort() {
+        return currentContext().getRuntimePort();
     }
 
     protected LoopScheduler loopScheduler() {

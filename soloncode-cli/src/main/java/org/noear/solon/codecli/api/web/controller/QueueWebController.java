@@ -211,7 +211,7 @@ public class QueueWebController extends AbstractWebController {
             int position = SessionQueue.enqueue(session, text, "WEB", null, null, null, id,
                     model, reasoningEffort, thinkingMode, selectedAgent, false);
             if (position < 0) return Result.failure(409, "Queue is full or storage failed");
-            webGate().drainSessionQueue(currentContext(), session);
+            runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(queuePath.getParent()));
         } catch (Exception e) { return Result.failure(400, "Invalid queue item"); }
     }
@@ -246,7 +246,7 @@ public class QueueWebController extends AbstractWebController {
             if (!isValidSessionId(sessionId) || session == null || queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
             SessionQueue.bindStorage(session, queuePath.getParent());
             if (!SessionQueue.promote(session, itemId)) return Result.failure(404, "Queue item not found");
-            webGate().drainSessionQueue(currentContext(), session);
+            runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(queuePath.getParent()));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
     }

@@ -8,12 +8,12 @@ import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
 import org.noear.solon.annotation.Inject;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.api.web.*;
 import org.noear.solon.codecli.entry.cli.*;
-import org.noear.solon.codecli.workspace.fs.FileWatchService;
+import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.codecli.entry.acp.AcpLink;
 import org.noear.solon.codecli.entry.cli.CliShell;
 import org.noear.solon.codecli.entry.cli.HelpMode;
@@ -37,7 +37,6 @@ import org.noear.solon.codecli.api.web.controller.QueueWebController;
 import org.noear.solon.codecli.api.web.controller.FilerWebController;
 import org.noear.solon.codecli.api.web.MemoryController;
 import org.noear.solon.codecli.api.web.run.RunController;
-import org.noear.solon.codecli.api.web.WebSettingsController;
 import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.codecli.auth.*;
 import org.noear.solon.codecli.api.web.settings.*;
@@ -249,7 +248,7 @@ public class Configurator {
         // 其连接池与默认工作区上下文共享同一引用，保证默认工作区推送一致。
         WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
         WebGate webGate = new WebGate(workspaceManager);
-        workspaceManager.setWebGate(webGate);
+        workspaceManager.setRuntimePort(webGate);
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         // 复用默认工作区上下文中已创建并启动的 FileWatchService：

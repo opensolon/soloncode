@@ -16,7 +16,7 @@
 package org.noear.solon.codecli.api.desktop.controller;
 
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.session.SessionManager;
 
 /**

@@ -180,7 +180,7 @@ public class SessionWebController extends AbstractWebController {
                 if (meta.isPinned()) {
                     continue;
                 }
-                if (webGate().isSessionBusy(engine(), sessionId)) {
+                if (runtimePort().isSessionBusy(engine(), sessionId)) {
                     skippedBusy++;
                     continue;
                 }
@@ -262,7 +262,7 @@ public class SessionWebController extends AbstractWebController {
 
         Path activeWorkspace = Paths.get(currentEngine.getWorkspace()).toAbsolutePath().normalize();
         boolean activeWorkspaceSession = workspaceRoot.equals(activeWorkspace);
-        if (activeWorkspaceSession && webGate().isSessionBusy(engine(), sessionId)) {
+        if (activeWorkspaceSession && runtimePort().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "Session is running");
         }
 
@@ -582,7 +582,7 @@ public class SessionWebController extends AbstractWebController {
         try {
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
             String lastUserMsg = readLastUserMessage(session);
-            boolean running = webGate().isSessionBusy(engine(), sessionId);
+            boolean running = runtimePort().isSessionBusy(engine(), sessionId);
 
             Map<String, Object> data = LAST_TRACE_SERVICE.buildLastTrace(session, running, lastUserMsg);
             return Result.succeed(data);
@@ -627,14 +627,14 @@ public class SessionWebController extends AbstractWebController {
 
         if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
         // 按当前请求工作区上下文取 WebGate，避免非默认工作区会话中断时推送串到默认工作区
-        if (!webGate().interruptSession(currentContext(), sessionId)) {
+        if (!runtimePort().interruptSession(currentContext(), sessionId)) {
             return Result.failure(500, "Failed to cancel session queue; task was not interrupted");
         }
 
         // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
-        org.noear.solon.codecli.command.builtin.LoopScheduler loopScheduler = loopScheduler();
+        org.noear.solon.codecli.loop.LoopScheduler loopScheduler = loopScheduler();
         if (loopScheduler != null) {
-            org.noear.solon.codecli.command.builtin.LoopTask activeGoal = loopScheduler.findActiveGoalInSession(sessionId);
+            org.noear.solon.codecli.loop.LoopTask activeGoal = loopScheduler.findActiveGoalInSession(sessionId);
             if (activeGoal != null) {
                 loopScheduler.pauseGoal(sessionId, activeGoal.getId());
                 LOG.info("[SessionWebController] Goal '{}' paused due to session interrupt", activeGoal.getId());
@@ -676,7 +676,7 @@ public class SessionWebController extends AbstractWebController {
         }
         Path sessionPath = currentContext().getSessionPath(sessionId);
         if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
-        if (webGate().isSessionBusy(engine(), sessionId)) {
+        if (runtimePort().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "Session is running");
         }
 

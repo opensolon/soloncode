@@ -20,9 +20,9 @@ import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
-import org.noear.solon.codecli.command.builtin.GoalState;
-import org.noear.solon.codecli.command.builtin.LoopScheduler;
-import org.noear.solon.codecli.command.builtin.LoopTask;
+import org.noear.solon.codecli.loop.GoalState;
+import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 

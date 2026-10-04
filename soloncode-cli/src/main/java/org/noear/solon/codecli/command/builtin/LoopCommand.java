@@ -20,6 +20,9 @@ import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.codecli.config.entity.LoopGroupDo;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
+import org.noear.solon.codecli.loop.GoalState;
+import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.codecli.loop.LoopTask;
 import reactor.core.Disposable;
 
 import java.nio.file.Path;

@@ -203,11 +203,11 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         queueDispatcher.recoverSessionQueues(wsContext);
     }
 
-    /**
-     * 从队头领取队列任务并派发给输入处理（队列 HTTP 接口取消/确认后触发）。
+    /** 从队头领取队列任务并派发给输入处理（队列 HTTP 接口取消/确认后触发）。
      *
      * <p>业务实现见 {@link WebQueueDispatcher#drainSessionQueue}。</p>
      */
+    @Override
     public void drainSessionQueue(WorkspaceContext wsContext, AgentSession session) {
         queueDispatcher.drainSessionQueue(wsContext, session);
     }
@@ -440,6 +440,10 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         }
     }
 
+    /**
+     * 广播原始 JSON 字符串到指定工作区的所有 WebSocket 连接。
+     */
+    @Override
     public void broadcastRaw(WorkspaceContext wsContext, String json) {
         if (wsContext == null) {
             return;
@@ -514,6 +518,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
      * <p>业务实现见 {@link WebChatInputHandler#onChatInput}；处理流程：忙态入队 →
      * Agent 前缀解析 → HITL 审批 → 附件落盘 → 斜杠命令分发 → Agent 流式任务。</p>
      */
+    @Override
     public void onChatInput(WorkspaceContext wsContext,
                             String sessionId,
                             String sessionCwd,
@@ -585,6 +590,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
      *
      * @param sessionId 待中断的会话标识
      */
+    @Override
     public boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         return inputHandler.interruptSession(wsContext, sessionId);
     }
