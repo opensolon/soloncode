@@ -4,6 +4,7 @@
 
 * 添加 soloncode web 全局自动任务
 * 优化 soloncode web im `插话`与`排队`支持
+* 修复 soloncode 非启动目录的工作区的 AGENTS.md 失效问题
 * 细节优化
 
 ### v2026.9.29
