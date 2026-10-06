@@ -12,6 +12,7 @@ import org.noear.solon.ai.talents.lsp.LspServerParameters;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
+import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.loop.*;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -128,6 +129,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 运行时端口就绪后才拉起默认工作区的 IM 长连接：acp/cli 等无入口端口的模式下
         // 不启动 IM 连接，避免抢走飞书 WS 路由却无处投递消息。
         if (runtimePort != null && defaultContext != null) {
+            // 进程级 IM 网关：注入工作区解析端口（消息投递时按需唤醒工作区）
+            ImGateway.getInstance(defaultContext.getEngine()).setWorkspaces(this, this::workspacePathOf);
             RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(defaultContext.getMeta().getPath(),
                     defaultContext.getChannelHub()::start));
         }
@@ -340,6 +343,28 @@ public class WorkspaceManager implements WorkspaceRegistry {
             return defaultContext;
         }
         return contexts.get(workspaceIdOrPath);
+    }
+
+    /**
+     * 解析工作区物理路径（供进程级 IM 网关做连接线程日志归属）。
+     *
+     * <p>只读查询：内存未命中时回查历史记录，不创建/唤醒工作区，失败返回 null。</p>
+     */
+    public String workspacePathOf(String workspaceIdOrPath) {
+        String key = normalizeWorkspaceKey(workspaceIdOrPath);
+        if (key == null || key.isEmpty() || ID_DEFAULT.equals(key)) {
+            return defaultContext == null ? null : defaultContext.getMeta().getPath();
+        }
+        WorkspaceContext ctx = contexts.get(key);
+        if (ctx != null) {
+            return ctx.getMeta().getPath();
+        }
+        for (WorkspaceMeta meta : listWorkspaces()) {
+            if (key.equals(meta.getId())) {
+                return meta.getPath();
+            }
+        }
+        return null;
     }
 
     /**
@@ -845,6 +870,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 仅入口运行时就绪后才拉起：acp/cli 模式没有消息运行时，连接收到消息后
         // 无法投递，且会抢走飞书/钉钉服务端的消息路由。
         if (getRuntimePort() != null) {
+            // 进程级 IM 网关：注入工作区解析端口（消息投递时按需唤醒工作区）
+            ImGateway.getInstance(engine).setWorkspaces(this, this::workspacePathOf);
             RunUtil.async(WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, context.getChannelHub()::start));
         }
 

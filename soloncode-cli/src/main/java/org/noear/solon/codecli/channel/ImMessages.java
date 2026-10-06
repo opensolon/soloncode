@@ -69,6 +69,10 @@ public final class ImMessages {
      */
     private static final String KEY_HINT_UNBOUND = "im.hint.unbound";
     /**
+     * bot 已被别的对话占用时的引导
+     */
+    private static final String KEY_HINT_BOT_TAKEN = "im.hint.botTaken";
+    /**
      * 非文本消息回执
      */
     private static final String KEY_HINT_NON_TEXT = "im.hint.nonText";
@@ -105,7 +109,8 @@ public final class ImMessages {
         FALLBACK.put(KEY_ACCEPTED, "收到，马上开始处理");
         FALLBACK.put(KEY_LONG_RUNNING, "还在处理中，请再稍等一下");
         FALLBACK.put(KEY_REJECTED, "这条消息没排上队，我还没收到，稍后请重发一次。想先中断当前任务，可发送 /interrupt");
-        FALLBACK.put(KEY_HINT_UNBOUND, "还没有绑定会话，请先在 Web 端扫码绑定，然后我就能陪你聊了。");
+        FALLBACK.put(KEY_HINT_UNBOUND, "还没有绑定对话，请先在 Web 端扫码绑定，然后我就能陪你聊了。");
+        FALLBACK.put(KEY_HINT_BOT_TAKEN, "这个机器人已经绑定到别的对话了。想接到当前对话，请先在 Web 端解绑，再重新扫码绑定。");
         FALLBACK.put(KEY_HINT_NON_TEXT, "我暂时只看得懂文字，换文字发给我吧。");
         FALLBACK.put(KEY_HINT_STEER, "想补充或调整当前任务，可发送 /steer <内容>");
         FALLBACK.put(KEY_HINT_INTERRUPT, "想中断当前任务，可发送 /interrupt");
@@ -174,6 +179,11 @@ public final class ImMessages {
      */
     public static String HINT_UNBOUND() {
         return msg(KEY_HINT_UNBOUND);
+    }
+
+    /** bot 已被别的对话占用时的引导。 */
+    public static String HINT_BOT_TAKEN() {
+        return msg(KEY_HINT_BOT_TAKEN);
     }
 
     /**

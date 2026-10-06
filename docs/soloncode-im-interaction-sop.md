@@ -241,7 +241,7 @@ isBusy(session)?
 | im.accepted | 收到，马上开始处理 |
 | im.longRunning | 还在处理中，请再稍等一下 |
 | im.rejected | 还有任务没忙完，暂时接不了新的。想立刻处理，可发送 /interrupt 中断当前任务 |
-| im.hint.unbound | 还没有绑定会话，请先在 Web 端扫码绑定，然后我就能陪你聊了。 |
+| im.hint.unbound | 还没有绑定对话，请先在 Web 端扫码绑定，然后我就能陪你聊了。 |
 | im.hint.nonText | 我暂时只看得懂文字，换文字发给我吧。 |
 | im.hint.steer | 想补充或调整当前任务，可发送 /steer <内容> |
 | im.hint.interrupt | 想中断当前任务，可发送 /interrupt |

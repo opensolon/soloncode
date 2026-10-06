@@ -8,7 +8,10 @@ import org.noear.solon.codecli.channel.dingtalk.DingTalkAppRegistration;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkQRBindManager;
 import org.noear.solon.codecli.channel.feishu.FeishuAppRegistration;
+import org.noear.solon.codecli.channel.feishu.FeishuAppLeaseRegistry;
 import org.noear.solon.codecli.channel.feishu.FeishuLink;
+import org.noear.solon.codecli.channel.ImBindingRegistry;
+import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.channel.feishu.FeishuQRBindManager;
 import org.noear.solon.codecli.channel.wechat.WeChatClient;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
@@ -171,7 +174,11 @@ public class WebChannel {
 
         if (wsContext != null) {
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("bound", wsContext.getChannelHub().getWeChatLink().isBound(sessionId));
+            org.noear.solon.codecli.channel.ImGateway.WeChatStatus status =
+                    wsContext.getChannelHub().getWeChatLink().status(sessionId);
+            data.put("bound", status.isBound());
+            data.put("boundElsewhere", status.isBoundElsewhere());
+            data.put("boundWorkspaceId", status.getWorkspaceId());
             return Result.succeed(data);
         } else {
             return Result.failure();
@@ -195,7 +202,8 @@ public class WebChannel {
     @Mapping("/web/chat/feishu/bind")
     public Result feishuBind(@Param("sessionId") String sessionId,
                              @Param("appId") String appId,
-                             @Param("appSecret") String appSecret) {
+                             @Param("appSecret") String appSecret,
+                             @Param(value = "force", required = false) Boolean force) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
         }
@@ -211,15 +219,27 @@ public class WebChannel {
             return Result.failure("飞书通道未启用");
         }
 
-        // 跨工作区冲突检查：同一 appId 只允许在一个工作区建立 Stream 连接，
-        // 否则飞书服务端会随机路由消息
-        String conflict = findFeishuAppConflict(wsContext, appId);
-        if (conflict != null) {
-            return Result.failure("该 App ID 已在工作区「" + conflict + "」建立连接，同一应用只能绑定一个工作区");
+        boolean forceBind = Boolean.TRUE.equals(force);
+        String wsId = wsContext.getMeta().getId();
+        ImGateway gateway = ImGateway.getInstance(wsContext.getEngine());
+
+        // 冲突预检：同一 appId 已绑定/连接在其它工作区时，除非显式迁移（force）否则拒绝
+        ImBindingRegistry.Binding owner = gateway.findFeishuByAppId(appId);
+        if (owner != null && !wsId.equals(owner.getWorkspaceId()) && !forceBind) {
+            return feishuConflict(owner.getWorkspaceId(), owner.getSessionId());
+        }
+        FeishuAppLeaseRegistry.Lease lease = gateway.getFeishuLeases().find(appId);
+        if (lease != null && !wsId.equals(lease.getWorkspaceId()) && !forceBind) {
+            return feishuConflict(lease.getWorkspaceId(), lease.getSessionId());
         }
 
-        boolean ok = wsContext.getChannelHub().getFeishuLink().startStream(appId, appSecret, sessionId);
+        boolean ok = wsContext.getChannelHub().getFeishuLink()
+                .startStream(appId, appSecret, sessionId, forceBind);
         if (!ok) {
+            FeishuAppLeaseRegistry.Lease conflict = gateway.getFeishuLeases().find(appId);
+            if (conflict != null && !wsId.equals(conflict.getWorkspaceId())) {
+                return feishuConflict(conflict.getWorkspaceId(), conflict.getSessionId());
+            }
             return Result.failure("飞书连接启动失败，请检查 App ID 和 App Secret");
         }
         return Result.succeed();
@@ -275,6 +295,9 @@ public class WebChannel {
             data.put("bound", false);
             data.put("streamStarted", false);
             data.put("pending", false);
+            data.put("boundElsewhere", false);
+            data.put("boundWorkspaceId", null);
+            data.put("boundSessionId", null);
             return Result.succeed(data);
         }
 
@@ -327,7 +350,8 @@ public class WebChannel {
      */
     @Get
     @Mapping("/web/chat/feishu/qrcode/status")
-    public Result<Map> feishuQrcodeStatus(@Param("sessionId") String sessionId) {
+    public Result<Map> feishuQrcodeStatus(@Param("sessionId") String sessionId,
+                                           @Param(value = "force", required = false) Boolean force) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
         }
@@ -351,12 +375,23 @@ public class WebChannel {
                 String appSecret = pollResult.clientSecret;
                 String openId = pollResult.openId;
 
+                boolean started = wsContext.getChannelHub().getFeishuLink()
+                        .startStream(appId, appSecret, sessionId, Boolean.TRUE.equals(force));
+                if (!started) {
+                    ImGateway gateway = ImGateway.getInstance(wsContext.getEngine());
+                    FeishuAppLeaseRegistry.Lease lease = gateway.getFeishuLeases().find(appId);
+                    if (lease != null && !wsContext.getMeta().getId().equals(lease.getWorkspaceId())) {
+                        return feishuConflict(lease.getWorkspaceId(), lease.getSessionId());
+                    }
+                    data.put("status", "failed");
+                    data.put("bound", false);
+                    data.put("message", "飞书连接启动失败，请检查 App ID 和 App Secret");
+                    return Result.succeed(data);
+                }
+
                 if (openId != null) {
                     wsContext.getChannelHub().getFeishuLink().bindSession(sessionId, openId, appId, appSecret);
                 }
-
-                // 启动 WebSocket Stream 连接
-                wsContext.getChannelHub().getFeishuLink().startStream(appId, appSecret, sessionId);
 
                 data.put("status", "success");
                 data.put("bound", true);
@@ -420,7 +455,8 @@ public class WebChannel {
     @Mapping("/web/chat/dingtalk/bind")
     public Result dingtalkBind(@Param("sessionId") String sessionId,
                                @Param("appKey") String appKey,
-                               @Param("appSecret") String appSecret) {
+                               @Param("appSecret") String appSecret,
+                               @Param(value = "force", required = false) Boolean force) {
         if (sessionId == null || sessionId.contains("..") || sessionId.contains("/") || sessionId.contains("\\")) {
             return Result.failure("Invalid sessionId");
         }
@@ -437,10 +473,14 @@ public class WebChannel {
             return Result.failure("钉钉通道未启用");
         }
 
-        // 跨工作区冲突检查：同一 appKey 只允许在一个工作区建立 Stream 连接
-        String conflict = findDingTalkAppConflict(wsContext, appKey);
-        if (conflict != null) {
-            return Result.failure("该 AppKey 已在工作区「" + conflict + "」建立连接，同一应用只能绑定一个工作区");
+        boolean forceBind = Boolean.TRUE.equals(force);
+        String wsId = wsContext.getMeta().getId();
+        ImGateway gateway = ImGateway.getInstance(wsContext.getEngine());
+
+        // 冲突预检：同一 appKey 已绑定在其它工作区时，除非显式迁移（force）否则拒绝
+        ImBindingRegistry.Binding owner = gateway.findDingTalkByAppKey(appKey);
+        if (owner != null && !wsId.equals(owner.getWorkspaceId()) && !forceBind) {
+            return dingtalkConflict(owner.getWorkspaceId(), owner.getSessionId());
         }
 
         boolean ok = wsContext.getChannelHub().getDingTalkLink().startStream(appKey, appSecret, sessionId);
@@ -574,6 +614,12 @@ public class WebChannel {
                 String clientSecret = pollResult.clientSecret;
 
                 if (clientId != null && clientSecret != null) {
+                    String wsId = wsContext.getMeta().getId();
+                    ImGateway gateway = ImGateway.getInstance(wsContext.getEngine());
+                    ImBindingRegistry.Binding owner = gateway.findDingTalkByAppKey(clientId);
+                    if (owner != null && !wsId.equals(owner.getWorkspaceId())) {
+                        return dingtalkConflict(owner.getWorkspaceId(), owner.getSessionId());
+                    }
                     // 启动 Stream 连接（用户向机器人发消息后会自动完成绑定）
                     wsContext.getChannelHub().getDingTalkLink().startStream(clientId, clientSecret, sessionId);
                 }
@@ -621,39 +667,21 @@ public class WebChannel {
         return Result.succeed();
     }
 
-    // ==================== 跨工作区 appId/appKey 冲突检查 ====================
-
-    /**
-     * 检查指定 appId 是否已被其它工作区的飞书 Link 建立连接。
-     *
-     * @return 冲突工作区名；无冲突返回 null
-     */
-    private String findFeishuAppConflict(WorkspaceContext current, String appId) {
-        for (WorkspaceContext ctx : workspaceManager.getContexts()) {
-            if (ctx == current) {
-                continue;
-            }
-            if (ctx.getChannelHub().getFeishuLink().isAppInUse(appId)) {
-                return ctx.getMeta().getName();
-            }
-        }
-        return null;
+    private Result feishuConflict(String workspaceId, String sessionId) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("code", "FEISHU_APP_CONFLICT");
+        data.put("boundElsewhere", true);
+        data.put("boundWorkspaceId", workspaceId);
+        data.put("boundSessionId", sessionId);
+        return Result.failure(409, "该 App ID 已在其它工作区绑定或连接", data);
     }
 
-    /**
-     * 检查指定 appKey 是否已被其它工作区的钉钉 Link 建立连接。
-     *
-     * @return 冲突工作区名；无冲突返回 null
-     */
-    private String findDingTalkAppConflict(WorkspaceContext current, String appKey) {
-        for (WorkspaceContext ctx : workspaceManager.getContexts()) {
-            if (ctx == current) {
-                continue;
-            }
-            if (ctx.getChannelHub().getDingTalkLink().isAppInUse(appKey)) {
-                return ctx.getMeta().getName();
-            }
-        }
-        return null;
+    private Result dingtalkConflict(String workspaceId, String sessionId) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("code", "DINGTALK_APP_CONFLICT");
+        data.put("boundElsewhere", true);
+        data.put("boundWorkspaceId", workspaceId);
+        data.put("boundSessionId", sessionId);
+        return Result.failure(409, "该 AppKey 已在其它工作区绑定或连接", data);
     }
 }

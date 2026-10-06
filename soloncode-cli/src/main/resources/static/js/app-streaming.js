@@ -2475,10 +2475,15 @@ function updateWechatUI() {
     if (!activeSessionId) return;
     $.get('/web/chat/wechat/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
         try {
-            var bound = resp.data && resp.data.bound;
-            wechatHeaderBtn.toggleClass('bound', !!bound);
+            var data = resp.data || {};
+            var bound = !!data.bound;
+            var elsewhere = !!data.boundElsewhere && !bound;
+            wechatHeaderBtn.toggleClass('bound', bound).toggleClass('elsewhere', elsewhere);
             wechatHeaderLabel.text(bound ? I18n.t('im.connected') : '');
-            wechatHeaderBtn.attr('title', bound ? I18n.t('im.wechatBoundUnbind') : I18n.t('im.wechatBind'));
+            wechatHeaderBtn.attr('title',
+                bound ? I18n.t('im.wechatBoundUnbind')
+                      : (elsewhere ? I18n.t('im.boundElsewhereTitle', {workspaceId: data.boundWorkspaceId || ''})
+                                   : I18n.t('im.wechatBind')));
         } catch(e) {}
     }, 'json');
 }
@@ -2655,9 +2660,11 @@ function updateFeishuUI() {
         try {
             var data = resp.data || {};
             var bound = !!data.bound;
-            feishuHeaderBtn.toggleClass('bound', bound);
+            var elsewhere = !!data.boundElsewhere && !bound;
+            feishuHeaderBtn.toggleClass('bound', bound).toggleClass('elsewhere', elsewhere);
             feishuHeaderLabel.text(bound ? I18n.t('im.connected') : '');
-            feishuHeaderBtn.attr('title', bound ? I18n.t('im.feishuBoundUnbind') : I18n.t('im.feishuBind'));
+            feishuHeaderBtn.attr('title', bound ? I18n.t('im.feishuBoundUnbind')
+                : (elsewhere ? I18n.t('im.feishuBoundElsewhere', {workspaceId: data.boundWorkspaceId || ''}) : I18n.t('im.feishuBind')));
         } catch(e) {}
     }, 'json');
 }
@@ -2677,12 +2684,19 @@ feishuHeaderBtn.on('click', function() {
         });
         return;
     }
+    if (feishuHeaderBtn.hasClass('elsewhere')) {
+        layer.confirm(I18n.t('im.feishuMigrateConfirm'), { title: I18n.t('im.feishuMigrateTitle'), btn: [I18n.t('common.confirm'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
+            layer.close(index);
+            showFeishuModal(true);
+        });
+        return;
+    }
     // Not bound: show bind modal
-    showFeishuModal();
+    showFeishuModal(false);
 });
 
-function showFeishuModal() {
-    if (feishuModalOverlay) return;
+function showFeishuModal(migrate) {
+    var forceBind = !!migrate;
 
     feishuModalOverlay = $('<div>').addClass('im-bind-modal-overlay').html(
         '<div class="im-bind-modal" style="min-width:360px">'
@@ -2763,37 +2777,34 @@ function showFeishuModal() {
         $appIdInput.prop('disabled', true);
         $appSecretInput.prop('disabled', true);
 
-        var params = 'sessionId=' + encodeURIComponent(activeSessionId)
-            + '&appId=' + encodeURIComponent(appId)
-            + '&appSecret=' + encodeURIComponent(appSecret);
+        function submitFeishuBind(force) {
+            var params = 'sessionId=' + encodeURIComponent(activeSessionId)
+                + '&appId=' + encodeURIComponent(appId)
+                + '&appSecret=' + encodeURIComponent(appSecret)
+                + (force ? '&force=true' : '');
+            $.ajax({ url: '/web/chat/feishu/bind?' + params, method: 'POST', dataType: 'json' })
+                .done(function(resp) {
+                    if (resp.code === 200) {
+                        $statusEl.text(I18n.t('im.feishuConnectSuccessHint') + '...').removeClass('error');
+                        $confirmBtn.hide();
+                        startFeishuPoll();
+                    } else if (!force && (resp.code === 409 || String(resp.message || '').indexOf('FEISHU_BIND_CONFLICT') >= 0)) {
+                        layer.confirm(I18n.t('im.feishuConflictConfirm'), { title: I18n.t('im.feishuMigrateTitle'), btn: [I18n.t('common.confirm'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
+                            layer.close(index);
+                            submitFeishuBind(true);
+                        });
+                        $confirmBtn.prop('disabled', false); $appIdInput.prop('disabled', false); $appSecretInput.prop('disabled', false);
+                    } else {
+                        $statusEl.text(resp.message || I18n.t('im.connectFailed')).addClass('error');
+                        $confirmBtn.prop('disabled', false); $appIdInput.prop('disabled', false); $appSecretInput.prop('disabled', false);
+                    }
+                }).fail(function(jqXhr) {
+                    $statusEl.text(jqXhr.status ? I18n.t('im.requestFailed', {status: jqXhr.status}) : I18n.t('im.connectFailed')).addClass('error');
+                    $confirmBtn.prop('disabled', false); $appIdInput.prop('disabled', false); $appSecretInput.prop('disabled', false);
+                });
+        }
 
-        $.ajax({
-            url: '/web/chat/feishu/bind?' + params,
-            method: 'POST',
-            dataType: 'json'
-        }).done(function(resp) {
-            if (resp.code === 200) {
-                // WebSocket 启动成功，进入等待飞书消息状态
-                $statusEl.text(I18n.t('im.feishuConnectSuccessHint') + '...').removeClass('error');
-                $confirmBtn.hide();
-                // 开始轮询绑定状态
-                startFeishuPoll();
-            } else {
-                $statusEl.text(resp.message || I18n.t('im.connectFailed')).addClass('error');
-                $confirmBtn.prop('disabled', false);
-                $appIdInput.prop('disabled', false);
-                $appSecretInput.prop('disabled', false);
-            }
-        }).fail(function(jqXhr) {
-            if (jqXhr.status) {
-                $statusEl.text(I18n.t('im.requestFailed', {status: jqXhr.status})).addClass('error');
-            } else {
-                $statusEl.text(I18n.t('im.connectFailed')).addClass('error');
-            }
-            $confirmBtn.prop('disabled', false);
-            $appIdInput.prop('disabled', false);
-            $appSecretInput.prop('disabled', false);
-        });
+        submitFeishuBind(forceBind);
     });
 
     // Enter key to confirm
@@ -2872,11 +2883,11 @@ function showFeishuModal() {
         });
     }
 
-    function startFeishuQrPoll() {
+    function startFeishuQrPoll(force) {
         if (feishuPollTimer) clearInterval(feishuPollTimer);
         var dotCount = 0;
         feishuPollTimer = setInterval(function() {
-            $.get('/web/chat/feishu/qrcode/status?sessionId=' + encodeURIComponent(activeSessionId), function(resp) {
+            $.get('/web/chat/feishu/qrcode/status?sessionId=' + encodeURIComponent(activeSessionId) + (force ? '&force=true' : ''), function(resp) {
                 try {
                     var data = resp.data || {};
                     var $qrStatus = $('#feishuQrStatus');
@@ -2897,6 +2908,13 @@ function showFeishuModal() {
                             switchToChatMode();
                             notifyFeishuConnected();
                         }, 1200);
+                    } else if (status === 'conflict') {
+                        clearInterval(feishuPollTimer);
+                        feishuPollTimer = null;
+                        layer.confirm(I18n.t('im.feishuConflictConfirm'), { title: I18n.t('im.feishuMigrateTitle'), btn: [I18n.t('common.confirm'), I18n.t('common.cancel')], icon: 3, offset: '120px' }, function(index) {
+                            layer.close(index);
+                            startFeishuQrPoll(true);
+                        });
                     } else if (status === 'failed') {
                         $qrStatus.text(data.message || I18n.t('im.bindFailed')).addClass('error');
                         clearInterval(feishuPollTimer);
@@ -2909,7 +2927,16 @@ function showFeishuModal() {
                         $('#feishuQrRefreshBtn').show();
                     }
                 } catch(e) {}
-            }, 'json');
+            }, 'json').fail(function(jqXhr) {
+                // 4xx 说明请求本身不合法（如可选参数缺失），重试无意义：立即停轮询并提示，
+                // 避免接口报错时静默空转、把问题掩盖掉。
+                if (jqXhr && jqXhr.status >= 400 && jqXhr.status < 500) {
+                    clearInterval(feishuPollTimer);
+                    feishuPollTimer = null;
+                    $('#feishuQrStatus').text(I18n.t('im.queryStatusFailed')).addClass('error');
+                    $('#feishuQrRefreshBtn').show();
+                }
+            });
         }, 2000);
     }
 
@@ -2960,16 +2987,21 @@ function updateDingTalkUI() {
             var pending = !!data.pending;
             if (bound && !pending) {
                 // 完全绑定（用户已在钉上发过消息）
-                dingtalkHeaderBtn.toggleClass('bound', true).removeClass('pending');
+                dingtalkHeaderBtn.toggleClass('bound', true).removeClass('pending elsewhere');
                 dingtalkHeaderLabel.text(I18n.t('im.connected'));
                 dingtalkHeaderBtn.attr('title', I18n.t('im.dingtalkBoundUnbind'));
+            } else if (!bound && !!data.boundElsewhere) {
+                // 已绑定到其它工作区会话（第三态）
+                dingtalkHeaderBtn.removeClass('bound pending').addClass('elsewhere');
+                dingtalkHeaderLabel.text('');
+                dingtalkHeaderBtn.attr('title', I18n.t('im.boundElsewhereTitle', {workspaceId: data.boundWorkspaceId || ''}));
             } else if (bound && pending) {
                 // 半绑定（扫码成功，等待用户发第一条消息）
-                dingtalkHeaderBtn.toggleClass('pending', true).removeClass('bound');
+                dingtalkHeaderBtn.toggleClass('pending', true).removeClass('bound elsewhere');
                 dingtalkHeaderLabel.text(I18n.t('im.connecting') + '...');
                 dingtalkHeaderBtn.attr('title', I18n.t('im.dingtalkWaitingMsg'));
             } else {
-                dingtalkHeaderBtn.removeClass('bound pending');
+                dingtalkHeaderBtn.removeClass('bound pending elsewhere');
                 dingtalkHeaderLabel.text('');
                 dingtalkHeaderBtn.attr('title', I18n.t('im.dingtalkBind'));
             }

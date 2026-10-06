@@ -23,6 +23,7 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.api.web.AbstractWebController;
+import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
 import org.noear.solon.codecli.session.MessageLineUtil;
@@ -30,6 +31,7 @@ import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.codecli.session.SessionRewindService;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.handle.Result;
@@ -188,6 +190,9 @@ public class SessionWebController extends AbstractWebController {
                     loopScheduler().stopAll(sessionId);
                 }
                 sessionManager().removeSession(sessionId);
+                // 主动清理该会话的 IM 绑定，避免悬挂路由
+                ImGateway.getInstance(engine())
+                        .onSessionRemoved(currentContext().getMeta().getId(), sessionId);
                 try {
                     deleteDirectory(dir.toPath());
                     deletedSessionIds.add(sessionId);
@@ -281,6 +286,15 @@ public class SessionWebController extends AbstractWebController {
                 LOG.error("Session delete failed for {}: {}", sessionId, e.getMessage());
                 return Result.failure(500, "Session delete failed");
             }
+        }
+
+        // 主动清理该会话的 IM 绑定（支持跨工作区删除：按目标工作区路径反查 workspaceId，
+        // 内存未命中则跳过，由消息到达时的惰性校验兜底），避免悬挂路由
+        WorkspaceContext targetContext =
+                workspaceManager.getContextsCached(workspaceRoot.toString());
+        if (targetContext != null) {
+            ImGateway.getInstance(engine())
+                    .onSessionRemoved(targetContext.getMeta().getId(), sessionId);
         }
 
         return Result.succeed();

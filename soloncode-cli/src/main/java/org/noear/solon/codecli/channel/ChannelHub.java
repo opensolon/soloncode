@@ -4,7 +4,6 @@ import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkQRBindManager;
 import org.noear.solon.codecli.channel.feishu.FeishuLink;
 import org.noear.solon.codecli.channel.feishu.FeishuQRBindManager;
-import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.Lifecycle;
 
@@ -20,9 +19,9 @@ public class ChannelHub implements Lifecycle {
     private final List<Channel> imLinks;
 
     /**
-     * 微信通道适配器，负责扫码登录、会话绑定与消息转发
+     * 微信通道外观：绑定与连接归属在进程级 ImGateway，本类只是工作区级薄封装
      */
-    private final WeChatLink weChatLink;
+    private final WeChatGatewayLink weChatLink;
 
     /**
      * 飞书通道适配器，负责 WebSocket Stream 连接、会话绑定与消息转发
@@ -44,7 +43,7 @@ public class ChannelHub implements Lifecycle {
      */
     private final DingTalkQRBindManager dingtalkQRBindManager;
 
-    public WeChatLink getWeChatLink() {
+    public WeChatGatewayLink getWeChatLink() {
         return weChatLink;
     }
 
@@ -68,7 +67,8 @@ public class ChannelHub implements Lifecycle {
      * 构造函数：初始化三个通道适配器和扫码绑定管理器。
      */
     public ChannelHub(WorkspaceContext wsContext) {
-        this.weChatLink = new WeChatLink(wsContext);
+        this.weChatLink = new WeChatGatewayLink(
+                ImGateway.getInstance(wsContext.getEngine()), wsContext.getMeta().getId());
         this.feishuLink = new FeishuLink(wsContext);
         this.dingTalkLink = new DingTalkLink(wsContext);
         this.feishuQRBindManager = new FeishuQRBindManager();

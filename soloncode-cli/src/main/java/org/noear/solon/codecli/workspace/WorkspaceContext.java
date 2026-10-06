@@ -160,13 +160,8 @@ public class WorkspaceContext implements Closeable {
 
     @Override
     public void close() throws IOException {
-        if (channelHub != null) {
-            try {
-                channelHub.stop();
-            } catch (Exception e) {
-                // Ignore
-            }
-        }
+        // 不再调用 channelHub.stop()：IM 连接（飞书/钉钉 WS、微信长轮询）已归进程级
+        // ImGateway 持有，工作区 LRU 释放/关闭不得断开它们，否则消息会丢失（方案 3.3）。
         if (loopScheduler != null) {
             try {
                 loopScheduler.shutdown();
