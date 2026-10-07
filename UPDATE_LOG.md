@@ -3,6 +3,7 @@
 ### v2026.10.7
 
 * 调整 soloncode web im 绑定处理（之前与 session 绑；新版与 app 绑）
+* 调整 soloncode web 对话忙时，im 新消息默认转为“插话”
 * 修复 soloncode web 由 localStorage 引起的状态失效问题（port 变，状态就失效了）
 * 细节优化
 
