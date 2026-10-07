@@ -34,9 +34,10 @@ import java.util.Map;
  * <p>文案面向 IM 使用场景，按聊天语气撰写：第一人称、口语、短句、不用
  * 「队列/位次/阈值」等系统术语，让用户一眼看懂「我这条消息怎么样了」。</p>
  *
- * <p>忙态回执还要交代「默认语义」：IM 忙时直发是「新任务排在后面」，web 忙时回车是
- * 「插话到当前任务」，两端默认不同，用户无从推断。故入队回执主动点明排队语义，
- * 并给出插话入口（/steer）与中断入口（/interrupt）；但同一轮只教学一次。</p>
+ * <p>忙态默认语义两端已对齐：IM 直发与 web 回车一样默认「插话到当前任务」（等价于 /steer），
+ * 只有插不进去（任务恰在切换、插话邮箱已满）或输入是斜杠命令时才降级为「新任务排队」。
+ * 故插话回执（im.steered）与降级排队回执（im.queued.*）必须各自身份，并给出中断入口
+ * （/interrupt）；排队回执的命令引导同一轮只教学一次。</p>
  *
  * <p>文案已国际化：正文放在 classpath 的 {@code i18n/im-messages*.properties}，
  * 由 solon i18n 按 {@link #getLocale()} 解析。为了让「文案可随地区变化」，
@@ -96,6 +97,10 @@ public final class ImMessages {
      * 入队回执（当前任务完成后即轮到）
      */
     private static final String KEY_QUEUED_IMMEDIATE = "im.queued.immediate";
+    /**
+     * 忙态插话成功回执
+     */
+    private static final String KEY_STEERED = "im.steered";
 
     /**
      * 兜底文案，与资源包默认语言保持一致。
@@ -117,6 +122,7 @@ public final class ImMessages {
         FALLBACK.put(KEY_HINT_BUSY_COMMAND, "{0}；{1}");
         FALLBACK.put(KEY_QUEUED_BEHIND, "收到，已作为新任务排队，前面还有 {1} 条，处理完就轮到你。{0}");
         FALLBACK.put(KEY_QUEUED_IMMEDIATE, "收到，已作为新任务排队，当前任务完成后就轮到你。{0}");
+        FALLBACK.put(KEY_STEERED, "收到，已插话到当前任务，会体现在这一轮的回复里");
     }
 
     /**
@@ -251,6 +257,16 @@ public final class ImMessages {
     }
 
     /**
+     * 忙态插话成功：输入已注入正在运行的任务，下一个采样边界生效。
+     *
+     * <p>IM 忙态默认即插话，但插话不产生独立答复（只落在原任务流里），必须回一条确认，
+     * 否则用户会以为消息丢了、一直等一条不存在的回复。</p>
+     */
+    public static String STEERED() {
+        return msg(KEY_STEERED);
+    }
+
+    /**
      * 解析状态对应的默认文案；detail 非空时优先采用 detail。
      *
      * @return null 表示该状态无需文本（由通道自行决定是否忽略）
@@ -265,6 +281,8 @@ public final class ImMessages {
         switch (status) {
             case ACCEPTED:
                 return ACCEPTED();
+            case STEERED:
+                return STEERED();
             case LONG_RUNNING:
                 return LONG_RUNNING();
             case REJECTED:

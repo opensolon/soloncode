@@ -1,7 +1,7 @@
 # SolonCode IM 交互 SOP（微信 / 飞书 / 钉钉）
 
 > 状态：已落地（2026-10）
-> 范围：soloncode-cli 的 IM 通道交互链路——入口受理、忙态排队、状态信号、终态投递、文案与国际化
+> 范围：soloncode-cli 的 IM 通道交互链路——入口受理、忙态插话/排队、状态信号、终态投递、文案与国际化
 > 读者：后续维护/扩展 IM 通道、调整回执文案、排查"IM 没反应"类问题的人
 
 ---
@@ -36,9 +36,11 @@ WorkspaceMessageGateway.acceptInput          ← 各 Link 唯一入口（channel
 WebChatInputHandler.safeChatInput            ← 统一受理关口（忙态判定在这里）
    ├── 空闲：acceptedHook → 发 ImStatus.ACCEPTED → onChatInput 异步开流
    ├── 忙 + 斜杠命令（runnableWhenBusy）：旁路受理，不占启动闩、不改运行任务路由
-   ├── 忙 + 普通文本：SessionQueue.enqueue（直发即排队）
-   │      ├── 成功 → ImStatus.QUEUED（带位次 + 首条附带命令引导）
-   │      └── 失败（队列满）→ ImStatus.REJECTED
+   ├── 忙 + 普通文本：SteerInterceptor.steer（默认插话，与 web 回车一致）
+   │      ├── STEERED → ImStatus.STEERED（只投来源端）
+   │      └── 降级（turn 切换 / 邮箱满 / 未进入推理边界）→ SessionQueue.enqueue 排队
+   │             ├── 成功 → ImStatus.QUEUED（带位次 + 首条附带命令引导）
+   │             └── 失败（队列满）→ ImStatus.REJECTED
    └──
        ▼
    onChatInput → setReplyRoute（写 session.replyRoute / 复位终态去重门）→ 异步执行任务
@@ -86,11 +88,14 @@ isBusy(session)?
 ├── 是 + input 是 "/" 开头
 │      查 CommandRegistry：command.runnableWhenBusy() && !command.cliOnly()
 │      ├── 是 → 旁路受理（onChatInput，不占启动闩、不改运行任务的 replyRoute）
-│      └── 否 → 落到普通输入处理（即排队）
+│      └── 否 → 落到普通输入处理（插话不适用于命令，直接降级排队）
 ├── 是 + 普通文本
-│      SessionQueue.bindStorage → enqueue
-│      ├── position >= 0 → emitUserInput + ImStatus.QUEUED(position-1) + drainSessionQueue
-│      └── position < 0（队列满/落盘失败，上限 20 条）→ ImStatus.REJECTED
+│      SteerInterceptor.steer（默认插话，与 web 回车一致）
+│      ├── STEERED → ImStatus.STEERED（只投来源端；不回放 user_input，web 端由 steer_applied 落 steer-note）
+│      └── 非 STEERED（TURN_CHANGED / BOX_FULL / 尚未进入推理边界等）→ 降级排队：
+│              SessionQueue.bindStorage → enqueue
+│              ├── position >= 0 → emitUserInput + ImStatus.QUEUED(position-1) + drainSessionQueue
+│              └── position < 0（队列满/落盘失败，上限 20 条）→ ImStatus.REJECTED
 └── 否（空闲）
        acceptedHook（先于异步调度执行，防快速任务先输出）
        → emitUserInput
@@ -101,12 +106,15 @@ isBusy(session)?
 要点：
 
 - **`enqueue` 返回值是队列长度（1-based），不是位次**。本项位居队尾，"前面还有 N 条" = `position - 1`
-  （`WebChatInputHandler.java:479` 注释）。失败返回 -1。
+  （`WebChatInputHandler` 注释）。失败返回 -1。
 - **受理成功的回执顺序**：先 `emitUserInput`（用户消息上屏）再发状态信号，最后才异步开流——保证顺序与用户感知一致。
-- **IM 忙态默认语义是排队，不是插话**。这是与 web 的刻意差异（web 前端流式中 Enter 默认 steer），
-  理由见 §5.3；用户教育与入口补齐靠 QUEUED 回执中的命令引导，而不是改默认。
-- `onChatInput`（带附件/模型等完整参数的路径，`:108-144`）里也有一个忙态排队分支，逻辑同上但参数更全
-  （可携带 selectedModel 等），并额外处理 `session.queue.executing` 的路由改写。两个入口殊途同归。
+- **IM 忙态默认语义是插话，与 web 前端流式中 Enter 一致**（2026-10 对齐，见 §5）。插不进去时才降级排队，
+  降级路径就是原「忙态直发即排队」的旧逻辑，其回执（QUEUED + 命令引导）原样保留。
+- **插话成功不回放 `user_input`**：web 端由 `steer_applied` 就地渲染 steer-note（与 web 发起的插话同一路径），
+  提前推 user_input 会让同一条补充在 web 上重复上屏。IM 端则收到 `ImStatus.STEERED` 确认（见 §4.2）。
+- `onChatInput`（带附件/模型等完整参数的路径，`:108-144`）里也有一个忙态排队分支：那是 **web HTTP 入口**
+  （`/web/chat/input`）的兜底，不改默认语义（web 前端忙态走 `/web/chat/steer`，不会落到这里）。
+  若将来要统一，须同时评估无前端客户端的 web 行为。
 
 ---
 
@@ -134,6 +142,7 @@ isBusy(session)?
 | 状态 | 触发点 | 默认文案（zh） | 微信 | 飞书 | 钉钉 |
 |---|---|---|---|---|---|
 | ACCEPTED | 空闲受理成功（非命令） | 收到，马上开始处理 | 忽略（typing 已表达） | hint | hint |
+| STEERED | 忙态插话成功（非命令） | 收到，已插话到当前任务，会体现在这一轮的回复里 | 文本 | hint | hint |
 | QUEUED | 忙态入队成功（含位次） | 收到，已作为新任务排队，前面还有 N 条，处理完就轮到你。〔命令引导〕 | 文本 | hint | hint |
 | LONG_RUNNING | 受理 60s 无终态（一次性） | 还在处理中，请再稍等一下 | 文本 | hint | hint |
 | REJECTED | 入队失败（队列满） | 还有任务没忙完，暂时接不了新的。想立刻处理，可发送 /interrupt 中断当前任务 | 文本 | hint | hint |
@@ -158,47 +167,63 @@ isBusy(session)?
 
 ---
 
-## 5. 忙态语义：排队 vs 插话（决策记录）
+## 5. 忙态语义：默认插话 + 降级排队（决策记录）
 
-### 5.1 两端默认不同的真相
+### 5.1 两端默认已对齐：都是插话
 
 - **web 默认插话**：会话流式中 Enter 走 `steerMessage`（POST /web/chat/steer），这是**前端决定的**，
   不经过 `safeChatInput` 忙态分支；仅附件降级排队。
-- **IM 默认排队**：IM 没有前端，落到后端兜底（`safeChatInput` 忙态 → enqueue）。
+- **IM 默认插话**：IM 没有前端，落到后端兜底（`safeChatInput` 忙态 → `SteerInterceptor.steer`）。
+  这是 2026-10 的对齐：此前 IM 忙态直发无脑排队，与 web 回车体验不一致。
 
-两者语义差异很大，不是同一动作的两种叫法：
+两种动作语义差异很大，不是同一动作的两种叫法——正因如此，插话成功必须有**独立回执**说明“它是插话”，
+否则 IM 用户会一直等一条永远不会来的独立答复：
 
-| 维度 | 插话 /steer | 排队（忙态直发） |
+| 维度 | 插话（忙态默认） | 排队（降级路径） |
 |---|---|---|
 | 作用对象 | 注入**当前任务**工作记忆，改走向 | **新任务**排在当前任务之后 |
 | 持久化 | 零持久化（SteerInterceptor 不写 ndjson） | 落盘（SessionQueueStore，上限 20） |
-| 独立答复 | 无（只在原任务流里显示 steer-note） | 有（独立 RunEndEvent） |
+| 独立答复 | 无（只在原任务流里显示 steer-note / ImStatus.STEERED 回执） | 有（独立 RunEndEvent） |
 | 生效时机 | 下个采样边界（延迟） | 当前任务结束后 |
 
-### 5.2 为什么 IM 不改成默认插话
+### 5.2 降级规则（照搬 web 前端的回落语义）
 
-1. IM 用户期待"一问一答"；插话不产生独立答复，用户会一直等不到回复。
-2. IM 连发多条多半期待每条都被处理；默认插话会让第二条悄悄变成对第一条的补充。
-3. IM 缺插话反馈出口：`steer_applied`/`steer_dropped` 只走 web WebSocket（`emitSteerApplied`），
-   IM 渲染不了 steer-note，默认插话等于黑箱。（走 `/steer` 命令时 IM **有**回执，所以命令路径是可感知的。）
+插话不是万能的，以下情形**降级为排队**（`WebChatInputHandler.safeChatInput`）：
 
-### 5.3 落地策略：不改默认，改"默认的可见性"
+| 情形 | 状态 | 处理 |
+|---|---|---|
+| 注入成功 | STEERED | 回 `ImStatus.STEERED`；web 端由 `steer_applied` 落 steer-note |
+| 任务恰在切换（旧 runId 已走） | TURN_CHANGED | 降级排队 |
+| 插话邮箱已满（上限 5 条） | BOX_FULL | 降级排队 |
+| 尚未进入推理边界（`ATTR_ACTIVE_RUN_ID` 未建立） | NOT_RUNNING | 降级排队（**不可**当空闲直发，会与在跑任务并发开流） |
+| 输入是斜杠命令 | — | 直接排队（命令不进插话，与 web 前端“运行中不把命令当插话”一致） |
 
-入队回执主动点明"已作为新任务排队"，消除"以为自己在插话"的误解，同时给出插话入口：
+> 注意：**NOT_RUNNING 对 IM 不等于空闲**。IM 侧是先判 `isBusy` 再 steer，而 `ATTR_ACTIVE_RUN_ID`
+> 可能尚未建立（受理窗口）。故 IM 的降级统一回排队 + `drainSessionQueue`：若此刻真已空闲，队首会立即执行，
+> 等价于直发；若仍忙，则排在后面。这样既不会并发开流，也不会丢消息。
+
+### 5.3 回执可见性（此前 IM 的黑箱问题）
+
+旧版 IM 忙态排队，回执主动点明“已作为新任务排队”并给出插话入口 `/steer`。默认改为插话后，回执分两条：
 
 ```
-收到，已作为新任务排队，前面还有 N 条，处理完就轮到你。
-想补充或调整当前任务，可发送 /steer <内容>；想中断当前任务，可发送 /interrupt
+插话成功：收到，已插话到当前任务，会体现在这一轮的回复里
+降级排队：收到，已作为新任务排队，前面还有 N 条，处理完就轮到你。〔命令引导〕
 ```
 
-**刻意不引导 `/queue`**：IM 忙态直发即排队，再教显式排队命令会让用户以为"不敲命令消息就丢"。
-此决策已写入 `ImMessages.BUSY_COMMAND_HINT` 注释，防止后人好心加回去。
+**`steer_applied` / `steer_dropped` 仍只走 web WebSocket**（`emitSteerApplied`），IM 不渲染 steer-note。
+IM 的替代可见性是**受理时的 `ImStatus.STEERED` 回执** + 任务结束时照常广播的终态；若插话最终未被消费
+（任务先结束），`handleDroppedSteers` 会把它转入队列，作为新任务执行并给出正常答复——对 IM 而言
+“插话变排队”是静默的，但消息不丢、必有回复。
+
+**降级排队回执仍刻意不引导 `/queue`**：忙态降级本来就是排队，再教显式排队命令会让用户以为
+“不敲命令消息就丢”。此决策已写入 `ImMessages` 注释，防止后人好心加回去。
 
 ### 5.4 IM 可用的忙态命令（runnableWhenBusy 白名单）
 
-- `/steer <内容>`：插话当前任务（IM 缺插话途径的能力补位，命令自带回执"已插话，将在下一步注入当前任务"）。
+- `/steer <内容>`：显式插话当前任务（等价于忙态直发，命令自带回执"已插话，将在下一步注入当前任务"）。
 - `/interrupt`：中断当前任务。
-- `/queue`、`/exit`、`/help` 等也可穿透，但对 IM 是冗余的（直发即排队）。
+- `/queue`、`/exit`、`/help` 等也可穿透，但对 IM 是冗余的（直发已默认插话/降级排队）。
 - `cliOnly` 命令（如 `/model`）仅对 web 拦截、对 IM 放行与否见 `isCommand`；命令回执含 ANSI 的在 IM 边界 `stripAnsi`。
 
 ---
@@ -227,7 +252,8 @@ isBusy(session)?
 
 ### 6.3 维护规约（新增/修改文案的标准动作）
 
-1. 改 `i18n/im-messages.properties`（默认）与 `_en`（英文）两个文件。
+1. 改 `i18n/im-messages.properties`（默认）与 `_en`（英文），并**补齐**其余已存在的语言包
+   （保持“所有语言包键集一致”；`ImBusySteerContractTest.steeredKeyExistsInEveryLocaleBundle` 会校验）。
 2. 同步 `ImMessages.FALLBACK` 与 `ImMessages` 中的 key 常量。
 3. 公开成员是**方法**不是常量（名字与历史常量一致，调用点补括号）：`ImMessages.REJECTED()`。
 4. 文案风格：第一人称、口语、短句、不用「队列/位次/阈值」等系统术语；回答用户"我这条消息怎么样了"。
@@ -239,8 +265,9 @@ isBusy(session)?
 | key | 文案 |
 |---|---|
 | im.accepted | 收到，马上开始处理 |
+| im.steered | 收到，已插话到当前任务，会体现在这一轮的回复里 |
 | im.longRunning | 还在处理中，请再稍等一下 |
-| im.rejected | 还有任务没忙完，暂时接不了新的。想立刻处理，可发送 /interrupt 中断当前任务 |
+| im.rejected | 这条消息没排上队，我还没收到，稍后请重发一次。想先中断当前任务，可发送 /interrupt |
 | im.hint.unbound | 还没有绑定对话，请先在 Web 端扫码绑定，然后我就能陪你聊了。 |
 | im.hint.nonText | 我暂时只看得懂文字，换文字发给我吧。 |
 | im.hint.steer | 想补充或调整当前任务，可发送 /steer <内容> |
@@ -302,8 +329,8 @@ isBusy(session)?
 
 - **队列位次前进不实时刷新**：只在入队时报一次位次（QUEUE_PROGRESS 未实现，刻意——防刷屏）。
 - **飞书/钉钉无可更新消息**：accepted→running→final 仍是多条独立消息（v2 可选优化，需新增 API）。
-- **/steer 的 IM 反馈缺口**：命令回执有，但 steer_applied/dropped 事件不会投 IM（只走 web WS）。
-  若将来 IM 默认插话，必须先补此反馈，否则黑箱。
+- **steer_applied/dropped 仍不投 IM**：IM 只收受理时的 `ImStatus.STEERED` 回执（2026-10 随默认插话补齐）。
+  未消费的插话由 `handleDroppedSteers` 静默转排队（Web 广播 dropped），对 IM 表现为“先回插话确认、稍后给完整答复”。
 - **per-user locale**：i18n 目前按全局配置解析；将来拿到渠道侧语言（如飞书用户 locale）时接入
   `setLocale` 或加 Locale 重载，解析逻辑已预留。
 - **zh_TW**：会拿到简体（`_zh` 层继承，无繁体文件）。

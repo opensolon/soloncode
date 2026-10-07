@@ -38,6 +38,10 @@ public enum ImStatus {
      */
     QUEUED,
     /**
+     * 会话繁忙、输入已插话到正在运行的任务（下一个采样边界生效）
+     */
+    STEERED,
+    /**
      * 长任务心跳：受理后超过阈值仍无终态
      */
     LONG_RUNNING,

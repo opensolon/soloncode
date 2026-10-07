@@ -40,6 +40,7 @@ import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.codecli.session.queue.SessionQueueItem;
+import org.noear.solon.codecli.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.handle.UploadedFile;
@@ -55,7 +56,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 聊天输入的受理、分发与中断：忙态入队、斜杠命令、HITL 审批、Loop 同步捕获与 interrupt。
+ * 聊天输入的受理、分发与中断：忙态插话（降级排队）、斜杠命令、HITL 审批、Loop 同步捕获与 interrupt。
  *
  * <p>从 WebGate 拆出的输入职责。事件下发、流执行与队列派发均经组合根 {@link WebGate}
  * 中转，与输出/流/队列组件保持单向依赖；忙态判定、队列语义、命令回执信封与
@@ -470,7 +471,22 @@ class WebChatInputHandler {
                     }
                 }
 
-                // 普通输入也是 session 任务：繁忙时进入统一持久化队列，而不是只让调用方重试。
+                // 普通消息忙态默认「插话」（与 web 前端流式中 Enter 的默认一致）：把补充注入正在运行的任务，
+                // 由 SteerInterceptor 在下一个采样边界消费。插不进去（任务恰在切换/尚未进入推理边界、邮箱已满等）
+                // 或输入是斜杠命令时，再降级为统一持久化排队，确保消息不丢。
+                if (input != null && !input.startsWith("/")) {
+                    SteerInterceptor.SteerResult steerResult = SteerInterceptor.steer(session, null, null, input,
+                            source, sourceUserId, replyTarget, messageId, () -> SessionActivity.isBusy(session));
+                    if (steerResult.getStatus() == SteerInterceptor.SteerStatus.STEERED) {
+                        // 不回放 ofUserInput：web 端由 steer_applied 就地渲染 steer-note（与 web 发起的插话同一路径），
+                        // 提前推 user_input 会与 steer-note 重复上屏。
+                        gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.STEERED,
+                                null, source, sourceUserId, replyTarget, messageId);
+                        return true;
+                    }
+                }
+
+                // 降级：繁忙时进入统一持久化队列，而不是只让调用方重试。
                 SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
                 int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId);
                 if (position >= 0) {
