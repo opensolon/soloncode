@@ -1,7 +1,8 @@
 # 飞书/钉钉/微信 IM 通道「网关化」重构方案
 
-> 版本：v1.7（2026-10 落地版）
-> 状态：M1/M2/M3a/M3b/M4 已全部落地；真机双工作区端到端验证已执行，并据此修复<b>本次重构自身引入</b>的三处缺陷（飞书扫码轮询 400、钉钉多 bot 绑定互顶、登记表落盘位置取错根目录，见 5.6、5.7）
+> 版本：v1.8（2026-10 落地版）
+> 状态：M1/M2/M3a/M3b/M4 已全部落地；真机端到端验证已执行，并据此修复<b>本次重构自身引入</b>的三处缺陷（飞书扫码轮询 400、钉钉多 bot 绑定互顶、落盘位置取错根目录，见 5.6、5.7、5.8）；**三渠道持久化已统一**（微信独立 store 已删除，见 5.9）
+> 遗留：微信不支持「多 bot 并存」（多账号已支持）——不是缺陷，见 5.6.3；本类改造仍需真机复测（见 5.9.4）
 > 关联：`docs/package-refactor-plan-v1.md`（包结构重构，已完成的背景工程）
 
 ## 一、目标定义
@@ -87,32 +88,38 @@
 - 从 `FeishuLink.StreamConnection`（767-1007 行）与对应类整体平移，剥离路由职责，改为回调 `ImGateway.onEvent(...)`。
 - `pendingSessionId` 改为网关级 `Map<appId, PendingBind>`。
 
-**（c）`ImBindingStore`**（替代三个旧 CredentialStore）
+**（c）`ImBindingStore`**（飞书 / 钉钉的绑定登记表；微信另见下方说明）
 - 路径：`<用户主目录>/<getHarnessChannels()>/im-bindings.json`，即 `~/.soloncode/channels/im-bindings.json`。
   登记表是「进程级、跨工作区」的单一真相源，**必须锚定用户级目录**，不能取 `engine.getUserDir()`
   ——它返回 `System.getProperty("user.dir")`（进程启动目录），会让同一进程随启动位置读写不同文件（见 5.7.1）。
-- 格式（openId 为键，channel 分区）：
+- 格式（channel 分区，条目键为 `identity + userKey`，即 v2；节点内另写权威 `userKey`）：
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "feishu": {
-    "ou_xxxx": { "appId": "cli_a", "appSecret": "***", "workspaceId": "ws1",
-                 "sessionId": "web-abc", "lastMessageId": "", "boundAt": 1735689600000 }
+    "cli_a␟ou_xxxx": { "channel": "feishu", "userKey": "ou_xxxx",
+                          "appId": "cli_a", "appKey": null, "botToken": null,
+                          "workspaceId": "ws1", "sessionId": "web-abc",
+                          "secret": "***", "lastMessageId": "", "updatedAt": 1735689600000 }
   },
-  "dingtalk": { "...": {} },
-  "wechat":   { "...": {} }
+  "dingtalk": { "...": {} }
 }
 ```
 
-- 迁移（实现见 `ImBindingStore.migrate()`，仅登记表缺失时触发）：扫描「登记表自身目录 + 历史目录
-  （`getUserDir()` 下的 channels，即进程启动目录）」两处，按来源分类全量回收：
-  ① 写错位置的同格式 `im-bindings.json`；② 旧格式 `feishu-bindings.json`（sessionId 键，
-  节点含 openId/appId/appSecret）；③ 旧格式 `dingtalk-bindings.json`（sessionId 键，节点含
-  userId/appKey，appKey 缺失时回退 robotCode）。合并按 `channel + identity + userKey` 重算键，
-  同键取 `updatedAt` 大者（旧格式无该字段，视为 0，故新格式总能胜过旧格式）；每个来源消费后
-  改名 `.bak.<timestamp>` 留底，有结果即落盘。微信单独一路：`WeChatCredentialStore.migrateLegacyLocation()`
-  做同格式文件的位置回收（内容不变）。`.bak.*` 不参与扫描，因此可安全重启。
+- 迁移（实现见 `ImBindingStore.migrate()`，仅登记表缺失时触发）：只扫描**登记表自身所在目录**
+  （`~/.soloncode/channels/`），不另加任何目录（见 5.7.2）。按来源分类回收：
+  ① 旧格式 `feishu-bindings.json`（sessionId 键，节点含 openId/appId/appSecret）；
+  ② 旧格式 `dingtalk-bindings.json`（sessionId 键，节点含 userId/appKey，appKey 缺失时回退 robotCode）。
+  合并按 `channel + identity + userKey` 重算键，同键取 `updatedAt` 大者（旧格式无该字段，视为 0，
+  故新格式总能胜过旧格式）；每个来源消费后改名 `.bak.<timestamp>` 留底，有结果即落盘。
+  `.bak.*` 不参与扫描，因此可安全重启。
+
+- **微信不走本类**：微信绑定仍由 `WeChatCredentialStore`（`wechat-bindings.json`，sessionId 为键）
+  承载。因此本节原标题所指的「替代三个旧 CredentialStore」，**实际只完成了飞书 / 钉钉两支**；
+  差异成因与统一取舍见 5.8。
+  > **已补齐（见 5.9）**：微信现已并入本类，`WeChatCredentialStore` 已删除。
+  > 本节下列描述保留为当时的时间线记录，**当前事实以 5.9 为准**。
 
 ### 3.3 存量文件改动明细
 
@@ -126,7 +133,7 @@
 | `WeChatLink.java` | 长轮询线程移入 `WeChatTransport`，每 botToken 一线程由网关管 | 拆分 |
 | `WebChannel.java` | ①`findFeishuAppConflict`/`findDingTalkAppConflict` 删除，改 `imGateway.adoptBinding(..., force)`；②bind 增加 `force` 参数；③扫码路径（354-359 行）同走 adoptBinding；④unbind 走网关 | 改造 |
 | `WebStreamBuilder.java` | 无改动（四处 `getImLinks()` 遍历经 thin link 委托网关，语义不变） | 零改动 |
-| `SessionJanitor` / 会话删除 API | 删除会话时调 `imGateway.onSessionRemoved(workspaceId, sessionId)` | 增量 |
+| `SessionWebController` 的会话删除接口 | 删除会话时调 `imGateway.onSessionRemoved(workspaceId, sessionId)`；`SessionJanitor` 与桌面端入口未接入（见 5.5(3)） | 增量 |
 
 ### 3.4 关键流程走查（重构后）
 
@@ -144,8 +151,8 @@
 
 | 接口 | 变化 |
 |---|---|
-| `POST /web/chat/feishu/bind` | 新增可选参数 `force`；冲突且 `force!=true` 时返回 `Result.failure` + `conflict:{workspaceName, sessionId}` |
-| `GET /web/chat/feishu/status` | 新增可选字段 `boundElsewhere:boolean`、`boundWorkspaceName:string` |
+| `POST /web/chat/feishu/bind` | 新增可选参数 `force`；冲突且 `force!=true` 时返回 `Result.failure` + `conflict:{workspaceId, sessionId}` |
+| `GET /web/chat/feishu/status` | 新增可选字段 `boundElsewhere:boolean`、`boundWorkspaceId:string`（实现落地的是 Id 而非 Name） |
 | `GET /web/chat/feishu/qrcode/status` | 扫码 bindSession 同走 adoptBinding，可能携带 `status:"conflict"` |
 | unbind/qrcode/qrcode-cancel/钉钉微信同系 | 签名与既有响应不变 |
 
@@ -310,7 +317,7 @@ JS（每渠道约 10 行）：`updateXxxUI` 内 `toggleClass('bound', bound)` / 
 
 ### 5.6 真机验证缺陷修复（2026-10，续五）
 
-真机端到端验证暴露出两处**本次重构自身引入**的缺陷，均已修复并补了守卫测试。
+真机端到端验证暴露出**三处本次重构自身引入**的缺陷（本节 5.6.1、5.6.2，以及 5.7.1 的落盘位置，后者直到 5.8 才真正修掉），均已修复并补了守卫测试；5.6.3 是随之进行的核验结论（无需修改）。
 
 #### 5.6.1 飞书扫码后状态不刷新、发消息回「未绑定」
 
@@ -436,23 +443,38 @@ public String getUserHome() { return System.getProperty("user.home"); }  // 用�
 单一真相源，会随用户从哪个目录启动 soloncode 而读写不同文件——从 `~` 启动与从工程目录启动，看到的
 绑定完全不同。`WeChatCredentialStore` 有同样的取错。
 
-**修复**：两处均改用 `getUserHome()`，锚定 `~/.soloncode/channels/`。路径组装抽为可测接缝
+**修复**：`ImGateway` 改用 `getUserHome()`，锚定 `~/.soloncode/channels/`。路径组装抽为可测接缝
 `ImGateway.storePath(harnessRoot, harnessChannels)`，并加测试固定该约定。
 
-#### 5.7.2 存量数据迁移（本次补齐）
+> **订正（见 5.8）**：本节原写「两处均改用 `getUserHome()`」，但 `WeChatCredentialStore`
+> 当时**漏改**，一直取 `getUserDir()`，直到 5.8 才真正修掉。保留原始记述以存时间线，事实以 5.8 为准。
 
-原先只实现了「旧 `feishu-bindings.json` + 仅扫登记表所在目录」一路，覆盖不全：真机上
-`~/.soloncode/channels/feishu-bindings.json` **至今未被迁移**（迁移只在启动目录下找）。
-现按来源分类全量回收：
+#### 5.7.2 存量数据迁移（已修正：只认用户级目录一处）
+
+**决策背景——撤销一次错误设计。** 修完位置后曾一度把「启动目录下的 channels 目录」
+当作历史来源，想把「被该缺陷写错位置的同格式 `im-bindings.json`」当旧数据回收。
+**这是错的，已全部撤销**（连同 `legacyDirs` 机制、`ImGateway.getInstance(Path, List<Path>)`
+重载）。理由：
+
+1. 登记表是本次改造**新增**的规范，此前不存在任何位置的同格式 `im-bindings.json`，
+   所谓「写错位置的历史登记表」并不构成需要回收的真实数据；
+2. 再引入一个由 `getUserDir()` 推导的路径，等于把刚拆掉的「位置取决于从哪儿启动」
+   重新装回去——同一个缺陷换了个名字。
+
+**准则：进程级共享资源（登记表、微信凭据）只认 `~/.soloncode/` 一处；任何新增路径分量前
+先问「它是否由 `user.dir` 推导」。**
+
+**最终行为**：扫描目录 = 登记表**自身所在目录**（`~/.soloncode/channels/`），不另加任何目录：
 
 | 来源 | 形态 | 处理 |
 | --- | --- | --- |
-| 同格式 `im-bindings.json` | v2，写在历史目录 | 读入并回收 |
-| `feishu-bindings.json` | sessionId 键：openId/appId/appSecret/workspaceId | 转新键 |
-| `dingtalk-bindings.json` | sessionId 键：userId/appKey/appSecret | 转新键，appKey 缺失回退 robotCode |
-| `wechat-bindings.json` | sessionId 键（与现格式同构） | 位置回收，内容不变 |
+| `feishu-bindings.json`（登记表同目录） | sessionId 键：openId/appId/appSecret/workspaceId | 转新键 |
+| `dingtalk-bindings.json`（登记表同目录） | sessionId 键：userId/appKey/appSecret | 转新键，appKey 缺失回退 robotCode |
 
-**运维动作：无需人工干预**。重启即自动回收，已绑定的数据会被保留并落到 `~/.soloncode/channels/`。
+迁移只在登记表文件**缺失**时触发；成功来源改名 `.bak.<timestamp>` 留底。
+`wechat-bindings.json` 是 `WeChatCredentialStore` 自己的存储，不归 `ImBindingStore` 迁移。
+
+**运维动作：无需人工干预**。旧格式绑定会保留；此后重新绑定落到 `~/.soloncode/channels/`。
 
 #### 5.7.3 顺带修复的静默失败
 
@@ -470,8 +492,133 @@ public String getUserHome() { return System.getProperty("user.home"); }  // 用�
 `~/.soloncode/channels/im-bindings.json` 中该通道下是否存在 `workspaceId` 为 null 的条目，
 确认后手工删条目并重启即可，无需为此引入自动清理逻辑。
 
-**验证**：`ImBindingStoreTest` 新增 3 例（钉钉旧文件迁移 + robotCode 回退；历史目录中错位登记表与
-旧格式文件一并回收；登记表路径锚定传入 harness 根），连同原有用例全绿。
+**验证**：`ImBindingStoreTest` 用例（钉钉旧文件迁移 + robotCode 回退；登记表路径锚定传入 harness 根）
+连同原有用例全绿。已删除断言「按启动目录回收错位登记表」的用例——它固化的正是上面被撤销的行为。
+
+### 5.8 三渠道持久化尚未统一（2026-10，续七）
+
+#### 5.8.1 缺陷：微信凭据存储漏改根目录
+
+5.7.1 声称「两处均改用 `getUserHome()`」，但 `WeChatCredentialStore` 的构造实际仍取
+`engine.getUserDir()`（进程启动目录），**只有 `ImGateway` 改了**。后果：微信绑定落在
+`<启动目录>/.soloncode/channels/wechat-bindings.json`，与登记表不在同一处，且随启动位置漂移
+——同一进程从 `~` 启动与从工程目录启动，看到的微信绑定不同。
+
+**修复**：
+
+- `WeChatCredentialStore` 改用 `engine.getUserHome()`，与登记表同锚 `~/.soloncode/channels/`；
+  路径组装抽为可测接缝 `WeChatCredentialStore.storePath(harnessRoot, harnessChannels)`。
+- 同步订正 `ImGateway.weChatStore()` 中「微信存储从历史位置（进程启动目录）回收一次」的过时注释。
+- 新增路径契约测试 `WeChatCredentialStoreTest.storePathIsRootedAtGivenHarnessRoot`。
+- **不做**按启动目录回收旧文件：遵循 5.7.2 准则（进程级共享资源只认 `~/.soloncode/` 一处），
+  否则等于把刚拆掉的「位置取决于从哪儿启动」装回去。若此前确从非 `~` 目录启动过，微信需重绑一次。
+
+#### 5.8.2 为什么三渠道的存储处理不一样（成因）
+
+修复位置后的现状对比：
+
+| 维度 | 飞书 / 钉钉 | 微信 |
+|---|---|---|
+| 存储类 | `ImBindingStore`（统一） | `WeChatCredentialStore`（独立） |
+| 文件 | `im-bindings.json` | `wechat-bindings.json` |
+| 目录 | `~/.soloncode/channels/` | 同左（5.8.1 修复后一致） |
+| 主键 | `channel + identity + userKey` | `sessionId` |
+| 运行时状态 | 仅 `lastMessageId`（去重缓存） | `cursor` / `lastContextToken` / `lastFromUserId` / `baseUrl` / `ilinkBotId` |
+| 写策略 | 全量重写 | `saveThrottled`（游标每轮推进，2s 节流） |
+| 归属约束 | `ImBindingRegistry.findOwner` | `adoptWeChat` 内手写扫描 |
+
+成因有三层：
+
+1. **原计划本就没做完**：3.2(c) 写的是「`ImBindingStore` 替代三个旧 CredentialStore」。
+   M3b 只把微信的**连接**提到了进程级（5.3），持久化沿用了旧的 `WeChatCredentialStore`；
+   M4 清理按「是否仍被生产引用」判定，微信存储确被引用，故保留（5.4）。结果只剩飞书/钉钉两支。
+2. **微信不能机械照搬 identity 维**：5.6.2 给飞书/钉钉的主键加了 bot 身份维，但微信的
+   `botToken` 会**随重新授权换发**（5.6.3），把它并进主键会导致重新授权后认不出旧条目、
+   留下悬挂绑定与僵尸连接。微信若要并入，identity 必须取**稳定的** `ilinkBotId`，
+   而 `botToken` 只能当可变的凭据字段（等价于 `Binding.secret`）。
+3. **绑定记录含高频运行时状态**：`cursor` 每轮长轮询都可能推进，这正是 `saveThrottled` 存在
+   的原因；`ImBindingStore.Binding` 目前没有承载这些字段的位置。
+
+#### 5.8.3 统一方案（已于 5.9 执行）
+
+**方向**：把微信并入 `ImBindingStore`，使之成为三渠道唯一的绑定登记表。做法：
+
+1. 微信条目的 identity 取 `ilinkBotId`（稳定），`botToken` 存入 `Binding.secret`（可变凭据）；
+   `ilinkUserId` 入 `userKey`；`sessionId` 保留为挂点。
+2. 为 `Binding` 增加微信所需的运行时字段（`cursor` / `lastContextToken` / `lastFromUserId` /
+   `baseUrl`），或加一个通用扩展段，避免污染飞书/钉钉语义。
+3. `adoptWeChat` 改走 `ImBindingRegistry.adopt` + `findOwner`，删除手写冲突扫描。
+4. 保留节流写（游标高频），或在登记表内为微信单独节流。
+5. 迁移：把 `wechat-bindings.json` 纳入 `ImBindingStore.migrate()`（sessionId 键 → 重算新键），
+   这是 5.7.2 表格里目前刻意排除的一支。
+
+**影响面**：`ImBindingRegistry.Binding`、`ImBindingStore`（读写 + 迁移）、`ImGateway` 的微信方法组
+（约 250 行），以及直接构造 `WeChatCredentialStore` 的测试（`WeChatCredentialStoreTest` /
+`WeChatLinkBindingTest` / `WeChatBindingOwnershipTest`，共约 27 例）。另需注意 `WeChatLink` 引擎
+内部仍以 `WeChatCredentialStore` 承载自身运行时状态（`NOOP_STORE`），该用途要单独保留或换成
+专用的本地容器——这是本方案最容易踩空的一处。
+
+**结论**：这是**格式变更 + 数据迁移 + 测试改造**的成规模重构，与前三处缺陷（一行/一处修正）不同量级。
+经决策后已按此方向落地，执行记录见 5.9（其中第 2 条改为通用 `runtime` 扩展位，第 3 条保留了微信自有的归属粒度，第 4 条选择「不持久化游标」）。
+
+### 5.9 三渠道持久化统一（2026-10，续八）—— 删除微信独立 store
+
+#### 5.9.1 目标
+
+用户明确要求：`WeChatCredentialStore` 应删除，微信绑定「全在 `ImBindingStore` 里搞定」；
+三个 IM 通道必须用**同一套持久化策略**。项目尚未发布，格式可自由重新设计。
+
+#### 5.9.2 设计（含三个决策点）
+
+| 决策点 | 选择 | 理由 |
+|---|---|---|
+| 微信主键 | `userKey = ilinkUserId`，`identity = ilinkBotId` | `ilinkUserId` 由服务端按账号签发，天然按账号唯一；`ilinkBotId` 稳定，不像 `botToken` 会随重新授权换发（拿 `botToken` 当 identity 会在重授权后认不出旧条目，留下悬挂绑定 + 僵尸长轮询） |
+| 通道私有状态 | `Binding` 新增通用 `runtime` 扩展位（`Map<String,String>`） | 不再为每个渠道新建 store；微信的 `baseUrl` / 回复目标存这里 |
+| 落盘出口 | **只有一处**：`ImGateway.save()` 写 `registry.snapshot()` | 彻底避免「同一份绑定两个写入者互相漂移」——旧实现正是引擎写一个文件、网关另写一份 |
+| `cursor` | **不持久化** | 已核实：生产中引擎用的是空存储，游标从未真正落盘；空游标语义就是「从当前 seq 开始」。持久化一个永不推进的游标只会误导 |
+
+另：微信**不并入** `ImBindingRegistry.adopt` 的 bot 级归属约束（`findOwner` 只对飞书/钉钉生效）。
+微信的归属粒度是**账号**而非 bot，沿用「同一账号在别的**工作区**被占用则冲突」的原语义，
+由 `adoptWeChat` 自行判定后经 `registry.put(...)` 写入。
+
+#### 5.9.3 改动明细
+
+| 文件 | 改动 |
+|---|---|
+| `ImBindingRegistry` | `Binding` 新增 `runtime` + `getRuntime/putRuntime`（`claim` 同步拷贝）；新增 `findAllByUserKey` / `removeAllByUserKey` / `put` |
+| `ImBindingStore` | `VERSION` 2→3；读写 `runtime` 子对象；新增 `readLegacyWeChat` 并接入 `migrate()`（`cursor` 不迁移）；新增 `RT_WECHAT_*` 常量 |
+| `WeChatBindingSink`（新） | 引擎的工作集持久化接缝；`NOOP` 常量。生产装配只用 `NOOP`，落盘归 ImGateway |
+| `WeChatLink` | 字段/构造参数 `WeChatCredentialStore` → `WeChatBindingSink` |
+| `WeChatTransport` | `NOOP_STORE` → `WeChatBindingSink.NOOP`（去掉匿名子类） |
+| `WeChatClient` | `normalizeBaseUrl` 改 public（ImGateway 需复用信任过滤） |
+| `ImGateway` | 删除 `weChatStore` / `harnessEngine` 字段与 `weChatStore()`；`ctor` 去掉微信存储参数；`startWeChat` / `adoptWeChat` / `removeWeChat` / `wechatStatus` 全部改读内存 `registry`；`toWeChatBinding` 改为 `Binding → WeChatBinding`（并对 `baseUrl` 做信任过滤） |
+| 删除 | `WeChatCredentialStore`（零残留引用） |
+
+**统一后三渠道对照**：
+
+| 维度 | 飞书 / 钉钉 / 微信（统一后） |
+|---|---|
+| 存储 | `ImBindingStore` |
+| 文件 | `~/.soloncode/channels/im-bindings.json`（单文件） |
+| 形状 | 统一 `Binding`（channel + identity + userKey + secret + runtime） |
+| 写入出口 | `ImGateway.save()` 一处 |
+| 归属约束 | 飞书/钉钉：一个 bot 一个对话（`findOwner`）；微信：一个账号一个对话 |
+
+#### 5.9.4 验证与遗留
+
+**验证**（本地）：`mvn -o clean test-compile` 通过；全量 `mvn -o test` 为 **1006 例，1 例失败**
+（`AgentSettingsControllerTest.builtinStillReadableAfterOverrideFileExists`，settings 域，与 IM 无关，历轮一致）；
+渠道定向 **72 例全绿**。新增 `ImBindingStoreWeChatTest`（runtime 往返 + v3 版本号 + 旧微信文件迁移留底）。
+
+**测试账目**：移除 `WeChatCredentialStoreTest`（7 例）与 `WeChatBindingOwnershipTest`（3 例）——
+两者的被测对象（微信独立 store 的**按工作区合并持久化**语义）已随统一设计消失，属**立意已废**而非为通过而删；
+`WeChatLinkBindingTest` 改用内存接缝 `InMemoryWeChatSink`（18 例保留，其被测对象是引擎行为而非持久化）；
+`WeChatLegacyBindingTest` 改为写旧版 `wechat-bindings.json` 并由 `ImBindingStore` 迁移后验证（2 例）。
+
+**遗留 / 需真机复测**：
+1. 微信重新绑定后长轮询、首条消息应答、重启后恢复（游标不持久化，重启从当前 seq 起）。
+2. 旧 `wechat-bindings.json` 迁移路径已在单测覆盖，但**真机升级**需确认留底文件生成且新文件包含微信条目。
+3. `im-bindings.json` 升到 v3，旧 v2 文件读取兼容（节点内本就含 appId/appKey/botToken，可无损升级）。
 
 ## 六、验证标准
 
@@ -482,5 +629,9 @@ public String getUserHome() { return System.getProperty("user.home"); }  // 用�
 **M3/M4**：钉钉复跑 M1 用例（appKey 维度）；全仓编译通过；三个测试类新语义通过；grep 无残留引用。
 
 **M5（多 bot 并存）**：同企业同一人用 bot1 / bot2 分别绑定两个对话，两条绑定并存且进程重启后仍在；同一 bot 被第二个用户抢绑时非 force 被拒；持久化后按 identity 精确可查；第二个用户发消息收到「该 bot 已被别的对话占用」而非「还没绑定对话」。
+
+**M6（三渠道持久化统一）**：`grep -r WeChatCredentialStore src/` 为空；仅 `im-bindings.json` 一个文件承载三渠道；
+微信重新绑定后收发正常、重启后连接自动恢复；旧 `wechat-bindings.json` 被迁入并留 `.bak`；
+同一微信账号在另一工作区绑定 → 非 force 冲突、force 迁移。
 
 **回归风险点**：进程退出时网关统一 `gateway.stop()`（挂 shutdown 钩子）；消息路径的 `getOrCreate` 只发生在消息分发线程，不得出现在 close 回调链（`WebGate.resolveConnections` 注释约束）。

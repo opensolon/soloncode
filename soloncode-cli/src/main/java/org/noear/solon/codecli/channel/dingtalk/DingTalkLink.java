@@ -27,7 +27,6 @@ import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
 import java.util.*;
 
 /**
@@ -48,19 +47,17 @@ import java.util.*;
 public class DingTalkLink implements Channel, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(DingTalkLink.class);
 
-    private final WorkspaceContext wsContext;
     /** 进程级网关：绑定归属与连接归属的单一真相源。 */
     private final ImGateway gateway;
     /** 本工作区 ID；绑定归属与连接归属都以它为准。 */
     private final String workspaceId;
 
     public DingTalkLink(WorkspaceContext wsContext) {
-        this.wsContext = wsContext;
         this.workspaceId = wsContext.getMeta().getId();
         this.gateway = ImGateway.getInstance(wsContext.getEngine());
-
-        // 历史无归属条目按会话目录探测认领（幂等）
-        loadBindings();
+        // 构造期不做任何副作用：这里既不认领历史条目、也不落盘。
+        // ChannelHub 由 WorkspaceContext 构造，而工作区在 acp/cli 模式下同样会被创建，
+        // 在构造器里改登记表会让「无入口端口模式不碰 IM」的约定失效。
     }
 
     // ==================== Channel 接口实现 ====================
@@ -160,6 +157,9 @@ public class DingTalkLink implements Channel, Runnable {
 
     /**
      * 拉起钉钉传输层并恢复持久化连接。
+     *
+     * <p>这是本渠道唯一的进程级启动入口，由 {@code ChannelHub.start()} 调用，而后者只在
+     * 入口运行时就绪后才被拉起（acp/cli 等无入口端口模式不会走到这里）。</p>
      *
      * <p>连接归进程级传输层所有，本方法幂等：连接已存在时不会重复创建。</p>
      */
@@ -298,18 +298,6 @@ public class DingTalkLink implements Channel, Runnable {
             }
         }
         return Collections.unmodifiableSet(result);
-    }
-
-    /**
-     * 历史数据认领：把无归属绑定按会话目录探测补归属（幂等）。
-     */
-    public void loadBindings() {
-        for (ImBindingRegistry.Binding unclaimed : gateway.listUnclaimedDingTalk()) {
-            String sessionId = unclaimed.getSessionId();
-            if (sessionId != null && Files.isDirectory(wsContext.getSessionsRoot().resolve(sessionId))) {
-                gateway.claimDingTalk(unclaimed.getIdentity(), unclaimed.getUserKey(), workspaceId);
-            }
-        }
     }
 
     private static String appKeyForLog(String appKey) {

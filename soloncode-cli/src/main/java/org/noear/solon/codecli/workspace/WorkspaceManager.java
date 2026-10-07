@@ -866,7 +866,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, automationManager, this, wsSettings);
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
-        // Link.run() 内部有 running CAS 幂等保护，重复调用安全。
+        // Link.run() 只做一次幂等委托（gateway.startXxx 按连接维度去重），重复调用安全。
         // 仅入口运行时就绪后才拉起：acp/cli 模式没有消息运行时，连接收到消息后
         // 无法投递，且会抢走飞书/钉钉服务端的消息路由。
         if (getRuntimePort() != null) {

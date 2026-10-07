@@ -20,6 +20,8 @@ import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.codecli.channel.ImBindingStore;
 import org.noear.solon.codecli.channel.ImGateway;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -66,27 +68,34 @@ public class WeChatLegacyBindingTest {
         }
     }
 
-    /** 预置一条历史无归属绑定，并装配一个只连假传输层的进程级网关。 */
-    private ImGateway gatewayWithLegacyEntry() {
-        WeChatCredentialStore store = new WeChatCredentialStore(tempDir.resolve("wechat-bindings.json"));
-        Map<String, WeChatLink.WeChatBinding> all = new LinkedHashMap<>();
-        WeChatLink.WeChatBinding legacy = new WeChatLink.WeChatBinding();
-        legacy.botToken = "bot-1";
-        legacy.ilinkBotId = "ilink-bot";
-        legacy.ilinkUserId = "user-1";
-        legacy.baseUrl = "https://example.invalid";
-        legacy.cursor = "";
-        legacy.workspaceId = null;
-        all.put("session-1", legacy);
-        store.save(all);
-        assertFalse(store.load().isEmpty());
+    /**
+     * 预置一条历史无归属绑定（写在旧版 {@code wechat-bindings.json} 里），
+     * 交给 {@link ImBindingStore} 一次性迁入统一登记表，再装配一个只连假传输层的进程级网关。
+     */
+    private ImGateway gatewayWithLegacyEntry() throws Exception {
+        String legacyJson = "{\n"
+                + "  \"session-1\": {\n"
+                + "    \"botToken\": \"bot-1\",\n"
+                + "    \"ilinkBotId\": \"ilink-bot\",\n"
+                + "    \"ilinkUserId\": \"user-1\",\n"
+                + "    \"baseUrl\": \"https://example.invalid\",\n"
+                + "    \"cursor\": \"\"\n"
+                + "  }\n"
+                + "}";
+        Files.write(tempDir.resolve(ImBindingStore.LEGACY_WECHAT_FILE),
+                legacyJson.getBytes(StandardCharsets.UTF_8));
+
+        ImBindingStore store = new ImBindingStore(tempDir.resolve(ImBindingStore.STORE_FILE));
+        assertFalse(store.load().isEmpty(), "旧微信条目应迁入统一登记表");
 
         transport = new WeChatTransport(new FakeTransport());
-        return new ImGateway(new ImBindingStore(tempDir.resolve("im-bindings.json")), store, transport);
+        ImGateway gateway = new ImGateway(store, transport);
+        gateway.reload();
+        return gateway;
     }
 
     @Test
-    public void legacyEntryIsNotReportedAsBoundElsewhere() {
+    public void legacyEntryIsNotReportedAsBoundElsewhere() throws Exception {
         ImGateway gw = gatewayWithLegacyEntry();
         try {
             ImGateway.WeChatStatus status = gw.wechatStatus("ws-a", "session-1");
@@ -98,7 +107,7 @@ public class WeChatLegacyBindingTest {
     }
 
     @Test
-    public void legacyEntryIsClaimedByRebindWithoutConflict() {
+    public void legacyEntryIsClaimedByRebindWithoutConflict() throws Exception {
         ImGateway gw = gatewayWithLegacyEntry();
         try {
             ImGateway.AdoptResult result = gw.adoptWeChat(

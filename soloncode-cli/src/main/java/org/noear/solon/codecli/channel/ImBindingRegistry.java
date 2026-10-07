@@ -10,6 +10,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 进程内 IM 绑定登记表。
@@ -110,32 +111,6 @@ public class ImBindingRegistry {
             }
         }
         return out;
-    }
-
-    /** 列出无归属（workspaceId 为空）的绑定，供历史数据认领。 */
-    public synchronized java.util.List<Binding> listUnclaimed(String channel) {
-        java.util.List<Binding> out = new java.util.ArrayList<>();
-        for (Binding binding : bindings.values()) {
-            if (Objects.equals(channel, binding.getChannel())
-                    && binding.getWorkspaceId() == null) {
-                out.add(binding);
-            }
-        }
-        return out;
-    }
-
-    /** 历史数据认领：把无归属绑定归入指定工作区，返回认领后的绑定（无可认领时返回原值或 null）。 */
-    public synchronized Binding claim(String channel, Identity identity, String userKey, String workspaceId) {
-        String key = compositeKey(channel, identityKey(identity), userKey);
-        Binding binding = bindings.get(key);
-        if (binding != null && binding.getWorkspaceId() == null) {
-            Binding claimed = new Binding(binding.getChannel(), binding.getUserKey(),
-                    binding.getIdentity(), workspaceId, binding.getSessionId(),
-                    binding.getUpdatedAt(), binding.getSecret(), binding.getLastMessageId());
-            bindings.put(key, claimed);
-            return claimed;
-        }
-        return binding;
     }
 
     /** 按 channel+workspaceId+sessionId 查找绑定（会话维度，用于状态/回复路由）。 */
@@ -251,6 +226,45 @@ public class ImBindingRegistry {
         return null;
     }
 
+    /** 按 channel + userKey 列出全部绑定（不区分 bot 身份）。 */
+    public synchronized java.util.List<Binding> findAllByUserKey(String channel, String userKey) {
+        java.util.List<Binding> out = new java.util.ArrayList<>();
+        for (Binding binding : bindings.values()) {
+            if (Objects.equals(channel, binding.getChannel())
+                    && Objects.equals(userKey, binding.getUserKey())) {
+                out.add(binding);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 按 channel + userKey 移除全部绑定（不区分 bot 身份），返回被移除的条目。
+     *
+     * <p>微信用它做「一个账号只能属于一个对话」的迁移：微信的归属粒度是账号而非 bot，
+     * 重新绑定要清掉同一账号的旧条目。</p>
+     */
+    public synchronized java.util.List<Binding> removeAllByUserKey(String channel, String userKey) {
+        java.util.List<Binding> removed = findAllByUserKey(channel, userKey);
+        for (Binding binding : removed) {
+            bindings.remove(keyOf(binding));
+        }
+        return removed;
+    }
+
+    /**
+     * 直接写入一条绑定，不执行归属约束。
+     *
+     * <p>供已经自行完成冲突判定的通道使用（如微信：归属粒度是账号，与
+     * {@link #adopt} 的 bot 级约束不同构）。调用方负责保证语义正确。</p>
+     */
+    public synchronized void put(Binding binding) {
+        if (binding == null || binding.getUserKey() == null || binding.getChannel() == null) {
+            return;
+        }
+        bindings.put(keyOf(binding), binding);
+    }
+
     /** 返回以 composite key 为键的不可变登记表快照。 */
     public synchronized Map<String, Binding> snapshot() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(bindings));
@@ -269,6 +283,12 @@ public class ImBindingRegistry {
             if (Objects.equals(workspaceId, binding.getWorkspaceId())) {
                 local = binding;
                 break;
+            }
+            // 历史无归属条目不构成「已绑定在别处」：它不属于任何工作区，重新绑定即认领。
+            // 与 ImGateway 微信通道的 wechatStatus 对齐，否则前端会呈现
+            // 「已绑定到工作区 （空）」这种无意义状态，并用它拦住重新绑定。
+            if (binding.getWorkspaceId() == null) {
+                continue;
             }
             if (elsewhere == null) {
                 elsewhere = binding;
@@ -359,6 +379,14 @@ public class ImBindingRegistry {
         private final long updatedAt;
         /** 通道私密凭据（飞书 appSecret 等）；不参与冲突判定。 */
         private final String secret;
+        /**
+         * 通道私有的非关系型状态（如微信接入点 baseUrl、上次回复目标）。
+         *
+         * <p>统一放在这里而不是各渠道各建一个 store：三渠道的绑定形状不同，但
+         * 「绑定元数据 + 通道私有附加状态」这个结构是同一件事，由一个存储与一个
+         * 落盘出口承载，才不会出现「微信漏改一处」这类漂移。不参与冲突判定。</p>
+         */
+        private final Map<String, String> runtime = new ConcurrentHashMap<>();
         /** 去重缓存：最后处理的消息 ID（运行时可变）。 */
         private volatile String lastMessageId;
 
@@ -388,6 +416,23 @@ public class ImBindingRegistry {
         public long getUpdatedAt() { return updatedAt; }
         public String getSecret() { return secret; }
         public String getLastMessageId() { return lastMessageId; }
+
+        /** 通道私有状态（可写，随绑定持久化）。 */
+        public Map<String, String> getRuntime() { return runtime; }
+
+        public String getRuntime(String key) { return key == null ? null : runtime.get(key); }
+
+        /** 写入通道私有状态；key 为空忽略，value 为空则移除该键。 */
+        public void putRuntime(String key, String value) {
+            if (key == null) {
+                return;
+            }
+            if (value == null || value.isEmpty()) {
+                runtime.remove(key);
+            } else {
+                runtime.put(key, value);
+            }
+        }
     }
 
     public static final class Result {

@@ -7,9 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -138,40 +136,6 @@ class ImBindingStoreTest {
         assertNotNull(loaded.get(ImBindingRegistry.compositeKey("dingtalk", "key-2", "staff-2")),
                 "appKey 缺失时应回退到 robotCode");
         assertFalse(Files.exists(legacy));
-    }
-
-    /**
-     * 回归点：登记表被写到历史目录（旧实现取进程启动目录）时须能回收。
-     *
-     * <p>契约：登记表位于用户级 harness 目录。旧实现误取 {@code getUserDir()}
-     * （进程启动目录），会使同一进程随启动位置读写不同文件。</p>
-     */
-    @Test
-    void reclaimsMisplacedRegistryAndLegacyFilesFromHistoricalDir() throws Exception {
-        Path targetDir = tempDir.resolve("home/channels");
-        Path historicalDir = tempDir.resolve("launched/channels");
-        Files.createDirectories(historicalDir);
-
-        // 历史目录里既有旧格式文件，也有被写错位置的新格式登记表
-        Files.write(historicalDir.resolve("dingtalk-bindings.json"),
-                ("{\"s1\":{\"userId\":\"staff-1\",\"appKey\":\"key-1\",\"appSecret\":\"sec-1\"}}")
-                        .getBytes(StandardCharsets.UTF_8));
-        Map<String, ImBindingRegistry.Binding> seed = new LinkedHashMap<>();
-        seed.put(ImBindingRegistry.compositeKey("feishu", "a1", "u1"),
-                new ImBindingRegistry.Binding("feishu", "u1",
-                        new ImBindingRegistry.Identity("a1", null, null), "ws1", "s1", 99L));
-        new ImBindingStore(historicalDir.resolve("im-bindings.json")).save(seed);
-
-        List<Path> legacyDirs = Arrays.asList(historicalDir);
-        Map<String, ImBindingRegistry.Binding> loaded =
-                new ImBindingStore(targetDir.resolve("im-bindings.json"), legacyDirs).load();
-
-        assertEquals(2, loaded.size(), "旧格式与错位登记表应一并回收");
-        assertEquals("s1", loaded.get(ImBindingRegistry.compositeKey("feishu", "a1", "u1")).getSessionId());
-        assertEquals("sec-1", loaded.get(ImBindingRegistry.compositeKey("dingtalk", "key-1", "staff-1")).getSecret());
-        assertTrue(Files.exists(targetDir.resolve("im-bindings.json")), "回收结果应落到正确位置");
-        assertFalse(Files.exists(historicalDir.resolve("im-bindings.json")));
-        assertFalse(Files.exists(historicalDir.resolve("dingtalk-bindings.json")));
     }
 
     /** 登记表路径固定为「传入的 harness 根 + channels」，不含进程启动目录分量。 */

@@ -10,7 +10,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkTransport;
 import org.noear.solon.codecli.channel.feishu.FeishuAppLeaseRegistry;
 import org.noear.solon.codecli.channel.feishu.FeishuTransport;
-import org.noear.solon.codecli.channel.wechat.WeChatCredentialStore;
+import org.noear.solon.codecli.channel.wechat.WeChatClient;
 import org.noear.solon.codecli.channel.wechat.WeChatLink;
 import org.noear.solon.codecli.channel.wechat.WeChatTransport;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -24,7 +24,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,7 +40,8 @@ import java.util.function.Function;
  * <p>把原本散落在各工作区 {@code FeishuLink} 实例上的「谁是某个 bot/用户的归属者」
  * 收拢为一个进程级对象，解决同一 bot 先后绑定不同工作区会话导致的错乱：</p>
  * <ul>
- *   <li>绑定主键为 channel + userKey（飞书为 openId），全局唯一；</li>
+ *   <li>绑定主键为 channel + identity + userKey（identity 为 appId/appKey/botToken），全局唯一；
+ *       同一 bot（同一 identity）同时只能绑定一个对话，不同 bot 天然并存；</li>
  *   <li>连接归属由 {@link FeishuTransport} + {@link FeishuAppLeaseRegistry} 保证进程内每 appId 至多一条；</li>
  *   <li>消息投递时按绑定挂点动态解析工作区（可重新唤醒被 LRU 释放的工作区），
  *       连接不随工作区关闭而断开；</li>
@@ -75,10 +75,6 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
     private volatile DingTalkTransport dingTalkTransport;
     /** 进程级微信长轮询传输层，惰性创建。 */
     private volatile WeChatTransport weChatTransport;
-    /** 微信绑定全局存储（null workspaceId = 全量管理，落盘唯一出口）。 */
-    private volatile WeChatCredentialStore weChatStore;
-    /** 宿主引擎（提供 channels 目录路径），微信全局存储需要。 */
-    private volatile HarnessEngine harnessEngine;
     /** 工作区解析端口（由 WorkspaceManager 注入），用于消息投递时唤醒工作区。 */
     private volatile WorkspaceRegistry workspaces;
     /** workspaceId -> 物理路径，仅供连接线程日志归属。 */
@@ -91,41 +87,28 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
     }
 
     /**
-     * 组合构造：同时指定绑定存储、微信全局存储与微信传输层。
+     * 组合构造：同时指定绑定存储与微信传输层。
      *
-     * <p>生产路径由 {@link #getInstance(HarnessEngine)} 惰性装配；此构造供测试与定制装配使用。</p>
+     * <p>生产路径由 {@link #getInstance(HarnessEngine)} 惰性装配；此构造供测试与定制装配使用。
+     * 微信绑定与飞书/钉钉同住一个登记表，不再需要单独的微信存储。</p>
      */
-    public ImGateway(ImBindingStore store, WeChatCredentialStore weChatStore, WeChatTransport weChatTransport) {
+    public ImGateway(ImBindingStore store, WeChatTransport weChatTransport) {
         this.store = store;
-        this.weChatStore = weChatStore;
         this.weChatTransport = weChatTransport;
     }
 
-    /** 进程级单例；storePath 只在首次创建时生效。 */
-    public static ImGateway getInstance(Path storePath) {
-        return getInstance(storePath, Collections.emptyList());
-    }
-
     /**
-     * 进程级单例：绑定登记表落在<strong>用户级</strong> harness 目录，历史位置作为待回收来源。
+     * 进程级单例：绑定登记表落在<strong>用户级</strong> harness 目录
+     * （{@code <userHome>/<harnessChannels>/im-bindings.json}）。
      *
-     * <p>登记表是「进程级、跨工作区」的单一真相源，位置必须与进程启动目录无关。切勿改用
-     * {@code getUserDir()}：它返回 {@code System.getProperty("user.dir")}（进程启动目录），
-     * 会让同一进程随启动位置读写不同文件。历史版本正是取错此处，故这里把启动目录下的
-     * channels 目录作为历史来源回收（内含写错位置的 im-bindings.json 与旧格式文件）。</p>
+     * <p>登记表是「进程级、跨工作区」的单一真相源，只存在于用户级目录一处，位置必须与
+     * 进程启动目录无关。切勿引入 {@code getUserDir()} 分量：它返回
+     * {@code System.getProperty("user.dir")}（进程启动目录），会让同一进程随启动位置
+     * 读写不同文件。登记表是后来新增的规范，不存在任何历史位置的同格式文件，因此这里
+     * 也不做「按启动目录回收」——否则等于把「位置取决于从哪儿启动」重新装回去。</p>
      */
     public static ImGateway getInstance(HarnessEngine engine) {
-        Path home = storePath(engine.getUserHome(), engine.getHarnessChannels());
-        Path launched = storePath(engine.getUserDir(), engine.getHarnessChannels());
-
-        List<Path> legacyDirs = new ArrayList<>();
-        if (!launched.equals(home)) {
-            legacyDirs.add(launched.getParent());
-        }
-
-        ImGateway gateway = getInstance(home, legacyDirs);
-        gateway.harnessEngine = engine;
-        return gateway;
+        return getInstance(storePath(engine.getUserHome(), engine.getHarnessChannels()));
     }
 
     /** 绑定登记表路径：{@code <harnessRoot>/<harnessChannels>/im-bindings.json}。 */
@@ -133,14 +116,14 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
         return Paths.get(harnessRoot, harnessChannels, ImBindingStore.STORE_FILE).toAbsolutePath();
     }
 
-    /** 进程级单例；storePath 与 legacyDirs 只在首次创建时生效。 */
-    public static ImGateway getInstance(Path storePath, List<Path> legacyDirs) {
+    /** 进程级单例；storePath 只在首次创建时生效。 */
+    public static ImGateway getInstance(Path storePath) {
         ImGateway local = instance;
         if (local == null) {
             synchronized (ImGateway.class) {
                 local = instance;
                 if (local == null) {
-                    local = new ImGateway(new ImBindingStore(storePath, legacyDirs));
+                    local = new ImGateway(new ImBindingStore(storePath));
                     local.reload();
                     instance = local;
                 }
@@ -226,8 +209,12 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
             if (!started.add(appId)) {
                 continue;
             }
+            // 无归属条目不能建连接：消息投递时解析不出工作区，会被当作悬挂绑定删掉
+            if (binding.getWorkspaceId() == null || binding.getSessionId() == null) {
+                continue;
+            }
             String secret = binding.getSecret();
-            if (secret == null || secret.isEmpty() || binding.getSessionId() == null) {
+            if (secret == null || secret.isEmpty()) {
                 continue;
             }
             transport.startStream(appId, secret, binding.getWorkspaceId(), binding.getSessionId(), false);
@@ -280,8 +267,12 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
             if (!started.add(appKey)) {
                 continue;
             }
+            // 无归属条目不能建连接：消息投递时解析不出工作区，会被当作悬挂绑定删掉
+            if (binding.getWorkspaceId() == null || binding.getSessionId() == null) {
+                continue;
+            }
             String secret = binding.getSecret();
-            if (secret == null || secret.isEmpty() || binding.getSessionId() == null) {
+            if (secret == null || secret.isEmpty()) {
                 continue;
             }
             transport.startStream(appKey, secret, binding.getWorkspaceId(), binding.getSessionId());
@@ -313,47 +304,27 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
         return local;
     }
 
-    /** 微信绑定全局存储；未装配且宿主引擎未就绪时返回 null。 */
-    private WeChatCredentialStore weChatStore() {
-        WeChatCredentialStore local = weChatStore;
-        if (local != null) {
-            return local;
-        }
-        HarnessEngine engine = harnessEngine;
-        if (engine == null) {
-            return null;
-        }
-        synchronized (this) {
-            local = weChatStore;
-            if (local == null) {
-                // 微信存储同样从历史位置（进程启动目录）回收一次
-                WeChatCredentialStore.migrateLegacyLocation(engine);
-                local = new WeChatCredentialStore(engine);
-                weChatStore = local;
-            }
-        }
-        return local;
-    }
-
     /**
-     * 拉起微信传输层并恢复持久化绑定对应的长轮询连接。
+     * 拉起微信传输层并恢复登记表中绑定对应的长轮询连接。
      *
-     * <p>进程级一次性动作：不再由各工作区激活时分别拉起，避免同一 botToken 出现多条长轮询。</p>
+     * <p>微信与飞书/钉钉同住一张登记表：绑定不再有独立存储，落盘由 {@link #save()}
+     * 单点负责，因此这里直接读内存登记表而不是读文件。</p>
      */
     public synchronized void startWeChat() {
-        WeChatCredentialStore store = weChatStore();
-        if (store == null || workspaces == null) {
+        if (workspaces == null) {
             return;
         }
-        Map<String, WeChatLink.WeChatBinding> all = store.load();
-        for (Map.Entry<String, WeChatLink.WeChatBinding> entry : all.entrySet()) {
-            WeChatLink.WeChatBinding binding = entry.getValue();
-            if (binding == null || binding.workspaceId == null
-                    || binding.botToken == null || binding.ilinkUserId == null) {
+        for (ImBindingRegistry.Binding binding : registry.snapshot().values()) {
+            if (!CHANNEL_WECHAT.equals(binding.getChannel())) {
                 continue;
             }
-            getWeChatTransport().ensureConnected(this, binding.workspaceId, entry.getKey(),
-                    binding.botToken, binding.ilinkBotId, binding.ilinkUserId, binding.baseUrl);
+            WeChatLink.WeChatBinding restored = toWeChatBinding(binding);
+            if (restored == null || restored.workspaceId == null
+                    || restored.botToken == null || restored.ilinkUserId == null) {
+                continue;
+            }
+            getWeChatTransport().ensureConnected(this, restored.workspaceId, binding.getSessionId(),
+                    restored.botToken, restored.ilinkBotId, restored.ilinkUserId, restored.baseUrl);
         }
     }
 
@@ -389,89 +360,78 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
      * 绑定或迁移一个微信用户。
      *
      * <p>与飞书/钉钉语义对齐：同一 userKey 在别的<b>工作区</b>已被占用时，force=false 返回冲突；
-     * 同一工作区内换会话沿用旧有的自动迁移语义。重复确认（同一会话同一凭据）原样保留游标。</p>
+     * 同一工作区内换会话沿用旧有的自动迁移语义。重复确认（同一会话同一凭据）原样保留回复目标。</p>
+     *
+     * <p>归属粒度是<b>微信账号</b>（ilinkUserId），不是 bot：ilinkUserId 由服务端按账号签发，
+     * 天然按账号唯一，因此不需要飞书/钉钉那种「一个 bot 一个对话」的约束。</p>
      */
     public synchronized AdoptResult adoptWeChat(String ilinkUserId, String botToken, String ilinkBotId,
                                                 String baseUrl, String workspaceId, String sessionId, boolean force) {
-        WeChatCredentialStore store = weChatStore();
-        if (store == null || sessionId == null || botToken == null || ilinkUserId == null) {
+        if (sessionId == null || botToken == null || ilinkUserId == null) {
             return new AdoptResult(false, null, null);
         }
-        Map<String, WeChatLink.WeChatBinding> all = new LinkedHashMap<>(store.load());
+        String normalizedBaseUrl = WeChatClient.normalizeBaseUrl(baseUrl);
+        // 身份维取 ilinkBotId（稳定，不随重新授权换发）；缺失时回退 botToken
+        ImBindingRegistry.Identity identity = new ImBindingRegistry.Identity(null, null,
+                ilinkBotId == null || ilinkBotId.isEmpty() ? botToken : ilinkBotId);
+        ImBindingRegistry.Binding current = registry.find(CHANNEL_WECHAT, identity, ilinkUserId);
 
-        // 1) 重复确认：同一会话、同一归属、同一凭据 —— 必须原样保留游标与回复目标
-        WeChatLink.WeChatBinding current = all.get(sessionId);
+        // 1) 重复确认：同一会话、同一归属、同一凭据 —— 必须原样保留回复目标
         if (current != null
-                && Objects.equals(current.workspaceId, workspaceId)
-                && Objects.equals(current.ilinkUserId, ilinkUserId)
-                && Objects.equals(current.botToken, botToken)) {
-            if (baseUrl != null && !baseUrl.isEmpty() && !baseUrl.equals(current.baseUrl)) {
-                current.baseUrl = baseUrl;
-                store.save(all);
+                && Objects.equals(current.getWorkspaceId(), workspaceId)
+                && Objects.equals(current.getSessionId(), sessionId)
+                && Objects.equals(current.getSecret(), botToken)) {
+            String known = current.getRuntime(ImBindingStore.RT_WECHAT_BASE_URL);
+            if (normalizedBaseUrl != null && !normalizedBaseUrl.equals(known)) {
+                current.putRuntime(ImBindingStore.RT_WECHAT_BASE_URL, normalizedBaseUrl);
+                save();
             }
             getWeChatTransport().ensureConnected(this, workspaceId, sessionId, botToken, ilinkBotId,
-                    ilinkUserId, current.baseUrl);
+                    ilinkUserId, known);
             return new AdoptResult(true, null, null);
         }
 
         // 2) 跨工作区占用检测（同工作区内换会话不算冲突；历史无归属条目不构成冲突，允许被本次绑定认领）
-        WeChatLink.WeChatBinding conflictBinding = null;
-        String conflictSessionId = null;
-        for (Map.Entry<String, WeChatLink.WeChatBinding> entry : all.entrySet()) {
-            WeChatLink.WeChatBinding binding = entry.getValue();
-            if (binding == null || !Objects.equals(binding.ilinkUserId, ilinkUserId)) {
+        ImBindingRegistry.Binding conflict = null;
+        for (ImBindingRegistry.Binding binding : registry.findAllByUserKey(CHANNEL_WECHAT, ilinkUserId)) {
+            if (binding.getWorkspaceId() == null || Objects.equals(binding.getWorkspaceId(), workspaceId)) {
                 continue;
             }
-            if (binding.workspaceId == null || Objects.equals(binding.workspaceId, workspaceId)) {
-                continue;
-            }
-            conflictBinding = binding;
-            conflictSessionId = entry.getKey();
+            conflict = binding;
         }
-        if (conflictBinding != null && !force) {
-            return new AdoptResult(false, toWeChatBinding(conflictSessionId, conflictBinding), null);
+        if (conflict != null && !force) {
+            return new AdoptResult(false, conflict, null);
         }
 
-        // 3) 清理同一 userKey 的旧条目，再落盘新绑定
-        for (String key : new ArrayList<>(all.keySet())) {
-            WeChatLink.WeChatBinding binding = all.get(key);
-            if (binding != null && Objects.equals(binding.ilinkUserId, ilinkUserId)) {
-                all.remove(key);
-            }
-        }
-        WeChatLink.WeChatBinding binding = new WeChatLink.WeChatBinding();
-        binding.botToken = botToken;
-        binding.ilinkBotId = ilinkBotId;
-        binding.ilinkUserId = ilinkUserId;
-        binding.baseUrl = baseUrl;
-        binding.cursor = "";
-        binding.workspaceId = workspaceId;
-        all.put(sessionId, binding);
-        store.save(all);
+        // 3) 清理同一账号的旧条目，再写入新绑定
+        registry.removeAllByUserKey(CHANNEL_WECHAT, ilinkUserId);
+        ImBindingRegistry.Binding adopted = new ImBindingRegistry.Binding(CHANNEL_WECHAT, ilinkUserId,
+                identity, workspaceId, sessionId, System.currentTimeMillis(), botToken, null);
+        adopted.putRuntime(ImBindingStore.RT_WECHAT_BASE_URL, normalizedBaseUrl);
+        registry.put(adopted);
+        save();
 
         WeChatTransport transport = getWeChatTransport();
         transport.disconnectByUserKey(ilinkUserId);
-        transport.ensureConnected(this, workspaceId, sessionId, botToken, ilinkBotId, ilinkUserId, baseUrl);
+        transport.ensureConnected(this, workspaceId, sessionId, botToken, ilinkBotId, ilinkUserId,
+                normalizedBaseUrl);
 
-        return new AdoptResult(true, null,
-                conflictBinding == null ? null : toWeChatBinding(conflictSessionId, conflictBinding));
+        return new AdoptResult(true, null, conflict);
     }
 
     /** 解除某会话在本工作区的微信绑定（含断开长轮询连接）。 */
     public synchronized ImBindingRegistry.Binding removeWeChat(String workspaceId, String sessionId) {
-        WeChatCredentialStore store = weChatStore();
-        if (store == null || sessionId == null) {
+        if (sessionId == null) {
             return null;
         }
-        Map<String, WeChatLink.WeChatBinding> all = new LinkedHashMap<>(store.load());
-        WeChatLink.WeChatBinding removed = all.get(sessionId);
-        if (removed == null || !Objects.equals(removed.workspaceId, workspaceId)) {
+        ImBindingRegistry.Binding removed = registry.findBySession(CHANNEL_WECHAT, workspaceId, sessionId);
+        if (removed == null) {
             return null;
         }
-        all.remove(sessionId);
-        store.save(all);
+        registry.remove(CHANNEL_WECHAT, removed.getIdentity(), removed.getUserKey(), workspaceId, sessionId);
+        save();
         getWeChatTransport().disconnectBySession(workspaceId, sessionId);
-        return toWeChatBinding(sessionId, removed);
+        return removed;
     }
 
     /** 指定会话是否已绑定微信（归属本工作区）。 */
@@ -486,22 +446,24 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
      * 否则看是否有其它工作区持有同名会话的绑定（供前端按钮呈现「已绑定到别处」第三态）。</p>
      */
     public synchronized WeChatStatus wechatStatus(String workspaceId, String sessionId) {
-        WeChatCredentialStore store = weChatStore();
-        if (store == null || sessionId == null) {
+        if (sessionId == null) {
             return new WeChatStatus(false, false, null, null);
         }
-        WeChatLink.WeChatBinding binding = store.load().get(sessionId);
-        if (binding == null) {
-            return new WeChatStatus(false, false, null, null);
+        for (ImBindingRegistry.Binding binding : registry.snapshot().values()) {
+            if (!CHANNEL_WECHAT.equals(binding.getChannel())
+                    || !Objects.equals(sessionId, binding.getSessionId())) {
+                continue;
+            }
+            if (Objects.equals(binding.getWorkspaceId(), workspaceId)) {
+                return new WeChatStatus(true, false, binding.getWorkspaceId(), sessionId);
+            }
+            if (binding.getWorkspaceId() == null) {
+                // 历史无归属条目：不视为占用，等待重新绑定认领
+                return new WeChatStatus(false, false, null, null);
+            }
+            return new WeChatStatus(false, true, binding.getWorkspaceId(), sessionId);
         }
-        if (Objects.equals(binding.workspaceId, workspaceId)) {
-            return new WeChatStatus(true, false, binding.workspaceId, sessionId);
-        }
-        if (binding.workspaceId == null) {
-            // 历史无归属条目：不视为占用，等待重新绑定认领
-            return new WeChatStatus(false, false, null, null);
-        }
-        return new WeChatStatus(false, true, binding.workspaceId, sessionId);
+        return new WeChatStatus(false, false, null, null);
     }
 
     /** 会话维度的微信绑定状态快照。 */
@@ -539,10 +501,31 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
                 sourceUserId, replyTarget, messageId);
     }
 
-    private static ImBindingRegistry.Binding toWeChatBinding(String sessionId, WeChatLink.WeChatBinding binding) {
-        return new ImBindingRegistry.Binding(CHANNEL_WECHAT, binding.ilinkUserId,
-                new ImBindingRegistry.Identity(null, null, binding.botToken),
-                binding.workspaceId, sessionId, 0L, binding.ilinkBotId, null);
+    /**
+     * 把登记表条目还原为微信引擎工作集视图。
+     *
+     * <p>映射关系：userKey=ilinkUserId、identity=ilinkBotId、secret=botToken，
+     * 接入点与回复目标在 runtime 扩展位。secret 缺失（旧数据）时返回 null，
+     * 调用方按「未绑定」处理。</p>
+     */
+    static WeChatLink.WeChatBinding toWeChatBinding(ImBindingRegistry.Binding binding) {
+        if (binding == null) {
+            return null;
+        }
+        String botToken = binding.getSecret();
+        if (botToken == null || botToken.isEmpty()) {
+            return null;
+        }
+        WeChatLink.WeChatBinding out = new WeChatLink.WeChatBinding();
+        out.botToken = botToken;
+        out.ilinkBotId = binding.getIdentity() == null ? null : binding.getIdentity().getBotToken();
+        out.ilinkUserId = binding.getUserKey();
+        out.workspaceId = binding.getWorkspaceId();
+        // 接入点不可信就丢：登记表里的值是持久化数据，可能是被改过的 redirect_host
+        out.baseUrl = WeChatClient.normalizeBaseUrl(binding.getRuntime(ImBindingStore.RT_WECHAT_BASE_URL));
+        out.restoreReplyTarget(binding.getRuntime(ImBindingStore.RT_WECHAT_LAST_FROM_USER),
+                binding.getRuntime(ImBindingStore.RT_WECHAT_LAST_CONTEXT_TOKEN));
+        return out;
     }
 
     // ==================== WeChatTransport.Sink 实现 ====================
@@ -625,22 +608,6 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
         return removed;
     }
 
-    /** 历史数据认领：把无归属绑定的归属补为本工作区。 */
-    public synchronized ImBindingRegistry.Binding claimFeishu(String openId, String workspaceId) {
-        ImBindingRegistry.Binding candidate = registry.findAny(CHANNEL_FEISHU, openId);
-        return claimFeishu(candidate == null ? null : candidate.getIdentity(), openId, workspaceId);
-    }
-
-    /** 历史数据认领：显式指定 bot 身份，避免多 bot 同 userKey 时认领错对象。 */
-    public synchronized ImBindingRegistry.Binding claimFeishu(ImBindingRegistry.Identity identity,
-                                                              String openId, String workspaceId) {
-        ImBindingRegistry.Binding claimed = registry.claim(CHANNEL_FEISHU, identity, openId, workspaceId);
-        if (claimed != null && workspaceId != null && workspaceId.equals(claimed.getWorkspaceId())) {
-            save();
-        }
-        return claimed;
-    }
-
     public synchronized ImBindingRegistry.Binding findFeishuByOpenId(String openId) {
         return registry.findAny(CHANNEL_FEISHU, openId);
     }
@@ -660,10 +627,6 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
 
     public synchronized List<ImBindingRegistry.Binding> listFeishu(String workspaceId) {
         return registry.listByWorkspace(CHANNEL_FEISHU, workspaceId);
-    }
-
-    public synchronized List<ImBindingRegistry.Binding> listUnclaimedFeishu() {
-        return registry.listUnclaimed(CHANNEL_FEISHU);
     }
 
     /** 会话维度的绑定状态（本地/异地/未绑定）。 */
@@ -701,22 +664,6 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
         return removed;
     }
 
-    /** 历史数据认领：把无归属绑定的归属补为本工作区。 */
-    public synchronized ImBindingRegistry.Binding claimDingTalk(String userId, String workspaceId) {
-        ImBindingRegistry.Binding candidate = registry.findAny(CHANNEL_DINGTALK, userId);
-        return claimDingTalk(candidate == null ? null : candidate.getIdentity(), userId, workspaceId);
-    }
-
-    /** 历史数据认领：显式指定 bot 身份，避免多 bot 同 userKey 时认领错对象。 */
-    public synchronized ImBindingRegistry.Binding claimDingTalk(ImBindingRegistry.Identity identity,
-                                                                String userId, String workspaceId) {
-        ImBindingRegistry.Binding claimed = registry.claim(CHANNEL_DINGTALK, identity, userId, workspaceId);
-        if (claimed != null && workspaceId != null && workspaceId.equals(claimed.getWorkspaceId())) {
-            save();
-        }
-        return claimed;
-    }
-
     public synchronized ImBindingRegistry.Binding findDingTalkByUserId(String userId) {
         return registry.findAny(CHANNEL_DINGTALK, userId);
     }
@@ -736,10 +683,6 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
 
     public synchronized List<ImBindingRegistry.Binding> listDingTalk(String workspaceId) {
         return registry.listByWorkspace(CHANNEL_DINGTALK, workspaceId);
-    }
-
-    public synchronized List<ImBindingRegistry.Binding> listUnclaimedDingTalk() {
-        return registry.listUnclaimed(CHANNEL_DINGTALK);
     }
 
     /** 会话维度的钉钉绑定状态（本地/异地/未绑定）。 */

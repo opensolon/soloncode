@@ -19,43 +19,42 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /** 按 channel/identity/userKey 持久化 IM 绑定登记表。 */
 public class ImBindingStore {
     private static final Logger LOG = LoggerFactory.getLogger(ImBindingStore.class);
 
-    /** 2 起登记键含 bot 身份维（channel + identity + userKey）；1 为旧的 channel + userKey。 */
-    private static final int VERSION = 2;
-    /** 登记表文件名；历史位置可能存在同格式文件，需回收。 */
+    /**
+     * 3 起单一文件承载全部三渠道（含微信）；2 为仅飞书/钉钉、键含 bot 身份维；
+     * 1 为最旧的 channel + userKey。
+     */
+    private static final int VERSION = 3;
+    /** 登记表文件名。 */
     public static final String STORE_FILE = "im-bindings.json";
     /** 旧版飞书绑定文件（sessionId 为键，节点内含 openId/appId/appSecret）。 */
     public static final String LEGACY_FEISHU_FILE = "feishu-bindings.json";
     /** 旧版钉钉绑定文件（sessionId 为键，节点内含 userId/appKey/appSecret）。 */
     public static final String LEGACY_DINGTALK_FILE = "dingtalk-bindings.json";
+    /** 旧版微信绑定文件（sessionId 为键，节点内含 botToken/ilinkBotId/ilinkUserId）。 */
+    public static final String LEGACY_WECHAT_FILE = "wechat-bindings.json";
+
+    // ==================== 通道私有状态的键 ====================
+    /** 微信：服务端指派的接入点。 */
+    public static final String RT_WECHAT_BASE_URL = "wechat.baseUrl";
+    /** 微信：上一条入站消息的用户 ID（与下一个键一起构成回复目标）。 */
+    public static final String RT_WECHAT_LAST_FROM_USER = "wechat.lastFromUserId";
+    /** 微信：上一条入站消息的 context_token。 */
+    public static final String RT_WECHAT_LAST_CONTEXT_TOKEN = "wechat.lastContextToken";
 
     private final Path storePath;
 
-    /**
-     * 历史目录：既用于回收「写错位置的同格式登记表」，也用于旧格式文件的迁移。
-     *
-     * <p>登记表自身所在目录（{@code storePath.getParent()}）无需在此列出，会隐式参与扫描。</p>
-     */
-    private final List<Path> legacyDirs;
-
     public ImBindingStore(Path storePath) {
-        this(storePath, Collections.emptyList());
-    }
-
-    public ImBindingStore(Path storePath, List<Path> legacyDirs) {
         if (storePath == null) {
             throw new IllegalArgumentException("storePath must not be null");
         }
         this.storePath = storePath;
-        this.legacyDirs = legacyDirs == null ? Collections.emptyList() : new ArrayList<>(legacyDirs);
     }
 
     public Path getStorePath() {
@@ -103,24 +102,22 @@ public class ImBindingStore {
     private boolean migrate(Map<String, ImBindingRegistry.Binding> result) {
         boolean consumed = false;
         for (Path dir : scanDirs()) {
-            // 1) 同格式登记表被写到了别处（历史版本误取进程启动目录所致）
-            consumed |= adoptFile(result, dir.resolve(STORE_FILE), this::readNew);
-            // 2) 旧格式文件，均为 sessionId 为键：飞书 / 钉钉
+            // 旧格式文件（sessionId 为键）：飞书 / 钉钉 / 微信
             consumed |= adoptFile(result, dir.resolve(LEGACY_FEISHU_FILE), this::readLegacyFeishu);
             consumed |= adoptFile(result, dir.resolve(LEGACY_DINGTALK_FILE), this::readLegacyDingTalk);
+            consumed |= adoptFile(result, dir.resolve(LEGACY_WECHAT_FILE), this::readLegacyWeChat);
         }
         return consumed;
     }
 
-    /** 扫描目录 = 登记表自身目录 + 显式传入的历史目录（去重保序）。 */
+    /** 扫描目录：只含登记表自身所在目录（旧格式迁移仅在此进行）。 */
     private List<Path> scanDirs() {
-        Set<Path> dirs = new LinkedHashSet<>();
+        List<Path> dirs = new ArrayList<>();
         Path parent = storePath.getParent();
         if (parent != null) {
             dirs.add(parent);
         }
-        dirs.addAll(legacyDirs);
-        return new ArrayList<>(dirs);
+        return dirs;
     }
 
     /**
@@ -219,6 +216,42 @@ public class ImBindingStore {
         return result;
     }
 
+    /** 旧版微信：sessionId 为键，节点内含 botToken/ilinkBotId/ilinkUserId/baseUrl/回复目标。 */
+    private Map<String, ImBindingRegistry.Binding> readLegacyWeChat(byte[] bytes) {
+        ONode root = ONode.ofJson(new String(bytes, StandardCharsets.UTF_8));
+        Map<String, ImBindingRegistry.Binding> result = new LinkedHashMap<>();
+        if (!root.isObject()) {
+            return result;
+        }
+
+        for (Map.Entry<String, ONode> entry : root.getObject().entrySet()) {
+            ONode node = entry.getValue();
+            if (node == null || !node.isObject()) {
+                continue;
+            }
+            String botToken = text(node, "botToken");
+            String userKey = text(node, "ilinkUserId");
+            if (botToken == null || botToken.isEmpty() || userKey == null || userKey.isEmpty()) {
+                continue;
+            }
+            // 身份维取 ilinkBotId（稳定，不随重新授权换发）；缺失时回退 botToken
+            String ilinkBotId = text(node, "ilinkBotId");
+            ImBindingRegistry.Binding binding = new ImBindingRegistry.Binding(
+                    "wechat", userKey,
+                    new ImBindingRegistry.Identity(null, null,
+                            ilinkBotId == null || ilinkBotId.isEmpty() ? botToken : ilinkBotId),
+                    text(node, "workspaceId"), entry.getKey(), 0L,
+                    botToken, null);
+            binding.putRuntime(RT_WECHAT_BASE_URL, text(node, "baseUrl"));
+            binding.putRuntime(RT_WECHAT_LAST_FROM_USER, text(node, "lastFromUserId"));
+            binding.putRuntime(RT_WECHAT_LAST_CONTEXT_TOKEN, text(node, "lastContextToken"));
+            // cursor 不迁移：旧实现里它由引擎写入，而引擎在生产中用的是空存储（永不推进），
+            // 落盘值恒为空串；新设计也明确不持久化游标（重启从当前 seq 起）。
+            result.put(ImBindingRegistry.keyOf(binding), binding);
+        }
+        return result;
+    }
+
     private ImBindingRegistry.Binding parseBinding(String channel, String entryKey, ONode node) {
         if (entryKey == null || entryKey.isEmpty() || node == null || !node.isObject()) {
             return null;
@@ -231,9 +264,25 @@ public class ImBindingStore {
         }
         ImBindingRegistry.Identity identity = new ImBindingRegistry.Identity(
                 text(node, "appId"), text(node, "appKey"), text(node, "botToken"));
-        return new ImBindingRegistry.Binding(channel, userKey, identity,
+        ImBindingRegistry.Binding binding = new ImBindingRegistry.Binding(channel, userKey, identity,
                 text(node, "workspaceId"), text(node, "sessionId"), number(node, "updatedAt", 0L),
                 text(node, "secret"), text(node, "lastMessageId"));
+        parseRuntime(binding, node);
+        return binding;
+    }
+
+    /** 读取通道私有状态子对象；缺失或非对象一律忽略。 */
+    private void parseRuntime(ImBindingRegistry.Binding binding, ONode node) {
+        ONode runtime = node.get("runtime");
+        if (runtime == null || !runtime.isObject()) {
+            return;
+        }
+        for (Map.Entry<String, ONode> entry : runtime.getObject().entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                continue;
+            }
+            binding.putRuntime(entry.getKey(), entry.getValue().getString());
+        }
     }
 
     private void putIfNewer(Map<String, ImBindingRegistry.Binding> result,
@@ -276,6 +325,15 @@ public class ImBindingStore {
             node.set("secret", binding.getSecret());
             node.set("lastMessageId", binding.getLastMessageId());
             node.set("updatedAt", binding.getUpdatedAt());
+            // 通道私有状态：空则整个子对象不写，避免给空登记表添噪声
+            Map<String, String> runtime = binding.getRuntime();
+            if (!runtime.isEmpty()) {
+                ONode runtimeNode = new ONode();
+                for (Map.Entry<String, String> runtimeEntry : runtime.entrySet()) {
+                    runtimeNode.set(runtimeEntry.getKey(), runtimeEntry.getValue());
+                }
+                node.set("runtime", runtimeNode);
+            }
             // JSON 键含身份维，避免多 bot 同 userKey 时互相覆盖
             String identityKey = ImBindingRegistry.identityKey(binding.getIdentity());
             String entryKey = identityKey.isEmpty()

@@ -15,7 +15,6 @@
  */
 package org.noear.solon.codecli.channel.wechat;
 
-import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChunkedSender;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
@@ -26,25 +25,28 @@ import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * 微信 iLink Bot 通道
+ * 微信 iLink 单连接引擎。
  *
- * <p>每个绑定了微信的会话对应一个独立的长轮询线程，
- * 从微信收取消息后通过 HarnessEngine 调用 AI，再将回复发回微信。</p>
+ * <p>一个 ilinkUserId 连接对应一个实例，由 {@link WeChatTransport} 装配并持有：
+ * 负责该连接的长轮询、游标推进、回复目标与「正在输入」状态。</p>
  *
- * <p><b>线程模型</b>：长轮询会阻塞 35s 以上，因此使用本通道自己的缓存线程池，
+ * <p><b>职责边界</b>：本类不持有任何持久化职责。微信绑定与飞书/钉钉同住统一登记表，
+ * 落盘由 {@code ImGateway} 单点负责（见 {@code ImBindingStore}）。引擎只是绑定的
+ * <i>运行时载体</i>：进程重启后由 {@code ImGateway.startWeChat()} 从登记表重建连接。</p>
+ *
+ * <p><b>线程模型</b>：长轮询会阻塞 35s 以上，因此使用本引擎自己的缓存线程池，
  * 不占用 {@code RunUtil.timer()} 共享调度池（否则会挤占 Loop 调度、心跳等全局定时任务）。
  * 回复发送走每会话单线程队列，既不阻塞 AI 流线程，又能保证分段消息的先后顺序。</p>
  *
  * @author noear 2026/5/5 created
  */
-public class WeChatLink implements Channel, Runnable {
+public class WeChatLink {
     private static final Logger LOG = LoggerFactory.getLogger(WeChatLink.class);
 
     /**
@@ -78,7 +80,6 @@ public class WeChatLink implements Channel, Runnable {
     private static final AtomicInteger THREAD_SEQ = new AtomicInteger();
 
     private final WorkspaceContext wsContext;
-    private final WeChatCredentialStore credentialStore;
     private final Transport transport;
 
     /** 本工作区 ID：绑定归属标记，多工作区同 botToken 会双长轮询重复消费，必须隔离。 */
@@ -109,24 +110,19 @@ public class WeChatLink implements Channel, Runnable {
      */
     private final Map<String, Long> noTargetWarnAt = new ConcurrentHashMap<>();
 
-    private final AtomicBoolean running = new AtomicBoolean(false);
-
     private volatile ExecutorService pollExecutor;
     private volatile ScheduledExecutorService typingScheduler;
 
-    public WeChatLink(WorkspaceContext wsContext) {
-        this(wsContext, new WeChatCredentialStore(wsContext.getEngine(), wsContext.getMeta().getId()), DEFAULT_TRANSPORT);
-    }
-
     /**
-     * 测试用构造：可注入凭据存储与传输层
+     * 仅供 {@link WeChatTransport} 装配（每条连接一个实例），不对外构造。
+     *
+     * <p>引擎不持有存储：绑定落盘归 {@code ImGateway}。wsContext 为空（测试）时
+     * 归属标记为 null——归属判定由 {@code ImGateway} 按登记表完成。</p>
      */
-    WeChatLink(WorkspaceContext wsContext, WeChatCredentialStore credentialStore, Transport transport) {
+    WeChatLink(WorkspaceContext wsContext, Transport transport) {
         this.wsContext = wsContext;
-        this.credentialStore = credentialStore;
         this.transport = transport;
-        // wsContext 为空（测试）时从注入的 store 继承归属，保证过滤语义可用
-        this.workspaceId = wsContext != null ? wsContext.getMeta().getId() : credentialStore.workspaceId();
+        this.workspaceId = wsContext != null ? wsContext.getMeta().getId() : null;
     }
 
     // ==================== 绑定管理 ====================
@@ -158,14 +154,9 @@ public class WeChatLink implements Channel, Runnable {
             // 中断正在挂起的那次请求，把服务端已经投递的消息直接丢弃 —— 空游标语义是
             // "从当前 seq 开始"，被丢弃的消息不会补发。这正是"绑定成功后第一条微信消息
             // 收不到答复"的根因，因此这里必须原样保留会话状态。
-            boolean changed = false;
             String normalized = WeChatClient.normalizeBaseUrl(baseUrl);
             if (normalized != null && !normalized.equals(existing.baseUrl)) {
                 existing.baseUrl = normalized;
-                changed = true;
-            }
-            if (changed) {
-                credentialStore.save(bindings);
             }
             // 轮询线程可能因异常退出，这里补一次守护（已在跑则不动）
             ensurePolling(sessionId);
@@ -193,9 +184,6 @@ public class WeChatLink implements Channel, Runnable {
         }
 
         bindings.put(sessionId, binding);
-
-        // 持久化凭据
-        credentialStore.save(bindings);
 
         // 启动该会话的长轮询
         startPolling(sessionId);
@@ -227,12 +215,10 @@ public class WeChatLink implements Channel, Runnable {
         if (binding != null) {
             binding.replyTarget = null;
         }
-        // 持久化凭据（解绑后保存空的映射会删除文件）
-        credentialStore.save(bindings);
         LOG.info("[WeChat] Session {} unbound", sessionId);
     }
 
-    @Override
+    /** 通道标识（供回复路由识别；本引擎不注册为 Channel 组件）。 */
     public String getChannelName() {
         return "wechat";
     }
@@ -240,7 +226,6 @@ public class WeChatLink implements Channel, Runnable {
     /**
      * 查询会话是否已绑定微信
      */
-    @Override
     public boolean isBound(String sessionId) {
         return bindings.containsKey(sessionId);
     }
@@ -276,73 +261,9 @@ public class WeChatLink implements Channel, Runnable {
     }
 
     /**
-     * 从持久化存储恢复所有已绑定的会话。
-     *
-     * <p>绑定按 workspaceId 归属过滤：只装载归属本工作区的条目。历史遗留条目（无归属字段）
-     * 按会话目录探测认领——sessions/&lt;sessionId&gt; 目录存在于本工作区即视为本工作区资产，
-     * 认领后回写归属并持久化。不过滤时多工作区同 botToken 会各起一条长轮询，
-     * 同一条消息被两个工作区重复处理、游标互相覆盖回退。</p>
-     */
-    public void loadBindings() {
-        Map<String, WeChatBinding> saved = credentialStore.load();
-        if (saved.isEmpty()) return;
-
-        LOG.info("[WeChat] Restoring {} saved binding(s)", saved.size());
-        boolean migrated = false;
-        for (Map.Entry<String, WeChatBinding> entry : saved.entrySet()) {
-            String sessionId = entry.getKey();
-            WeChatBinding binding = entry.getValue();
-
-            if (!ownsBinding(sessionId, binding)) {
-                LOG.info("[WeChat] Skip binding of other workspace: session {} (owner={})", sessionId, binding.workspaceId);
-                continue;
-            }
-            if (binding.workspaceId == null) {
-                // 遗留条目认领：打上本工作区标记，后续保存会把归属写回文件
-                binding.workspaceId = workspaceId;
-                migrated = true;
-            }
-            bindings.put(sessionId, binding);
-            LOG.info("[WeChat] Restored session {}", sessionId);
-            startPolling(sessionId);
-        }
-        if (migrated) {
-            credentialStore.save(bindings);
-        }
-    }
-
-    /** 绑定是否归属本工作区：显式归属以 workspaceId 为准；遗留无归属条目按会话目录探测认领。 */
-    boolean ownsBinding(String sessionId, WeChatBinding binding) {
-        if (binding.workspaceId != null) {
-            return workspaceId != null && workspaceId.equals(binding.workspaceId);
-        }
-        // 历史数据兼容：本工作区 sessions 目录下存在该会话目录则认领；
-        // wsContext 为空（测试）或目录不存在时不认领，避免误据他人无主条目
-        return wsContext != null && Files.isDirectory(wsContext.getSessionsRoot().resolve(sessionId));
-    }
-
-    /**
-     * 启动通道：恢复已保存的绑定。
-     *
-     * <p>由 {@code ChannelHub.start()} 调用，而后者由工作区初始化处拉起
-     * （见 WorkspaceManager），重启后已保存的绑定会自动恢复并开始长轮询。</p>
-     */
-    @Override
-    public void run() {
-        if (!running.compareAndSet(false, true)) {
-            return; // 已在运行
-        }
-        LOG.info("[WeChat] Link started");
-        // 恢复已保存的绑定
-        loadBindings();
-        // 主线程保持存活，等待关闭信号
-    }
-
-    /**
-     * 停止所有轮询并关闭
+     * 停止所有轮询并关闭（连接断开时由 {@link WeChatTransport} 调用）
      */
     public void stop() {
-        running.set(false);
         for (String sid : new ArrayList<>(pollWorkers.keySet())) {
             stopPolling(sid);
         }
@@ -550,13 +471,10 @@ public class WeChatLink implements Channel, Runnable {
             return PollOutcome.STOP;
         }
 
-        boolean dirty = false;
-
-        // 更新游标
+        // 更新游标（仅用于本连接内的续投；不落盘，进程重启后从当前 seq 续取）
         String newCursor = (String) result.get("cursor");
         if (newCursor != null && !newCursor.isEmpty() && !newCursor.equals(binding.cursor)) {
             binding.cursor = newCursor;
-            dirty = true;
         }
 
         // 处理消息
@@ -564,25 +482,17 @@ public class WeChatLink implements Channel, Runnable {
         List<Map<String, String>> messages = (List<Map<String, String>>) result.get("messages");
         if (Assert.isNotEmpty(messages)) {
             for (Map<String, String> msg : messages) {
-                if (handleInbound(sessionId, binding, msg)) {
-                    dirty = true;
-                }
+                handleInbound(sessionId, binding, msg);
             }
         }
 
-        // 仅在游标或回复目标真的变化时落盘（原实现每轮都全量重写）
-        if (dirty) {
-            credentialStore.saveThrottled(bindings);
-        }
         return PollOutcome.OK;
     }
 
     /**
-     * 处理单条入站消息
-     *
-     * @return true 表示绑定状态有变化，需要落盘
+     * 处理单条入站消息：刷新回复目标并把文本交给 AI。
      */
-    private boolean handleInbound(String sessionId, WeChatBinding binding, Map<String, String> msg) {
+    private void handleInbound(String sessionId, WeChatBinding binding, Map<String, String> msg) {
         String text = msg.get("text");
         String fromUserId = msg.get("from_user_id");
         String contextToken = msg.get("context_token");
@@ -590,12 +500,12 @@ public class WeChatLink implements Channel, Runnable {
         if (Assert.isEmpty(contextToken)) {
             // 没有 context_token 就无法回复，直接处理只会产生"已读不回"
             LOG.warn("[WeChat] Inbound message from {} has no context_token, dropped", fromUserId);
-            return false;
+            return;
         }
         if (Assert.isEmpty(text)) {
             // 统一回执：非文本消息不能静默丢弃（与飞书/钉钉一致）
             transport.sendMessage(binding.baseUrl, binding.botToken, fromUserId, contextToken, ImMessages.HINT_NON_TEXT());
-            return false;
+            return;
         }
 
         LOG.info("[WeChat] Received from {}: {}", fromUserId, abbreviate(text, 50));
@@ -618,7 +528,6 @@ public class WeChatLink implements Channel, Runnable {
             startTypingKeeper(sessionId, binding, target);
         }
         // 未受理（如队列已满）已由 safeChatInput 统一回执 ImStatus.REJECTED，此处不再重复提示。
-        return true;
     }
 
     /**
@@ -707,12 +616,10 @@ public class WeChatLink implements Channel, Runnable {
 
     // ==================== 回复发送 ====================
 
-    @Override
     public void sendReply(String sessionId, String reply, boolean isFinal) {
         sendReply(sessionId, reply, isFinal, null, null, null);
     }
 
-    @Override
     public void sendReply(String sessionId, String reply, boolean isFinal,
                           String sourceUserId, String replyTarget, String messageId) {
         WeChatBinding binding = bindings.get(sessionId);
@@ -747,7 +654,6 @@ public class WeChatLink implements Channel, Runnable {
      * <p>微信有「正在输入」typing，已表达「处理中」，故忽略 {@link ImStatus#ACCEPTED}，
      * 只在下发排队/长任务/拒收等 typing 表达不了的状态时补一条文本。</p>
      */
-    @Override
     public void sendStatus(String sessionId, ImStatus status, String detail,
                            String sourceUserId, String replyTarget, String messageId) {
         if (status == ImStatus.ACCEPTED) {

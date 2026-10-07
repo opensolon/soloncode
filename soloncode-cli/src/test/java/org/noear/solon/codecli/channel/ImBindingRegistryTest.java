@@ -131,4 +131,26 @@ class ImBindingRegistryTest {
         assertTrue(local.isBound());
         assertFalse(local.isBoundElsewhere());
     }
+
+    @Test
+    void unclaimedBindingIsNotBoundElsewhereAndIsAdoptedOnRebind() {
+        ImBindingRegistry registry = new ImBindingRegistry();
+        // 历史无归属条目（v1 数据：只有 channel + identity + userKey，没有 workspaceId）
+        registry.put(new ImBindingRegistry.Binding(
+                CHANNEL, "user-1", IDENTITY, null, "session-a", 0L));
+
+        // 未归属不等于「已绑定在别处」：否则前端会显示「已绑定到工作区 （空）」
+        ImBindingRegistry.SessionStatus status =
+                registry.statusForSession(CHANNEL, "ws-b", "session-a");
+        assertFalse(status.isBound());
+        assertFalse(status.isBoundElsewhere());
+        assertNull(status.getWorkspaceId());
+
+        // 重新绑定即认领（与微信通道一致），不依赖任何会话目录探测
+        ImBindingRegistry.Result adopted = registry.adopt(
+                CHANNEL, "user-1", IDENTITY, "ws-b", "session-a", false);
+        assertTrue(adopted.isAccepted());
+        assertEquals("ws-b", registry.find(CHANNEL, IDENTITY, "user-1").getWorkspaceId());
+        assertTrue(registry.statusForSession(CHANNEL, "ws-b", "session-a").isBound());
+    }
 }

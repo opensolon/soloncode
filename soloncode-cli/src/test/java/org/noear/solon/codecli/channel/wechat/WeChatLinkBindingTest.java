@@ -20,9 +20,7 @@ import org.noear.solon.codecli.channel.ImStatus;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -43,16 +41,13 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class WeChatLinkBindingTest {
 
-    @TempDir
-    Path tempDir;
-
     private FakeTransport transport;
     private TestLink link;
 
     @BeforeEach
     void setUp() {
         transport = new FakeTransport();
-        link = new TestLink(new WeChatCredentialStore(tempDir.resolve("wechat-bindings.json")), transport);
+        link = new TestLink(transport);
     }
 
     @AfterEach
@@ -286,14 +281,13 @@ class WeChatLinkBindingTest {
     }
 
     @Test
-    void pollingShouldStartWithoutLifecycleRun() throws Exception {
+    void pollingShouldStartRightAfterBind() throws Exception {
         CountDownLatch dispatched = new CountDownLatch(1);
         FakeTransport realTransport = new FakeTransport();
         realTransport.enqueueUpdate("C1", "user", "ctx-1", "绑定后的第一条消息");
 
         // 不覆写 startPolling：跑真实的长轮询线程
-        WeChatLink real = new WeChatLink(null,
-                new WeChatCredentialStore(tempDir.resolve("lifecycle-bindings.json")), realTransport) {
+        WeChatLink real = new WeChatLink(null, realTransport) {
             @Override
             protected boolean dispatchToAgent(String sessionId, String text) {
                 dispatched.countDown();
@@ -311,8 +305,8 @@ class WeChatLinkBindingTest {
         };
 
         try {
-            // 注意：此处有意不调 run()。ChannelHub.start() 在代码库里无调用点，
-            // 若轮询以 running 为前置条件，扫码绑定后将一条消息也收不到
+            // 引擎没有生命周期入口：绑定后长轮询必须立即开始，
+            // 否则扫码绑定后一条消息也收不到（回归：曾以 running 标志为前置条件）
             real.bindSession("s1", "tk", "bot", "user");
             assertTrue(dispatched.await(5, TimeUnit.SECONDS), "绑定后长轮询应立即开始工作");
         } finally {
@@ -329,8 +323,8 @@ class WeChatLinkBindingTest {
         int startCount;
         int ensureCount;
 
-        TestLink(WeChatCredentialStore credentialStore, Transport transport) {
-            super(null, credentialStore, transport);
+        TestLink(Transport transport) {
+            super(null, transport);
         }
 
         @Override

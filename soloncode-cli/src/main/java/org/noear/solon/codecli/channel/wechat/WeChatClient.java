@@ -214,7 +214,7 @@ public class WeChatClient {
      *
      * @return 合法则返回规范化后的地址；为空或不可信返回 null（由调用方回落默认接入点）
      */
-    static String normalizeBaseUrl(String raw) {
+    public static String normalizeBaseUrl(String raw) {
         if (raw == null) return null;
         String s = raw.trim();
         if (s.isEmpty()) return null;

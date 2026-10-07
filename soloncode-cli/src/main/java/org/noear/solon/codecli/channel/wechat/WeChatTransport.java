@@ -38,32 +38,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>每条连接由一个 {@link WeChatLink} 引擎实例承载（长轮询 + 游标 + 回复目标 + typing），
  *       引擎的投递回调改由本层 {@link Sink} 承接，从而在消息到达时按绑定挂点动态唤醒工作区；</li>
  *   <li>同一 ilinkUserId（用户身份）在进程内至多一条连接：换绑/迁移时先断旧连接再建新连接；</li>
- *   <li>连接自身不落盘，绑定持久化由 {@code ImGateway} 单点负责（引擎使用空存储）。</li>
+ *   <li>连接自身不持有存储，绑定持久化由 {@code ImGateway} 单点负责（引擎只做运行时）；</li>
  * </ul>
  *
  * @author noear
  */
 public class WeChatTransport {
     private static final Logger LOG = LoggerFactory.getLogger(WeChatTransport.class);
-
-    /** 引擎侧空存储：微信绑定的落盘由 ImGateway 单点负责，避免双写漂移。 */
-    private static final WeChatCredentialStore NOOP_STORE = new WeChatCredentialStore(
-            Paths.get(System.getProperty("java.io.tmpdir"), "soloncode-wechat-transport-noop.json")) {
-        @Override
-        public Map<String, WeChatLink.WeChatBinding> load() {
-            return Collections.emptyMap();
-        }
-
-        @Override
-        public void save(Map<String, WeChatLink.WeChatBinding> bindings) {
-            // no-op：持久化归 ImGateway
-        }
-
-        @Override
-        public void saveThrottled(Map<String, WeChatLink.WeChatBinding> bindings) {
-            // no-op：持久化归 ImGateway
-        }
-    };
 
     /** 入站事件出口，由 ImGateway 实现。 */
     public interface Sink {
@@ -226,7 +207,7 @@ public class WeChatTransport {
     }
 
     private WeChatLink createEngine(Sink sink, String workspaceId) {
-        return new WeChatLink(null, NOOP_STORE, engineTransport) {
+        return new WeChatLink(null, engineTransport) {
             @Override
             protected boolean dispatchToAgent(String sessionId, String text, String sourceUserId, String replyTarget) {
                 return sink.onWeChatText(workspaceId, sessionId, sourceUserId, text, replyTarget, sourceUserId);
