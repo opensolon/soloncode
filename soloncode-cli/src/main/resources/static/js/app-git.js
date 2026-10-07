@@ -103,28 +103,36 @@
             if (targetTab === 'gitDiff') loadGitStatus();
             // 切到任务 tab 时刷新
             if (targetTab === 'tasks' && window.loadTodos) window.loadTodos();
-            // 持久化
-            localStorage.setItem('workspace-active-tab', targetTab);
+            // 持久化（后端记忆：localStorage 按 origin 隔离，重启后本地缓存会空）
+            UiState.set('workspace-active-tab', targetTab);
         });
     });
 
-    // 恢复 Tab 状态
-    var savedTab = localStorage.getItem('workspace-active-tab') || localStorage.getItem('filer-active-tab');
-    if (savedTab === 'gitdiff') savedTab = 'gitDiff';
-    localStorage.removeItem('filer-active-tab'); // 迁移后清理旧 key，避免遗留 filer 前缀
-    if (savedTab && savedTab !== 'files') {
+    // 恢复 Tab 状态（本地缓存先应用，服务端状态就绪后再校准）
+    function restoreActiveTab() {
+        var savedTab = UiState.get('workspace-active-tab', null) || UiState.get('filer-active-tab', null);
+        if (savedTab === 'gitdiff') savedTab = 'gitDiff';
+        if (UiState.get('filer-active-tab', null) !== null) {
+            UiState.remove('filer-active-tab'); // 迁移后清理旧 key，避免遗留 filer 前缀
+        }
+        if (!savedTab || savedTab === 'files') return;
+
         var savedContentId = 'tabContent' + savedTab.charAt(0).toUpperCase() + savedTab.slice(1);
         var savedTabEl = document.querySelector('.workspace-tab[data-tab="' + savedTab + '"]');
         var savedContentEl = document.getElementById(savedContentId);
-        if (savedTabEl && savedContentEl) {
-            tabs.forEach(function(t) { t.classList.remove('active'); });
-            tabContents.forEach(function(tc) { tc.classList.remove('active'); });
-            savedTabEl.classList.add('active');
-            savedContentEl.classList.add('active');
-            if (savedTab === 'gitDiff') loadGitStatus();
-            if (savedTab === 'tasks' && window.loadTodos) window.loadTodos();
-        }
+        if (!savedTabEl || !savedContentEl || savedTabEl.classList.contains('active')) return;
+
+        tabs.forEach(function(t) { t.classList.remove('active'); });
+        tabContents.forEach(function(tc) { tc.classList.remove('active'); });
+        savedTabEl.classList.add('active');
+        savedContentEl.classList.add('active');
+        if (savedTab === 'gitDiff') loadGitStatus();
+        if (savedTab === 'tasks' && window.loadTodos) window.loadTodos();
     }
+
+    restoreActiveTab();
+    //门面已水合时会立即执行，避免事件早于监听器注册（见 js/ui-state.js）
+    UiState.ready(restoreActiveTab);
 
     // ---- 显示/隐藏状态区 ----
     function showState(state) {

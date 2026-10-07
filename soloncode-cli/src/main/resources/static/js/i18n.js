@@ -16,6 +16,23 @@
     /** 跟随系统模式的哨兵值 */
     var SYSTEM_LOCALE = 'system';
 
+    /**
+     * 读写语言设置：优先走后端记忆门面（js/ui-state.js），门面缺失时退回 localStorage。
+     * 原因：localStorage 按 origin（含端口）隔离，随机端口启动重启即丢（Gitee #IKJOCR）。
+     */
+    function readState(key) {
+        if (window.UiState && window.UiState.get) return window.UiState.get(key, null);
+        try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+
+    function writeState(key, value) {
+        if (window.UiState && window.UiState.set) {
+            window.UiState.set(key, value);
+            return;
+        }
+        try { localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+    }
+
     var I18n = {
         /** 当前生效语言（跟随系统时为解析后的实际语言） */
         locale: DEFAULT_LOCALE,
@@ -181,7 +198,7 @@
                 self.locale = target;
                 self.mode = isSystem ? SYSTEM_LOCALE : null;
                 self.apply();
-                localStorage.setItem(STORAGE_KEY, isSystem ? SYSTEM_LOCALE : target);
+                writeState(STORAGE_KEY, isSystem ? SYSTEM_LOCALE : target);
                 document.documentElement.lang = target;
                 // 通知外部模块语言已切换（locale 为实际生效语言，mode 标记是否跟随系统）
                 document.dispatchEvent(new CustomEvent('i18n:switched', { detail: { locale: target, mode: self.mode } }));
@@ -198,13 +215,45 @@
         },
 
         /**
-         * 初始化：读取 localStorage → 无记录时默认跟随系统，有记录则尊重用户选择
+         * 初始化：读取本地缓存（可能是后端记忆镜像）→ 无记录时默认跟随系统，有记录则尊重用户选择
          */
         init: function () {
             var self = this;
-            var saved = localStorage.getItem(STORAGE_KEY);
+            var saved = readState(STORAGE_KEY);
             // 首次访问（无本地记录）：默认进入“跟随系统”模式，按浏览器系统语言匹配
-            if (saved === null) saved = SYSTEM_LOCALE;
+            if (saved === null || saved === '') saved = SYSTEM_LOCALE;
+
+            this.restore(saved);
+
+            // 后端记忆水合完成后以服务端值为准：
+            // 浏览器本地缓存会因换端口/换浏览器而空，语言必须靠服务端恢复
+            if (window.UiState && window.UiState.ready) {
+                window.UiState.ready(function () { self.syncFromState(); });
+            }
+        },
+
+        /**
+         * 按存储值校准语言（水合完成/需要重新对齐时调用）；已是目标状态则不做无谓切换
+         */
+        syncFromState: function () {
+            var saved = readState(STORAGE_KEY);
+            if (saved === null || saved === '') return;
+
+            if (saved === SYSTEM_LOCALE) {
+                if (this.isSystemMode()) return;
+            } else if (!this.mode && this.locale === saved) {
+                return;
+            }
+
+            this.switch(saved);
+        },
+
+        /**
+         * 按存储值应用语言（init 与校准共用的实现）
+         * @param {string} saved 存储值，可能是具体语言或 'system'
+         */
+        restore: function (saved) {
+            var self = this;
 
             if (saved === SYSTEM_LOCALE) {
                 // 跟随系统：解析系统语言并加载，不触发 apply（等待语言包就绪后由 i18n:loaded 守卫处理）

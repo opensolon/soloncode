@@ -34,6 +34,7 @@ import org.noear.solon.codecli.api.web.controller.ChatWebController;
 import org.noear.solon.codecli.api.web.controller.GitWebController;
 import org.noear.solon.codecli.api.web.controller.LoopWebController;
 import org.noear.solon.codecli.api.web.controller.QueueWebController;
+import org.noear.solon.codecli.api.web.controller.UiStateController;
 import org.noear.solon.codecli.api.web.controller.FilerWebController;
 import org.noear.solon.codecli.api.web.MemoryController;
 import org.noear.solon.codecli.api.web.run.RunController;
@@ -292,6 +293,8 @@ public class Configurator {
         addWebBean(new LoopWebController(workspaceManager));
         addWebBean(new QueueWebController(workspaceManager));
         addWebBean(new FilerWebController(workspaceManager));
+        //界面状态（后端记忆）：localStorage 按 origin 隔离，随机端口重启即丢（Gitee #IKJOCR）
+        addWebBean(new UiStateController(workspaceManager));
 
         addWebBean(new WebSettingsController(workspaceManager));
         addWebBean(new AgentSettingsController(workspaceManager));

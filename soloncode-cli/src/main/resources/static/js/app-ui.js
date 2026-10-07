@@ -797,8 +797,26 @@ function applyHljsTheme(theme) {
 }
 window.applyHljsTheme = applyHljsTheme;
 
-/* ===== Theme ===== */
-var currentTheme = localStorage.getItem('chat-theme') || 'light';
+/* ===== Theme =====
+ * 真相源在服务端（/web/ui/state，见 js/ui-state.js）：localStorage 只做首屏缓存。
+ * 浏览器 localStorage 按 origin（含随机端口）隔离，重启后本地缓存会空，
+ * 所以水合完成后要再校准一次，否则主题会停在默认值。
+ */
+function applyTheme(theme) {
+    if (theme !== 'dark') theme = 'light';
+    currentTheme = theme;
+    window.currentTheme = theme;
+    $('body').attr('data-theme', theme);
+    updateThemeIcon();
+    applyHljsTheme(theme);
+    if (typeof mermaid !== 'undefined') {
+        __mermaidInited = false;
+        initMermaidIfNeeded();
+    }
+}
+window.applyTheme = applyTheme;
+
+var currentTheme = UiState.get('chat-theme', 'light');
 window.currentTheme = currentTheme;
 $('body').attr('data-theme', currentTheme);
 
@@ -808,17 +826,16 @@ applyHljsTheme(currentTheme);
 updateThemeIcon();
 
 $(themeBtn).on('click', function() {
-    currentTheme = currentTheme === 'light' ? 'dark' : 'light';
-    window.currentTheme = currentTheme;
-    $('body').attr('data-theme', currentTheme);
-    localStorage.setItem('chat-theme', currentTheme);
-    updateThemeIcon();
-    applyHljsTheme(currentTheme);
-    if (typeof mermaid !== 'undefined') {
-        __mermaidInited = false;
-        initMermaidIfNeeded();
-    }
+    applyTheme(currentTheme === 'light' ? 'dark' : 'light');
+    UiState.set('chat-theme', currentTheme);
 });
+
+// 服务端状态就绪：按服务端主题校准（本地缓存丢失时靠这一步恢复）
+UiState.ready(function () {
+    var saved = UiState.get('chat-theme', 'light');
+    if (saved !== currentTheme) applyTheme(saved);
+});
+
 function updateThemeIcon() {
     $(themeIcon).html(currentTheme === 'light' ? '&#xe6c2;' : '&#xe748;');
     $(themeBtn).prop('title', currentTheme === 'light' ? (window.I18n ? window.I18n.t('header.switchToDark') : '\u5207\u6362\u81f3\u6697\u8272') : (window.I18n ? window.I18n.t('header.switchToLight') : '\u5207\u6362\u81f3\u6d45\u8272'));
@@ -1282,10 +1299,10 @@ initVoice();
             svgPath.attr('d', collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6');
         }
         btn.prop('title', collapsed ? (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f') : (window.I18n ? window.I18n.t('sidebar.collapse') : '\u6536\u8d77\u4fa7\u8fb9\u680f'));
-        localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+        UiState.set('sidebar-collapsed', collapsed ? '1' : '0');
     });
-    // Restore state
-    if (localStorage.getItem('sidebar-collapsed') === '1') {
+    // Restore state（本地缓存先应用，服务端状态就绪后再校准）
+    if (UiState.get('sidebar-collapsed', '0') === '1') {
         $('.sidebar').addClass('collapsed');
         btn.addClass('collapsed');
         var svgPath = btn.find('path');
@@ -1338,7 +1355,7 @@ initVoice();
             var dx = e.clientX - startX;
             var newWidth = Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, startWidth + dx));
             $sidebar.css('width', newWidth + 'px');
-            localStorage.setItem('sidebar-width', newWidth);
+            UiState.set('sidebar-width', newWidth);
             syncTogglePosition();
         });
 
@@ -1351,8 +1368,8 @@ initVoice();
     })();
 
     // Restore saved width
-    (function restoreWidth() {
-        var savedWidth = localStorage.getItem('sidebar-width');
+    function restoreSidebarWidth() {
+        var savedWidth = UiState.get('sidebar-width', null);
         if (savedWidth) {
             var w = parseInt(savedWidth, 10);
             if (w >= SIDEBAR_MIN_WIDTH && w <= SIDEBAR_MAX_WIDTH) {
@@ -1360,7 +1377,11 @@ initVoice();
             }
         }
         syncTogglePosition();
-    })();
+    }
+    restoreSidebarWidth();
+
+    // 服务端状态就绪：按服务端值校准（本地缓存丢失时靠这一步恢复）
+    UiState.ready(restoreSidebarWidth);
 
     // Patch toggle button: replace original click handler to include position sync
     if ($toggleBtn.length) {
@@ -1373,21 +1394,26 @@ initVoice();
                 $svgPath.attr('d', collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6');
             }
             $toggleBtn.prop('title', collapsed ? (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f') : (window.I18n ? window.I18n.t('sidebar.collapse') : '\u6536\u8d77\u4fa7\u8fb9\u680f'));
-            localStorage.setItem('sidebar-collapsed', collapsed ? '1' : '0');
+            UiState.set('sidebar-collapsed', collapsed ? '1' : '0');
             syncTogglePosition();
         });
 
         // Re-apply collapsed state with sync
-        if (localStorage.getItem('sidebar-collapsed') === '1') {
-            $sidebar.addClass('collapsed');
-            $toggleBtn.addClass('collapsed');
+        function restoreSidebarCollapsed() {
+            var collapsed = UiState.get('sidebar-collapsed', '0') === '1';
+            $sidebar.toggleClass('collapsed', collapsed);
+            $toggleBtn.toggleClass('collapsed', collapsed);
             var $svgPath = $toggleBtn.find('path');
             if ($svgPath.length) {
-                $svgPath.attr('d', 'm9 18 6-6-6-6');
+                $svgPath.attr('d', collapsed ? 'm9 18 6-6-6-6' : 'm15 18-6-6 6-6');
             }
-            $toggleBtn.prop('title', (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f'));
+            $toggleBtn.prop('title', collapsed ? (window.I18n ? window.I18n.t('sidebar.expand') : '\u5c55\u5f00\u4fa7\u8fb9\u680f') : (window.I18n ? window.I18n.t('sidebar.collapse') : '\u6536\u8d77\u4fa7\u8fb9\u680f'));
             syncTogglePosition();
         }
+        if (UiState.get('sidebar-collapsed', '0') === '1') {
+            restoreSidebarCollapsed();
+        }
+        UiState.ready(restoreSidebarCollapsed);
     }
 })();
 

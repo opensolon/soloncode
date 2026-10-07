@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="/css/settings.css"/>
     <link rel="stylesheet" href="/css/ws-home.css"/>
     <!-- 当前皮肤：由 app-ui.js 按 static/skin/<name>/skin.css 动态加载 -->
+    <!-- 界面状态（后端记忆）：必须在 i18n.js / 各 app-*.js 之前加载，localStorage 只做首屏镜像 -->
+    <script src="/js/ui-state.js"></script>
     <script>window._i18nVer = '20260907';</script>
     <script src="/js/i18n.js"></script>
     <link rel="stylesheet" id="skinStyle" href="/skin/default/skin.css"/>
@@ -2379,7 +2381,7 @@
 
         function getCurrentLocale() {
             return (window.I18n && window.I18n.getLocale) ? window.I18n.getLocale()
-                 : (localStorage.getItem('sc-locale') || 'zh-CN');
+                 : (window.UiState ? UiState.get('sc-locale', 'zh-CN') : 'zh-CN');
         }
 
         // 实际选中项：跟随系统模式下显示为 system 项

@@ -23,33 +23,32 @@ function _migrateActiveSessionIfNeeded() {
     var newKey = getActiveSessionKey();
     var oldKey = 'soloncode-active-session';
     if (newKey === oldKey) return; // 默认工作区无需迁移
-    try {
-        var oldVal = localStorage.getItem(oldKey);
-        var newVal = localStorage.getItem(newKey);
-        if (oldVal && !newVal) {
-            localStorage.setItem(newKey, oldVal);
-            localStorage.removeItem(oldKey);
-        }
-    } catch (e) {}
+    var oldVal = UiState.get(oldKey, null);
+    var newVal = UiState.get(newKey, null);
+    if (oldVal && !newVal) {
+        UiState.set(newKey, oldVal);
+        UiState.remove(oldKey);
+    }
 }
 _migrateActiveSessionIfNeeded();
 
 function rememberActiveSession(sessionId) {
-    var key = getActiveSessionKey();
-    try { if (sessionId) localStorage.setItem(key, sessionId); } catch (e) {}
+    //存服务端（后端记忆）：localStorage 按 origin（含随机端口）隔离，重启后会丢
+    if (sessionId) UiState.set(getActiveSessionKey(), sessionId);
 }
 function forgetActiveSession() {
-    var key = getActiveSessionKey();
-    try { localStorage.removeItem(key); } catch (e) {}
+    UiState.remove(getActiveSessionKey());
 }
 window.rememberActiveSession = rememberActiveSession;
 window.forgetActiveSession = forgetActiveSession;
 
+/* 会话列表是否已从服务端加载完成（活动会话恢复的先决条件之一） */
+var historyLoaded = false;
+
 /* 历史列表加载完成后，尝试恢复上次的活动会话 */
 function restoreActiveSession() {
-    var key = getActiveSessionKey();
-    var saved = null;
-    try { saved = localStorage.getItem(key); } catch (e) {}
+    if (!historyLoaded || !UiState.isHydrated()) return; //两个前提：列表就绪 + 服务端状态就绪
+    var saved = UiState.get(getActiveSessionKey(), null);
     if (!saved) return;
     for (var i = 0; i < chatHistory.length; i++) {
         if (chatHistory[i].sessionId === saved) {
@@ -61,6 +60,11 @@ function restoreActiveSession() {
     forgetActiveSession();
 }
 
+/* 两个前提（会话列表 / 服务端状态）谁后到都补一次恢复 */
+UiState.ready(function () {
+    try { restoreActiveSession(); } catch (e) {}
+});
+
 function loadSessionHistory() {
     $.get('/web/chat/sessions', function(resp) {
         try {
@@ -69,6 +73,7 @@ function loadSessionHistory() {
             for (var i = 0; i < list.length; i++) {
                 chatHistory.push({ label: list[i].label, sessionId: list[i].sessionId, isPinned: list[i].isPinned === true });
             }
+            historyLoaded = true;
             updateHistoryUI();
             restoreActiveSession();
         } catch (e) {}

@@ -19,17 +19,31 @@
     // ---------- 勾选状态持久化 ----------
 
     function loadCheckedKeys() {
+        //后端记忆（localStorage 按 origin 隔离，随机端口重启即丢）
+        if (window.UiState) {
+            var v = UiState.get(STORAGE_KEY, null);
+            try {
+                return v ? JSON.parse(v) : null;
+            } catch (e) {
+                return null;
+            }
+        }
         try {
-            var v = localStorage.getItem(STORAGE_KEY);
-            return v ? JSON.parse(v) : null;
+            var raw = localStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : null;
         } catch (e) {
             return null;
         }
     }
 
     function saveCheckedKeys(keys) {
+        var json = JSON.stringify(keys);
+        if (window.UiState) {
+            UiState.set(STORAGE_KEY, json);
+            return;
+        }
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
+            localStorage.setItem(STORAGE_KEY, json);
         } catch (e) {
             /* ignore */
         }

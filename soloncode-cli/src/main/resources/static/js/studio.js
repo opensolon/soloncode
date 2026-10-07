@@ -178,7 +178,9 @@
         document.body.setAttribute("data-theme", normalizedTheme);
         window.currentTheme = normalizedTheme;
         try {
-            window.localStorage.setItem("chat-theme", normalizedTheme);
+            //后端记忆：localStorage 按 origin 隔离，随机端口重启即丢
+            if (window.UiState) window.UiState.set("chat-theme", normalizedTheme);
+            else window.localStorage.setItem("chat-theme", normalizedTheme);
         } catch (e) {
             // ignore theme persistence failures
         }

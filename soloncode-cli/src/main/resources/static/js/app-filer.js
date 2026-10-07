@@ -275,21 +275,22 @@
             $(document.body).css({ cursor: '', userSelect: '' });
             var finalWidth = $panel[0].offsetWidth;
             if (finalWidth >= FILER_MIN_WIDTH && finalWidth <= FILER_MAX_WIDTH) {
-        localStorage.setItem('files-width', finalWidth);
+                UiState.set('files-width', finalWidth);
             }
         });
     }
 
-    // ---- 恢复持久化宽度 ----
+    // ---- 恢复持久化宽度（本地缓存先应用，服务端状态就绪后再校准） ----
     function restoreWidth() {
         if (!$panel.length) return;
-        var savedWidth = localStorage.getItem('files-width') || localStorage.getItem('filer-width');
+        var savedWidth = UiState.get('files-width', null) || UiState.get('filer-width', null);
         if (savedWidth) {
             var w = parseInt(savedWidth, 10);
             if (w >= FILER_MIN_WIDTH && w <= FILER_MAX_WIDTH) {
                 $panel.css('width', w + 'px');
             }
         }
+        syncToggleBtnPosition();
     }
 
     // ---- Toggle 折叠 ----
@@ -320,25 +321,32 @@
             var collapsed = $panel.hasClass('collapsed');
             $toggleBtn.toggleClass('collapsed', collapsed);
             setToggleBtnArrow(collapsed);
-            localStorage.setItem('files-collapsed', collapsed ? '1' : '0');
+            UiState.set('files-collapsed', collapsed ? '1' : '0');
             syncHeaderPadding(collapsed);
             syncToggleBtnPosition();
         });
     }
 
-    // 恢复持久化状态
-    restoreWidth();
-    var shouldExpand = (localStorage.getItem('files-collapsed') || localStorage.getItem('filer-collapsed')) === '0';
-    if (shouldExpand) {
-        $panel.removeClass('collapsed');
-        $toggleBtn.removeClass('collapsed');
-        setToggleBtnArrow(false);
-        syncHeaderPadding(false);
-    } else {
-        setToggleBtnArrow(true);
-        syncHeaderPadding(true);
+    // 恢复持久化状态（本地缓存先应用，服务端状态就绪后再校准）
+    function restoreCollapsedState() {
+        var savedCollapsed = UiState.get('files-collapsed', null);
+        if (savedCollapsed === null) savedCollapsed = UiState.get('filer-collapsed', null);
+        var shouldExpand = (savedCollapsed === '0');
+        $panel.toggleClass('collapsed', !shouldExpand);
+        if ($toggleBtn.length) $toggleBtn.toggleClass('collapsed', !shouldExpand);
+        setToggleBtnArrow(!shouldExpand);
+        syncHeaderPadding(!shouldExpand);
+        syncToggleBtnPosition();
     }
-    syncToggleBtnPosition();
+
+    function restoreFilerLayout() {
+        restoreWidth();
+        restoreCollapsedState();
+    }
+
+    restoreFilerLayout();
+    //门面已水合时会立即执行，避免事件早于监听器注册（见 js/ui-state.js）
+    UiState.ready(restoreFilerLayout);
     initResize();
     initFilerContextMenu();
 
@@ -1314,7 +1322,7 @@
             $toggleBtn.removeClass('collapsed');
             setToggleBtnArrow(false);
         }
-        localStorage.setItem('files-collapsed', '0');
+        UiState.set('files-collapsed', '0');
         syncHeaderPadding(false);
         syncToggleBtnPosition();
         return true;
