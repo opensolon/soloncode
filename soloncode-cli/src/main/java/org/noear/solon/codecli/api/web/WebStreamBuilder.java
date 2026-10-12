@@ -292,7 +292,7 @@ public class WebStreamBuilder {
     /**
      * 构建 SAEP 2.0 响应式事件流
      */
-    public Flux<WebEvent<?>> buildStreamFlux(WorkspaceContext wsContext, AgentSession session, ReActAgent agent, ChatModel chatModel, String sessionCwd, Prompt prompt) {
+    public Flux<WebEvent<?>> buildStreamFlux(WorkspaceContext wsContext, AgentSession session, ReActAgent targetAgent, ChatModel targetModel, String sessionCwd, Prompt prompt) {
         if (prompt == null) {
             prompt = Prompt.of();
         }
@@ -301,8 +301,9 @@ public class WebStreamBuilder {
             prompt = Prompt.of();
         }
 
-        session.attrs().put("_agent_selected_tmp", agent.name());
+        session.attrs().put("_agent_selected_tmp", targetAgent.name());
 
+        HarnessEngine engine = wsContext.getEngine();
         GeneralGroupDo general = wsContext.getSettings() == null ? null : wsContext.getSettings().getGeneral();
         String globalThinking = general == null ? null : general.getDefaultThinkingMode();
         String globalEffort = general == null ? null : general.getDefaultReasoningEffort();
@@ -312,51 +313,55 @@ public class WebStreamBuilder {
         ReasoningSupportUtil.ModelCapability cap = null;
         try {
             ChatConfig fullConfig = null;
-            if (chatModel != null && chatModel.getConfig() != null) {
-                String key = chatModel.getConfig().getNameOrModel();
+            if (targetModel != null && targetModel.getConfig() != null) {
+                String key = targetModel.getConfig().getNameOrModel();
                 if (Assert.isNotEmpty(key)) {
-                    fullConfig = wsContext.getEngine().getModelOrNil(key);
+                    fullConfig = engine.getModelOrNil(key);
                     if (fullConfig == null) {
-                        fullConfig = ReasoningSupportUtil.findEngineConfig(wsContext.getEngine().getModels(), key);
+                        fullConfig = ReasoningSupportUtil.findEngineConfig(engine.getModels(), key);
                     }
                 }
-                if (fullConfig == null && Assert.isNotEmpty(chatModel.getConfig().getModel())) {
-                    fullConfig = wsContext.getEngine().getModelOrNil(chatModel.getConfig().getModel());
+                if (fullConfig == null && Assert.isNotEmpty(targetModel.getConfig().getModel())) {
+                    fullConfig = engine.getModelOrNil(targetModel.getConfig().getModel());
                     if (fullConfig == null) {
                         fullConfig = ReasoningSupportUtil.findEngineConfig(
-                                wsContext.getEngine().getModels(), chatModel.getConfig().getModel());
+                                engine.getModels(), targetModel.getConfig().getModel());
                     }
                 }
-                if (fullConfig == null && Assert.isNotEmpty(chatModel.getConfig().getName())) {
-                    fullConfig = wsContext.getEngine().getModelOrNil(chatModel.getConfig().getName());
+                if (fullConfig == null && Assert.isNotEmpty(targetModel.getConfig().getName())) {
+                    fullConfig = engine.getModelOrNil(targetModel.getConfig().getName());
                 }
             }
             if (fullConfig != null) {
                 cap = ReasoningSupportUtil.resolveCapability(fullConfig);
-            } else if (chatModel != null && chatModel.getConfig() != null) {
+            } else if (targetModel != null && targetModel.getConfig() != null) {
                 cap = ReasoningSupportUtil.resolveCapability(
-                        chatModel.getConfig().getName(),
-                        chatModel.getConfig().getModel(),
-                        chatModel.getConfig().getStandardOrProvider(),
+                        targetModel.getConfig().getName(),
+                        targetModel.getConfig().getModel(),
+                        targetModel.getConfig().getStandardOrProvider(),
                         null);
             }
         } catch (Throwable ignored) {
         }
+
         final String effectiveEffort = ReasoningSupportUtil.resolveSessionEffortOrDefault(
                 session, globalEffort, cap);
         ReasoningSupportUtil.applyToPrompt(prompt, sessionThinkingMode, effectiveEffort);
 
-        WebEventMapper mapper = new WebEventMapper(this, wsContext, session, chatModel);
+        WebEventMapper mapper = new WebEventMapper(this, wsContext, session, targetModel);
         ToolPresentationFilter toolFilter = new ToolPresentationFilter(buildLspState(wsContext));
         UiRenderFilter uiRenderFilter = new UiRenderFilter();
         SessionMetricsRecorder metricsRecorder = new SessionMetricsRecorder(session);
         // 运行中插话（steer）拦截器：请求级挂载，LinkedHashMap 插入序保证排在默认拦截器（含上下文压缩）之后
         SteerInterceptor steerInterceptor = new SteerInterceptor(webGate, wsContext);
 
-        final Flux<AgentEvent> stream = agent.prompt(prompt)
+        final Flux<AgentEvent> stream = targetAgent.prompt(prompt)
                 .session(session)
                 .options(o -> {
-                    o.chatModel(chatModel);
+                    if (targetModel != null) {
+                        o.chatModel(targetModel);
+                    }
+
                     ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
                     o.interceptorAdd(steerInterceptor);
 

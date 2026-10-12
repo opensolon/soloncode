@@ -345,8 +345,8 @@ public class CliShell implements Runnable {
             }
         }
 
-        ChatModel chatModel = engine.getModelOrDefInstance(modelSelected);
-        ReActAgent agent = engine.getAgentOrMain(agentName);
+        ChatModel targetModel = engine.getModelOrDefInstance(modelSelected);
+        ReActAgent targetAgent = engine.getAgentOrMain(agentName);
 
         while (true) {
             // 简化状态提示：只在非首次且任务未完成时打印等待符
@@ -361,10 +361,10 @@ public class CliShell implements Runnable {
 
             Prompt originalPrompt = Prompt.of(currentInput);
 
-            Disposable disposable = agent.prompt(originalPrompt)
+            Disposable disposable = targetAgent.prompt(originalPrompt)
                     .session(session)
                     .options(o -> {
-                        o.chatModel(chatModel);
+                        o.chatModel(targetModel);
                     })
                     .stream()
                     .subscribeOn(Schedulers.boundedElastic())

@@ -53,11 +53,6 @@ public class ModelCommand implements Command {
     }
 
     @Override
-    public boolean cliOnly() {
-        return true;
-    }
-
-    @Override
     public void execute(CommandContext ctx) throws Exception {
         String flag = ctx.argAt(0);
 
