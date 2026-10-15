@@ -42,8 +42,8 @@ import java.util.zip.ZipFile;
  * 平台在原生能力不可用或执行失败时，回退到 {@link DirectoryPickerSubprocess}。
  * <p>
  * <b>Windows 弹窗为何不会沉到浏览器后面：</b>脚本在创建任何辅助窗口前捕获当前前台根窗口（通常就是
- * 发起点击的浏览器），并把它作为 {@code IModalWindow.Show} 的真实 owner；同时通过
- * {@code IFileDialogEvents + IOleWindow} 获取真实对话框 HWND，在对话框存活期间持续维持 topmost z-order。
+ * 发起点击的浏览器），并把它作为 {@code IModalWindow.Show} 的真实 owner。对话框只使用原生
+ * owner-modal 关系保持在 owner 前面，不把浏览器或对话框设为 topmost，取消后也不会污染浏览器的窗口层级。
  * <p>
  * <b>Windows 高 DPI：</b>Windows PowerShell 5.1 默认不声明高 DPI 感知，因此脚本会在创建任何 HWND 前，
  * 将当前 STA 线程设置为 Per-Monitor V2，使现代目录选择器在 125%～200% 缩放以及跨显示器移动时由系统

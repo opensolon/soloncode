@@ -93,99 +93,30 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
     private const int ErrorCancelled = unchecked((int)0x800704C7);
     private readonly bool smoke;
     private readonly IntPtr centerOwnerHwnd;
-    private readonly object sync = new object();
-    private System.Threading.Timer promotionTimer;
     private System.Threading.Timer smokeTimer;
-    private IntPtr dialogHwnd;
-    private int lastDialogWidth;
-    private int lastDialogHeight;
-    private long centerUntilUtcTicks;
 
     public SolonFileDialogEvents(bool smokeTest, SolonIFileDialog dialog, IntPtr centerOwnerWindow)
     {
         smoke = smokeTest;
         centerOwnerHwnd = centerOwnerWindow;
-        // The CBT hook centers synchronously during the dialog's first activation, before Windows
-        // paints it. The timer only maintains z-order afterwards; it must never move a visible dialog.
-        promotionTimer = new System.Threading.Timer(delegate { Promote(dialog); }, null, 100, 250);
+        // IFileDialog.Show(owner) establishes the native owner-modal relationship. Do not use a
+        // topmost timer or force foreground activation: those change the browser's Z-order on cancel.
         if (smoke)
             smokeTimer = new System.Threading.Timer(delegate { try { dialog.Close(ErrorCancelled); } catch { } }, null, 750, Timeout.Infinite);
     }
 
-    private void Promote(SolonIFileDialog dialog)
-    {
-        try
-        {
-            SolonIOleWindow window = (SolonIOleWindow)dialog;
-            IntPtr hwnd;
-            if (window.GetWindow(out hwnd) < 0 || hwnd == IntPtr.Zero) return;
-
-            SolonShellNative.SolonRect bounds;
-            if (!SolonShellNative.GetWindowRect(hwnd, out bounds)) return;
-            int width = bounds.Right - bounds.Left;
-            int height = bounds.Bottom - bounds.Top;
-            if (width <= 0 || height <= 0) return;
-
-            lock (sync)
-            {
-                bool newWindow = dialogHwnd != hwnd;
-                bool sizeChanged = lastDialogWidth != width || lastDialogHeight != height;
-                if (newWindow)
-                {
-                    dialogHwnd = hwnd;
-                    lastDialogWidth = width;
-                    lastDialogHeight = height;
-                    // The Shell restores the previous dialog size asynchronously. Keep the
-                    // initial centering window long enough to observe that restored size.
-                    centerUntilUtcTicks = DateTime.UtcNow.AddMilliseconds(1200).Ticks;
-                }
-                else if (sizeChanged && DateTime.UtcNow.Ticks <= centerUntilUtcTicks)
-                {
-                    // Re-centering uses GetWindowRect again, so the next tick is based on the
-                    // restored dimensions rather than the default dimensions.
-                    lastDialogWidth = width;
-                    lastDialogHeight = height;
-                    centerUntilUtcTicks = DateTime.UtcNow.AddMilliseconds(300).Ticks;
-                }
-            }
-            PromoteWindow(null);
-        }
-        catch { }
-    }
-
-    private void PromoteWindow(object state)
-    {
-        IntPtr hwnd;
-        lock (sync) { hwnd = dialogHwnd; }
-        if (hwnd == IntPtr.Zero || !SolonShellNative.IsWindow(hwnd)) return;
-        // Do not recalculate coordinates here: this callback runs after the first paint and would
-        // create the visible top-left-to-center jump. Initial placement is done by the CBT hook.
-        SolonShellNative.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0,
-            0x0001u | 0x0002u | 0x0010u | 0x0200u);
-        SolonShellNative.BringWindowToTop(hwnd);
-        SolonShellNative.SetForegroundWindow(hwnd);
-    }
-
     public void Dispose()
     {
-        lock (sync)
-        {
-            if (promotionTimer != null) { promotionTimer.Dispose(); promotionTimer = null; }
-            if (smokeTimer != null) { smokeTimer.Dispose(); smokeTimer = null; }
-            dialogHwnd = IntPtr.Zero;
-            lastDialogWidth = 0;
-            lastDialogHeight = 0;
-            centerUntilUtcTicks = 0;
-        }
+        if (smokeTimer != null) { smokeTimer.Dispose(); smokeTimer = null; }
     }
 
-    public int OnFileOk(SolonIFileDialog dialog) { Promote(dialog); return 0; }
-    public int OnFolderChanging(SolonIFileDialog dialog, SolonIShellItem folder) { Promote(dialog); return 0; }
-    public int OnFolderChange(SolonIFileDialog dialog) { Promote(dialog); return 0; }
-    public int OnSelectionChange(SolonIFileDialog dialog) { Promote(dialog); return 0; }
-    public int OnShareViolation(SolonIFileDialog dialog, SolonIShellItem item, out int response) { response = 0; Promote(dialog); return 0; }
-    public int OnTypeChange(SolonIFileDialog dialog) { Promote(dialog); return 0; }
-    public int OnOverwrite(SolonIFileDialog dialog, SolonIShellItem item, out int response) { response = 0; Promote(dialog); return 0; }
+    public int OnFileOk(SolonIFileDialog dialog) { return 0; }
+    public int OnFolderChanging(SolonIFileDialog dialog, SolonIShellItem folder) { return 0; }
+    public int OnFolderChange(SolonIFileDialog dialog) { return 0; }
+    public int OnSelectionChange(SolonIFileDialog dialog) { return 0; }
+    public int OnShareViolation(SolonIFileDialog dialog, SolonIShellItem item, out int response) { response = 0; return 0; }
+    public int OnTypeChange(SolonIFileDialog dialog) { return 0; }
+    public int OnOverwrite(SolonIFileDialog dialog, SolonIShellItem item, out int response) { response = 0; return 0; }
 }
 
 public static class SolonShellNative
@@ -249,8 +180,6 @@ public static class SolonShellNative
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentProcessId();
-    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool SetForegroundWindow(IntPtr hwnd);
-    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool BringWindowToTop(IntPtr hwnd);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
@@ -259,7 +188,7 @@ public static class SolonShellNative
     [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetMonitorInfo(IntPtr monitor, ref SolonMonitorInfo info);
 
-    public static bool CenterAndPromoteWindow(IntPtr dialogHwnd, IntPtr ownerHwnd)
+    public static bool CenterDialogWindow(IntPtr dialogHwnd, IntPtr ownerHwnd)
     {
         SolonRect dialogRect;
         if (!GetWindowRect(dialogHwnd, out dialogRect)) return false;
@@ -278,7 +207,8 @@ public static class SolonShellNative
         int workHeight = info.Work.Bottom - info.Work.Top;
         int x = info.Work.Left + Math.Max(0, (workWidth - width) / 2);
         int y = info.Work.Top + Math.Max(0, (workHeight - height) / 2);
-        if (!SetWindowPos(dialogHwnd, new IntPtr(-1), x, y, 0, 0,
+        // HWND_TOP keeps the dialog above its owner without making either window topmost.
+        if (!SetWindowPos(dialogHwnd, IntPtr.Zero, x, y, 0, 0,
             0x0001u | 0x0010u | 0x0200u)) return false;
 
         SolonRect centeredRect;
@@ -304,7 +234,7 @@ public static class SolonShellNative
             {
                 SolonRect rect;
                 if (GetWindowRect(wParam, out rect) && rect.Right > rect.Left && rect.Bottom > rect.Top
-                    && CenterAndPromoteWindow(wParam, ownerHwnd))
+                    && CenterDialogWindow(wParam, ownerHwnd))
                     SolonModernFolderPicker.MarkDialogCentered();
             }
             return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
@@ -377,11 +307,11 @@ public static class SolonModernFolderPicker
                 owner.Location = new System.Drawing.Point(-32000, -32000);
                 owner.Size = new System.Drawing.Size(1, 1);
                 owner.Opacity = 0;
-                owner.TopMost = true;
+                // This is only a fallback owner for sessions without a foreground window. It must
+                // remain an ordinary hidden owner; TopMost would leak to the browser after cancel.
                 owner.Show();
                 Application.DoEvents();
                 hwnd = owner.Handle;
-                SolonShellNative.SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0001u | 0x0002u | 0x0010u);
             }
 
             raw = Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("dc1c5a9c-e88a-4dde-a5a1-60f82a20aef7"), true));
@@ -404,8 +334,8 @@ public static class SolonModernFolderPicker
             events = new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd);
             Check(dialog.Advise(events, out cookie));
             advised = true;
-            // Install immediately before Show: WH_CBT/HCBT_ACTIVATE centers the real HWND
-            // synchronously, before the first frame is painted, eliminating the visible jump.
+            // Show(owner) is the native owner-modal contract. The CBT hook only places the dialog;
+            // it never promotes either the dialog or its owner to HWND_TOPMOST.
             centerHook = SolonShellNative.InstallDialogCenterHook(centerOwnerHwnd);
             int showHr = dialog.Show(hwnd);
             if (showHr == ErrorCancelled) return null;

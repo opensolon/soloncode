@@ -141,30 +141,24 @@ public class DirectoryPickerUtilTest {
                 "the picker must reject its own process window as an external owner");
 
         assertTrue(script.contains("SolonIFileDialogEvents"));
-        assertTrue(script.contains("SolonIOleWindow"));
         assertTrue(script.contains("dialog.Advise(events"));
         assertTrue(script.contains("dialog.Unadvise(cookie)"));
-        assertTrue(script.contains("new System.Threading.Timer(delegate { Promote(dialog); }, null, 100, 250)"),
-                "real HWND promotion must start independently of optional Shell callbacks");
         assertTrue(script.contains("InstallDialogCenterHook(centerOwnerHwnd)"),
                 "the dialog must install a synchronous CBT hook before Show");
         assertTrue(script.contains("UninstallDialogCenterHook(centerHook)"),
                 "the synchronous centering hook must always be removed");
         assertTrue(script.contains("HCBT_ACTIVATE") || script.contains("code == 5"),
                 "centering must happen during activation, before the first paint");
-        assertTrue(script.contains("must never move a visible dialog"),
-                "the promotion timer must not cause a visible post-show position jump");
-        assertTrue(script.contains("SolonShellNative.SetWindowPos(hwnd"));
-        assertTrue(script.contains("GetWindowRect(hwnd, out bounds)"),
-                "the promotion loop must read the live dialog bounds");
-        assertTrue(script.contains("lastDialogWidth") && script.contains("lastDialogHeight"),
-                "the picker must detect restored size changes");
-        assertTrue(script.contains("sizeChanged"),
-                "a restored dialog size must restart the centering window");
-        assertTrue(script.contains("AddMilliseconds(1200)"),
-                "the initial size observation window must cover asynchronous Shell size restoration");
-        assertTrue(script.contains("CenterAndPromoteWindow(wParam, ownerHwnd)"),
+        assertTrue(script.contains("CenterDialogWindow(wParam, ownerHwnd)"),
                 "the real dialog should be centered synchronously by the CBT hook");
+        assertTrue(script.contains("HWND_TOP keeps the dialog above its owner"),
+                "placement must use ordinary z-order, not topmost z-order");
+        assertFalse(script.contains("new IntPtr(-1)"),
+                "the picker must never use HWND_TOPMOST");
+        assertFalse(script.contains("SetForegroundWindow"),
+                "the picker must not force foreground activation");
+        assertFalse(script.contains("BringWindowToTop"),
+                "the picker must rely on owner-modal z-order");
         assertTrue(script.contains("MonitorFromWindow(monitorSource, 2u)"),
                 "centering should target the monitor containing the browser owner");
         assertTrue(script.contains("info.Work.Right - info.Work.Left"),
@@ -172,7 +166,7 @@ public class DirectoryPickerUtilTest {
         assertTrue(script.contains("Math.Max(0, (workWidth - width) / 2)"));
         assertTrue(script.contains("new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd)"),
                 "the captured browser must select the destination monitor");
-        assertTrue(script.contains("events.Dispose()"), "the promotion timer must always be disposed");
+        assertTrue(script.contains("events.Dispose()"), "dialog event resources must always be disposed");
         assertTrue(script.contains("LastDialogCentered = true"),
                 "the smoke test must observe the synchronous initial placement");
         assertFalse(script.contains("AttachThreadInput"));
