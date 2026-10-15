@@ -214,6 +214,26 @@
 }
 
 .agent-detail-save:disabled { opacity: 0.5; cursor: default; }
+.agent-mcp-refresh,
+.agent-detail-cancel,
+.agent-mcp-missing button {
+  padding: 5px 10px;
+  border: 1px solid var(--cb-vscode-widget-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cb-text-primary);
+  cursor: pointer;
+}
+.agent-mcp-hint,
+.agent-mcp-all,
+.agent-mcp-missing { color: var(--cb-text-secondary); font-size: 12px; }
+.agent-mcp-all,
+.agent-mcp-missing { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.agent-mcp-missing { justify-content: space-between; }
+.agent-mcp-all input { accent-color: var(--cb-accent); }
+.agent-mcp-refresh:disabled,
+.agent-detail-cancel:disabled,
+.agent-mcp-missing button:disabled { opacity: 0.5; cursor: default; }
 .agent-detail-loading { flex: 1; display: flex; align-items: center; justify-content: center; padding: 32px; color: var(--cb-text-secondary); font-size: 13px; }
 
 @media (max-width: 520px) {

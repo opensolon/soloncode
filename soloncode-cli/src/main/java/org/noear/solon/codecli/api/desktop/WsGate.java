@@ -317,6 +317,7 @@ public class WsGate extends SimpleWebSocketListener {
                 .session(session)
                 .options(options -> {
                     options.chatModel(chatModel);
+                    DesktopCollaborationPrompt.applyTo(options);
                     options.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
                     applyReasoningEffort(options, reasoningEffort);
                 })

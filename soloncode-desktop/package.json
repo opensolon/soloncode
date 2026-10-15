@@ -1,7 +1,7 @@
 {
   "name": "soloncode-desktop",
   "private": true,
-  "version": "26.9.26",
+  "version": "2026.10.15",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5173",

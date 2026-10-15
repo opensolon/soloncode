@@ -84,6 +84,7 @@ final class DesktopStreamTurn {
                 .session(session)
                 .options(o -> {
                     o.chatModel(chatModel);
+                    DesktopCollaborationPrompt.applyTo(o);
                     applyRunMode(o, session, desktopHitlInterceptor);
                     if (Assert.isNotEmpty(cwd)) {
                         o.toolContextPut(HarnessEngine.ATTR_CWD, cwd);

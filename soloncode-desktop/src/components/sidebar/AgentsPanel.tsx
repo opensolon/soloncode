@@ -4,6 +4,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import { Icon } from '../common/Icon';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ContextMenu } from '../common/ContextMenu';
+import { DropdownMenu } from '../common/DropdownMenu';
 import type { AgentConfig } from '../../services/settingsService';
 import { settingsService } from '../../services/settingsService';
 import { getManagedResourceNameError, managedResourceService } from '../../services/managedResourceService';
@@ -22,6 +23,7 @@ interface AgentsPanelProps {
   onAgentDeleted?: (agent: AgentConfig) => void;
   onRuntimeRefresh?: () => void;
   onCreateWithAI?: () => void;
+  onCreateManually?: () => void;
   refreshKey?: number;
 }
 
@@ -44,6 +46,7 @@ export function AgentsPanel({
   onAgentDeleted,
   onRuntimeRefresh,
   onCreateWithAI,
+  onCreateManually,
   refreshKey = 0,
 }: AgentsPanelProps) {
   const [loading, setLoading] = useState(false);
@@ -224,7 +227,15 @@ export function AgentsPanel({
         <span className="panel-title">Agents</span>
         <div className="agents-panel-actions">
           <span className="group-count">{enabledCount}/{totalCount}</span>
-          <button className="new-session-btn" onClick={onCreateWithAI} title="新建系统级 Agent"><Icon name="add" size={14} /></button>
+          <DropdownMenu
+            align="right"
+            trigger={<button type="button" className="new-session-btn" title="新建 Agent" aria-label="新建 Agent" aria-haspopup="menu"><Icon name="add" size={14} /></button>}
+            items={[
+              { id: 'manual', label: '手动配置', disabled: !onCreateManually },
+              { id: 'llm', label: 'LLM 对话创建', disabled: !onCreateWithAI },
+            ]}
+            onItemClick={id => { if (id === 'manual') onCreateManually?.(); else if (id === 'llm') onCreateWithAI?.(); }}
+          />
           <button className="new-session-btn" onClick={() => { void loadFromBackend(); }} title="刷新"><Icon name="refresh" size={14} /></button>
         </div>
       </div>

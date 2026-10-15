@@ -110,7 +110,7 @@ npm run dev
 ```bash
 cd soloncode-desktop
 npm install
-npm run package -- windows  # Windows，生成 NSIS EXE
+npm run package -- windows  # Windows，生成 NSIS EXE 和 MSI
 npm run package -- mac      # macOS，生成 APP、DMG 和 PKG
 npm run package -- linux    # Linux，生成 DEB 和 AppImage
 ```
@@ -128,7 +128,7 @@ npm run package -- linux    # Linux，生成 DEB 和 AppImage
 ~/.soloncode/bin/soloncode-cli_<桌面版本号>.jar
 ```
 
-例如桌面版本为 `26.8.11` 时，目标文件是 `~/.soloncode/bin/soloncode-cli_26.8.11.jar`。复制失败会使安装失败；重新安装同一版本会覆盖同名文件，但不会删除旧版本 JAR。
+例如桌面版本为 `26.8.11` 时，目标文件是 `~/.soloncode/bin/soloncode-cli_26.8.11.jar`。复制失败会使安装失败；重新安装同一版本会覆盖同名文件。版本化 JAR 会保留供已有桌面版本使用，不随桌面应用卸载而删除。
 
 使用 `npm run package:plan -- windows` 可只查看步骤而不执行构建；将 `windows` 换为当前平台即可。
 
@@ -148,7 +148,7 @@ mvn clean package -DskipTests           npm run tauri:build
                                                │
                                                ▼
                                          生成安装包:
-                                          ├── *.exe (Windows NSIS)
+                                          ├── *.exe / *.msi (Windows)
                                           ├── *.pkg / *.dmg / *.app (macOS)
                                           └── *.deb / *.AppImage (Linux)
 ```
@@ -249,6 +249,7 @@ npm run package -- linux
 | 平台 | 格式 | 文件 |
 |------|------|------|
 | Windows | NSIS | `soloncode-desktop_<version>_x64-setup.exe` |
+| Windows | MSI | `soloncode-desktop_<version>_x64_zh-CN.msi` |
 | macOS | PKG | `soloncode-desktop_<version>_<arch>.pkg` |
 | macOS | DMG | `soloncode-desktop_<version>_*.dmg` |
 | macOS | App | `soloncode-desktop.app` |
@@ -258,7 +259,7 @@ npm run package -- linux
 
 > **注意**：各操作系统的正式安装包应在对应系统上构建；macOS Universal Binary 必须在 macOS 上生成。如需自动化多平台构建，建议使用对应系统的 CI Runner。
 >
-> 只有 Windows NSIS、macOS PKG 和 Linux DEB 具有安装阶段，会复制版本化 JAR。DMG、APP 和 AppImage 是便携产物，不执行安装钩子。Linux DEB 安装时必须能从 `SUDO_USER` 或 `PKEXEC_UID` 确定桌面用户，否则安装会终止。
+> Windows NSIS/MSI、macOS PKG 和 Linux DEB 具有安装阶段，会复制版本化 JAR。DMG、APP 和 AppImage 是便携产物，不执行安装钩子。Linux DEB 安装时必须能从 `SUDO_USER` 或 `PKEXEC_UID` 确定桌面用户，否则安装会终止。
 
 ### 后端启动流程
 

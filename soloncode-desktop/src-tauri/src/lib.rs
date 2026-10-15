@@ -2643,6 +2643,7 @@ fn update_agent_config(
     description: String,
     prompt: String,
     tools: Vec<String>,
+    mcp_servers: Option<Vec<String>>,
 ) -> Result<AgentInfo, String> {
     let source = validate_agent_config_path(&agent_path, &agent_scope, project_path.as_deref())?;
     let name = validate_resource_name(&name)?;
@@ -2671,14 +2672,19 @@ fn update_agent_config(
 
     let escaped_name = serde_json::to_string(&name).map_err(|_| "无法处理 Agent 名称".to_string())?;
     let escaped_description = serde_json::to_string(&description).map_err(|_| "无法处理 Agent 简介".to_string())?;
-    let allowed_tools = if tools.is_empty() {
-        "[]".to_string()
-    } else {
-        format!("[{}]", tools.join(", "))
+    let allowed_tools = serde_json::to_string(&tools).map_err(|_| "无法处理工具配置".to_string())?;
+    let mcp_config = match mcp_servers {
+        Some(servers) => {
+            if servers.len() > 256 || servers.iter().any(|name| name.trim().is_empty() || name.chars().count() > 256) {
+                return Err("MCP 服务配置无效".to_string());
+            }
+            format!("mcpServers: {}\n", serde_json::to_string(&servers).map_err(|_| "无法处理 MCP 配置".to_string())?)
+        }
+        None => String::new(),
     };
     let content = format!(
-        "---\nname: {}\ndescription: {}\nallowed-tools: {}\n---\n\n{}\n",
-        escaped_name, escaped_description, allowed_tools, prompt
+        "---\nname: {}\ndescription: {}\ntools: {}\n{}---\n\n{}\n",
+        escaped_name, escaped_description, allowed_tools, mcp_config, prompt
     );
 
     if renamed {
@@ -2901,6 +2907,34 @@ mod managed_resource_tests {
         let root = std::env::temp_dir().join(format!("soloncode-invalid-resource-{unique}"));
         fs::create_dir_all(&root).unwrap();
         assert!(delete_managed_resource(root.to_str().unwrap(), "agent").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod agent_config_tests {
+    use super::update_agent_config;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn saves_selected_mcp_services_and_can_remove_them() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("soloncode-agent-config-{unique}"));
+        let source = root.join(".soloncode").join("agents").join("demo");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("AGENT.md"), "---\nname: demo\n---\nOld prompt").unwrap();
+        let saved = update_agent_config(source.to_string_lossy().to_string(), "project".into(),
+            Some(root.to_string_lossy().to_string()), "demo".into(), "Demo agent".into(),
+            "Use selected tools.".into(), vec!["read".into(), "mcp".into()], Some(vec!["docs".into()])).unwrap();
+        let content = fs::read_to_string(source.join("AGENT.md")).unwrap();
+        assert!(content.contains("tools: [\"read\",\"mcp\"]"));
+        assert!(content.contains("mcpServers: [\"docs\"]"));
+        update_agent_config(saved.path, "project".into(), Some(root.to_string_lossy().to_string()),
+            "demo".into(), "Demo agent".into(), "Read only.".into(), vec!["read".into()], Some(vec![])).unwrap();
+        let content = fs::read_to_string(source.join("AGENT.md")).unwrap();
+        assert!(content.contains("mcpServers: []"));
+        assert!(!content.contains("\"mcp\""));
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -59,7 +59,8 @@ test('dry run plans the versioned CLI install destination', () => {
   });
 
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /~\/.soloncode\/bin\/soloncode-cli_26\.9\.26\.jar/);
+  const version = desktopPackage.readDesktopVersion(path.join(tauriDir, 'tauri.conf.json'));
+  assert.ok(result.stdout.includes(`~/.soloncode/bin/${desktopPackage.desktopCliJarName(version)}`));
 });
 
 test('renders strict native installer hooks for the versioned CLI jar', () => {
@@ -177,6 +178,22 @@ test('native bundle configs register hook-capable installer formats', () => {
   assert.equal(linux.bundle.linux.deb.postInstallScript, 'target/installer-hooks/linux/postinst');
 });
 
+test('desktop release manifests agree and MSI uses a valid date version', () => {
+  const desktop = JSON.parse(readFileSync(path.join(desktopDir, 'package.json'), 'utf8'));
+  const lock = JSON.parse(readFileSync(path.join(desktopDir, 'package-lock.json'), 'utf8'));
+  const tauri = JSON.parse(readFileSync(path.join(tauriDir, 'tauri.conf.json'), 'utf8'));
+  const windows = JSON.parse(readFileSync(path.join(tauriDir, 'tauri.windows.conf.json'), 'utf8'));
+  const cargo = readFileSync(path.join(tauriDir, 'Cargo.toml'), 'utf8');
+  assert.equal(desktop.version, tauri.version);
+  assert.equal(lock.version, tauri.version);
+  assert.equal(lock.packages[''].version, tauri.version);
+  assert.ok(cargo.includes(`version = "${tauri.version}"`));
+  const [year, month, day] = tauri.version.split('.').map(Number);
+  assert.equal(windows.bundle.windows.wix.version, `${year % 100}.${month}.${day}`);
+  const parts = windows.bundle.windows.wix.version.split('.').map(Number);
+  assert.ok(parts[0] <= 255 && parts[1] <= 255 && parts[2] <= 65535);
+});
+
 test('Windows MSI template uses a per-user installation scope', () => {
   const template = readFileSync(path.join(tauriDir, 'wix', 'main.wxs'), 'utf8');
 
@@ -204,7 +221,9 @@ test('dry run prepares the native hook and adds a macOS PKG installer', () => {
     encoding: 'utf8',
   });
   assert.equal(mac.status, 0, mac.stderr);
-  assert.match(mac.stdout, /pkgbuild .*soloncode-desktop_26\.9\.26_.*\.pkg/);
+  const version = desktopPackage.readDesktopVersion(path.join(tauriDir, 'tauri.conf.json'));
+  assert.ok(mac.stdout.includes(`soloncode-desktop_${version}_`));
+  assert.match(mac.stdout, /pkgbuild .*\.pkg/);
 });
 
 test('Windows dry run prepares both NSIS and MSI installer inputs', () => {
