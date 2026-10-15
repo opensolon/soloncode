@@ -175,6 +175,11 @@
   overflow-y: auto;
 }
 
+.settings-audit-detail {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .settings-section-content {
   padding: 8px 0;
 }

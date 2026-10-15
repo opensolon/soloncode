@@ -12,10 +12,3 @@
 .memory-star { color: var(--cb-warning); font-size: 11px; white-space: nowrap; }
 .memory-item-preview { color: var(--cb-text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .memory-item-time { color: var(--cb-text-secondary); font-size: 10px; }
-.memory-editor { flex: 0 0 auto; max-height: 48%; overflow: auto; padding: 10px; border-top: 1px solid var(--cb-vscode-panel-border); background: var(--cb-vscode-sideBar-background); }
-.memory-editor label { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; color: var(--cb-text-secondary); font-size: 11px; }
-.memory-editor textarea { min-height: 105px; resize: vertical; }
-.memory-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.memory-editor-actions button { border: 0; border-radius: 4px; padding: 6px 12px; color: white; }
-.memory-primary { background: var(--cb-vscode-button-background); }
-.memory-danger { background: var(--cb-error); }

@@ -1,0 +1,45 @@
+.agent-management-panel {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agent-management-tabs {
+  display: flex;
+  flex-shrink: 0;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--cb-vscode-panel-border);
+}
+
+.agent-management-tab {
+  flex: 1;
+  padding: 9px 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--cb-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-management-tab:hover {
+  color: var(--cb-text-primary);
+}
+
+.agent-management-tab.active {
+  border-bottom-color: var(--cb-accent);
+  color: var(--cb-accent);
+}
+
+.agent-management-tab:focus-visible {
+  outline: 1px solid var(--cb-accent);
+  outline-offset: -3px;
+}
+
+.agent-management-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
