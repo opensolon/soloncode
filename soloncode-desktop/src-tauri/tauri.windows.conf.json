@@ -11,6 +11,7 @@
         "installerHooks": "target/installer-hooks/windows/install-cli.nsh"
       },
       "wix": {
+        "version": "26.10.15",
         "template": "wix/main.wxs",
         "fragmentPaths": [
           "target/installer-hooks/windows/install-cli.wxs"

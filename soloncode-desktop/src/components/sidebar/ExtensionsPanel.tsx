@@ -17,10 +17,19 @@ interface ExtensionsPanelProps {
   onInstall: (id: string) => Promise<void>;
   onUninstall: (id: string) => Promise<void>;
   onToggle: (id: string) => void;
+  onOpenManager?: () => void;
+  onClose?: () => void;
 }
 
-export function ExtensionsPanel({ extensions, onInstall, onUninstall, onToggle }: ExtensionsPanelProps) {
+export function ExtensionsPanel({ extensions, onInstall, onUninstall, onToggle, onOpenManager, onClose }: ExtensionsPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
+
+  if (onOpenManager) {
+    return <div className="extensions-panel">
+      <div className="panel-header"><span className="panel-title">扩展</span></div>
+      <button type="button" className="extension-manager-link" onClick={onOpenManager}><Icon name="extensions" size={16} />扩展管理</button>
+    </div>;
+  }
 
   const installedExtensions = extensions.filter(e => e.installed);
   const availableExtensions = extensions.filter(e => !e.installed);
@@ -37,6 +46,7 @@ export function ExtensionsPanel({ extensions, onInstall, onUninstall, onToggle }
     <div className="extensions-panel">
       <div className="panel-header">
         <span className="panel-title">扩展</span>
+        {onClose && <button type="button" className="panel-action" title="关闭扩展管理" onClick={onClose}><Icon name="close" size={14} /></button>}
       </div>
 
       <div className="search-container">

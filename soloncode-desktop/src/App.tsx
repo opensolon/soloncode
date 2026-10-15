@@ -18,9 +18,10 @@ import {
 } from './components/sidebar/AutomationPanel';
 import { SkillsPanel } from './components/sidebar/SkillsPanel';
 import { AgentsPanel } from './components/sidebar/AgentsPanel';
+import { AgentManagementPanel } from './components/sidebar/AgentManagementPanel';
 import { ConfirmDialog } from './components/common/ConfirmDialog';
 import { MemoryPanel } from './components/sidebar/MemoryPanel';
-import { AuditLogPanel } from './components/sidebar/AuditLogPanel';
+import { MemoryDetail } from './components/sidebar/MemoryDetail';
 import { AgentDetail } from './components/sidebar/AgentDetail';
 import type { Settings } from './components/sidebar/SettingsPanel';
 import type { ChatReviewFile } from './components/ChatHeader';
@@ -127,6 +128,8 @@ const defaultSettings: Settings = {
 };
 
 type PanelPosition = 'editor' | 'chat';
+
+type ManagementPage = { kind: 'memory'; entryKey: string | null; id: number } | { kind: 'extensions' };
 
 interface PanelState {
   editorVisible: boolean;
@@ -301,6 +304,12 @@ function App() {
   const [automationRefreshKey, setAutomationRefreshKey] = useState(0);
   const [selectedAutomation, setSelectedAutomation] = useState<DbAutomation | null>(null);
   const [selectedAgentConfig, setSelectedAgentConfig] = useState<AgentConfig | null>(null);
+  const [creatingAgent, setCreatingAgent] = useState(false);
+  const [managementPage, setManagementPage] = useState<ManagementPage | null>(null);
+  const managementPageRef = useRef(managementPage);
+  managementPageRef.current = managementPage;
+  const memoryOpenIdRef = useRef(0);
+  const [memoryRefreshKey, setMemoryRefreshKey] = useState(0);
   const [runningAutomationId, setRunningAutomationId] = useState<number | null>(null);
   const runningAutomationIdRef = useRef<number | null>(null);
   const scheduledAutomationQueueRef = useRef<number[]>([]);
@@ -466,6 +475,8 @@ function App() {
   });
 
   const handleFileSelect = useCallback(async (path: string) => {
+    setManagementPage(null);
+    setCreatingAgent(false);
     setSelectedAutomation(null);
     setSelectedAgentConfig(null);
     await handleFileSelectInternal(path);
@@ -803,6 +814,8 @@ function App() {
         ],
       });
       if (selectedPath && typeof selectedPath === 'string') {
+        setManagementPage(null);
+        setCreatingAgent(false);
         setSelectedAutomation(null);
         setSelectedAgentConfig(null);
         const file = await fileService.openFile(selectedPath);
@@ -963,6 +976,8 @@ function App() {
   }, [showToast]);
 
   const handleOpenAgentSettings = useCallback((agent: AgentConfig) => {
+    setManagementPage(null);
+    setCreatingAgent(false);
     setSelectedAutomation(null);
     setSelectedAgentConfig(agent);
     setPanelState(prev => ({ ...prev, editorVisible: true }));
@@ -975,20 +990,37 @@ function App() {
     } else {
       setSettings(previous => ({
         ...previous,
-        agents: previous.agents.map(agent => agent.path === previousAgent?.path ? updated : agent),
+        agents: creatingAgent
+          ? [...previous.agents, updated]
+          : previous.agents.map(agent => agent.path === previousAgent?.path ? updated : agent),
       }));
     }
     setSelectedAgentConfig(updated);
+    setCreatingAgent(false);
     setAiCreateRefreshKey(current => current + 1);
     setAgentRefreshKey(current => current + 1);
-    showToast(`Agent "${updated.name}" 已保存，已刷新对话列表`);
-  }, [selectedAgentConfig, showToast]);
+    showToast(`Agent "${updated.name}" ${creatingAgent ? '已创建' : '已保存'}，已刷新对话列表`);
+  }, [creatingAgent, selectedAgentConfig, showToast]);
 
   const handleCloseAgentSettings = useCallback(() => {
+    setCreatingAgent(false);
     setSelectedAgentConfig(null);
     if (openFiles.length === 0) {
       setPanelState(prev => ({ ...prev, editorVisible: false }));
     }
+  }, [openFiles.length]);
+
+  const handleOpenMemory = useCallback((entryKey: string | null) => {
+    setSelectedAutomation(null);
+    setSelectedAgentConfig(null);
+    setCreatingAgent(false);
+    setManagementPage({ kind: 'memory', entryKey, id: ++memoryOpenIdRef.current });
+    setPanelState(prev => ({ ...prev, editorVisible: true }));
+  }, []);
+
+  const handleCloseManagementPage = useCallback(() => {
+    setManagementPage(null);
+    if (openFiles.length === 0) setPanelState(prev => ({ ...prev, editorVisible: false }));
   }, [openFiles.length]);
 
   const handleSkillInstalled = useCallback((skillName: string) => {
@@ -1104,6 +1136,7 @@ function App() {
   }, []);
 
   const handleStartPromptCreation = useCallback((type: PromptCreationType) => {
+    setCreatingAgent(false);
     setPanelState(prev => ({ ...prev, chatVisible: true }));
     setSidebarCollapsed(false);
     setAutomationPrompt(null);
@@ -1234,6 +1267,8 @@ function App() {
   }, [handleNewSession, handleSetActiveProject, projects]);
 
   const handleSelectAutomation = useCallback((automation: DbAutomation) => {
+    setManagementPage(null);
+    setCreatingAgent(false);
     setSelectedAgentConfig(null);
     setSelectedAutomation(automation);
     setPanelState(prev => ({ ...prev, editorVisible: true }));
@@ -1565,7 +1600,14 @@ function App() {
         );
       }
       case 'extensions':
-        return <ExtensionsPanel extensions={mockExtensions} onInstall={async (id) => console.log('安装:', id)} onUninstall={async (id) => console.log('卸载:', id)} onToggle={(id) => console.log('切换:', id)} />;
+        return <ExtensionsPanel extensions={mockExtensions} onInstall={async (id) => console.log('安装:', id)} onUninstall={async (id) => console.log('卸载:', id)} onToggle={(id) => console.log('切换:', id)}
+          onOpenManager={() => {
+            setSelectedAutomation(null);
+            setSelectedAgentConfig(null);
+            setCreatingAgent(false);
+            setManagementPage({ kind: 'extensions' });
+            setPanelState(prev => ({ ...prev, editorVisible: true }));
+          }} />;
       case 'automation':
         return (
           <AutomationPanel
@@ -1578,27 +1620,46 @@ function App() {
           />
         );
       case 'memory':
-        return <MemoryPanel backendPort={backendPort} />;
-      case 'skills':
-        return <SkillsPanel backendPort={backendPort} refreshKey={aiCreateRefreshKey} onFileSelect={(path) => { setPanelState(prev => ({ ...prev, editorVisible: true })); handleFileSelect(path); }} onCreateWithAI={() => handleStartPromptCreation('skill')} />;
+        return <MemoryPanel backendPort={backendPort} refreshKey={memoryRefreshKey}
+          selectedKey={managementPage?.kind === 'memory' ? managementPage.entryKey : null}
+          onSelect={handleOpenMemory} onCreate={() => handleOpenMemory(null)} />;
       case 'agents':
-        return <AgentsPanel
-          agents={settings.agents}
-          projectAgents={projectAgents}
-          projectPath={activeProjectPath}
-          projectName={workspaceName}
-          refreshKey={aiCreateRefreshKey}
-          onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))}
-          onProjectAgentsChange={setProjectAgents}
-          onOpenSettings={handleOpenAgentSettings}
-          onRuntimeRefresh={() => setAgentRefreshKey(current => current + 1)}
-          onAgentDeleted={agent => {
-            if (selectedAgentConfig?.path === agent.path) setSelectedAgentConfig(null);
-          }}
-          onCreateWithAI={() => handleStartPromptCreation('agent')}
+        return <AgentManagementPanel
+          agents={<AgentsPanel
+            agents={settings.agents}
+            projectAgents={projectAgents}
+            projectPath={activeProjectPath}
+            projectName={workspaceName}
+            refreshKey={aiCreateRefreshKey}
+            onAgentsChange={(agents) => setSettings(prev => ({ ...prev, agents }))}
+            onProjectAgentsChange={setProjectAgents}
+            onOpenSettings={handleOpenAgentSettings}
+            onRuntimeRefresh={() => setAgentRefreshKey(current => current + 1)}
+            onAgentDeleted={agent => {
+              if (selectedAgentConfig?.path === agent.path) setSelectedAgentConfig(null);
+            }}
+            onCreateWithAI={() => handleStartPromptCreation('agent')}
+            onCreateManually={() => {
+              setManagementPage(null);
+              setSelectedAutomation(null);
+              setSelectedAgentConfig(null);
+              setCreatingAgent(true);
+              setPanelState(prev => ({ ...prev, editorVisible: true }));
+            }}
+          />}
+          skills={<SkillsPanel
+            backendPort={backendPort}
+            refreshKey={aiCreateRefreshKey}
+            onFileSelect={path => {
+              setCreatingAgent(false);
+              setSelectedAutomation(null);
+              setSelectedAgentConfig(null);
+              setPanelState(prev => ({ ...prev, editorVisible: true }));
+              handleFileSelect(path);
+            }}
+            onCreateWithAI={() => handleStartPromptCreation('skill')}
+          />}
         />;
-      case 'audit':
-        return <AuditLogPanel />;
       default:
         return null;
     }
@@ -1613,7 +1674,26 @@ function App() {
       if (!panelState.editorVisible) return null;
       return (
         <div key="editor" className="panel-wrapper editor-wrapper" style={bothVisible ? { width: panelState.editorWidth } : undefined}>
-          {selectedAutomation ? (
+          {managementPage?.kind === 'memory' ? (
+            <MemoryDetail
+              key={managementPage.entryKey === null ? `new-memory:${managementPage.id}` : `${backendPort}:${managementPage.id}`}
+              backendPort={backendPort}
+              entryKey={managementPage.entryKey}
+              onSaved={entry => {
+                setMemoryRefreshKey(current => current + 1);
+                setManagementPage(current => current === managementPage ? { ...managementPage, entryKey: entry.key } : current);
+                showToast(`记忆“${entry.key}”已保存`);
+              }}
+              onDeleted={entryKey => {
+                setMemoryRefreshKey(current => current + 1);
+                if (managementPageRef.current === managementPage) handleCloseManagementPage();
+                showToast(`记忆“${entryKey}”已删除`);
+              }}
+              onClose={handleCloseManagementPage}
+            />
+          ) : managementPage?.kind === 'extensions' ? (
+            <ExtensionsPanel extensions={mockExtensions} onInstall={async (id) => console.log('安装:', id)} onUninstall={async (id) => console.log('卸载:', id)} onToggle={(id) => console.log('切换:', id)} onClose={handleCloseManagementPage} />
+          ) : selectedAutomation ? (
             <AutomationDetail
               automation={selectedAutomation}
               projects={projects}
@@ -1627,9 +1707,10 @@ function App() {
               onDelete={automation => { void handleDeleteAutomationFromDetail(automation); }}
               onClose={handleCloseAutomationDetail}
             />
-          ) : selectedAgentConfig ? (
+          ) : creatingAgent || selectedAgentConfig ? (
             <AgentDetail
-              agent={selectedAgentConfig}
+              agent={selectedAgentConfig || undefined}
+              backendPort={backendPort}
               onSaved={handleAgentSettingsSaved}
               onClose={handleCloseAgentSettings}
             />

@@ -22,6 +22,7 @@ import { requestDesktopModels } from '../../services/modelDiscoveryService';
 import { redactLogContent } from '../../utils/logViewer';
 import { ChannelQrBind } from './ChannelQrBind';
 import { AuditLogPanel } from './AuditLogPanel';
+import { McpToolsForm } from './McpToolsForm';
 import './SettingsPanel.css';
 import './ChannelPanel.css';
 
@@ -32,7 +33,7 @@ export interface Settings extends GeneralSettings {
   agents: AgentConfig[];
 }
 
-type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'about' | 'logs';
+type SettingsMenuKey = 'general' | 'permission' | 'mounts' | 'model' | 'channels' | 'mcp' | 'openapi' | 'lsp' | 'skills' | 'prompts' | 'about' | 'logs' | 'audit';
 
 interface SettingsPanelProps {
   visible: boolean;
@@ -58,6 +59,7 @@ const menuItems: { key: SettingsMenuKey; icon: IconName; label: string }[] = [
   { key: 'about', icon: 'info', label: '关于' },
   { key: 'prompts', icon: 'edit', label: 'AI 提示词' },
   { key: 'logs', icon: 'terminal', label: '日志' },
+  { key: 'audit', icon: 'audit', label: '审计日志' },
 ];
 
 export function SettingsPanel({ visible, settings, onSettingsChange, onClose, onSkillInstalled, backendPort, workspacePath, sessionId }: SettingsPanelProps) {
@@ -174,7 +176,7 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, on
             ))}
           </div>
 
-          <div className="settings-detail">
+          <div className={`settings-detail${activeMenu === 'audit' ? ' settings-audit-detail' : ''}`}>
             {activeMenu === 'general' && (
               <GeneralSettings settings={localSettings} updateSetting={updateSetting} backendPort={backendPort} />
             )}
@@ -251,6 +253,9 @@ export function SettingsPanel({ visible, settings, onSettingsChange, onClose, on
             )}
             {activeMenu === 'logs' && (
               <LogsSettings workspacePath={workspacePath} />
+            )}
+            {activeMenu === 'audit' && (
+              <AuditLogPanel />
             )}
           </div>
         </div>
@@ -994,7 +999,7 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate, onImport, backendPort
   const [importText, setImportText] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [busyIndex, setBusyIndex] = useState<number | null>(null);
-  const [toolsEditor, setToolsEditor] = useState<{ serverName: string; tools: Array<{ name: string; description?: string }>; disabled: Set<string> } | null>(null);
+  const [toolsServer, setToolsServer] = useState<string | null>(null);
   const baseUrl = `http://localhost:${backendPort || 4808}`;
 
   async function parseResponse(response: Response) {
@@ -1033,26 +1038,14 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate, onImport, backendPort
     } catch { setMessage({ text: '导入解析失败', error: true }); }
   }
 
-  async function loadTools(server: McpServerConfig) {
-    if (!server.name.trim()) return;
-    try {
-      const data = await parseResponse(await fetch(`${baseUrl}/web/settings/mcp/servers/tools?name=${encodeURIComponent(server.name.trim())}`, { cache: 'no-store' }));
-      setToolsEditor({ serverName: server.name.trim(), tools: Array.isArray(data.tools) ? data.tools : [], disabled: new Set(Array.isArray(data.disallowedTools) ? data.disallowedTools : []) });
-    } catch { setMessage({ text: '工具加载失败；请先保存并启用该 MCP 配置', error: true }); }
-  }
-
-  async function saveTools() {
-    if (!toolsEditor) return;
-    const body = new URLSearchParams({ serverName: toolsEditor.serverName });
-    toolsEditor.disabled.forEach(name => body.append('disallowedTools', name));
-    try {
-      await parseResponse(await fetch(`${baseUrl}/web/settings/mcp/servers/tools/save`, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' }, body }));
-      setToolsEditor(null); setMessage({ text: '工具权限已保存' });
-    } catch { setMessage({ text: '工具权限保存失败', error: true }); }
-  }
-
   return (
     <div className="settings-section-content">
+      {toolsServer !== null && <McpToolsForm
+        serverName={toolsServer}
+        backendPort={backendPort || 4808}
+        onClose={() => setToolsServer(null)}
+        onSaved={() => { setToolsServer(null); setMessage({ text: '工具权限已保存' }); }}
+      />}
       <div className="settings-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span>MCP 服务器</span>
         <span className="settings-inline-actions"><button className="mcp-add-btn" onClick={() => setShowImport(value => !value)}>导入 JSON</button><button className="mcp-add-btn" onClick={onAdd}>+ 添加</button></span>
@@ -1060,7 +1053,6 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate, onImport, backendPort
 
       {message && <div className={`settings-action-message${message.error ? ' error' : ''}`}>{message.text}</div>}
       {showImport && <div className="settings-import-box"><textarea value={importText} onChange={event => setImportText(event.target.value)} rows={7} placeholder={'粘贴 { "mcpServers": { ... } }'} /><div className="settings-inline-actions"><button className="settings-btn cancel" onClick={() => setShowImport(false)}>取消</button><button className="settings-btn save" onClick={() => void importServers()}>解析并导入</button></div></div>}
-      {toolsEditor && <div className="settings-tools-editor"><div className="settings-tools-title">{toolsEditor.serverName} · 工具权限</div>{toolsEditor.tools.map(tool => <label key={tool.name} className="settings-tool-row"><input type="checkbox" checked={!toolsEditor.disabled.has(tool.name)} onChange={event => setToolsEditor(current => { if (!current) return current; const disabled = new Set(current.disabled); if (event.target.checked) disabled.delete(tool.name); else disabled.add(tool.name); return { ...current, disabled }; })} /><span><b>{tool.name}</b><small>{tool.description}</small></span></label>)}<div className="settings-inline-actions"><button className="settings-btn cancel" onClick={() => setToolsEditor(null)}>取消</button><button className="settings-btn save" onClick={() => void saveTools()}>保存权限</button></div></div>}
 
       {servers.length === 0 && (
         <div className="mcp-empty">暂无 MCP 服务器配置，点击上方"添加"按钮新增</div>
@@ -1074,7 +1066,7 @@ function McpSettings({ servers, onAdd, onRemove, onUpdate, onImport, backendPort
                 onChange={e => onUpdate(index, { enabled: e.target.checked })} />
               <span>启用</span>
             </label>
-            <span className="settings-inline-actions"><button className="mcp-add-btn" disabled={busyIndex === index} onClick={() => void checkServer(server, index)}>{busyIndex === index ? '检测中' : '测试'}</button><button className="mcp-add-btn" onClick={() => void loadTools(server)}>工具</button><button className="mcp-remove-btn" onClick={() => onRemove(index)}>
+            <span className="settings-inline-actions"><button className="mcp-add-btn" disabled={busyIndex === index} onClick={() => void checkServer(server, index)}>{busyIndex === index ? '检测中' : '测试'}</button><button className="mcp-add-btn" disabled={!server.name.trim()} title={server.name.trim() ? '管理此服务的工具' : '请先填写并保存服务名称'} onClick={() => { setMessage(null); setToolsServer(server.name.trim()); }}>工具管理</button><button className="mcp-remove-btn" onClick={() => onRemove(index)}>
               <Icon name="close" size={12} />
             </button></span>
           </div>
@@ -1534,7 +1526,7 @@ function PromptsSettings({ skillPrompt, agentPrompt, gitPrompt, onPromptChange }
 
 /* ==================== 日志查看 ==================== */
 function LogsSettings({ workspacePath }: { workspacePath?: string | null }) {
-  const [activeLog, setActiveLog] = useState<'desktop' | 'cli' | 'audit'>('desktop');
+  const [activeLog, setActiveLog] = useState<'desktop' | 'cli'>('desktop');
   const [logs, setLogs] = useState<Record<'desktop' | 'cli', string>>({ desktop: '', cli: '' });
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
@@ -1581,16 +1573,11 @@ function LogsSettings({ workspacePath }: { workspacePath?: string | null }) {
       <div className="log-viewer-toolbar">
         <button className={`settings-btn ${activeLog === 'desktop' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('desktop')}>桌面端日志</button>
         <button className={`settings-btn ${activeLog === 'cli' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('cli')}>CLI 日志</button>
-        <button className={`settings-btn ${activeLog === 'audit' ? 'save' : 'cancel'}`} style={{ padding: '2px 12px', fontSize: 12 }} onClick={() => setActiveLog('audit')}>审计日志</button>
         <span className="log-viewer-hint">仅加载最近日志，敏感信息会自动脱敏</span>
       </div>
-      {activeLog === 'audit' ? (
-        <AuditLogPanel />
-      ) : (
-        <pre className="log-viewer-content">
-          {content}
-        </pre>
-      )}
+      <pre className="log-viewer-content">
+        {content}
+      </pre>
     </div>
   );
 }

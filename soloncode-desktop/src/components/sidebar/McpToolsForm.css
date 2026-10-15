@@ -1,0 +1,27 @@
+.mcp-tools-overlay { position: fixed; inset: 0; z-index: 10001; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, .5); }
+.mcp-tools-form { width: 640px; max-width: 100%; max-height: 85vh; overflow: auto; box-sizing: border-box; padding: 20px; border: 1px solid var(--cb-vscode-panel-border); border-radius: 8px; background: var(--cb-vscode-sideBar-background); box-shadow: 0 8px 32px rgba(0, 0, 0, .4); }
+.mcp-tools-close { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--cb-text-secondary); cursor: pointer; }
+.mcp-tools-close:hover { background: var(--cb-vscode-list-hoverBackground); color: var(--cb-text-primary); }
+.mcp-tools-heading, .mcp-tools-toolbar, .mcp-tools-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mcp-tools-heading > div { min-width: 0; }
+.mcp-tools-heading h3 { margin: 0 0 6px; font-size: 14px; color: var(--cb-text-primary); }
+.mcp-tools-heading button, .mcp-tools-toolbar button { flex-shrink: 0; }
+.mcp-tools-server { font-size: 12px; overflow-wrap: anywhere; }
+.mcp-tools-hint, .mcp-tools-toolbar, .mcp-tools-footer > span { font-size: 12px; color: var(--cb-text-secondary); line-height: 1.6; }
+.mcp-tools-hint { margin: 16px 0; }
+.mcp-tools-toolbar { margin-bottom: 12px; }
+.mcp-tools-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.mcp-tools-legend { margin-bottom: 8px; font-size: 12px; font-weight: 600; }
+.mcp-tools-table-wrap { overflow: auto; max-height: 400px; border: 1px solid var(--cb-vscode-panel-border); border-radius: 6px; }
+.mcp-tools-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.mcp-tools-table thead th { position: sticky; top: 0; background: var(--cb-vscode-editor-background); }
+.mcp-tools-table th, .mcp-tools-table td { padding: 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; border-bottom: 1px solid var(--cb-vscode-panel-border); }
+.mcp-tools-table th:first-child, .mcp-tools-table td:first-child { width: 48px; text-align: center; }
+.mcp-tools-table th:nth-child(2) { width: 32%; }
+.mcp-tools-table tbody th { font-weight: 500; }
+.mcp-tools-table td:nth-child(3) { color: var(--cb-text-secondary); white-space: pre-wrap; }
+.mcp-tools-table tr:last-child > * { border-bottom: 0; }
+.mcp-tools-table input { accent-color: var(--cb-vscode-button-background); }
+.mcp-tools-table td.mcp-tools-empty { padding: 32px 12px; text-align: center; color: var(--cb-text-secondary); }
+.mcp-tools-footer { margin-top: 16px; flex-wrap: wrap; }
+.mcp-tools-form button:disabled { opacity: .5; cursor: not-allowed; }
