@@ -2339,7 +2339,6 @@ body {
     flex: 1;
     overflow: auto;
     margin: 0;
-    padding: 8px 0;
     font-family: var(--font-mono);
     font-size: calc(12.5px * var(--font-scale));
     line-height: 1.6;
@@ -2511,15 +2510,23 @@ body.memory-active .main-header { display: none; }
     background: transparent;
     border-right: none;
 }
-/* 行号对齐显示态 .file-view-num：同款盒模型（min-width 52px + padding-right 12px，border-box），
-   min-width 而非 width，保证 6 位数以上行号与显示态一样自动撑宽而非溢出重叠 */
+/* 行号对齐显示态 .file-view-num：52px 为“总宽”（border-box，内含 padding-right 12px）。
+   关键：codemirror.min.css 把 .CodeMirror-linenumber 强制回 content-box（0-1-0），
+   须显式 box-sizing:border-box（0-3-0）——否则 min-width:52px 指“内容宽”，
+   实际占宽 52+12=64px，比显示态宽 12px；min-width 而非 width，6 位数以上行号仍可自动撑宽 */
 .file-edit-host .CodeMirror .CodeMirror-linenumber {
+    box-sizing: border-box;
     min-width: 52px;
     padding: 0 12px 0 0;
     text-align: right;
     color: var(--text-secondary);
     opacity: 0.32;
     font-variant-numeric: tabular-nums;
+}
+/* 显示态代码从 52px 行号列后立即开始；CM 默认 pre 左内边距 4px 会让代码再右移 4px，归零对齐 */
+.file-edit-host .CodeMirror pre.CodeMirror-line,
+.file-edit-host .CodeMirror pre.CodeMirror-line-like {
+    padding-left: 0;
 }
 .file-edit-host .CodeMirror .CodeMirror-activeline-background {
     background: var(--bg-secondary);
