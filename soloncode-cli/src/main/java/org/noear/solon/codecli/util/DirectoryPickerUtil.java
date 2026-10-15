@@ -380,7 +380,7 @@ public class DirectoryPickerUtil {
         if (result.timedOut) {
             throw new IOException("Windows directory picker smoke test timed out");
         }
-        if (result.exitCode != 0 || !result.output.contains("PICK_SMOKE_OK")) {
+        if (result.exitCode != 0 || !result.output.contains("PICK_SMOKE_OK ownerModal=true")) {
             throw commandFailure("Windows smoke test", result);
         }
         return result.output;

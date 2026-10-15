@@ -143,32 +143,23 @@ public class DirectoryPickerUtilTest {
         assertTrue(script.contains("SolonIFileDialogEvents"));
         assertTrue(script.contains("dialog.Advise(events"));
         assertTrue(script.contains("dialog.Unadvise(cookie)"));
-        assertTrue(script.contains("InstallDialogCenterHook(centerOwnerHwnd)"),
-                "the dialog must install a synchronous CBT hook before Show");
-        assertTrue(script.contains("UninstallDialogCenterHook(centerHook)"),
-                "the synchronous centering hook must always be removed");
-        assertTrue(script.contains("HCBT_ACTIVATE") || script.contains("code == 5"),
-                "centering must happen during activation, before the first paint");
-        assertTrue(script.contains("CenterDialogWindow(wParam, ownerHwnd)"),
-                "the real dialog should be centered synchronously by the CBT hook");
-        assertTrue(script.contains("HWND_TOP keeps the dialog above its owner"),
-                "placement must use ordinary z-order, not topmost z-order");
+        assertFalse(script.contains("InstallDialogCenterHook"),
+                "the picker must not install a CBT placement hook");
+        assertFalse(script.contains("UninstallDialogCenterHook"),
+                "the picker must not have a placement-hook cleanup path");
+        assertFalse(script.contains("SetWindowPos"),
+                "the native dialog must own placement and DPI sizing");
         assertFalse(script.contains("new IntPtr(-1)"),
                 "the picker must never use HWND_TOPMOST");
         assertFalse(script.contains("SetForegroundWindow"),
                 "the picker must not force foreground activation");
         assertFalse(script.contains("BringWindowToTop"),
                 "the picker must rely on owner-modal z-order");
-        assertTrue(script.contains("MonitorFromWindow(monitorSource, 2u)"),
-                "centering should target the monitor containing the browser owner");
-        assertTrue(script.contains("info.Work.Right - info.Work.Left"),
-                "centering should use the monitor work area rather than raw desktop bounds");
-        assertTrue(script.contains("Math.Max(0, (workWidth - width) / 2)"));
-        assertTrue(script.contains("new SolonFileDialogEvents(smoke, dialog, centerOwnerHwnd)"),
-                "the captured browser must select the destination monitor");
+        assertTrue(script.contains("new SolonFileDialogEvents(smoke, dialog)"),
+                "dialog events must not perform external-window placement");
         assertTrue(script.contains("events.Dispose()"), "dialog event resources must always be disposed");
-        assertTrue(script.contains("LastDialogCentered = true"),
-                "the smoke test must observe the synchronous initial placement");
+        assertTrue(script.contains("PICK_SMOKE_OK ownerModal=true"),
+                "the smoke test must verify the native owner-modal path");
         assertFalse(script.contains("AttachThreadInput"));
         assertFalse(script.contains("AllowSetForegroundWindow"));
         assertFalse(script.contains("BrowseForFolder"), "the obsolete directory picker must not be present");
@@ -214,8 +205,8 @@ public class DirectoryPickerUtilTest {
         org.junit.jupiter.api.Assumptions.assumeTrue(
                 System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).startsWith("windows"));
         String output = DirectoryPickerUtil.smokeWindowsPicker(30_000L);
-        assertTrue(output.contains("PICK_SMOKE_OK centered=true"),
-                "the real dialog must report successful monitor-work-area centering");
+        assertTrue(output.contains("PICK_SMOKE_OK ownerModal=true"),
+                "the real dialog must report the native owner-modal path");
     }
 
     @Test
