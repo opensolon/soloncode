@@ -1,15 +1,15 @@
 /**
  * 心智记忆管理面板
- * 复用 gitViewer 容器在中间大面板展示：左侧条目列表 + 右侧编辑区。
+ * 复用 centerViewer 容器在中间大面板展示：左侧条目列表 + 右侧编辑区。
  * 后端接口：/web/chat/memory/{list,get,save,remove}
  */
 (function () {
     'use strict';
 
-    var gitViewer = document.getElementById('gitViewer');
-    var gitViewerContent = document.getElementById('gitViewerContent');
-    var gitViewerLabel = document.getElementById('gitViewerLabel');
-    var gitViewerFile = document.getElementById('gitViewerFile');
+    var centerViewer = document.getElementById('centerViewer');
+    var centerViewerContent = document.getElementById('centerViewerContent');
+    var centerViewerLabel = document.getElementById('centerViewerLabel');
+    var centerViewerFile = document.getElementById('centerViewerFile');
     var newChatView = document.getElementById('newChatView');
     var chatView = document.getElementById('chatView');
     var memoryNavBtn = document.getElementById('memoryNavBtn');
@@ -32,25 +32,25 @@
 
     // ---- 中间面板显隐（参与 flex 布局：占据左侧边栏之后的整个区域，随边栏收起响应式变宽）----
     function showViewer() {
-        if (!gitViewer) return;
+        if (!centerViewer) return;
         if (newChatView) newChatView.style.display = 'none';
         if (chatView) chatView.style.display = 'none';
         document.body.classList.add('memory-active');
-        gitViewer.classList.add('mem-overlay');
-        gitViewer.style.display = 'flex';
+        centerViewer.classList.add('mem-overlay');
+        centerViewer.style.display = 'flex';
 
-        if (gitViewerLabel) gitViewerLabel.textContent = I18n.t('memory.title');
-        if (gitViewerFile) gitViewerFile.textContent = '记下重要信息，便于后续对话使用';
+        if (centerViewerLabel) centerViewerLabel.textContent = I18n.t('memory.title');
+        if (centerViewerFile) centerViewerFile.textContent = '记下重要信息，便于后续对话使用';
 
         // 记忆面板 header 保留「新建」「全屏」「关闭」：显式复位 header 按钮，
         // 避免看过审查/文件详情后 MD 切换、复制按钮的显隐状态残留过来
-        var _mdToggle = document.getElementById('gitViewerMdToggle');
-        var _copyBtn = document.getElementById('gitViewerCopyBtn');
-        var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
-        var _memNewBtn = document.getElementById('gitViewerMemNew');
-        var _autoNewBtn = document.getElementById('gitViewerAutoNew');
-        var _memClearBtn = document.getElementById('gitViewerMemClear');
-        var _memOrganizeBtn = document.getElementById('gitViewerMemOrganize');
+        var _mdToggle = document.getElementById('centerViewerMdToggle');
+        var _copyBtn = document.getElementById('centerViewerCopyBtn');
+        var _fullscreenBtn = document.getElementById('centerViewerFullscreen');
+        var _memNewBtn = document.getElementById('centerViewerMemNew');
+        var _autoNewBtn = document.getElementById('centerViewerAutoNew');
+        var _memClearBtn = document.getElementById('centerViewerMemClear');
+        var _memOrganizeBtn = document.getElementById('centerViewerMemOrganize');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
@@ -60,22 +60,22 @@
         if (_memOrganizeBtn) _memOrganizeBtn.style.display = '';
 
         // 清理 git 模块可能残留的操作栏
-        var oldActions = gitViewer.querySelector('.git-viewer-actions');
+        var oldActions = centerViewer.querySelector('.center-viewer-actions');
         if (oldActions) oldActions.remove();
     }
 
     // ---- 关闭：完整隐藏共享 Viewer，并恢复打开前的主视图 ----
     function closeOverlay() {
-        if (!gitViewer) return;
+        if (!centerViewer) return;
 
         // 「整理记忆」和 Esc 不会触发 app-git.js 绑定在关闭按钮上的处理，
-        // 因此这里不能只移除状态类，否则 gitViewer 仍以 display:flex 占据主区。
-        if (document.fullscreenElement === gitViewer && document.exitFullscreen) {
+        // 因此这里不能只移除状态类，否则 centerViewer 仍以 display:flex 占据主区。
+        if (document.fullscreenElement === centerViewer && document.exitFullscreen) {
             document.exitFullscreen().catch(function () {});
         }
-        gitViewer.style.display = 'none';
+        centerViewer.style.display = 'none';
         document.body.classList.remove('memory-active');
-        gitViewer.classList.remove('mem-overlay');
+        centerViewer.classList.remove('mem-overlay');
 
         // showViewer() 写入了内联 display:none；关闭时必须清除，交还给原有 CSS 状态控制。
         if (chatView) chatView.style.display = '';
@@ -95,8 +95,8 @@
 
     // ---- 注入面板骨架 ----
     function renderShell() {
-        if (!gitViewerContent) return;
-        gitViewerContent.innerHTML =
+        if (!centerViewerContent) return;
+        centerViewerContent.innerHTML =
             '<div class="memory-panel">' +
             '  <div class="memory-list" id="memoryList"></div>' +
             '</div>';
@@ -415,21 +415,21 @@
     }
 
     // 关闭按钮（与 git 模块共享）：隐藏的同时清理覆盖层状态
-    var gitViewerClose = document.getElementById('gitViewerClose');
-    if (gitViewerClose) {
-        gitViewerClose.addEventListener('click', closeOverlay);
+    var centerViewerClose = document.getElementById('centerViewerClose');
+    if (centerViewerClose) {
+        centerViewerClose.addEventListener('click', closeOverlay);
     }
 
     // header 「新建」按钮（与 git 模块共享容器，仅记忆面板时显示）
-    var gitViewerMemNew = document.getElementById('gitViewerMemNew');
-    if (gitViewerMemNew) {
-        gitViewerMemNew.addEventListener('click', function () { startCreate(); });
+    var centerViewerMemNew = document.getElementById('centerViewerMemNew');
+    if (centerViewerMemNew) {
+        centerViewerMemNew.addEventListener('click', function () { startCreate(); });
     }
 
     // header 「整理记忆」按钮：关闭面板并填入 /memory 命令，交由 Agent 执行整理
-    var gitViewerMemOrganize = document.getElementById('gitViewerMemOrganize');
-    if (gitViewerMemOrganize) {
-        gitViewerMemOrganize.addEventListener('click', function () {
+    var centerViewerMemOrganize = document.getElementById('centerViewerMemOrganize');
+    if (centerViewerMemOrganize) {
+        centerViewerMemOrganize.addEventListener('click', function () {
             closeOverlay();
             if (typeof window.fillMemoryText === 'function') {
                 window.fillMemoryText();
@@ -441,9 +441,9 @@
     }
 
     // header 「清空记忆」按钮：确认后调用后端 clear 接口
-    var gitViewerMemClear = document.getElementById('gitViewerMemClear');
-    if (gitViewerMemClear) {
-        gitViewerMemClear.addEventListener('click', function () {
+    var centerViewerMemClear = document.getElementById('centerViewerMemClear');
+    if (centerViewerMemClear) {
+        centerViewerMemClear.addEventListener('click', function () {
             if (!memoryList.length) { memToast(I18n.t('memory.empty'), false); return; }
 
             var doClear = function () {

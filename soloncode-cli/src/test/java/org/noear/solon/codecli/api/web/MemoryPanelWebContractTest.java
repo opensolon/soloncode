@@ -19,14 +19,14 @@ public class MemoryPanelWebContractTest {
     void organizeAction_completelyClosesViewerBeforeFillingCommand() throws IOException {
         String javascript = resourceText("/static/js/app-memory.js");
 
-        assertTrue(javascript.contains("gitViewer.style.display = 'none';"),
+        assertTrue(javascript.contains("centerViewer.style.display = 'none';"),
                 "关闭记忆面板必须隐藏共享 Viewer，不能只移除样式类");
         assertTrue(javascript.contains("if (chatView) chatView.style.display = '';"),
                 "关闭记忆面板后必须清除聊天视图的内联隐藏状态");
         assertTrue(javascript.contains("if (newChatView) newChatView.style.display = '';"),
                 "关闭记忆面板后必须清除欢迎视图的内联隐藏状态");
 
-        int organizeHandler = javascript.indexOf("gitViewerMemOrganize.addEventListener('click'");
+        int organizeHandler = javascript.indexOf("centerViewerMemOrganize.addEventListener('click'");
         int closeCall = javascript.indexOf("closeOverlay();", organizeHandler);
         int fillCall = javascript.indexOf("window.fillMemoryText();", organizeHandler);
         assertTrue(organizeHandler >= 0 && closeCall > organizeHandler && fillCall > closeCall,

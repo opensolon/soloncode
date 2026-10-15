@@ -21,11 +21,11 @@
     var gitRefreshBtn = document.getElementById('gitRefreshBtn');
 
     // Diff Viewer / File Viewer 元素（内联在 main-area 内）
-    var gitViewer = document.getElementById('gitViewer');
-    var gitViewerLabel = document.getElementById('gitViewerLabel');
-    var gitViewerFile = document.getElementById('gitViewerFile');
-    var gitViewerContent = document.getElementById('gitViewerContent');
-    var gitViewerClose = document.getElementById('gitViewerClose');
+    var centerViewer = document.getElementById('centerViewer');
+    var centerViewerLabel = document.getElementById('centerViewerLabel');
+    var centerViewerFile = document.getElementById('centerViewerFile');
+    var centerViewerContent = document.getElementById('centerViewerContent');
+    var centerViewerClose = document.getElementById('centerViewerClose');
     // main-area 子视图引用
     var newChatView = document.getElementById('newChatView');
 
@@ -79,6 +79,11 @@
     var gitStatus = null;
     var isInitializing = false;
     var viewerMode = null; // 'diff' | 'file' | null
+
+    // 文件查看上下文（供编辑功能消费：openFileViewer 异步 read 成功后写入）
+    var fileViewerCtx = null; // { workspace, apiPath, path, name, status, content, isText }
+    // 文件编辑态（非 null 表示当前处于编辑模式）
+    var fileEditorState = null; // { workspace, apiPath, path, name, status, originalContent, dirty, saving }
 
     // ---- 刷新按钮 ----
     if (gitRefreshBtn) {
@@ -524,7 +529,13 @@
     var diffViewerActive = false;
 
     function openFileViewer(path, name, status) {
-        if (!gitViewer) return;
+        if (!centerViewer) return;
+
+        // 编辑态保护：有未保存修改时先确认，确认丢弃后重试打开新文件
+        if (fileEditorState) {
+            confirmDiscardFileEdit(function() { openFileViewer(path, name, status); });
+            return; // 同步路径已通过回调重入；异步路径等待确认
+        }
 
         viewerMode = 'file';
 
@@ -534,8 +545,8 @@
 
         // 显示 viewer：占据整个中间主区（隐藏顶部条），清理浮层动画类
         document.body.classList.add('memory-active');
-        gitViewer.classList.remove('mem-overlay');
-        gitViewer.style.display = 'flex';
+        centerViewer.classList.remove('mem-overlay');
+        centerViewer.style.display = 'flex';
         diffViewerActive = true;
 
         // 从路径中解析工作区前缀：@xxx/xxx
@@ -559,16 +570,16 @@
         }
 
         // 更新 header（显示带工作区前缀的路径）
-        if (gitViewerLabel) gitViewerLabel.textContent = I18n.t('gitdiff.fileContent');
-        if (gitViewerFile) gitViewerFile.textContent = displayPath;
-        var _autoNewFile = document.getElementById('gitViewerAutoNew');
+        if (centerViewerLabel) centerViewerLabel.textContent = I18n.t('centerViewer.fileContent');
+        if (centerViewerFile) centerViewerFile.textContent = displayPath;
+        var _autoNewFile = document.getElementById('centerViewerAutoNew');
         if (_autoNewFile) _autoNewFile.style.display = 'none';
 
         // 清理操作栏
-        var oldActions = gitViewer.querySelector('.git-viewer-actions');
+        var oldActions = centerViewer.querySelector('.center-viewer-actions');
         if (oldActions) oldActions.remove();
 
-        if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
+        if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
 
         var readUrl = '/web/chat/filer/read?path=' + encodeURIComponent(apiPath);
         if (fileWorkspace !== 'workspace') {
@@ -579,7 +590,7 @@
             .then(function(res) {
                 var d = (res && res.data) ? res.data : {};
                 if (res && res.code !== 200) {
-                    gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">'
+                    centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">'
                         + escapeHtml((res && res.data && res.data.message) || res.description || I18n.t('gitdiff.cannotReadFile'))
                         + '</div>';
                     return;
@@ -592,14 +603,28 @@
                 // 多工作区隔离：<img>/<video> 的 src 由浏览器直发，绕过了 fetch/XHR 劫持层，
                 // 必须显式在 URL 携带 workspaceId（统一入口 window.wsAndSuffix）
                 rawUrl += window.wsAndSuffix();
+                // 保存查看上下文（编辑功能需要：工作区、相对路径、内容、文本判定）
+                var isTextFile = !(rawUrl && (isImageFile(path) || isVideoFile(path))) && !isBinaryFile(path);
+                fileViewerCtx = {
+                    workspace: fileWorkspace,
+                    apiPath: apiPath,
+                    path: path,
+                    displayPath: displayPath,
+                    name: d.name || name,
+                    status: status || lookupGitStatus(path),
+                    content: d.content || '',
+                    isText: isTextFile
+                };
                 renderFileContent(d.content, d.name || name, d.size, path, rawUrl);
             })
             .catch(function(e) {
-                if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
+                if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
             })
             .finally(function() {
-                // 渲染操作按钮（添加到Git / 回滚），status 默认按未跟踪处理
-                renderViewerActions(path, status || '?');
+                // 渲染操作按钮：优先用调用方传入的 status（git 面板入口）；
+                // 文件树等无 status 入口时查 gitStatus 缓存，查不到（干净文件）则不渲染 git 按钮，
+                // 只渲染「编辑」——避免干净文件误显示「加到 Git/回滚」
+                renderViewerActions(path, status || lookupGitStatus(path) || null);
             });
     }
 
@@ -636,22 +661,22 @@
      * 渲染媒体文件（图片/视频）。
      */
     function renderMediaContent(rawUrl, fileName, isImage) {
-        if (!gitViewerContent) return;
+        if (!centerViewerContent) return;
 
         // 隐藏不适用的 Header 按钮（防止从文本/MD 文件切换过来时残留）
-        var _mdToggle = document.getElementById('gitViewerMdToggle');
+        var _mdToggle = document.getElementById('centerViewerMdToggle');
         if (_mdToggle) _mdToggle.style.display = 'none';
-        var _copyBtn = document.getElementById('gitViewerCopyBtn');
+        var _copyBtn = document.getElementById('centerViewerCopyBtn');
         if (_copyBtn) _copyBtn.style.display = 'none';
-        var _fullscreen = document.getElementById('gitViewerFullscreen');
+        var _fullscreen = document.getElementById('centerViewerFullscreen');
         if (_fullscreen) _fullscreen.style.display = 'none';
-        var _memNew = document.getElementById('gitViewerMemNew');
+        var _memNew = document.getElementById('centerViewerMemNew');
         if (_memNew) _memNew.style.display = 'none';
-        var _memClearHide = document.getElementById('gitViewerMemClear');
+        var _memClearHide = document.getElementById('centerViewerMemClear');
         if (_memClearHide) _memClearHide.style.display = 'none';
-        var _memOrganizeHide = document.getElementById('gitViewerMemOrganize');
+        var _memOrganizeHide = document.getElementById('centerViewerMemOrganize');
         if (_memOrganizeHide) _memOrganizeHide.style.display = 'none';
-        var _addToChatMedia = document.getElementById('gitViewerAddToChat');
+        var _addToChatMedia = document.getElementById('centerViewerAddToChat');
         if (_addToChatMedia) _addToChatMedia.style.display = 'none';
 
         var displayName = escapeHtml(fileName || '');
@@ -664,29 +689,29 @@
             html += I18n.t('gitdiff.videoNotSupported') + '</video>';
         }
         html += '</div></div>';
-        gitViewerContent.innerHTML = html;
-        gitViewerContent.scrollTop = 0;
+        centerViewerContent.innerHTML = html;
+        centerViewerContent.scrollTop = 0;
     }
 
     /**
      * 渲染二进制文件不可预览提示。
      */
     function renderBinaryUnreadable(fileName) {
-        if (!gitViewerContent) return;
+        if (!centerViewerContent) return;
 
         // 隐藏不适用的 Header 按钮（防止从文本/MD 文件切换过来时残留）
-        var _mdToggle = document.getElementById('gitViewerMdToggle');
+        var _mdToggle = document.getElementById('centerViewerMdToggle');
         if (_mdToggle) _mdToggle.style.display = 'none';
-        var _copyBtn = document.getElementById('gitViewerCopyBtn');
+        var _copyBtn = document.getElementById('centerViewerCopyBtn');
         if (_copyBtn) _copyBtn.style.display = 'none';
-        var _fullscreen = document.getElementById('gitViewerFullscreen');
+        var _fullscreen = document.getElementById('centerViewerFullscreen');
         if (_fullscreen) _fullscreen.style.display = 'none';
-        var _memNew = document.getElementById('gitViewerMemNew');
+        var _memNew = document.getElementById('centerViewerMemNew');
         if (_memNew) _memNew.style.display = 'none';
-        var _addToChatBin = document.getElementById('gitViewerAddToChat');
+        var _addToChatBin = document.getElementById('centerViewerAddToChat');
         if (_addToChatBin) _addToChatBin.style.display = 'none';
 
-        gitViewerContent.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-secondary)">'
+        centerViewerContent.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-secondary)">'
             + '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;margin-bottom:16px">'
             + '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>'
             + '<polyline points="14 2 14 8 20 8"/>'
@@ -695,15 +720,15 @@
             + '<div style="font-size:14px;font-weight:500;margin-bottom:6px">' + I18n.t('gitdiff.binaryFile') + '</div>'
             + '<div style="font-size:12px;opacity:0.6">' + escapeHtml(fileName || '') + ' ' + I18n.t('gitdiff.binaryFileHint') + '</div>'
             + '</div>';
-        gitViewerContent.scrollTop = 0;
+        centerViewerContent.scrollTop = 0;
     }
 
     // ---- File Viewer：渲染文件内容（语法高亮 + 行号 / 媒体预览 / 二进制提示）----
     function renderFileContent(content, fileName, fileSize, filePath, rawUrl) {
-        if (!gitViewerContent) return;
+        if (!centerViewerContent) return;
 
         // 重置容器状态（清理之前文件留下的 overflow 等样式）
-        gitViewerContent.style.overflow = '';
+        centerViewerContent.style.overflow = '';
 
         // ---- 媒体文件类型检测（优先于文本渲染）----
         if (rawUrl && isImageFile(filePath || fileName)) {
@@ -721,29 +746,29 @@
         }
 
         // 重置 MD 切换按钮为初始状态（源码态），应对切换文件时图标未复位的问题
-        var _mdToggleReset = document.getElementById('gitViewerMdToggle');
+        var _mdToggleReset = document.getElementById('centerViewerMdToggle');
         if (_mdToggleReset) {
             _mdToggleReset.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-            _mdToggleReset.title = I18n.t('gitViewer.previewMd');
+            _mdToggleReset.title = I18n.t('centerViewer.previewMd');
         }
         // 显示复制按钮（可能在审查详情中被隐藏）
-        var _copyBtnReset = document.getElementById('gitViewerCopyBtn');
+        var _copyBtnReset = document.getElementById('centerViewerCopyBtn');
         if (_copyBtnReset) _copyBtnReset.style.display = '';
 
         // 显示全屏按钮（可能在审查详情中被隐藏）
-        var _fullscreenReset = document.getElementById('gitViewerFullscreen');
+        var _fullscreenReset = document.getElementById('centerViewerFullscreen');
         if (_fullscreenReset) _fullscreenReset.style.display = '';
 
         // 隐藏记忆面板专用的「新建」按钮
-        var _memNewReset = document.getElementById('gitViewerMemNew');
+        var _memNewReset = document.getElementById('centerViewerMemNew');
         if (_memNewReset) _memNewReset.style.display = 'none';
-        var _memClearReset = document.getElementById('gitViewerMemClear');
+        var _memClearReset = document.getElementById('centerViewerMemClear');
         if (_memClearReset) _memClearReset.style.display = 'none';
-        var _memOrganizeReset = document.getElementById('gitViewerMemOrganize');
+        var _memOrganizeReset = document.getElementById('centerViewerMemOrganize');
         if (_memOrganizeReset) _memOrganizeReset.style.display = 'none';
 
         // 显示「加入对话内容」按钮（文件视图可用）
-        var _addToChat = document.getElementById('gitViewerAddToChat');
+        var _addToChat = document.getElementById('centerViewerAddToChat');
         if (_addToChat) _addToChat.style.display = '';
 
         var lang = guessLang(filePath || fileName);
@@ -765,7 +790,7 @@
         // 检测是否为 .md 文件
         var isMdFile = /\.md$/i.test(filePath || fileName || "");
 
-        gitViewerContent.innerHTML = ''
+        centerViewerContent.innerHTML = ''
             + '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '">' + codeHtml + '</div>'
             + (isMdFile ? '<div class="file-view-md-frame-wrap" style="display:none;"><iframe class="file-view-md-frame" sandbox="allow-scripts"></iframe></div>' : '');
 
@@ -773,7 +798,7 @@
         if (lang) {
             var _contentRef = content;
             var _langRef = lang;
-            var _viewerContentRef = gitViewerContent;
+            var _viewerContentRef = centerViewerContent;
             var _applyHighlight = function() {
                 var codeBlock = _viewerContentRef.querySelector('.file-view-code');
                 if (!codeBlock || typeof hljs === 'undefined') return;
@@ -804,8 +829,8 @@
         }
 
         // ---- 操作 header 中的按钮 ----
-        var mdToggleBtn = document.getElementById('gitViewerMdToggle');
-        var copyBtn = document.getElementById('gitViewerCopyBtn');
+        var mdToggleBtn = document.getElementById('centerViewerMdToggle');
+        var copyBtn = document.getElementById('centerViewerCopyBtn');
 
         // 显示/隐藏 MD 切换按钮
         if (mdToggleBtn) {
@@ -838,8 +863,8 @@
 
         // MD 切换按钮事件
         if (isMdFile && mdToggleBtn) {
-            var mdFrameWrap = gitViewerContent.querySelector('.file-view-md-frame-wrap');
-            var codeBlock = gitViewerContent.querySelector('.file-view-code');
+            var mdFrameWrap = centerViewerContent.querySelector('.file-view-md-frame-wrap');
+            var codeBlock = centerViewerContent.querySelector('.file-view-code');
             var mdRenderedFlag = false;
 
             if (mdFrameWrap && codeBlock) {
@@ -855,13 +880,13 @@
                             code.style.display = 'none';
                             wrap.style.display = 'block';
                             // 隐藏外层滚动条，与全屏模式行为一致
-                            gitViewerContent.style.overflow = 'hidden';
+                            centerViewerContent.style.overflow = 'hidden';
 
                             // 调整 iframe 高度
                             var iframe = wrap.querySelector('iframe');
                             if (iframe) {
                                 var headerHeight = 8;
-                                var availHeight = gitViewerContent.clientHeight - headerHeight - 8;
+                                var availHeight = centerViewerContent.clientHeight - headerHeight - 8;
                                 if (availHeight < 300) availHeight = 300;
                                 iframe.style.height = availHeight + 'px';
                             }
@@ -879,29 +904,29 @@
 
                             // 切换 SVG 图标为"代码"图标
                             toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
-                            toggle.title = I18n.t('gitViewer.changeDetails');
+                            toggle.title = I18n.t('centerViewer.changeDetails');
                         } else {
                             // 切换回"源码"模式
                             code.style.display = 'block';
                             wrap.style.display = 'none';
                             // 恢复外层滚动条（源码模式需要）
-                            gitViewerContent.style.overflow = '';
+                            centerViewerContent.style.overflow = '';
 
                             // 切换 SVG 图标为"眼睛"图标
                             toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-                            toggle.title = I18n.t('gitViewer.previewMd');
+                            toggle.title = I18n.t('centerViewer.previewMd');
                         }
                     });
                 })(content, mdToggleBtn, mdFrameWrap, codeBlock);
             }
         }
 
-        gitViewerContent.scrollTop = 0;
+        centerViewerContent.scrollTop = 0;
     }
 
     // ---- 将选中行/选中内容加入对话输入框 ----
     function addSelectedLinesToChat() {
-        var filePath = gitViewerFile ? gitViewerFile.textContent : '';
+        var filePath = centerViewerFile ? centerViewerFile.textContent : '';
         if (!filePath) {
             if (typeof showToast === 'function') showToast('No file open', 'error');
             return;
@@ -980,13 +1005,13 @@
 
         // 反馈提示
         if (typeof showToast === 'function') {
-            showToast(I18n.t('gitViewer.addedToChat', { text: insertText }), 'success', 1500);
+            showToast(I18n.t('centerViewer.addedToChat', { text: insertText }), 'success', 1500);
         }
     }
 
     /** 从 DOM 节点向上查找最近的行元素（file-view-line 或 git-diff-line） */
     function findLineElement(node) {
-        while (node && node !== gitViewerContent) {
+        while (node && node !== centerViewerContent) {
             if (node.classList && (node.classList.contains('file-view-line') || node.classList.contains('git-diff-line'))) {
                 return node;
             }
@@ -1020,9 +1045,9 @@
     }
 
     // 绑定「加入对话内容」按钮
-    var gitViewerAddToChat = document.getElementById('gitViewerAddToChat');
-    if (gitViewerAddToChat) {
-        gitViewerAddToChat.addEventListener('click', addSelectedLinesToChat);
+    var centerViewerAddToChat = document.getElementById('centerViewerAddToChat');
+    if (centerViewerAddToChat) {
+        centerViewerAddToChat.addEventListener('click', addSelectedLinesToChat);
     }
 
     // 复制兜底方法
@@ -1172,7 +1197,7 @@
     // ---- Diff Viewer：打开内联 diff（在 main-area 内）----
 
     function openDiffViewer(path, status) {
-        if (!gitViewer) return;
+        if (!centerViewer) return;
 
         viewerMode = 'diff';
 
@@ -1182,18 +1207,18 @@
 
         // 显示 diff viewer：占据整个中间主区（隐藏顶部条），清理浮层动画类
         document.body.classList.add('memory-active');
-        gitViewer.classList.remove('mem-overlay');
-        gitViewer.style.display = 'flex';
+        centerViewer.classList.remove('mem-overlay');
+        centerViewer.style.display = 'flex';
         diffViewerActive = true;
 
         // 审查详情模式：隐藏"视图"和"复制"按钮（全屏按钮保留）
-        var _mdToggle = document.getElementById('gitViewerMdToggle');
-        var _copyBtn = document.getElementById('gitViewerCopyBtn');
-        var _fullscreenBtn = document.getElementById('gitViewerFullscreen');
-        var _memNewBtn = document.getElementById('gitViewerMemNew');
-        var _autoNewBtn = document.getElementById('gitViewerAutoNew');
-        var _memClearBtn = document.getElementById('gitViewerMemClear');
-        var _memOrganizeBtn = document.getElementById('gitViewerMemOrganize');
+        var _mdToggle = document.getElementById('centerViewerMdToggle');
+        var _copyBtn = document.getElementById('centerViewerCopyBtn');
+        var _fullscreenBtn = document.getElementById('centerViewerFullscreen');
+        var _memNewBtn = document.getElementById('centerViewerMemNew');
+        var _autoNewBtn = document.getElementById('centerViewerAutoNew');
+        var _memClearBtn = document.getElementById('centerViewerMemClear');
+        var _memOrganizeBtn = document.getElementById('centerViewerMemOrganize');
         if (_mdToggle) _mdToggle.style.display = 'none';
         if (_copyBtn) _copyBtn.style.display = 'none';
         if (_fullscreenBtn) _fullscreenBtn.style.display = '';
@@ -1202,24 +1227,24 @@
         if (_memClearBtn) _memClearBtn.style.display = 'none';
         if (_memOrganizeBtn) _memOrganizeBtn.style.display = 'none';
         // Diff 视图显示「加入对话内容」按钮（支持行号选择）
-        var _addToChatDiff = document.getElementById('gitViewerAddToChat');
+        var _addToChatDiff = document.getElementById('centerViewerAddToChat');
         if (_addToChatDiff) _addToChatDiff.style.display = '';
 
-        if (gitViewerLabel) gitViewerLabel.textContent = I18n.t('gitViewer.changeDetails');
+        if (centerViewerLabel) centerViewerLabel.textContent = I18n.t('centerViewer.changeDetails');
         // 如果是挂载工作区，显示路径时带上 @xxx/ 前缀
         var displayDiffPath = path;
         if (gitWorkspace !== 'workspace') {
             displayDiffPath = gitWorkspace + '/' + displayDiffPath;
         }
-        if (gitViewerFile) gitViewerFile.textContent = displayDiffPath;
+        if (centerViewerFile) centerViewerFile.textContent = displayDiffPath;
 
         // 判断是否是目录（以 / 结尾）
         var isDir = path.endsWith('/');
 
         if (isDir) {
             // 目录：列出目录下文件列表
-            if (gitViewerContent) {
-                gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
+            if (centerViewerContent) {
+                centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
                     + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(displayDiffPath) + '</div>'
                     + '<div id="gitDirFileList" style="margin-top:12px">' + I18n.t('common.loading') + '...</div>'
                     + '</div>';
@@ -1274,7 +1299,7 @@
             return;
         }
 
-        if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
+        if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
 
         fetch(gitUrl('/web/chat/git/diff', 'path=' + encodeURIComponent(path)))
             .then(function(r) { return r.json(); })
@@ -1283,7 +1308,7 @@
                 var diffText = d.diff || '';
                 if (!diffText.trim()) {
                     // 后端已对未跟踪文件生成整文件新增 diff；此处仅作兜底空态
-                    gitViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
+                    centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
                         + (status === '?'
                             ? I18n.t('gitdiff.newFileHint')
                             : I18n.t('gitdiff.noChanges'))
@@ -1293,22 +1318,48 @@
                 }
             })
             .catch(function(e) {
-                if (gitViewerContent) gitViewerContent.innerHTML = '<div style="padding:20px;color:#cb2431">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
+                if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:#cb2431">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
             })
             .finally(function() {
                 renderViewerActions(path, status);
             });
     }
 
+    // 从 gitStatus 缓存中查文件的当前状态：staged->S / changed->M / untracked->?；查不到返回 null（干净文件）
+    function lookupGitStatus(path) {
+        if (!gitStatus || !path) return null;
+        var normalized = String(path).replace(/^\.\//, '');
+        function statusOf(arr, letter) {
+            for (var i = 0; i < (arr || []).length; i++) {
+                if (String(arr[i]).replace(/^\.\//, '') === normalized) return letter;
+            }
+            return null;
+        }
+        return statusOf(gitStatus.staged, 'S')
+            || statusOf(gitStatus.changed, 'M')
+            || statusOf(gitStatus.untracked, '?')
+            || null;
+    }
+
     // ---- Diff Viewer：渲染操作按钮（添加到Git / 移出暂存 / 回滚）----
     function renderViewerActions(path, status) {
         // 移除旧的操作栏（如有）
-        var oldActions = gitViewer.querySelector('.git-viewer-actions');
+        var oldActions = centerViewer.querySelector('.center-viewer-actions');
         if (oldActions) oldActions.remove();
 
         var actionBar = document.createElement('div');
-        actionBar.className = 'git-viewer-actions';
+        actionBar.className = 'center-viewer-actions';
         var hasAction = false;
+
+        // 文件视图且可编辑时：提供「编辑」按钮（置于最前）
+        if (viewerMode === 'file' && isFileEditable()) {
+            var editBtn = document.createElement('button');
+            editBtn.className = 'git-action-btn git-action-edit';
+            editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> ' + I18n.t('centerViewer.edit');
+            editBtn.addEventListener('click', enterFileEditMode);
+            actionBar.insertBefore(editBtn, actionBar.firstChild);
+            hasAction = true;
+        }
 
         if (status === '?') {
             // 未跟踪 -> 提供 "添加到 Git" 按钮
@@ -1444,10 +1495,395 @@
         if (!hasAction) return;
 
         // 插入到 header 后面、content 前面
-        var content = gitViewer.querySelector('.git-viewer-content');
+        var content = centerViewer.querySelector('.center-viewer-content');
         if (content) {
-            gitViewer.insertBefore(actionBar, content);
+            centerViewer.insertBefore(actionBar, content);
         }
+    }
+
+    // ==================== 文件编辑功能 ====================
+
+    // ---- CodeMirror 编辑器（按需加载，失败回退 textarea）----
+    // 资源全部自托管于 /codemirror/，与 highlight/ 平级；仅用户点「编辑」时才拉取，不拖累首屏
+    var _cmState = { cssLoaded: false, mode: {} };
+    var fileEditTheme = null; // 'idea' | 'darcula'，进入编辑时按当前主题决定
+
+    // guessLang 结果 -> CodeMirror mode 映射（mime + 自托管资源文件名）
+    var CM_MODE_MAP = {
+        javascript: { mime: 'text/javascript', file: 'javascript' },
+        typescript: { mime: 'text/typescript', file: 'javascript' },
+        json: { mime: 'application/json', file: 'javascript' },
+        java: { mime: 'text/x-java', file: 'clike' },
+        kotlin: { mime: 'text/x-kotlin', file: 'clike' },
+        c: { mime: 'text/x-csrc', file: 'clike' },
+        cpp: { mime: 'text/x-c++src', file: 'clike' },
+        csharp: { mime: 'text/x-csharp', file: 'clike' },
+        scala: { mime: 'text/x-scala', file: 'clike' },
+        dart: { mime: 'application/dart', file: 'dart' },
+        swift: { mime: 'text/x-swift', file: 'swift' },
+        python: { mime: 'text/x-python', file: 'python' },
+        ruby: { mime: 'text/x-ruby', file: 'ruby' },
+        go: { mime: 'text/x-go', file: 'go' },
+        rust: { mime: 'text/x-rustsrc', file: 'rust' },
+        xml: { mime: 'text/html', file: 'htmlmixed' },
+        css: { mime: 'text/css', file: 'css' },
+        scss: { mime: 'text/x-scss', file: 'css' },
+        less: { mime: 'text/x-less', file: 'css' },
+        sass: { mime: 'text/x-sass', file: 'sass' },
+        yaml: { mime: 'text/x-yaml', file: 'yaml' },
+        toml: { mime: 'text/x-toml', file: 'toml' },
+        ini: { mime: 'text/x-ini', file: 'properties' },
+        properties: { mime: 'text/x-properties', file: 'properties' },
+        nginx: { mime: 'text/x-nginx-conf', file: 'nginx' },
+        markdown: { mime: 'text/x-markdown', file: 'markdown' },
+        sql: { mime: 'text/x-sql', file: 'sql' },
+        bash: { mime: 'text/x-sh', file: 'shell' },
+        dockerfile: { mime: 'text/x-dockerfile', file: 'dockerfile' },
+        makefile: { mime: 'text/x-sh', file: 'shell' },
+        groovy: { mime: 'text/x-groovy', file: 'groovy' },
+        lua: { mime: 'text/x-lua', file: 'lua' },
+        r: { mime: 'text/x-rsrc', file: 'r' },
+        perl: { mime: 'text/x-perl', file: 'perl' },
+        clojure: { mime: 'text/x-clojure', file: 'clojure' },
+        php: { mime: 'text/x-php', file: 'php' },
+        haskell: { mime: 'text/x-haskell', file: 'haskell' }
+    };
+
+    // mode 文件依赖（htmlmixed 依赖 xml+javascript+css；markdown 依赖 xml；php 依赖 htmlmixed）
+    var CM_MODE_DEPS = {
+        htmlmixed: ['xml', 'javascript', 'css'],
+        markdown: ['xml'],
+        php: ['htmlmixed', 'xml', 'json', 'javascript', 'css']
+    };
+
+    function cmModePath(modeFile) {
+        return '/codemirror/mode/' + modeFile + '/' + modeFile + '.min.js';
+    }
+
+    /**
+     * 按需加载 CodeMirror 核心 + 当前主题 CSS。cb(err)
+     */
+    function ensureCmAssets(cb) {
+        var dark = document.body.getAttribute('data-theme') === 'dark';
+        fileEditTheme = dark ? 'darcula' : 'idea';
+        loadScriptOnce('/codemirror/codemirror.min.js', function(coreErr) {
+            if (coreErr) { cb(coreErr); return; }
+            // 基础样式 + 主题样式（均已自托管，主题按当前明暗态选择）
+            loadCmCss('/codemirror/codemirror.min.css', 'cm-base', function(baseErr) {
+                loadCmCss('/codemirror/theme/' + fileEditTheme + '.min.css', 'cm-theme-' + fileEditTheme, function() {
+                    cb(baseErr || null); // 主题失败不阻断：默认样式可用
+                });
+            });
+        });
+    }
+
+    function loadCmCss(href, marker, cb) {
+        var existing = document.querySelector('link[data-cm-asset="' + marker + '"]');
+        if (existing) { cb(null); return; }
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.setAttribute('data-cm-asset', marker);
+        var settled = false;
+        link.onload = function() { settled = true; cb(null); };
+        link.onerror = function() { settled = true; cb(new Error('css load failed: ' + href)); };
+        (document.head || document.documentElement).appendChild(link);
+        // 兑底：CSS 无 onerror 语义的环境下 4s 后放行，不阻断编辑
+        setTimeout(function() { if (!settled) cb(null); }, 4000);
+    }
+
+    /**
+     * 按需加载语言 mode（含依赖链）。cb(err)
+     */
+    function loadCmMode(modeFile, cb) {
+        if (_cmState.mode[modeFile]) { cb(null); return; }
+        var chain = (CM_MODE_DEPS[modeFile] || []).concat([modeFile]);
+        var done = 0, failed = false;
+        chain.forEach(function(m) {
+            loadScriptOnce(cmModePath(m), function(err) {
+                if (err) failed = true;
+                done++;
+                if (done === chain.length) {
+                    if (!failed) _cmState.mode[modeFile] = true;
+                    cb(failed ? new Error('mode load failed: ' + modeFile) : null);
+                }
+            });
+        });
+    }
+
+    /**
+     * 判定当前查看的文件是否可编辑：
+     * 文本类型 + 所在工作区可写（gitWritableWorkspaces 已按 writeable 过滤，见 loadGitWorkspaces）。
+     */
+    function isFileEditable() {
+        if (!fileViewerCtx || !fileViewerCtx.isText) return false;
+        var ws = fileViewerCtx.workspace || 'workspace';
+        return gitWritableWorkspaces.some(function(w) { return w.id === ws; });
+    }
+
+    /**
+     * dirty 编辑态下弹确认；确认后清理编辑态并执行 afterConfirm。
+     * 返回 true=同步路径已清理（afterConfirm 已执行）；false=用户取消或异步确认中。
+     */
+    function confirmDiscardFileEdit(afterConfirm) {
+        var cleanup = function() {
+            exitFileEditMode();
+            if (typeof afterConfirm === 'function') afterConfirm();
+        };
+        if (!fileEditorState) {
+            if (typeof afterConfirm === 'function') afterConfirm();
+            return true;
+        }
+        if (!fileEditorState.dirty) {
+            cleanup();
+            return true;
+        }
+        if (typeof layer !== 'undefined' && layer.confirm) {
+            layer.confirm(I18n.t('centerViewer.confirmDiscardEdit'), {
+                title: I18n.t('centerViewer.unsavedTitle'),
+                btn: [I18n.t('centerViewer.discardEdit'), I18n.t('common.cancel')],
+                icon: 3,
+                offset: '120px'
+            }, function(index) {
+                layer.close(index);
+                cleanup();
+            });
+            return false; // 异步确认：本次操作中止，确认后由 afterConfirm 继续
+        }
+        if (window.confirm(I18n.t('centerViewer.confirmDiscardEdit'))) {
+            cleanup();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 进入编辑模式：用 textarea 替换只读内容，隐藏不适用按钮。
+     */
+    function enterFileEditMode() {
+        if (!fileViewerCtx || !centerViewerContent) return;
+
+        fileEditorState = {
+            workspace: fileViewerCtx.workspace,
+            apiPath: fileViewerCtx.apiPath,
+            path: fileViewerCtx.path,
+            displayPath: fileViewerCtx.displayPath,
+            name: fileViewerCtx.name,
+            status: fileViewerCtx.status,
+            originalContent: fileViewerCtx.content,
+            dirty: false,
+            saving: false
+        };
+
+        // 编辑期间隐藏与只读视图相关的 header 按钮（复制/MD切换/加入对话/全屏保留）
+        ['centerViewerMdToggle', 'centerViewerCopyBtn', 'centerViewerAddToChat'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        // 编辑期间移除 git 操作栏（防止保存后状态错位）
+        var oldActions = centerViewer.querySelector('.center-viewer-actions');
+        if (oldActions) oldActions.remove();
+
+        // 标题加编辑标记
+        if (centerViewerLabel) {
+            centerViewerLabel.textContent = I18n.t('centerViewer.editingTitle');
+        }
+        if (centerViewerFile && fileEditorState.displayPath) {
+            centerViewerFile.textContent = fileEditorState.displayPath;
+        }
+
+        // 渲染编辑区（工具栏 + 编辑器宿主，CodeMirror 优先，失败回退 textarea）
+        centerViewerContent.style.overflow = 'hidden';
+        var wrap = document.createElement('div');
+        wrap.className = 'file-edit-wrap';
+        var bar = document.createElement('div');
+        bar.className = 'file-edit-toolbar';
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'git-action-btn git-action-add';
+        saveBtn.id = 'fileEditSaveBtn';
+        saveBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> ' + I18n.t('centerViewer.save');
+        var cancelBtn = document.createElement('button');
+        cancelBtn.className = 'git-action-btn';
+        cancelBtn.id = 'fileEditCancelBtn';
+        cancelBtn.textContent = I18n.t('centerViewer.cancelEdit');
+        bar.appendChild(saveBtn);
+        bar.appendChild(cancelBtn);
+        var host = document.createElement('div');
+        host.className = 'file-edit-host';
+        host.id = 'fileEditHost';
+        wrap.appendChild(bar);
+        wrap.appendChild(host);
+        centerViewerContent.innerHTML = '';
+        centerViewerContent.appendChild(wrap);
+
+        // dirty 标记同步（CodeMirror/textarea 共用）
+        var markDirty = function(current) {
+            if (!fileEditorState) return;
+            var dirty = current !== fileEditorState.originalContent;
+            if (dirty !== fileEditorState.dirty) {
+                fileEditorState.dirty = dirty;
+                if (centerViewerFile) {
+                    centerViewerFile.textContent = (dirty ? '* ' : '') + (fileEditorState.displayPath || fileEditorState.path || '');
+                }
+            }
+        };
+
+        // Ctrl/Cmd+S 保存（事件冒泡到 wrap，CodeMirror/textarea 均覆盖）
+        wrap.addEventListener('keydown', function(e) {
+            if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                saveFileEdit();
+            }
+        });
+        saveBtn.addEventListener('click', saveFileEdit);
+        cancelBtn.addEventListener('click', function() {
+            confirmDiscardFileEdit(); // dirty 时弹确认，非 dirty 直接退出（afterConfirm 为空=仅回只读）
+        });
+
+        // 尝试 CodeMirror（按需加载核心/主题/mode），任何一步失败回退 textarea
+        var cmEntry = CM_MODE_MAP[guessLang(fileEditorState.path || fileEditorState.name || '')];
+        ensureCmAssets(function(cmErr) {
+            if (!fileEditorState || fileEditorState.saving) return; // 已退出/保存中不重建
+            if (cmErr || !window.CodeMirror) { renderFallbackTextarea(); return; }
+            if (!cmEntry) { initCmEditor(null); return; } // 无映射语言：纯文本仍用 CM（行号/搜索体验更好）
+            loadCmMode(cmEntry.file, function(modeErr) {
+                if (!fileEditorState || fileEditorState.saving) return;
+                if (modeErr) { renderFallbackTextarea(); return; }
+                initCmEditor(cmEntry.mime);
+            });
+        });
+
+        function initCmEditor(mime) {
+            try {
+                var cm = CodeMirror(host, {
+                    value: fileEditorState.originalContent,
+                    mode: mime || 'text/plain',
+                    theme: fileEditTheme || 'idea',
+                    lineNumbers: true,
+                    lineWrapping: false,
+                    indentUnit: 2,
+                    tabSize: 2,
+                    indentWithTabs: false,
+                    autofocus: true,
+                    styleActiveLine: true,
+                    extraKeys: {
+                        'Ctrl-S': function() { saveFileEdit(); },
+                        'Cmd-S': function() { saveFileEdit(); }
+                    }
+                });
+                fileEditorState.cm = cm;
+                cm.on('change', function() { markDirty(cm.getValue()); });
+                cm.setSize('100%', '100%');
+                setTimeout(function() { cm.focus(); }, 50);
+            } catch (e) {
+                console.warn('[fileEdit] CodeMirror init failed, fallback to textarea', e);
+                renderFallbackTextarea();
+            }
+        }
+
+        function renderFallbackTextarea() {
+            if (!fileEditorState) return;
+            host.innerHTML = '';
+            var ta = document.createElement('textarea');
+            ta.className = 'file-edit-area';
+            ta.id = 'fileEditArea';
+            ta.spellcheck = false;
+            ta.value = fileEditorState.originalContent;
+            host.appendChild(ta);
+            setTimeout(function() { ta.focus(); }, 50);
+            // 事件：输入 → dirty 标记
+            ta.addEventListener('input', function() { markDirty(ta.value); });
+            // Tab 键插入两个空格（不跳焦点）
+            ta.addEventListener('keydown', function(e) {
+                if (e.key === 'Tab' && !e.shiftKey) {
+                    e.preventDefault();
+                    var s = ta.selectionStart, epos = ta.selectionEnd;
+                    ta.value = ta.value.substring(0, s) + '  ' + ta.value.substring(epos);
+                    ta.selectionStart = ta.selectionEnd = s + 2;
+                }
+            });
+        }
+    }
+
+    /**
+     * 退出编辑模式并恢复只读视图（不调接口，纯前端恢复）。
+     * savedContent 为新内容字符串时（保存成功），同步查看上下文后以新内容渲染。
+     */
+    function exitFileEditMode(savedContent) {
+        // 销毁 CodeMirror 实例（避免事件残留与内存泄漏）
+        if (fileEditorState && fileEditorState.cm) {
+            try { fileEditorState.cm.getInputField().blur(); } catch (e) { /* 忽略 */ }
+            fileEditorState.cm = null; // DOM 随 innerHTML 清空一并移除
+        }
+        fileEditorState = null;
+        if (!centerViewerContent) return;
+        if (typeof savedContent === 'string' && fileViewerCtx) {
+            // 保存成功：同步查看上下文，保持只读视图为新内容
+            fileViewerCtx.content = savedContent;
+        }
+        if (!fileViewerCtx) return;
+        // 复位 header（enterFileEditMode 改过 label 与文件名/dirty 星号）
+        if (centerViewerLabel) centerViewerLabel.textContent = I18n.t('centerViewer.fileContent');
+        if (centerViewerFile) centerViewerFile.textContent = fileViewerCtx.displayPath || fileViewerCtx.path;
+        renderFileContent(fileViewerCtx.content, fileViewerCtx.name, null, fileViewerCtx.path, null);
+        renderViewerActions(fileViewerCtx.path, fileViewerCtx.status);
+    }
+
+    /**
+     * 保存编辑：POST /web/chat/filer/write，成功后恢复只读视图并刷新 git 状态。
+     */
+    function saveFileEdit() {
+        if (!fileEditorState || fileEditorState.saving) return;
+        var content;
+        if (fileEditorState.cm && typeof fileEditorState.cm.getValue === 'function') {
+            content = fileEditorState.cm.getValue();
+        } else {
+            var ta = document.getElementById('fileEditArea');
+            if (!ta) return;
+            content = ta.value;
+        }
+
+        var st = fileEditorState;
+        var saveBtn = document.getElementById('fileEditSaveBtn');
+        st.saving = true;
+        if (saveBtn) {
+            saveBtn.disabled = true;
+            saveBtn.textContent = I18n.t('centerViewer.saving') + '...';
+        }
+
+        var url = '/web/chat/filer/write';
+        var query = 'path=' + encodeURIComponent(st.apiPath);
+        if (st.workspace && st.workspace !== 'workspace') {
+            query += '&mount=' + encodeURIComponent(st.workspace);
+        }
+        fetch(url + '?' + query, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: content })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (res && res.code === 200) {
+                showToast(I18n.t('centerViewer.saved', { path: st.name || st.path }), 'success', 2000);
+                exitFileEditMode(content);
+                loadGitStatus();
+            } else {
+                showToast(I18n.t('centerViewer.saveFailed', { error: gitActionError(res) }), 'error');
+                st.saving = false;
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = I18n.t('centerViewer.save');
+                }
+            }
+        })
+        .catch(function(e) {
+            showToast(I18n.t('centerViewer.saveFailed', { error: e.message }), 'error');
+            st.saving = false;
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = I18n.t('centerViewer.save');
+            }
+        });
     }
 
     function gitActionError(res) {
@@ -1459,7 +1895,7 @@
 
     // ---- Diff Viewer：渲染 diff 文本（带行号）----
     function renderViewerDiff(raw) {
-        if (!gitViewerContent) return;
+        if (!centerViewerContent) return;
         var lines = (raw || '').split('\n');
         var html = '';
         var oldLineNo = 0, newLineNo = 0;
@@ -1511,28 +1947,34 @@
                     + '</div>';
             }
         }
-        gitViewerContent.innerHTML = html;
-        gitViewerContent.scrollTop = 0;
+        centerViewerContent.innerHTML = html;
+        centerViewerContent.scrollTop = 0;
     }
 
     // ---- Diff Viewer：关闭，恢复原始视图 ----
     function closeCenterViewer() {
-        if (!gitViewer) return;
+        if (!centerViewer) return;
+
+        // 编辑态保护：确认丢弃后自动重入完成关闭；取消则本次不关闭
+        if (fileEditorState) {
+            confirmDiscardFileEdit(closeCenterViewer);
+            return;
+        }
 
         // 如果当前在全屏状态，退出全屏
-        if (document.fullscreenElement === gitViewer && document.exitFullscreen) {
+        if (document.fullscreenElement === centerViewer && document.exitFullscreen) {
             document.exitFullscreen().catch(function(e){});
         }
 
-        gitViewer.style.display = 'none';
+        centerViewer.style.display = 'none';
         diffViewerActive = false;
 
         // 恢复主区顶部条（审查/文件详情/记忆面板均在打开时将其隐藏）
         document.body.classList.remove('memory-active');
-        gitViewer.classList.remove('mem-overlay');
+        centerViewer.classList.remove('mem-overlay');
 
         // 清理操作栏
-        var oldActions = gitViewer.querySelector('.git-viewer-actions');
+        var oldActions = centerViewer.querySelector('.center-viewer-actions');
         if (oldActions) oldActions.remove();
 
         // 关键：必须先清除两个视图的内联 display 样式
@@ -1549,17 +1991,17 @@
         }
     }
 
-    if (gitViewerClose) {
-        gitViewerClose.addEventListener('click', closeCenterViewer);
+    if (centerViewerClose) {
+        centerViewerClose.addEventListener('click', closeCenterViewer);
     }
 
     // ---- 全屏功能 ----
-    var gitViewerFullscreen = document.getElementById('gitViewerFullscreen');
-    if (gitViewerFullscreen) {
-        gitViewerFullscreen.addEventListener('click', function() {
+    var centerViewerFullscreen = document.getElementById('centerViewerFullscreen');
+    if (centerViewerFullscreen) {
+        centerViewerFullscreen.addEventListener('click', function() {
             if (!document.fullscreenElement) {
-                if (gitViewer.requestFullscreen) {
-                    gitViewer.requestFullscreen().catch(function(e) {
+                if (centerViewer.requestFullscreen) {
+                    centerViewer.requestFullscreen().catch(function(e) {
                         console.warn('[gitdiff] fullscreen error', e);
                     });
                 }
@@ -1574,19 +2016,23 @@
 
         // 监听全屏状态变化，更新图标
         document.addEventListener('fullscreenchange', function() {
-            if (document.fullscreenElement === gitViewer) {
-                gitViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4M4 10h6V4m10 10h-6v6"/></svg>';
-                gitViewerFullscreen.title = I18n.t('gitdiff.exitFullscreen');
+            if (document.fullscreenElement === centerViewer) {
+                centerViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6m10-10h-6V4M4 10h6V4m10 10h-6v6"/></svg>';
+                centerViewerFullscreen.title = I18n.t('gitdiff.exitFullscreen');
             } else {
-                gitViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
-                gitViewerFullscreen.title = I18n.t('gitdiff.fullscreen');
+                centerViewerFullscreen.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+                centerViewerFullscreen.title = I18n.t('gitdiff.fullscreen');
             }
         });
     }
 
-    // ESC 关闭 diff viewer
+    // ESC 关闭 diff viewer（编辑态下：Esc 仅退出编辑模式回只读，再按一次才关闭）
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape' && diffViewerActive) {
+            if (fileEditorState) {
+                confirmDiscardFileEdit();
+                return;
+            }
             closeCenterViewer();
         }
     });
@@ -1931,15 +2377,15 @@
     });
 
     // ---- Git Viewer 右键菜单（复制 + 加入对话）----
-    if (gitViewerContent) {
-        $(gitViewerContent).on('contextmenu', function(e) {
+    if (centerViewerContent) {
+        $(centerViewerContent).on('contextmenu', function(e) {
             // 忽略工具栏按钮区域
-            if ($(e.target).closest('.git-viewer-header-actions').length > 0) return;
+            if ($(e.target).closest('.center-viewer-header-actions').length > 0) return;
             var sel = window.getSelection ? window.getSelection() : null;
             var text = sel ? String(sel.toString()) : '';
             if (!text || !text.trim()) return; // 未选中文字：保持原生菜单
             var range = sel.getRangeAt ? sel.getRangeAt(0) : null;
-            if (range && gitViewerContent.contains(range.commonAncestorContainer)) {
+            if (range && centerViewerContent.contains(range.commonAncestorContainer)) {
                 e.preventDefault();
                 showSelectionMenu(e.clientX, e.clientY, text);
             }

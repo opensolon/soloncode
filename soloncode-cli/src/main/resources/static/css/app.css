@@ -1960,13 +1960,13 @@ body {
 }
 
 /* Diff Viewer */
-.git-viewer {
+.center-viewer {
     flex: 1;
     display: flex;
     flex-direction: column;
     overflow: hidden;
 }
-.git-viewer-header {
+.center-viewer-header {
     display: flex;
     align-items: center;
     padding: 8px 12px;
@@ -2286,7 +2286,7 @@ body {
 }
 
 /* Git Diff Viewer — 内联在 main-area 内 */
-.git-viewer-header {
+.center-viewer-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2295,29 +2295,29 @@ body {
     flex-shrink: 0;
     background: var(--bg-secondary);
 }
-.git-viewer-breadcrumb {
+.center-viewer-breadcrumb {
     display: flex;
     align-items: center;
     gap: 8px;
     min-width: 0;
 }
-.git-viewer-label {
+.center-viewer-label {
     font-size: var(--fs-base);
     font-weight: 600;
     color: var(--text-secondary);
     flex-shrink: 0;
 }
-.git-viewer-sep {
+.center-viewer-sep {
     color: var(--border-color);
 }
-.git-viewer-file {
+.center-viewer-file {
     font-size: var(--fs-base);
     font-family: var(--font-mono);
     color: var(--text-primary);
     font-weight: 500;
     word-break: break-all;
 }
-.git-viewer-close {
+.center-viewer-close {
     width: 32px;
     height: 32px;
     border: none;
@@ -2331,11 +2331,11 @@ body {
     transition: all 0.15s;
     flex-shrink: 0;
 }
-.git-viewer-close:hover {
+.center-viewer-close:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
 }
-.git-viewer-content {
+.center-viewer-content {
     flex: 1;
     overflow: auto;
     margin: 0;
@@ -2349,10 +2349,10 @@ body {
 
 /* 中间主区全屏视图（心智记忆 / 审查详情 / 文件详情共用）：
    占据中间主区的整个区域（参与 flex 布局，非浮层），打开时隐藏主区顶部条，
-   gitViewer 靠自身 flex:1 撑满主区，右侧任务面板保持常驻，
+   centerViewer 靠自身 flex:1 撑满主区，右侧任务面板保持常驻，
    边栏/面板收起时随 flex 重排响应式变宽，无需 JS 计算 */
 body.memory-active .main-header { display: none; }
-.git-viewer.mem-overlay {
+.center-viewer.mem-overlay {
     animation: mem-overlay-in 0.18s ease-out;
 }
 @keyframes mem-overlay-in {
@@ -2361,7 +2361,7 @@ body.memory-active .main-header { display: none; }
 }
 
 /* Diff Viewer 操作栏 */
-.git-viewer-actions {
+.center-viewer-actions {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -2417,6 +2417,88 @@ body.memory-active .main-header { display: none; }
     background: color-mix(in srgb, #f85149 12%, var(--bg-primary));
     border-color: #f85149;
 }
+.git-action-edit {
+    color: var(--text-primary);
+}
+
+/* ===== 文件编辑（centerViewer 编辑态）===== */
+.file-edit-wrap {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+.file-edit-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+}
+.file-edit-area {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 12px 16px;
+    border: none;
+    outline: none;
+    resize: none;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: calc(12.5px * var(--font-scale));
+    line-height: 1.65;
+    tab-size: 2;
+    white-space: pre;
+    overflow: auto;
+}
+.file-edit-area:focus {
+    background: var(--bg-primary);
+}
+
+/* CodeMirror 编辑器宿主：占满剩余空间，主题色由 cm 自带 theme css 控制 */
+.file-edit-host {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+}
+.file-edit-host .CodeMirror {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: calc(12.5px * var(--font-scale));
+    line-height: 1.65;
+}
+.file-edit-host .CodeMirror-scroll {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+/* textarea 回退方案仍占满宿主 */
+.file-edit-host .file-edit-area {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width:  100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+/* 暗色主题下补齐 CodeMirror 边框与光标色适配 */
+[data-theme="dark"] .file-edit-host .CodeMirror {
+    border-top: 1px solid var(--border-color);
+}
+.file-edit-host .CodeMirror-cursor {
+    border-left: 2px solid currentColor;
+}
+.file-edit-host .CodeMirror-selected { background: rgba(38, 79, 120, 0.35); }
+[data-theme="dark"] .file-edit-host .CodeMirror-selected { background: rgba(80, 120, 170, 0.35); }
 
 /* ===== LayUI Layer 暗色主题适配 ===== */
 [data-theme="dark"] .layui-layer {
@@ -2495,7 +2577,7 @@ body.memory-active .main-header { display: none; }
 /* ===== File Viewer (文件内容查看器) ===== */
 
 /* 文件查看器 header 操作按钮组 */
-.viewer-header-actions, .git-viewer-header-actions {
+.viewer-header-actions, .center-viewer-header-actions {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -2503,7 +2585,7 @@ body.memory-active .main-header { display: none; }
 }
 
 /* 操作按钮（MD 切换、复制） */
-.viewer-action-btn, .git-viewer-action-btn {
+.viewer-action-btn, .center-viewer-action-btn {
     width: 32px;
     height: 32px;
     border: none;
@@ -2517,21 +2599,21 @@ body.memory-active .main-header { display: none; }
     transition: all 0.15s;
     flex-shrink: 0;
 }
-.git-viewer-action-btn:hover {
+.center-viewer-action-btn:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
 }
 
 /* 全屏状态 */
-.git-viewer:fullscreen {
+.center-viewer:fullscreen {
     background: var(--bg-primary, #ffffff);
     padding: 0;
 }
-.git-viewer:-webkit-full-screen {
+.center-viewer:-webkit-full-screen {
     background: var(--bg-primary, #ffffff);
     padding: 0;
 }
-.git-viewer:-moz-full-screen {
+.center-viewer:-moz-full-screen {
     background: var(--bg-primary, #ffffff);
     padding: 0;
 }
@@ -2582,9 +2664,9 @@ body.memory-active .main-header { display: none; }
 }
 
 /* ===== 文件查看器：媒体文件预览（图片/视频）===== */
-.git-viewer-content .file-view-media {}
+.center-viewer-content .file-view-media {}
 
-.git-viewer-content .file-view-media-preview {
+.center-viewer-content .file-view-media-preview {
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -2594,14 +2676,14 @@ body.memory-active .main-header { display: none; }
     white-space: normal;
     font-family: var(--font-sans);
 }
-.git-viewer-content .file-view-media-img {
+.center-viewer-content .file-view-media-img {
     max-width: 100%;
     max-height: calc(100vh - 220px);
     object-fit: contain;
     border-radius: 4px;
     box-shadow: 0 1px 6px rgba(0,0,0,0.12);
 }
-.git-viewer-content .file-view-media-video {
+.center-viewer-content .file-view-media-video {
     max-width: 100%;
     max-height: calc(100vh - 220px);
     border-radius: 4px;
@@ -3361,7 +3443,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 
 /* ===== 心智记忆管理面板 ===== */
-.git-viewer-content .memory-panel { white-space: normal; display: flex; flex-direction: column; height: 100%; font-size: var(--fs-md); }
+.center-viewer-content .memory-panel { white-space: normal; display: flex; flex-direction: column; height: 100%; font-size: var(--fs-md); }
 .memory-btn { height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--fs-base); transition: all 0.15s; }
 .memory-btn-danger { color: var(--color-danger); display: inline-flex; align-items: center; gap: 4px; }
 .memory-btn:hover { background: var(--bg-hover); color: var(--text-primary); }

@@ -3,14 +3,14 @@
     'use strict';
     var nav = document.getElementById('automationNavBtn');
     var badge = document.getElementById('automationBadge');
-    var viewer = document.getElementById('gitViewer');
-    var content = document.getElementById('gitViewerContent');
-    var label = document.getElementById('gitViewerLabel');
-    var file = document.getElementById('gitViewerFile');
+    var viewer = document.getElementById('centerViewer');
+    var content = document.getElementById('centerViewerContent');
+    var label = document.getElementById('centerViewerLabel');
+    var file = document.getElementById('centerViewerFile');
     var newView = document.getElementById('newChatView');
     var chatView = document.getElementById('chatView');
-    var closeBtn = document.getElementById('gitViewerClose');
-    var autoNewBtn = document.getElementById('gitViewerAutoNew');
+    var closeBtn = document.getElementById('centerViewerClose');
+    var autoNewBtn = document.getElementById('centerViewerAutoNew');
     var tasks = [];
     var expandedId = null;
     var viewVersion = 0;
@@ -45,7 +45,7 @@
         if (label) label.textContent = I18n.t('loop.title');
         if (file) file.textContent = I18n.t('automation.subtitle');
         if (autoNewBtn) autoNewBtn.style.display = '';
-        ['gitViewerMdToggle','gitViewerCopyBtn','gitViewerMemNew','gitViewerMemClear','gitViewerMemOrganize'].forEach(function (id) {
+        ['centerViewerMdToggle','centerViewerCopyBtn','centerViewerMemNew','centerViewerMemClear','centerViewerMemOrganize'].forEach(function (id) {
             var el = document.getElementById(id); if (el) el.style.display = 'none';
         });
         if (autoNewBtn) autoNewBtn.onclick = function () {

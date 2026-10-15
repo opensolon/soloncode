@@ -268,7 +268,7 @@ public class FileService {
      *
      * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
      * @param path        相对路径，基于工作区根目录
-     * @return 文件信息，包含 content、path、name、size
+     * @return 文件信息，包含 content、path、name、size、lastModified
      */
     public Result<Map> read(String workspaceId, String path) {
         if (path == null || path.trim().isEmpty()) {
@@ -333,6 +333,115 @@ public class FileService {
         data.put("path", path);
         data.put("name", file.getName());
         data.put("size", file.length());
+        data.put("lastModified", file.lastModified());
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 写入工作区文件内容（默认工作区）。
+     *
+     * @see #write(String, String, String)
+     */
+    public Result<Map> write(String path, String content) {
+        return write("workspace", path, content);
+    }
+
+    /**
+     * 写入工作区文件内容（指定工作区）。
+     *
+     * <p>安全模型与 {@link #read(String, String)} 一致：路径含 ".." 拒绝、
+     * 解析后必须落在工作区根目录内、符号链接拒绝；写专属约束：</p>
+     * <ul>
+     *   <li>挂载点必须 writeable（默认工作区天然可写，挂载需 {@link Mount#isWriteable()}）</li>
+     *   <li>仅支持覆盖已存在的文本文件，不做新建/删除</li>
+     *   <li>内容上限 2MB（与读取一致）</li>
+     *   <li>原文件必须为合法 UTF-8（防止把其他编码文件静默转码）</li>
+     *   <li>原子写：同目录临时文件 + move，失败自动清理临时文件</li>
+     * </ul>
+     *
+     * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
+     * @param path        相对路径，基于工作区根目录
+     * @param content     新的文件内容（null 视为清空文件）
+     * @return 文件信息，包含 path、name、size、lastModified
+     */
+    public Result<Map> write(String workspaceId, String path, String content) {
+        if (path == null || path.trim().isEmpty()) {
+            return Result.failure(400, "Path is required");
+        }
+        if (path.contains("..")) {
+            return Result.failure(400, "Invalid path");
+        }
+
+        // 如果 workspaceId 未指定（null 或空），尝试从路径中的 @xxx/ 前缀解析
+        if (workspaceId == null || workspaceId.isEmpty()) {
+            String[] parsed = parseWorkspaceFromPath(path);
+            workspaceId = parsed[0];
+            path = parsed[1];
+        }
+
+        Path rootPath;
+        try {
+            rootPath = resolveRoot(workspaceId);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        }
+
+        // 写专属：非默认工作区必须校验挂载可写
+        if (!"workspace".equals(workspaceId)) {
+            Mount mount = engine.getMount(workspaceId);
+            if (mount == null || !mount.isWriteable()) {
+                return Result.failure(403, "Mount is readonly: " + workspaceId);
+            }
+        }
+
+        Path target = rootPath.resolve(path).toAbsolutePath().normalize();
+
+        if (!target.startsWith(rootPath)) {
+            return Result.failure(403, "Access denied");
+        }
+        if (Files.isSymbolicLink(target)) {
+            return Result.failure(403, "Access denied: symlink");
+        }
+        File file = target.toFile();
+        if (!file.exists() || file.isDirectory()) {
+            return Result.failure(404, "File not found (write only supports existing files)");
+        }
+
+        byte[] bytes = content == null ? new byte[0] : content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (bytes.length > 2 * 1024 * 1024) {
+            return Result.failure(413, "Content too large (max 2MB)");
+        }
+
+        // 编码防护：原文件无法无损 UTF-8 解码时拒绝写入，避免静默转码破坏内容
+        try {
+            byte[] original = Files.readAllBytes(target);
+            String decoded = new String(original, "UTF-8");
+            if (decoded.contains("\uFFFD") || !java.util.Arrays.equals(original, decoded.getBytes("UTF-8"))) {
+                return Result.failure(415, "File is not valid UTF-8; edit is not supported");
+            }
+        } catch (Exception e) {
+            return Result.failure(500, "Failed to read original file: " + e.getMessage());
+        }
+
+        // 原子写：同目录临时文件 + move，失败时清理现场
+        Path tmp = target.resolveSibling(file.getName() + ".soloncode-tmp");
+        try {
+            Files.write(tmp, bytes);
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e) {
+            try {
+                Files.deleteIfExists(tmp);
+            } catch (Exception ignored) {
+            }
+            return Result.failure(500, "Failed to write file: " + e.getMessage());
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", path);
+        data.put("name", file.getName());
+        data.put("size", bytes.length);
+        data.put("lastModified", file.lastModified());
 
         return Result.succeed(data);
     }

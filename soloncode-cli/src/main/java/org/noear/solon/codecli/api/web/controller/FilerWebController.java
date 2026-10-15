@@ -15,9 +15,12 @@
  */
 package org.noear.solon.codecli.api.web.controller;
 
+import org.noear.snack4.ONode;
+import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
+import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
@@ -32,7 +35,8 @@ import java.util.Map;
 /**
  * 文件浏览 Controller（原 WebController 的 filer 域，委派给 FileService）。
  *
- * <p>职责：文件挂载工作区列表、目录树浏览、文件搜索、文本读取与原始二进制输出（图片/视频渲染）。</p>
+ * <p>职责：文件挂载工作区列表、目录树浏览、文件搜索、文本读取与原始二进制输出（图片/视频渲染）、
+ * 文本编辑写入。</p>
  */
 public class FilerWebController extends AbstractWebController {
 
@@ -75,6 +79,39 @@ public class FilerWebController extends AbstractWebController {
     public Result<Map> fileRead(@Param(value = "mount", required = false) String workspace,
                                 @Param("path") String path) throws Exception {
         return fileService().read(workspace, path);
+    }
+
+    /**
+     * 写入工作区文件内容接口（编辑保存）。
+     *
+     * <p>安全校验与读取一致（路径围栏、只读挂载拦截、编码防护），仅支持覆盖已存在的文本文件。</p>
+     */
+    @Post
+    @Mapping("/web/chat/filer/write")
+    public Result<Map> fileWrite(@Body String body,
+                                 @Param(value = "mount", required = false) String workspace) throws Exception {
+        ONode json = parseJsonBody(body);
+        ONode pathNode = json == null ? null : json.get("path");
+        String path = (pathNode != null && pathNode.isString()) ? pathNode.getString() : null;
+        ONode contentNode = json == null ? null : json.get("content");
+        String content = (contentNode != null && contentNode.isString()) ? contentNode.getString() : null;
+        return fileService().write(workspace, path, content);
+    }
+
+    /**
+     * 从 JSON 请求体中解析出 ONode（解析失败返回 null）。
+     */
+    private ONode parseJsonBody(String body) {
+        if (body != null && !body.trim().isEmpty()) {
+            try {
+                ONode json = ONode.ofJson(body);
+                if (json != null && json.isObject()) {
+                    return json;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        return null;
     }
 
     /**
