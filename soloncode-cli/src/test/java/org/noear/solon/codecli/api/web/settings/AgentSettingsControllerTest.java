@@ -225,7 +225,7 @@ class AgentSettingsControllerTest {
         Files.write(userRoot.resolve("same.md"), user.getBytes(StandardCharsets.UTF_8));
         Files.write(workspaceRoot.resolve("same.md"), workspace.getBytes(StandardCharsets.UTF_8));
 
-        String json = ONode.ofBean(controller.agentsList().getData()).toJson();
+        String json = ONode.ofBean(controller.agentsList(false).getData()).toJson();
         assertFalse(json.contains("\"overriddenBy\""));
         assertTrue(json.contains("\"overridesUser\":true"));
     }
@@ -241,7 +241,7 @@ class AgentSettingsControllerTest {
         Files.write(userRoot.resolve("general.md"), user.getBytes(StandardCharsets.UTF_8));
         Files.write(workspaceRoot.resolve("workspace-only.md"), workspace.getBytes(StandardCharsets.UTF_8));
 
-        String json = ONode.ofBean(controller.agentsList().getData()).toJson();
+        String json = ONode.ofBean(controller.agentsList(false).getData()).toJson();
         assertTrue(json.contains("user override"));
         assertTrue(json.contains("workspace-only"));
         assertFalse(json.contains("\"scope\":\"builtin\""));
@@ -261,9 +261,21 @@ class AgentSettingsControllerTest {
         Files.write(userRoot.resolve("visible-agent.md"), visible.getBytes(StandardCharsets.UTF_8));
         Files.write(workspaceRoot.resolve("hidden-agent.md"), hidden.getBytes(StandardCharsets.UTF_8));
 
-        String json = ONode.ofBean(controller.agentsList().getData()).toJson();
+        // 默认（自动化任务选择器等既有消费方）：隐藏项不返回
+        String json = ONode.ofBean(controller.agentsList(false).getData()).toJson();
         assertTrue(json.contains("visible-agent"));
         assertFalse(json.contains("hidden-agent"));
+
+        // includeHidden=true（设置面板）：隐藏项返回、携带 hidden 标记、排在末尾
+        Result included = controller.agentsList(true);
+        assertEquals(200, included.getCode());
+        String full = ONode.ofBean(included.getData()).toJson();
+        assertTrue(full.contains("visible-agent"));
+        assertTrue(full.contains("hidden-agent"));
+        assertTrue(full.contains("\"hidden\":true"));
+        int visibleIdx = full.indexOf("visible-agent");
+        int hiddenIdx = full.indexOf("hidden-agent");
+        assertTrue(visibleIdx >= 0 && hiddenIdx > visibleIdx, "hidden agent should sort after visible agent");
     }
 
     @Test
@@ -330,7 +342,7 @@ class AgentSettingsControllerTest {
         assertEquals(200, disabled.getCode());
         String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(markdown.contains("enabled: false"));
-        assertTrue(ONode.ofBean(controller.agentsList().getData()).toJson().contains("\"enabled\":false"));
+        assertTrue(ONode.ofBean(controller.agentsList(false).getData()).toJson().contains("\"enabled\":false"));
 
         Result enabled = controller.agentsToggle(json("name", "toggle-agent", "scope", "workspace", "enabled", "true"));
         assertEquals(200, enabled.getCode());
@@ -346,6 +358,66 @@ class AgentSettingsControllerTest {
         Path file = tempDir.resolve("home/.soloncode/agents/general.md");
         assertTrue(Files.exists(file));
         assertTrue(new String(Files.readAllBytes(file), StandardCharsets.UTF_8).contains("enabled: false"));
+    }
+
+    @Test
+    void hideAndUnhideWorkspaceAgent() throws Exception {
+        Path root = tempDir.resolve("workspace/.soloncode/agents");
+        Files.createDirectories(root);
+        Path file = root.resolve("hide-agent.md");
+        Files.write(file, "---\nname: hide-agent\ndescription: hide\ntools: [\"read\"]\n---\n\nPrompt.\n".getBytes(StandardCharsets.UTF_8));
+
+        Result hidden = controller.agentsHide(json("name", "hide-agent", "scope", "workspace", "hidden", "true"));
+        assertEquals(200, hidden.getCode());
+        String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(markdown.contains("hidden: true"));
+        assertFalse(ONode.ofBean(controller.agentsList(false).getData()).toJson().contains("hide-agent"));
+        assertTrue(ONode.ofBean(controller.agentsList(true).getData()).toJson().contains("hide-agent"));
+
+        Result unhidden = controller.agentsHide(json("name", "hide-agent", "scope", "workspace", "hidden", "false"));
+        assertEquals(200, unhidden.getCode());
+        markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(markdown.contains("hidden: false"));
+        assertFalse(markdown.contains("hidden: true"));
+        assertTrue(ONode.ofBean(controller.agentsList(false).getData()).toJson().contains("hide-agent"));
+    }
+
+    @Test
+    void hideBuiltinCreatesUserOverride() throws Exception {
+        Result hidden = controller.agentsHide(json("name", "general", "scope", "user", "hidden", "true"));
+        assertEquals(200, hidden.getCode());
+        Path file = tempDir.resolve("home/.soloncode/agents/general.md");
+        assertTrue(Files.exists(file));
+        String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(markdown.contains("hidden: true"));
+        assertTrue(markdown.contains("\"general\"")); // 内置定义 name 为 JSON 引号风格
+    }
+
+    @Test
+    void hideRejectsBrokenMarkdownWithoutTouchingFile() throws Exception {
+        Path root = tempDir.resolve("workspace/.soloncode/agents");
+        Files.createDirectories(root);
+        Path file = root.resolve("broken-hide.md");
+        String original = "---\nname: broken-hide\n description broken yaml: [[\n";
+        Files.write(file, original.getBytes(StandardCharsets.UTF_8));
+
+        Result result = controller.agentsHide(json("name", "broken-hide", "scope", "workspace", "hidden", "true"));
+        assertNotEquals(200, result.getCode());
+        // 原子性：失败时原文件字节不变
+        assertEquals(original, new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void automationListStaysFilteredWithoutIncludeHidden() throws Exception {
+        Path root = tempDir.resolve("workspace/.soloncode/agents");
+        Files.createDirectories(root);
+        Files.write(root.resolve("auto-hidden.md"),
+                "---\nname: auto-hidden\ndescription: auto\ntools: [\"read\"]\nhidden: true\n---\n\nHidden.\n".getBytes(StandardCharsets.UTF_8));
+
+        // 固化默认过滤语义：自动化任务选择器等既有消费方依赖不含隐藏项的默认列表
+        Result def = controller.agentsList(false);
+        assertEquals(200, def.getCode());
+        assertFalse(ONode.ofBean(def.getData()).toJson().contains("auto-hidden"));
     }
 
     @Test
@@ -442,7 +514,7 @@ class AgentSettingsControllerTest {
                 .build());
 
         // 1) 列表可见
-        String listJson = ONode.ofBean(controller.agentsList().getData()).toJson();
+        String listJson = ONode.ofBean(controller.agentsList(false).getData()).toJson();
         assertTrue(listJson.contains("db-writer"), "extension mount agent should be listed");
         assertTrue(listJson.contains("Database expert provided by an extension classpath mount"));
 

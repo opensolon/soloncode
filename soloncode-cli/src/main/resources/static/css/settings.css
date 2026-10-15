@@ -495,6 +495,9 @@
 .agent-status-badge { font-size: var(--fs-2xs); padding: 1px 6px; border-radius: 3px; margin-left: 6px; background: rgba(16,185,129,0.1); color: #10b981; vertical-align: middle; }
 .agent-status-badge.muted { background: var(--bg-hover); color: var(--text-secondary); }
 .agent-status-badge.invalid { background: rgba(239,68,68,0.1); color: #ef4444; }
+.agent-item.dimmed .settings-list-title, .agent-item.dimmed .settings-list-desc { opacity: 0.6; }
+.agent-item.dimmed .settings-list-icon { opacity: 0.45; }
+.agents-hide-btn.active { color: var(--text-secondary); }
 .agents-prompt-editor { min-height: 0; resize: vertical; font-family: inherit !important; font-size: var(--fs-base) !important; line-height: 1.6; }
 .agent-tools-trigger { width: 100%; min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-primary); cursor: pointer; text-align: left; transition: border-radius 0.15s, border-color 0.15s; }
 .agent-tools-trigger:hover:not(:disabled):not(.is-open) { border-color: var(--accent); }

@@ -191,7 +191,7 @@
     }
 
     function loadList() {
-        $.get('/web/settings/agents', function (resp) {
+        $.get('/web/settings/agents', { includeHidden: true }, function (resp) {
             if (resp.code === 200) renderList(resp.data || []);
             else showToast(resp.message || I18n.t('toast.agentLoadFailed'), 'error');
         }).fail(function () { showToast(I18n.t('toast.agentLoadFailed'), 'error'); });
@@ -210,14 +210,20 @@
                 ? '<span class="mounts-scope-badge scope-workspace">' + I18n.t('agents.scopeBadge.workspace') + '</span>'
                 : '';
             if (item.valid === false) badge += '<span class="agent-status-badge invalid">' + I18n.t('agents.statusBadge.invalid') + '</span>';
+            if (item.hidden === true) badge += '<span class="agent-status-badge muted">' + I18n.t('agents.statusBadge.hidden') + '</span>';
             var tools = item.tools && item.tools.length ? item.tools.join(', ') : I18n.t('agents.noTools');
-            html += '<div class="settings-list-item agent-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '">'
+            var hideTitle = item.hidden === true ? I18n.t('agents.toggle.unhide') : I18n.t('agents.toggle.hide');
+            var eyeIcon = item.hidden === true
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+            html += '<div class="settings-list-item agent-item' + (item.enabled === false ? ' disabled' : '') + (item.hidden === true ? ' dimmed' : '') + '" data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '">'
                 + '<div class="settings-list-icon">A</div><div class="settings-list-info">'
                 + '<div class="settings-list-title">' + escapeHtml(item.name) + ' ' + badge + '</div>'
                 + '<div class="settings-list-desc">' + escapeHtml(item.description || '') + '</div>'
                 + '<div class="settings-list-desc settings-accent-text">' + escapeHtml(tools) + '</div>'
                 + '</div><div class="settings-list-actions"><button class="settings-action-btn edit" title="' + I18n.t('agents.edit') + '">'
                 + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
+                + '<button class="settings-action-btn agents-hide-btn' + (item.hidden === true ? ' active' : '') + '" title="' + escapeAttr(hideTitle) + '">' + eyeIcon + '</button>'
                 + '<label class="toggle-switch" title="' + (item.enabled !== false ? I18n.t('agents.toggle.disable') : I18n.t('agents.toggle.enable')) + '">'
                 + '<input type="checkbox" ' + (item.enabled !== false ? 'checked' : '') + ' data-name="' + escapeAttr(item.name) + '" data-scope="' + escapeAttr(sourceScope) + '" class="agents-toggle"/>'
                 + '<span class="toggle-slider"></span></label></div></div>';
@@ -361,6 +367,30 @@
             }
         }, function () {
             $toggle.prop('disabled', false);
+        });
+    });
+
+    $list.on('click', '.agents-hide-btn', function (e) {
+        e.stopPropagation();
+        var $btn = $(this);
+        var $item = $btn.closest('.agent-item');
+        var hidden = $item.hasClass('dimmed');
+        $btn.prop('disabled', true);
+        postJson('/web/settings/agents/hide', {
+            name: $item.attr('data-name'),
+            scope: $item.attr('data-scope'),
+            hidden: !hidden
+        }, function (resp) {
+            $btn.prop('disabled', false);
+            if (resp.code === 200) {
+                showToast(!hidden ? I18n.t('agents.hidden') : I18n.t('agents.unhidden'));
+                loadList();
+                if (typeof window.reloadCommandHints === 'function') window.reloadCommandHints();
+            } else {
+                showToast(resp.message || I18n.t('agents.operateFailed'), 'error');
+            }
+        }, function () {
+            $btn.prop('disabled', false);
         });
     });
 

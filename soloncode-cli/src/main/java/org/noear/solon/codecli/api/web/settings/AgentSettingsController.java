@@ -54,7 +54,7 @@ public class AgentSettingsController extends BaseSettingsController {
 
     @Get
     @Mapping("/web/settings/agents")
-    public Result agentsList() {
+    public Result agentsList(@Param(value = "includeHidden", defaultValue = "false") boolean includeHidden) {
         Map<String, AgentDefinition> builtinMap = loadCatalogAgentDefinitions();
         Map<String, Map<String, Object>> candidatesByName = new LinkedHashMap<>();
         for (AgentDefinition definition : builtinMap.values()) {
@@ -68,13 +68,17 @@ public class AgentSettingsController extends BaseSettingsController {
 
         List<Map<String, Object>> list = new ArrayList<>();
         for (Map<String, Object> item : candidatesByName.values()) {
-            if (!Boolean.TRUE.equals(item.get("hidden"))) {
+            if (includeHidden || !Boolean.TRUE.equals(item.get("hidden"))) {
                 list.add(item);
             }
         }
+        // 隐藏项排在末尾，避免干扰常规视图（includeHidden 时才可能出现隐藏项）
         Collections.sort(list, new Comparator<Map<String, Object>>() {
             @Override
             public int compare(Map<String, Object> a, Map<String, Object> b) {
+                boolean hiddenA = Boolean.TRUE.equals(a.get("hidden"));
+                boolean hiddenB = Boolean.TRUE.equals(b.get("hidden"));
+                if (hiddenA != hiddenB) return hiddenA ? 1 : -1;
                 return String.valueOf(a.get("name")).compareToIgnoreCase(String.valueOf(b.get("name")));
             }
         });
@@ -170,12 +174,42 @@ public class AgentSettingsController extends BaseSettingsController {
     @Post
     @Mapping("/web/settings/agents/toggle")
     public Result agentsToggle(@Body String json) {
+        try {
+            return toggleFlag(json, "enabled");
+        } catch (IllegalArgumentException e) {
+            return Result.failure(e.getMessage());
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to toggle agent: {}", e.getMessage());
+            return Result.failure("操作失败: " + e.getMessage());
+        }
+    }
+
+    @Post
+    @Mapping("/web/settings/agents/hide")
+    public Result agentsHide(@Body String json) {
+        try {
+            return toggleFlag(json, "hidden");
+        } catch (IllegalArgumentException e) {
+            return Result.failure(e.getMessage());
+        } catch (Exception e) {
+            LOG.warn("[Settings] Failed to hide agent: {}", e.getMessage());
+            return Result.failure("操作失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * enabled / hidden 切换共用内核：读原文件（或内置目录回退）→ 改写 Front Matter 单键 →
+     * 临时文件原子替换 → 刷新当前工作区及其它工作区挂载。
+     *
+     * @param key front matter 键名，仅支持 "enabled" / "hidden"
+     */
+    private Result toggleFlag(String json, String key) throws Exception {
         Path temp = null;
         try {
             ONode root = ONode.ofJson(json);
             String name = root.get("name").getString();
             String scope = normalizeScope(root.get("scope").getString());
-            boolean enabled = root.get("enabled").getBoolean();
+            boolean flagValue = root.get(key).getBoolean();
             String invalid = validateName(name);
             if (invalid != null) return Result.failure(invalid);
 
@@ -194,7 +228,7 @@ public class AgentSettingsController extends BaseSettingsController {
                 return Result.failure("智能体不存在: " + name);
             }
 
-            markdown = setFrontMatterValue(markdown, "enabled", String.valueOf(enabled));
+            markdown = setFrontMatterValue(markdown, key, String.valueOf(flagValue));
             parseAndValidate(markdown, name);
             Path targetRoot = target.getParent();
             ensureWritableRoot(targetRoot);
@@ -206,12 +240,10 @@ public class AgentSettingsController extends BaseSettingsController {
             if (AgentFlags.SCOPE_USER.equals(scope)) {
                 refreshAgentsInOtherWorkspaces(USER_ALIAS);
             }
-            return Result.succeed(enabled ? "启用成功" : "停用成功");
-        } catch (IllegalArgumentException e) {
-            return Result.failure(e.getMessage());
-        } catch (Exception e) {
-            LOG.warn("[Settings] Failed to toggle agent: {}", e.getMessage());
-            return Result.failure("操作失败: " + e.getMessage());
+            if ("enabled".equals(key)) {
+                return Result.succeed(flagValue ? "启用成功" : "停用成功");
+            }
+            return Result.succeed(flagValue ? "隐藏成功" : "取消隐藏成功");
         } finally {
             if (temp != null) {
                 try { Files.deleteIfExists(temp); } catch (Exception ignored) { }
