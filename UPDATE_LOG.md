@@ -3,6 +3,8 @@
 
 * 添加 soloncode web 隐藏智能体的管理
 * 修复 soloncode web 在 window 下打开目录选择器后浏览器会被置顶的问题
+* 修复 soloncode web 多进程实例登录引起冲突问题
+* 细节优化
 
 ### v2026.10.7
 
