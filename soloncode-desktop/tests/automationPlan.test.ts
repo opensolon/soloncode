@@ -10,6 +10,9 @@ test('planning prompt asks the model to understand and enrich the work', () => {
   assert.match(prompt, /理解用户真正要重复执行的工作/);
   assert.match(prompt, /"prompt":"请说你好，返回你好"/);
   assert.match(prompt, /用户需求：\n每分钟说一次你好/);
+  assert.match(prompt, /完整保留.*检查清单.*停止条件/);
+  assert.match(prompt, /不重复询问/);
+  assert.match(prompt, /当前只生成任务配置，不实际执行任务/);
 });
 
 test('accepts a valid generated automation plan', () => {

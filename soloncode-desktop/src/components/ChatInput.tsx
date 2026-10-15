@@ -5,6 +5,7 @@ import type { ModelProvider } from '../services/settingsService';
 import { PROVIDER_PRESETS } from '../services/settingsService';
 import { fileService } from '../services/fileService';
 import { GoalModeBar } from './GoalModeBar';
+import { AutomationPromptPresets } from './AutomationPromptPresets';
 import {
   extractSubagentHints,
   isValidSubagentName,
@@ -228,6 +229,7 @@ interface ContextRef {
 
 interface ChatInputProps {
   onSend: (message: string, options: SendOptions) => void;
+  showAutomationPresets?: boolean;
   isLoading?: boolean;
   onStop?: () => void;
   availableFiles?: ContextRef[];
@@ -338,7 +340,7 @@ function base64FromDataUrl(dataUrl: string) {
   return commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
 }
 
-export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], agents = [], skills = [], agentRefreshKey = 0, providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, baseContextTokens = 0, contextTokenLimit = 128000, currentSessionId, goalDefaultMaxTokens = 0 }: ChatInputProps) {
+export function ChatInput({ onSend, showAutomationPresets = false, isLoading, onStop, availableFiles = [], agents = [], skills = [], agentRefreshKey = 0, providers = [], activeProviderId, onModelChange, activeFileName, backendPort, showStartWork, onNewProject, onOpenFolder, workspacePath, baseContextTokens = 0, contextTokenLimit = 128000, currentSessionId, goalDefaultMaxTokens = 0 }: ChatInputProps) {
   // 从每个 provider 的 availableModels 展开为独立的可选模型
   const allModels = useMemo(() => {
     const result: ModelProvider[] = [];
@@ -1151,6 +1153,12 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], agen
 
   return (
     <div className="chat-input-wrapper">
+      {showAutomationPresets && <AutomationPromptPresets disabled={isLoading || voiceRecording} onSelect={request => {
+        setUserInput(request);
+        setShowAutocomplete(false);
+        setAutocompleteType(null);
+        textareaRef.current?.focus();
+      }} />}
       {/* 附件预览 */}
       {attachments.length > 0 && (
         <div className="attachment-preview">
@@ -1269,7 +1277,7 @@ export function ChatInput({ onSend, isLoading, onStop, availableFiles = [], agen
                 : chatMode === 'goal'
                 ? '描述需要持续推进直到完成的目标...'
                 : currentProvider ? `${getModelDisplayName(currentProvider)}` : '输入消息...'}
-              rows={1}
+              rows={showAutomationPresets ? 6 : 1}
               onKeyDown={handleKeyDown}
               disabled={hasActiveGoal}
             />
