@@ -2511,10 +2511,15 @@ body.memory-active .main-header { display: none; }
     background: transparent;
     border-right: none;
 }
-/* 行号对齐显示态 .file-view-num */
+/* 行号对齐显示态 .file-view-num：同款盒模型（min-width 52px + padding-right 12px，border-box），
+   min-width 而非 width，保证 6 位数以上行号与显示态一样自动撑宽而非溢出重叠 */
 .file-edit-host .CodeMirror .CodeMirror-linenumber {
+    min-width: 52px;
+    padding: 0 12px 0 0;
+    text-align: right;
     color: var(--text-secondary);
     opacity: 0.32;
+    font-variant-numeric: tabular-nums;
 }
 .file-edit-host .CodeMirror .CodeMirror-activeline-background {
     background: var(--bg-secondary);
