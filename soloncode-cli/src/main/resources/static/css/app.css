@@ -2500,6 +2500,71 @@ body.memory-active .main-header { display: none; }
 .file-edit-host .CodeMirror-selected { background: rgba(38, 79, 120, 0.35); }
 [data-theme="dark"] .file-edit-host .CodeMirror-selected { background: rgba(80, 120, 170, 0.35); }
 
+/* ===== 编辑态语法高亮对齐显示态（hljs GitHub 配色，色值同 highlight/github(.min|.dark).min.css）=====
+   优先级 0-3-0 压过 codemirror/theme/*.min.css 的 0-2-0（主题 link 编辑时才动态插入，必在 app.css 之后）；
+   基色用主题变量（与显示态 .file-view-code 容器一致：无自有背景、继承容器底色） */
+.file-edit-host .CodeMirror.CodeMirror {
+    background: transparent;
+    color: var(--text-primary);
+}
+.file-edit-host .CodeMirror .CodeMirror-gutters {
+    background: transparent;
+    border-right: none;
+}
+/* 行号对齐显示态 .file-view-num */
+.file-edit-host .CodeMirror .CodeMirror-linenumber {
+    color: var(--text-secondary);
+    opacity: 0.32;
+}
+.file-edit-host .CodeMirror .CodeMirror-activeline-background {
+    background: var(--bg-secondary);
+}
+
+/* —— 亮色 token（同 github.min.css）—— */
+.file-edit-host .CodeMirror .cm-keyword { color: #d73a49; }                 /* hljs-keyword/doctag */
+.file-edit-host .CodeMirror .cm-comment { color: #6a737d; }                 /* hljs-comment/code/formula */
+.file-edit-host .CodeMirror .cm-string,
+.file-edit-host .CodeMirror .cm-string-2 { color: #032f62; }                /* hljs-string/regexp */
+.file-edit-host .CodeMirror .cm-def { color: #6f42c1; }                      /* hljs-title */
+.file-edit-host .CodeMirror .cm-builtin { color: #e36209; }                 /* hljs-built_in/symbol */
+.file-edit-host .CodeMirror .cm-tag,
+.file-edit-host .CodeMirror .cm-quote { color: #22863a; }                    /* hljs-name/quote */
+.file-edit-host .CodeMirror .cm-number, .file-edit-host .CodeMirror .cm-atom,
+.file-edit-host .CodeMirror .cm-variable, .file-edit-host .CodeMirror .cm-variable-2,
+.file-edit-host .CodeMirror .cm-variable-3, .file-edit-host .CodeMirror .cm-type,
+.file-edit-host .CodeMirror .cm-property, .file-edit-host .CodeMirror .cm-operator,
+.file-edit-host .CodeMirror .cm-meta, .file-edit-host .CodeMirror .cm-qualifier,
+.file-edit-host .CodeMirror .cm-attribute { color: #005cc5; } /* hljs-attr/literal/number/type... */
+/* 括号/链接：hljs 不特殊着色，回落基色（压过主题 css） */
+.file-edit-host .CodeMirror .cm-bracket,
+.file-edit-host .CodeMirror .cm-link { color: var(--text-primary); }
+.file-edit-host .CodeMirror .cm-header { color: #005cc5; font-weight: 700; } /* hljs-section */
+.file-edit-host .CodeMirror .cm-strong { font-weight: 700; }                /* hljs-strong */
+.file-edit-host .CodeMirror .cm-em { font-style: italic; }                  /* hljs-emphasis */
+.file-edit-host .CodeMirror .cm-error { color: #b31d28; }                    /* 近似 hljs-deletion */
+
+/* —— 暗色 token（同 github-dark.min.css）—— */
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-keyword { color: #ff7b72; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-comment { color: #8b949e; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-string,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-string-2 { color: #a5d6ff; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-def { color: #d2a8ff; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-builtin { color: #ffa657; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-tag,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-quote { color: #7ee787; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-number, [data-theme="dark"] .file-edit-host .CodeMirror .cm-atom,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-variable, [data-theme="dark"] .file-edit-host .CodeMirror .cm-variable-2,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-variable-3, [data-theme="dark"] .file-edit-host .CodeMirror .cm-type,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-property, [data-theme="dark"] .file-edit-host .CodeMirror .cm-operator,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-meta, [data-theme="dark"] .file-edit-host .CodeMirror .cm-qualifier,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-attribute { color: #79c0ff; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-bracket,
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-link { color: var(--text-primary); }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-header { color: #1f6feb; font-weight: 700; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-strong { font-weight: 700; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-em { font-style: italic; }
+[data-theme="dark"] .file-edit-host .CodeMirror .cm-error { color: #ffdcd7; }
+
 /* ===== LayUI Layer 暗色主题适配 ===== */
 [data-theme="dark"] .layui-layer {
     background-color: var(--bg-primary);
