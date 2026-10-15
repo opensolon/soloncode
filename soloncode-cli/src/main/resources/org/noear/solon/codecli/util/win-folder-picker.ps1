@@ -90,12 +90,14 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
     private const int ErrorCancelled = unchecked((int)0x800704C7);
     private readonly bool smoke;
     private System.Threading.Timer smokeTimer;
+    private int centered;
 
     public SolonFileDialogEvents(bool smokeTest, SolonIFileDialog dialog)
     {
         smoke = smokeTest;
-        // IFileDialog.Show(owner) establishes the native owner-modal relationship. Do not use
-        // positioning hooks, topmost promotion, or forced foreground activation.
+        // IFileDialog.Show(owner) establishes the native owner-modal relationship. The only
+        // window operation we perform is moving the dialog itself; the owner is never resized,
+        // activated, or changed to topmost.
         if (smoke)
             smokeTimer = new System.Threading.Timer(delegate { try { dialog.Close(ErrorCancelled); } catch { } }, null, 750, Timeout.Infinite);
     }
@@ -105,10 +107,28 @@ public sealed class SolonFileDialogEvents : SolonIFileDialogEvents, IDisposable
         if (smokeTimer != null) { smokeTimer.Dispose(); smokeTimer = null; }
     }
 
+    private void CenterDialog(SolonIFileDialog dialog)
+    {
+        if (System.Threading.Volatile.Read(ref centered) != 0) return;
+        try
+        {
+            SolonIOleWindow oleWindow = dialog as SolonIOleWindow;
+            if (oleWindow == null) return;
+            IntPtr dialogHwnd;
+            if (oleWindow.GetWindow(out dialogHwnd) < 0 || dialogHwnd == IntPtr.Zero) return;
+            if (SolonShellNative.CenterWindowOnMonitor(dialogHwnd))
+                System.Threading.Interlocked.Exchange(ref centered, 1);
+        }
+        catch
+        {
+            // Native shell placement remains the safe fallback if the dialog HWND is not ready.
+        }
+    }
+
     public int OnFileOk(SolonIFileDialog dialog) { return 0; }
     public int OnFolderChanging(SolonIFileDialog dialog, SolonIShellItem folder) { return 0; }
-    public int OnFolderChange(SolonIFileDialog dialog) { return 0; }
-    public int OnSelectionChange(SolonIFileDialog dialog) { return 0; }
+    public int OnFolderChange(SolonIFileDialog dialog) { CenterDialog(dialog); return 0; }
+    public int OnSelectionChange(SolonIFileDialog dialog) { CenterDialog(dialog); return 0; }
     public int OnShareViolation(SolonIFileDialog dialog, SolonIShellItem item, out int response) { response = 0; return 0; }
     public int OnTypeChange(SolonIFileDialog dialog) { return 0; }
     public int OnOverwrite(SolonIFileDialog dialog, SolonIShellItem item, out int response) { response = 0; return 0; }
@@ -156,7 +176,42 @@ public static class SolonShellNative
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool IsWindow(IntPtr hwnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool IsWindowVisible(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hwnd, out SolonRect rect);
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref SolonMonitorInfo info);
+    [DllImport("user32.dll", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
     [DllImport("kernel32.dll")] public static extern uint GetCurrentProcessId();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SolonRect { public int Left; public int Top; public int Right; public int Bottom; }
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct SolonMonitorInfo
+    {
+        public int Size;
+        public SolonRect Monitor;
+        public SolonRect Work;
+        public uint Flags;
+    }
+
+    public static bool CenterWindowOnMonitor(IntPtr hwnd)
+    {
+        SolonRect window;
+        IntPtr monitor = MonitorFromWindow(hwnd, 2u); // MONITOR_DEFAULTTONEAREST
+        SolonMonitorInfo info = new SolonMonitorInfo();
+        info.Size = Marshal.SizeOf(typeof(SolonMonitorInfo));
+        if (monitor == IntPtr.Zero || !GetWindowRect(hwnd, out window) || !GetMonitorInfo(monitor, ref info)) return false;
+        int width = window.Right - window.Left;
+        int height = window.Bottom - window.Top;
+        int x = info.Work.Left + ((info.Work.Right - info.Work.Left) - width) / 2;
+        int y = info.Work.Top + ((info.Work.Bottom - info.Work.Top) - height) / 2;
+        const uint SwpNoSize = 0x0001;
+        const uint SwpNoZOrder = 0x0004;
+        const uint SwpNoActivate = 0x0010;
+        return SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
+    }
     public static IntPtr CaptureForegroundOwner()
     {
         IntPtr hwnd = GetForegroundWindow();

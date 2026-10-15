@@ -147,8 +147,12 @@ public class DirectoryPickerUtilTest {
                 "the picker must not install a CBT placement hook");
         assertFalse(script.contains("UninstallDialogCenterHook"),
                 "the picker must not have a placement-hook cleanup path");
-        assertFalse(script.contains("SetWindowPos"),
-                "the native dialog must own placement and DPI sizing");
+        assertTrue(script.contains("CenterWindowOnMonitor"),
+                "the dialog should center itself without manipulating the owner");
+        assertTrue(script.contains("GetMonitorInfo"),
+                "centering must use the active monitor work area");
+        assertTrue(script.contains("SwpNoSize | SwpNoZOrder | SwpNoActivate"),
+                "centering must move only the dialog and preserve size, z-order, and activation");
         assertFalse(script.contains("new IntPtr(-1)"),
                 "the picker must never use HWND_TOPMOST");
         assertFalse(script.contains("SetForegroundWindow"),
@@ -156,7 +160,7 @@ public class DirectoryPickerUtilTest {
         assertFalse(script.contains("BringWindowToTop"),
                 "the picker must rely on owner-modal z-order");
         assertTrue(script.contains("new SolonFileDialogEvents(smoke, dialog)"),
-                "dialog events must not perform external-window placement");
+                "dialog events must own dialog-only placement");
         assertTrue(script.contains("events.Dispose()"), "dialog event resources must always be disposed");
         assertTrue(script.contains("PICK_SMOKE_OK ownerModal=true"),
                 "the smoke test must verify the native owner-modal path");
