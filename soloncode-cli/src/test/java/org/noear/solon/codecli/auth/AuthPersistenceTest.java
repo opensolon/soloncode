@@ -131,20 +131,25 @@ class AuthPersistenceTest {
         });
     }
 
-    @Test void sessionsAreEphemeralAndOldTokensRemoved() throws Exception {
+    @Test void sessionsAreSharedAcrossInstancesAndLegacyTokensAreQuarantined() throws Exception {
         withHome(() -> {
             Path old = temp.resolve(".soloncode/user-sessions.json");
             Files.createDirectories(old.getParent());
             Files.write(old, "raw-token".getBytes(StandardCharsets.UTF_8));
-            UserSessionManager sessions = new UserSessionManager();
-            sessions.init(new UserAuthConfig());
+            UserAuthConfig config = new UserAuthConfig();
+            UserSessionManager first = new UserSessionManager();
+            first.init(config);
             assertFalse(Files.exists(old));
-            UserSessionManager.UserSession created = sessions.createSession(new UserEntity("1", "admin", "Admin"));
-            assertNotNull(sessions.getSession(created.getToken()));
-            assertFalse(Files.exists(old));
-            UserSessionManager restarted = new UserSessionManager();
-            restarted.init(new UserAuthConfig());
-            assertNull(restarted.getSession(created.getToken()));
+            assertTrue(Files.exists(old.resolveSibling("user-sessions.json.legacy")));
+            UserSessionManager.UserSession created = first.createSession(new UserEntity("1", "admin", "Admin"));
+            UserSessionManager second = new UserSessionManager();
+            second.init(config);
+            assertNotNull(second.getSession(created.getToken()));
+            Path sessions = temp.resolve(".soloncode/auth/sessions.json");
+            String persisted = new String(Files.readAllBytes(sessions), StandardCharsets.UTF_8);
+            assertFalse(persisted.contains(created.getToken()));
+            second.destroySession(created.getToken());
+            assertNull(first.getSession(created.getToken()));
         });
     }
 }

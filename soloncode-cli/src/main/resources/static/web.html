@@ -1966,13 +1966,22 @@
                 };
             })();
             var originalFetch = window.fetch; // 必须先捕获，否则下面包装器内引用 originalFetch 会抛 ReferenceError，导致页面所有 fetch 全部失败（"跳回 home"的根因之一）
+            var lastAuthRedirect = 0;
+            var redirectToLogin = function () {
+                var now = Date.now();
+                if (now - lastAuthRedirect < 3000) return;
+                lastAuthRedirect = now;
+                try { window.location.replace('/login'); } catch (e) {}
+            };
             var originalOpen = XMLHttpRequest.prototype.open;
             XMLHttpRequest.prototype.open = function() {
                 var result = originalOpen.apply(this, arguments);
                 try { this.setRequestHeader('X-Workspace-Id', workspace); } catch (e) {}
                 this.addEventListener('load', function () {
                     try {
-                        if (this.status === 404 && String(this.responseText || '').indexOf('WORKSPACE_NOT_FOUND') >= 0) {
+                        if (this.status === 401) {
+                            redirectToLogin();
+                        } else if (this.status === 404 && String(this.responseText || '').indexOf('WORKSPACE_NOT_FOUND') >= 0) {
                             redirectToHome();
                         }
                     } catch (e) {}
@@ -1990,7 +1999,9 @@
                     init.headers['X-Workspace-Id'] = workspace;
                 }
                 return originalFetch(input, init).then(function (resp) {
-                    if (resp && resp.status === 404) {
+                    if (resp && resp.status === 401) {
+                        redirectToLogin();
+                    } else if (resp && resp.status === 404) {
                         resp.clone().text().then(function (body) {
                             if (String(body).indexOf('WORKSPACE_NOT_FOUND') >= 0) {
                                 redirectToHome();
