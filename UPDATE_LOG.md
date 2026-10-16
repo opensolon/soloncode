@@ -3,6 +3,7 @@
 
 * 添加 soloncode web 隐藏智能体的管理
 * 添加 soloncode web 文件编辑功能
+* 添加 soloncode web 文件树打开目录菜单
 * 修复 soloncode web 在 window 下打开目录选择器后浏览器会被置顶的问题
 * 修复 soloncode web 多进程实例登录引起冲突问题
 * 细节优化
