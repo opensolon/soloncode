@@ -27,12 +27,15 @@ import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.codecli.config.entity.MountDo;
 import org.noear.solon.codecli.util.DirectoryPickerUtil;
+import org.noear.solon.codecli.util.OsOpenUtil;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -141,6 +144,56 @@ public class WorkspaceWebController extends AbstractWebController {
         } catch (Exception e) {
             return Result.failure(e.getMessage());
         }
+    }
+
+    /**
+     * 在宿主机文件管理器中打开文件树当前选中的目录。
+     *
+     * <p>这与 {@code /web/settings/mounts/open} 不同：后者只接受挂载别名并且只能打开挂载根目录，
+     * 不能处理工作区目录或挂载内的子目录。</p>
+     */
+    @Get
+    @Mapping("/web/workspace/open-directory")
+    public Result openDirectory(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return Result.failure("Path is required");
+        }
+
+        try {
+            Path target = Paths.get(path).toAbsolutePath().normalize();
+            if (!Files.isDirectory(target)) {
+                return Result.failure("目录不存在: " + path);
+            }
+
+            // 只允许打开当前工作区或当前引擎已暴露的 FILES 挂载目录，避免把接口变成任意路径打开器。
+            Path realTarget = target.toRealPath();
+            boolean allowed = false;
+            WorkspaceContext context = currentContext();
+            if (context != null && context.getMeta() != null && context.getMeta().getPath() != null) {
+                allowed = isWithin(realTarget, Paths.get(context.getMeta().getPath()));
+            }
+            if (!allowed) {
+                for (Mount mount : engine().getMounts()) {
+                    if (mount.getType() != MountType.FILES || !(mount.getSource() instanceof FileMountSource)) continue;
+                    Path root = ((FileMountSource) mount.getSource()).getRootPath();
+                    if (root != null && isWithin(realTarget, root)) {
+                        allowed = true;
+                        break;
+                    }
+                }
+            }
+            if (!allowed) return Result.failure("目录不属于当前工作区或文件挂载");
+
+            OsOpenUtil.openDirectory(realTarget.toFile());
+            return Result.succeed("已打开");
+        } catch (Exception e) {
+            return Result.failure("打开失败: " + e.getMessage());
+        }
+    }
+
+    private boolean isWithin(Path target, Path root) throws java.io.IOException {
+        if (root == null || !Files.exists(root)) return false;
+        return target.startsWith(root.toRealPath());
     }
 
     /**

@@ -128,7 +128,7 @@
         // 2. 打开目录（仅目录且真实路径可解析时显示）
         if (info.isDirectory && info.realPath) {
             addItem('mounts.openDir', '打开目录', function() {
-                $.get('/web/settings/mounts/open', { path: info.realPath }, function(res) {
+                $.get('/web/workspace/open-directory', { path: info.realPath }, function(res) {
                     if (res && res.code !== 200) {
                         showToast(res.message || res.description || I18n.t('mounts.openDirFailed', '打开目录失败'), 'error');
                     }
