@@ -79,6 +79,9 @@
     var gitStatus = null;
     var isInitializing = false;
     var viewerMode = null; // 'diff' | 'file' | null
+    // 丢弃过期的文件读取/CM 异步回调，避免旧文件回调覆盖当前视图
+    var fileViewRequestSerial = 0;
+    var fileRenderSerial = 0;
 
     // 文件查看上下文（供编辑功能消费：openFileViewer 异步 read 成功后写入）
     var fileViewerCtx = null; // { workspace, apiPath, path, name, status, content, isText }
@@ -538,6 +541,7 @@
         }
 
         viewerMode = 'file';
+        var requestSerial = ++fileViewRequestSerial;
 
         // 隐藏欢迎页和聊天视图
         if (newChatView) newChatView.style.display = 'none';
@@ -588,6 +592,8 @@
         fetch(readUrl)
             .then(function(r) { return r.json(); })
             .then(function(res) {
+                // 用户在读取期间切换了文件：旧请求只能结束，不能再改写当前 viewer
+                if (requestSerial !== fileViewRequestSerial) return;
                 var d = (res && res.data) ? res.data : {};
                 if (res && res.code !== 200) {
                     centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">'
@@ -621,6 +627,7 @@
                 if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
             })
             .finally(function() {
+                if (requestSerial !== fileViewRequestSerial) return;
                 // 渲染操作按钮：优先用调用方传入的 status（git 面板入口）；
                 // 文件树等无 status 入口时查 gitStatus 缓存，查不到（干净文件）则不渲染 git 按钮，
                 // 只渲染「编辑」——避免干净文件误显示「加到 Git/回滚」
@@ -726,6 +733,7 @@
     // ---- File Viewer：渲染文件内容（语法高亮 + 行号 / 媒体预览 / 二进制提示）----
     function renderFileContent(content, fileName, fileSize, filePath, rawUrl) {
         if (!centerViewerContent) return;
+        var renderSerial = ++fileRenderSerial;
 
         // 重置容器状态（清理之前文件留下的 overflow 等样式）
         centerViewerContent.style.overflow = '';
@@ -772,61 +780,120 @@
         if (_addToChat) _addToChat.style.display = '';
 
         var lang = guessLang(filePath || fileName);
-        var lines = (content || '').split('\n');
-        var totalLines = lines.length;
-
-        // 构建带行号的代码行
-        var codeHtml = '';
-        for (var i = 0; i < totalLines; i++) {
-            var escapedLine = escapeHtml(lines[i]);
-            // 空行保留高度
-            if (escapedLine === '') escapedLine = ' ';
-            codeHtml += '<div class="file-view-line">'
-                + '<span class="file-view-num">' + (i + 1) + '</span>'
-                + '<span class="file-view-text">' + escapedLine + '</span>'
-                + '</div>';
-        }
 
         // 检测是否为 .md 文件
         var isMdFile = /\.md$/i.test(filePath || fileName || "");
 
-        centerViewerContent.innerHTML = ''
-            + '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '">' + codeHtml + '</div>'
+        // ---- 骨架先行：先落 .file-view-code 容器，再发起 CM 异步渲染 ----
+        // CM 资产已缓存时 ensureCmAssets/loadCmMode 的回调链是同步执行的，
+        // 若骨架尚未就位，renderCmView/renderHljsView 会因找不到容器而静默跳过，出现一片白。
+        var baseHtml = '<div class="file-view-code' + (lang ? ' hljs-language-' + lang : '') + '"></div>'
             + (isMdFile ? '<div class="file-view-md-frame-wrap" style="display:none;"><iframe class="file-view-md-frame" sandbox="allow-scripts"></iframe></div>' : '');
+        centerViewerContent.innerHTML = baseHtml;
 
-        // 如果能识别语言，按需加载 hljs 后对代码区进行语法高亮
-        if (lang) {
-            var _contentRef = content;
-            var _langRef = lang;
-            var _viewerContentRef = centerViewerContent;
-            var _applyHighlight = function() {
-                var codeBlock = _viewerContentRef.querySelector('.file-view-code');
-                if (!codeBlock || typeof hljs === 'undefined') return;
+        // ---- 统一控件：CodeMirror 只读渲染（与编辑态同一实例类型），hljs 降级 ----
+        var cmEntry = CM_MODE_MAP[lang];
+        ensureCmAssets(function(cmErr) {
+            if (renderSerial !== fileRenderSerial || !fileViewerCtx || viewerMode !== 'file' || fileEditorState) return; // 已切走或已进编辑
+            if (cmErr || !window.CodeMirror || !cmEntry) { renderHljsView(); return; }
+            loadCmMode(cmEntry.file, function(modeErr) {
+                if (renderSerial !== fileRenderSerial || !fileViewerCtx || viewerMode !== 'file' || fileEditorState) return;
+                if (modeErr) { renderHljsView(); return; }
+                try { renderCmView(cmEntry.mime); } catch (e) {
+                    console.warn('[fileView] CodeMirror init failed, fallback to hljs', e);
+                    renderHljsView();
+                }
+            });
+        });
+
+        // 只读 CodeMirror 渲染（与编辑态同实例：点「编辑」时同实例 setOption，无重建）
+        function renderCmView(mime) {
+            var codeBlock = centerViewerContent.querySelector('.file-view-code');
+            if (!codeBlock) return renderHljsView();
+            var host = document.createElement('div');
+            host.className = 'file-view-host';
+            codeBlock.innerHTML = '';
+            codeBlock.appendChild(host);
+            fileViewerCtx.cm = CodeMirror(host, {
+                value: content,
+                mode: mime,
+                theme: fileEditTheme || 'idea',
+                lineNumbers: true,
+                lineWrapping: false,
+                readOnly: true,
+                styleActiveLine: true,
+                extraKeys: {
+                    'Ctrl-S': function() {}, 'Cmd-S': function() {}, // 只读态拦截，防误触保存
+                    'Ctrl-F': function(cmInst) { cmExecFind(cmInst); },
+                    'Cmd-F': function(cmInst) { cmExecFind(cmInst); }
+                }
+            });
+            fileViewerCtx.cm.setSize('100%', '100%');
+
+            // 查看态采用“内容高度 + 外层滚动”。不能只读取 .CodeMirror-sizer 的
+            // getBoundingClientRect：CM 初次布局时可能仍只有 viewport 高度，长文件
+            // 会被截断；同时 .CodeMirror-scroll 的 height:100% 会把这个瞬时高度锁死。
+            // 用 refresh 后的 scrollInfo 与行数高度取较大值，并在下一帧再校准一次。
+            var fitReadOnlyCm = function() {
+                if (renderSerial !== fileRenderSerial || !fileViewerCtx || fileViewerCtx.cm !== cm || fileEditorState) return;
+                cm.refresh();
+                var info = cm.getScrollInfo();
+                var lineHeight = typeof cm.defaultTextHeight === 'function' ? cm.defaultTextHeight() : 20;
+                var contentHeight = cm.lineCount() * lineHeight + 8;
+                var height = Math.ceil(Math.max(info.height || 0, contentHeight));
+                host.style.height = height + 'px';
+                cm.setSize('100%', height + 'px');
+                cm.refresh();
+            };
+            var cm = fileViewerCtx.cm;
+            fitReadOnlyCm();
+            if (window.requestAnimationFrame) {
+                window.requestAnimationFrame(fitReadOnlyCm);
+            } else {
+                setTimeout(fitReadOnlyCm, 0);
+            }
+        }
+
+        // hljs 降级渲染（CM 资产不可用时；结构与旧显示态一致）
+        function renderHljsView() {
+            fileViewerCtx && (fileViewerCtx.cm = null);
+            var lines = (content || '').split('\n');
+            var totalLines = lines.length;
+            var codeBlock = centerViewerContent.querySelector('.file-view-code');
+            if (!codeBlock) return;
+            var codeHtml = '';
+            for (var i = 0; i < totalLines; i++) {
+                var escapedLine = escapeHtml(lines[i]);
+                if (escapedLine === '') escapedLine = ' ';
+                codeHtml += '<div class="file-view-line">'
+                    + '<span class="file-view-num">' + (i + 1) + '</span>'
+                    + '<span class="file-view-text">' + escapedLine + '</span>'
+                    + '</div>';
+            }
+            codeBlock.innerHTML = codeHtml;
+            if (!lang) return;
+            var applyHl = function() {
+                if (typeof hljs === 'undefined') return;
                 try {
-                    var rawText = _contentRef || '';
-                    var highlighted = hljs.highlight(rawText, { language: _langRef, ignoreIllegals: true });
+                    var highlighted = hljs.highlight(content, { language: lang, ignoreIllegals: true });
                     var hlLines = highlighted.value.split('\n');
                     var hlHtml = '';
                     for (var j = 0; j < hlLines.length; j++) {
-                        var hlLine = hlLines[j] || ' ';
                         hlHtml += '<div class="file-view-line">'
                             + '<span class="file-view-num">' + (j + 1) + '</span>'
-                            + '<span class="file-view-text">' + hlLine + '</span>'
+                            + '<span class="file-view-text">' + (hlLines[j] || ' ') + '</span>'
                             + '</div>';
                     }
                     codeBlock.innerHTML = hlHtml;
-                } catch (e) {
-                    // highlight 失败时保留纯文本
-                }
+                } catch (e) { /* highlight 失败时保留纯文本 */ }
             };
-            if (typeof hljs !== 'undefined') {
-                _applyHighlight();
-            } else if (typeof loadScriptOnce === 'function') {
-                loadScriptOnce('/highlight/highlight.min.js', function(err) {
-                    if (!err) _applyHighlight();
-                });
+            if (typeof hljs !== 'undefined') { applyHl(); }
+            else if (typeof loadScriptOnce === 'function') {
+                loadScriptOnce('/highlight/highlight.min.js', function(err) { if (!err) applyHl(); });
             }
         }
+
+        // （骨架已在上方 CM 渲染链之前就位）
 
         // ---- 操作 header 中的按钮 ----
         var mdToggleBtn = document.getElementById('centerViewerMdToggle');
@@ -911,6 +978,10 @@
                             wrap.style.display = 'none';
                             // 恢复外层滚动条（源码模式需要）
                             centerViewerContent.style.overflow = '';
+                            // CM 实例经 display:none 后需重算尺寸
+                            if (fileViewerCtx && fileViewerCtx.cm) {
+                                try { fileViewerCtx.cm.refresh(); } catch (e) { /* 忽略 */ }
+                            }
 
                             // 切换 SVG 图标为"眼睛"图标
                             toggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -929,6 +1000,21 @@
         var filePath = centerViewerFile ? centerViewerFile.textContent : '';
         if (!filePath) {
             if (typeof showToast === 'function') showToast('No file open', 'error');
+            return;
+        }
+
+        // 统一控件：查看态为 CM 时，直接从实例取选区行号（DOM 选中不可靠）
+        var activeCm = (fileEditorState && fileEditorState.cm) || (fileViewerCtx && fileViewerCtx.cm);
+        if (activeCm && !activeCm.getSelection()) {
+            insertGitPathToInput(filePath); // 无选中：仅插路径
+            return;
+        }
+        if (activeCm) {
+            var from = activeCm.getCursor('from');
+            var to = activeCm.getCursor('to');
+            var startNum = Math.min(from.line, to.line) + 1; // CM 行 0 起
+            var endNum = Math.max(from.line, to.line) + 1;
+            insertLineRefToChat(filePath, startNum, endNum);
             return;
         }
 
@@ -975,6 +1061,11 @@
             endNum = tmp;
         }
 
+        insertLineRefToChat(filePath, startNum, endNum);
+    }
+
+    /** 按行号区间插入文件引用到对话输入框（[path]Lx / [path]Lx-Ly），并清选与反馈 */
+    function insertLineRefToChat(filePath, startNum, endNum) {
         var pathRef = (gitWorkspace !== 'workspace')
             ? gitWorkspace + '/' + filePath
             : './' + filePath;
@@ -1000,8 +1091,11 @@
         targetInput.setSelectionRange(newPos, newPos);
         if (typeof autoResize === 'function') autoResize(targetInput);
 
-        // 清除选中状态
-        selection.removeAllRanges();
+        // 清除选中状态（DOM 选区与 CM 选区均清）
+        var sel = window.getSelection();
+        if (sel) sel.removeAllRanges();
+        var _cmSel = (fileEditorState && fileEditorState.cm) || (fileViewerCtx && fileViewerCtx.cm);
+        if (_cmSel) { try { _cmSel.setCursor(_cmSel.getCursor()); } catch (e) { /* 忽略 */ } }
 
         // 反馈提示
         if (typeof showToast === 'function') {
@@ -1341,6 +1435,14 @@
             || null;
     }
 
+    // Ctrl+F 搜索：addon 就绪则打开 CM 搜索，未就绪静默（浏览器默认 Ctrl+F 仍可用）
+    function cmExecFind(cmInst) {
+        try {
+            if (cmInst.getOption('readOnly')) return; // 只读态不抢浏览器原生 Ctrl+F
+            cmInst.execCommand('find');
+        } catch (e) { /* addon 未加载，浏览器默认行为 */ }
+    }
+
     // ---- Diff Viewer：渲染操作按钮（添加到Git / 移出暂存 / 回滚）----
     function renderViewerActions(path, status) {
         // 移除旧的操作栏（如有）
@@ -1577,6 +1679,26 @@
         });
     }
 
+    // 搜索三件套（search 依赖 searchcursor + dialog），按需加载；失败仅降级 Ctrl+F（不影响编辑）
+    var _cmSearchReady = false;
+    function ensureCmSearchAddons(cb) {
+        if (_cmSearchReady) { cb(null); return; }
+        var pending = 2;
+        var firstErr = null;
+        function finish(err) {
+            if (err && !firstErr) firstErr = err;
+            if (--pending > 0) return;
+            if (!firstErr) _cmSearchReady = true;
+            cb(firstErr);
+        }
+        loadScriptOnce('/codemirror/addon/search/searchcursor.min.js', finish);
+        loadScriptOnce('/codemirror/addon/dialog/dialog.min.js', function() {
+            loadCmCss('/codemirror/addon/dialog/dialog.min.css', 'cm-dialog', function() {
+                loadScriptOnce('/codemirror/addon/search/search.min.js', finish);
+            });
+        });
+    }
+
     function loadCmCss(href, marker, cb) {
         var existing = document.querySelector('link[data-cm-asset="' + marker + '"]');
         if (existing) { cb(null); return; }
@@ -1658,7 +1780,8 @@
     }
 
     /**
-     * 进入编辑模式：用 textarea 替换只读内容，隐藏不适用按钮。
+     * 进入编辑模式：统一控件方案——若查看态已是 CodeMirror，同实例收编（搬入编辑宿主 + setOption 可写），
+ * 不重建、保留滚动位置；否则回退旧路径（重建编辑区 + CodeMirror/textarea）。
      */
     function enterFileEditMode() {
         if (!fileViewerCtx || !centerViewerContent) return;
@@ -1740,6 +1863,45 @@
             confirmDiscardFileEdit(); // dirty 时弹确认，非 dirty 直接退出（afterConfirm 为空=仅回只读）
         });
 
+        // ---- 统一控件快路径：查看态已是 CM，把实例从只读宿主搬入编辑宿主（保留滚动/undo 栈） ----
+        var adoptCm = fileViewerCtx && fileViewerCtx.cm;
+        if (adoptCm) {
+            try {
+                var scrollInfo = adoptCm.getScrollInfo();
+                centerViewerContent.innerHTML = '';
+                centerViewerContent.appendChild(wrap);
+                host.appendChild(adoptCm.getWrapperElement());
+                fileEditorState.cm = adoptCm;
+                fileViewerCtx.cm = null; // 编辑期归属转移到 fileEditorState
+                // 切可写 + 编辑专属配置
+                adoptCm.setOption('readOnly', false);
+                adoptCm.setOption('indentUnit', 2);
+                adoptCm.setOption('tabSize', 2);
+                adoptCm.setOption('indentWithTabs', false);
+                adoptCm.setOption('cursorBlinkRate', 530);
+                adoptCm.setOption('extraKeys', {
+                    'Ctrl-S': function() { saveFileEdit(); },
+                    'Cmd-S': function() { saveFileEdit(); },
+                    'Ctrl-F': function(cmInst) { cmExecFind(cmInst); },
+                    'Cmd-F': function(cmInst) { cmExecFind(cmInst); }
+                });
+                adoptCm.on('change', function(cmInst) { markDirty(cmInst.getValue()); });
+                adoptCm.setSize('100%', '100%');
+                adoptCm.scrollTo(scrollInfo.left, scrollInfo.top);
+                setTimeout(function() { adoptCm.focus(); }, 50);
+                ensureCmSearchAddons(function() {}); // 后台预拉搜索三件套（不阻断）
+                return;
+            } catch (e) {
+                console.warn('[fileEdit] adopt existing CM failed, fallback to rebuild', e);
+                fileViewerCtx.cm = null;
+                fileEditorState.cm = null;
+            }
+        }
+
+        // ---- 旧路径：重建编辑区（查看态为 hljs 降级或 CM 不可收编时） ----
+        centerViewerContent.innerHTML = '';
+        centerViewerContent.appendChild(wrap);
+
         // 尝试 CodeMirror（按需加载核心/主题/mode），任何一步失败回退 textarea
         var cmEntry = CM_MODE_MAP[guessLang(fileEditorState.path || fileEditorState.name || '')];
         ensureCmAssets(function(cmErr) {
@@ -1768,13 +1930,16 @@
                     styleActiveLine: true,
                     extraKeys: {
                         'Ctrl-S': function() { saveFileEdit(); },
-                        'Cmd-S': function() { saveFileEdit(); }
+                        'Cmd-S': function() { saveFileEdit(); },
+                        'Ctrl-F': function(cmInst) { cmExecFind(cmInst); },
+                        'Cmd-F': function(cmInst) { cmExecFind(cmInst); }
                     }
                 });
                 fileEditorState.cm = cm;
                 cm.on('change', function() { markDirty(cm.getValue()); });
                 cm.setSize('100%', '100%');
                 setTimeout(function() { cm.focus(); }, 50);
+                ensureCmSearchAddons(function() {});
             } catch (e) {
                 console.warn('[fileEdit] CodeMirror init failed, fallback to textarea', e);
                 renderFallbackTextarea();

@@ -2457,14 +2457,10 @@ body.memory-active .main-header { display: none; }
     background: var(--bg-primary);
 }
 
-/* CodeMirror 编辑器宿主：占满剩余空间，主题色由 cm 自带 theme css 控制 */
-.file-edit-host {
-    flex: 1;
-    min-height: 0;
-    position: relative;
-    overflow: hidden;
-}
-.file-edit-host .CodeMirror {
+/* ===== 查看态/编辑态统一控件：行号与语法高亮已对齐，只读态隐藏光标 =====
+   .file-view-host（查看态宿主）与 .file-edit-host 复用同一套 CodeMirror 规则，
+   以下选择器统写为 :is(.file-view-host, .file-edit-host) */
+:is(.file-view-host, .file-edit-host) .CodeMirror {
     position: absolute;
     top: 0;
     left: 0;
@@ -2475,7 +2471,61 @@ body.memory-active .main-header { display: none; }
     font-size: calc(12.5px * var(--font-scale));
     line-height: 1.65;
 }
-.file-edit-host .CodeMirror-scroll {
+:is(.file-view-host, .file-edit-host) .CodeMirror-scroll {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: auto;
+}
+:is(.file-view-host, .file-edit-host) .CodeMirror-cursor {
+    border-left: 2px solid currentColor;
+}
+:is(.file-view-host, .file-edit-host) .CodeMirror-selected { background: rgba(38, 79, 120, 0.35); }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror-selected { background: rgba(80, 120, 170, 0.35); }
+/* 只读（查看）态：不闪光标（CM readOnly 下 cursorBlinkRate 无效场景兜底） */
+.file-view-host .CodeMirror-cursor { display: none; }
+
+/* dialog addon 样式补丁：默认样式与主题变量对齐（亮暗自适应） */
+.CodeMirror-dialog {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    font-family: var(--font-mono);
+    font-size: calc(12px * var(--font-scale));
+}
+.CodeMirror-dialog input {
+    color: var(--text-primary);
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 6px;
+    outline: none;
+}
+
+/* CodeMirror 编辑器宿主：占满剩余空间，主题色由 cm 自带 theme css 控制 */
+.file-edit-host {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    overflow: hidden;
+}
+/* 查看态宿主：查看态容器整体滚动改为宿主内滚动，保持与其他视图一致 */
+.file-view-host {
+    position: relative;
+    overflow: hidden;
+    height: 100%;
+}
+:is(.file-view-host, .file-edit-host) .CodeMirror {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: calc(12.5px * var(--font-scale));
+    line-height: 1.65;
+}
+:is(.file-view-host, .file-edit-host) .CodeMirror-scroll {
     height: 100%;
     overflow-y: auto;
     overflow-x: auto;
@@ -2490,23 +2540,23 @@ body.memory-active .main-header { display: none; }
     box-sizing: border-box;
 }
 /* 暗色主题下补齐 CodeMirror 边框与光标色适配 */
-[data-theme="dark"] .file-edit-host .CodeMirror {
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror {
     border-top: 1px solid var(--border-color);
 }
-.file-edit-host .CodeMirror-cursor {
+:is(.file-view-host, .file-edit-host) .CodeMirror-cursor {
     border-left: 2px solid currentColor;
 }
-.file-edit-host .CodeMirror-selected { background: rgba(38, 79, 120, 0.35); }
-[data-theme="dark"] .file-edit-host .CodeMirror-selected { background: rgba(80, 120, 170, 0.35); }
+:is(.file-view-host, .file-edit-host) .CodeMirror-selected { background: rgba(38, 79, 120, 0.35); }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror-selected { background: rgba(80, 120, 170, 0.35); }
 
 /* ===== 编辑态语法高亮对齐显示态（hljs GitHub 配色，色值同 highlight/github(.min|.dark).min.css）=====
    优先级 0-3-0 压过 codemirror/theme/*.min.css 的 0-2-0（主题 link 编辑时才动态插入，必在 app.css 之后）；
    基色用主题变量（与显示态 .file-view-code 容器一致：无自有背景、继承容器底色） */
-.file-edit-host .CodeMirror.CodeMirror {
+:is(.file-view-host, .file-edit-host) .CodeMirror.CodeMirror {
     background: transparent;
     color: var(--text-primary);
 }
-.file-edit-host .CodeMirror .CodeMirror-gutters {
+:is(.file-view-host, .file-edit-host) .CodeMirror .CodeMirror-gutters {
     background: transparent;
     border-right: none;
 }
@@ -2514,7 +2564,7 @@ body.memory-active .main-header { display: none; }
    关键：codemirror.min.css 把 .CodeMirror-linenumber 强制回 content-box（0-1-0），
    须显式 box-sizing:border-box（0-3-0）——否则 min-width:52px 指“内容宽”，
    实际占宽 52+12=64px，比显示态宽 12px；min-width 而非 width，6 位数以上行号仍可自动撑宽 */
-.file-edit-host .CodeMirror .CodeMirror-linenumber {
+:is(.file-view-host, .file-edit-host) .CodeMirror .CodeMirror-linenumber {
     box-sizing: border-box;
     min-width: 52px;
     padding: 0 12px 0 0;
@@ -2524,58 +2574,58 @@ body.memory-active .main-header { display: none; }
     font-variant-numeric: tabular-nums;
 }
 /* 显示态代码从 52px 行号列后立即开始；CM 默认 pre 左内边距 4px 会让代码再右移 4px，归零对齐 */
-.file-edit-host .CodeMirror pre.CodeMirror-line,
-.file-edit-host .CodeMirror pre.CodeMirror-line-like {
+:is(.file-view-host, .file-edit-host) .CodeMirror pre.CodeMirror-line,
+:is(.file-view-host, .file-edit-host) .CodeMirror pre.CodeMirror-line-like {
     padding-left: 0;
 }
-.file-edit-host .CodeMirror .CodeMirror-activeline-background {
+:is(.file-view-host, .file-edit-host) .CodeMirror .CodeMirror-activeline-background {
     background: var(--bg-secondary);
 }
 
 /* —— 亮色 token（同 github.min.css）—— */
-.file-edit-host .CodeMirror .cm-keyword { color: #d73a49; }                 /* hljs-keyword/doctag */
-.file-edit-host .CodeMirror .cm-comment { color: #6a737d; }                 /* hljs-comment/code/formula */
-.file-edit-host .CodeMirror .cm-string,
-.file-edit-host .CodeMirror .cm-string-2 { color: #032f62; }                /* hljs-string/regexp */
-.file-edit-host .CodeMirror .cm-def { color: #6f42c1; }                      /* hljs-title */
-.file-edit-host .CodeMirror .cm-builtin { color: #e36209; }                 /* hljs-built_in/symbol */
-.file-edit-host .CodeMirror .cm-tag,
-.file-edit-host .CodeMirror .cm-quote { color: #22863a; }                    /* hljs-name/quote */
-.file-edit-host .CodeMirror .cm-number, .file-edit-host .CodeMirror .cm-atom,
-.file-edit-host .CodeMirror .cm-variable, .file-edit-host .CodeMirror .cm-variable-2,
-.file-edit-host .CodeMirror .cm-variable-3, .file-edit-host .CodeMirror .cm-type,
-.file-edit-host .CodeMirror .cm-property, .file-edit-host .CodeMirror .cm-operator,
-.file-edit-host .CodeMirror .cm-meta, .file-edit-host .CodeMirror .cm-qualifier,
-.file-edit-host .CodeMirror .cm-attribute { color: #005cc5; } /* hljs-attr/literal/number/type... */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-keyword { color: #d73a49; }                 /* hljs-keyword/doctag */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-comment { color: #6a737d; }                 /* hljs-comment/code/formula */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-string,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-string-2 { color: #032f62; }                /* hljs-string/regexp */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-def { color: #6f42c1; }                      /* hljs-title */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-builtin { color: #e36209; }                 /* hljs-built_in/symbol */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-tag,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-quote { color: #22863a; }                    /* hljs-name/quote */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-number, .file-edit-host .CodeMirror .cm-atom,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-variable, .file-edit-host .CodeMirror .cm-variable-2,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-variable-3, .file-edit-host .CodeMirror .cm-type,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-property, .file-edit-host .CodeMirror .cm-operator,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-meta, .file-edit-host .CodeMirror .cm-qualifier,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-attribute { color: #005cc5; } /* hljs-attr/literal/number/type... */
 /* 括号/链接：hljs 不特殊着色，回落基色（压过主题 css） */
-.file-edit-host .CodeMirror .cm-bracket,
-.file-edit-host .CodeMirror .cm-link { color: var(--text-primary); }
-.file-edit-host .CodeMirror .cm-header { color: #005cc5; font-weight: 700; } /* hljs-section */
-.file-edit-host .CodeMirror .cm-strong { font-weight: 700; }                /* hljs-strong */
-.file-edit-host .CodeMirror .cm-em { font-style: italic; }                  /* hljs-emphasis */
-.file-edit-host .CodeMirror .cm-error { color: #b31d28; }                    /* 近似 hljs-deletion */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-bracket,
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-link { color: var(--text-primary); }
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-header { color: #005cc5; font-weight: 700; } /* hljs-section */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-strong { font-weight: 700; }                /* hljs-strong */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-em { font-style: italic; }                  /* hljs-emphasis */
+:is(.file-view-host, .file-edit-host) .CodeMirror .cm-error { color: #b31d28; }                    /* 近似 hljs-deletion */
 
 /* —— 暗色 token（同 github-dark.min.css）—— */
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-keyword { color: #ff7b72; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-comment { color: #8b949e; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-string,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-string-2 { color: #a5d6ff; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-def { color: #d2a8ff; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-builtin { color: #ffa657; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-tag,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-quote { color: #7ee787; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-number, [data-theme="dark"] .file-edit-host .CodeMirror .cm-atom,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-variable, [data-theme="dark"] .file-edit-host .CodeMirror .cm-variable-2,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-variable-3, [data-theme="dark"] .file-edit-host .CodeMirror .cm-type,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-property, [data-theme="dark"] .file-edit-host .CodeMirror .cm-operator,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-meta, [data-theme="dark"] .file-edit-host .CodeMirror .cm-qualifier,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-attribute { color: #79c0ff; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-bracket,
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-link { color: var(--text-primary); }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-header { color: #1f6feb; font-weight: 700; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-strong { font-weight: 700; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-em { font-style: italic; }
-[data-theme="dark"] .file-edit-host .CodeMirror .cm-error { color: #ffdcd7; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-keyword { color: #ff7b72; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-comment { color: #8b949e; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-string,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-string-2 { color: #a5d6ff; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-def { color: #d2a8ff; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-builtin { color: #ffa657; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-tag,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-quote { color: #7ee787; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-number, [data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-atom,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-variable, [data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-variable-2,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-variable-3, [data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-type,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-property, [data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-operator,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-meta, [data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-qualifier,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-attribute { color: #79c0ff; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-bracket,
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-link { color: var(--text-primary); }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-header { color: #1f6feb; font-weight: 700; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-strong { font-weight: 700; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-em { font-style: italic; }
+[data-theme="dark"] :is(.file-view-host, .file-edit-host) .CodeMirror .cm-error { color: #ffdcd7; }
 
 /* ===== LayUI Layer 暗色主题适配 ===== */
 [data-theme="dark"] .layui-layer {
