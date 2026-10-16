@@ -2425,6 +2425,7 @@ body.memory-active .main-header { display: none; }
     display: flex;
     flex-direction: column;
     height: 100%;
+    min-height: 0;
 }
 .file-edit-toolbar {
     display: flex;
@@ -2508,10 +2509,16 @@ body.memory-active .main-header { display: none; }
     position: relative;
     overflow: hidden;
 }
-/* 查看态宿主：查看态容器整体滚动改为宿主内滚动，保持与其他视图一致 */
+/* 查看态宿主：CodeMirror 模式下由 .CodeMirror-scroll 作为唯一滚动容器 */
 .file-view-host {
     position: relative;
     overflow: hidden;
+    height: 100%;
+}
+.file-view-cm-active .file-view-code {
+    height: 100%;
+}
+.file-view-cm-active .file-view-host {
     height: 100%;
 }
 :is(.file-view-host, .file-edit-host) .CodeMirror {

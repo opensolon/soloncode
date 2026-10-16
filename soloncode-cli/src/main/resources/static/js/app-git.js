@@ -737,6 +737,7 @@
 
         // 重置容器状态（清理之前文件留下的 overflow 等样式）
         centerViewerContent.style.overflow = '';
+        centerViewerContent.classList.remove('file-view-cm-active');
 
         // ---- 媒体文件类型检测（优先于文本渲染）----
         if (rawUrl && isImageFile(filePath || fileName)) {
@@ -810,6 +811,9 @@
         function renderCmView(mime) {
             var codeBlock = centerViewerContent.querySelector('.file-view-code');
             if (!codeBlock) return renderHljsView();
+            // CodeMirror 自己负责纵向滚动；外层 viewer 关闭滚动，避免出现双滚动条。
+            centerViewerContent.classList.add('file-view-cm-active');
+            centerViewerContent.style.overflow = 'hidden';
             var host = document.createElement('div');
             host.className = 'file-view-host';
             codeBlock.innerHTML = '';
@@ -830,33 +834,26 @@
             });
             fileViewerCtx.cm.setSize('100%', '100%');
 
-            // 查看态采用“内容高度 + 外层滚动”。不能只读取 .CodeMirror-sizer 的
-            // getBoundingClientRect：CM 初次布局时可能仍只有 viewport 高度，长文件
-            // 会被截断；同时 .CodeMirror-scroll 的 height:100% 会把这个瞬时高度锁死。
-            // 用 refresh 后的 scrollInfo 与行数高度取较大值，并在下一帧再校准一次。
-            var fitReadOnlyCm = function() {
+            // 只让 CodeMirror 内部滚动。此前把宿主强行撑到全文高度，会同时激活
+            // 外层 viewer 和 .CodeMirror-scroll 两个纵向滚动容器，长文件尤其明显。
+            var refreshReadOnlyCm = function() {
                 if (renderSerial !== fileRenderSerial || !fileViewerCtx || fileViewerCtx.cm !== cm || fileEditorState) return;
-                cm.refresh();
-                var info = cm.getScrollInfo();
-                var lineHeight = typeof cm.defaultTextHeight === 'function' ? cm.defaultTextHeight() : 20;
-                var contentHeight = cm.lineCount() * lineHeight + 8;
-                var height = Math.ceil(Math.max(info.height || 0, contentHeight));
-                host.style.height = height + 'px';
-                cm.setSize('100%', height + 'px');
                 cm.refresh();
             };
             var cm = fileViewerCtx.cm;
-            fitReadOnlyCm();
+            refreshReadOnlyCm();
             if (window.requestAnimationFrame) {
-                window.requestAnimationFrame(fitReadOnlyCm);
+                window.requestAnimationFrame(refreshReadOnlyCm);
             } else {
-                setTimeout(fitReadOnlyCm, 0);
+                setTimeout(refreshReadOnlyCm, 0);
             }
         }
 
         // hljs 降级渲染（CM 资产不可用时；结构与旧显示态一致）
         function renderHljsView() {
             fileViewerCtx && (fileViewerCtx.cm = null);
+            centerViewerContent.classList.remove('file-view-cm-active');
+            centerViewerContent.style.overflow = '';
             var lines = (content || '').split('\n');
             var totalLines = lines.length;
             var codeBlock = centerViewerContent.querySelector('.file-view-code');
@@ -1720,17 +1717,23 @@
     function loadCmMode(modeFile, cb) {
         if (_cmState.mode[modeFile]) { cb(null); return; }
         var chain = (CM_MODE_DEPS[modeFile] || []).concat([modeFile]);
-        var done = 0, failed = false;
-        chain.forEach(function(m) {
-            loadScriptOnce(cmModePath(m), function(err) {
-                if (err) failed = true;
-                done++;
-                if (done === chain.length) {
-                    if (!failed) _cmState.mode[modeFile] = true;
-                    cb(failed ? new Error('mode load failed: ' + modeFile) : null);
-                }
+        var index = 0;
+        function loadNext(err) {
+            if (err) {
+                cb(err);
+                return;
+            }
+            if (index >= chain.length) {
+                _cmState.mode[modeFile] = true;
+                cb(null);
+                return;
+            }
+            var current = chain[index++];
+            loadScriptOnce(cmModePath(current), function(loadErr) {
+                loadNext(loadErr ? new Error('mode load failed: ' + current) : null);
             });
-        });
+        }
+        loadNext(null);
     }
 
     /**
@@ -1807,10 +1810,7 @@
         var oldActions = centerViewer.querySelector('.center-viewer-actions');
         if (oldActions) oldActions.remove();
 
-        // 标题加编辑标记
-        if (centerViewerLabel) {
-            centerViewerLabel.textContent = I18n.t('centerViewer.editingTitle');
-        }
+        // 保持 header 标题为「文件内容」；编辑状态通过下方保存/取消按钮区分。
         if (centerViewerFile && fileEditorState.displayPath) {
             centerViewerFile.textContent = fileEditorState.displayPath;
         }
