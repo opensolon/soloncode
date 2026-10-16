@@ -1450,16 +1450,6 @@
         actionBar.className = 'center-viewer-actions';
         var hasAction = false;
 
-        // 文件视图且可编辑时：提供「编辑」按钮（置于最前）
-        if (viewerMode === 'file' && isFileEditable()) {
-            var editBtn = document.createElement('button');
-            editBtn.className = 'git-action-btn git-action-edit';
-            editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> ' + I18n.t('centerViewer.edit');
-            editBtn.addEventListener('click', enterFileEditMode);
-            actionBar.insertBefore(editBtn, actionBar.firstChild);
-            hasAction = true;
-        }
-
         if (status === '?') {
             // 未跟踪 -> 提供 "添加到 Git" 按钮
             var addBtn = document.createElement('button');
@@ -1588,6 +1578,16 @@
                 }
             });
             actionBar.insertBefore(discardBtn, actionBar.firstChild);
+            hasAction = true;
+        }
+
+        // 文件视图且可编辑时：提供「编辑」按钮（置于最后）
+        if (viewerMode === 'file' && isFileEditable()) {
+            var editBtn = document.createElement('button');
+            editBtn.className = 'git-action-btn git-action-edit';
+            editBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> ' + I18n.t('centerViewer.edit');
+            editBtn.addEventListener('click', enterFileEditMode);
+            actionBar.appendChild(editBtn);
             hasAction = true;
         }
 
