@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Configurazione (si consiglia ai nuovi utenti di configurare prima tramite la pagina delle impostazioni Web):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Una volta entrati nella pagina, aprire "Impostazioni -> Modello Linguistico di Grandi Dimensioni (LLM)", aggiungere un modello e testare la connessione.
@@ -42,7 +42,7 @@ Una volta entrati nella pagina, aprire "Impostazioni -> Modello Linguistico di G
 
 ## Esecuzione
 
-Eseguire il comando `soloncode cli` (CLI interattiva) o `soloncode web 0` (Web interattiva) da qualsiasi directory nella console (ovvero, la vostra area di lavoro).
+Eseguire il comando `soloncode cli` (CLI interattiva) o `soloncode web` (Web interattiva) da qualsiasi directory nella console (ovvero, la vostra area di lavoro).
 
 * `soloncode cli` (CLI interattiva)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web interattiva)
+* `soloncode web` (Web interattiva)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Test delle Funzionalità (provare i seguenti task, dal semplice al complesso):

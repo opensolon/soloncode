@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 修改設定（新用戶推薦先用 Web 設定頁配置：）：
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 進入頁面後打開"設定 -> 大語言模型"，添加模型並測試連接。
@@ -42,7 +42,7 @@ soloncode web 0
 
 ## 執行
 
-在控制台「任意」目錄（即工作區）下，執行 `soloncode cli`（CLI 互動）或者 `soloncode web 0`（Web 互動）命令即可。
+在控制台「任意」目錄（即工作區）下，執行 `soloncode cli`（CLI 互動）或者 `soloncode web`（Web 互動）命令即可。
 
 * `soloncode cli`（CLI 互動）
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0`（Web 互動）
+* `soloncode web`（Web 互動）
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 效果測試（分別嘗試以下任務，從簡單到複雜）：

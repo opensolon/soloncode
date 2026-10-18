@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Konfigurasjon (nye brukere anbefales å konfigurere via Web-innstillingssiden først):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Når du er på siden, åpner du "Innstillinger -> LLM", legger til en modell og tester tilkoblingen.
@@ -42,7 +42,7 @@ Når du er på siden, åpner du "Innstillinger -> LLM", legger til en modell og 
 
 ## Kjøring
 
-Kjør kommandoen `soloncode cli` (CLI-interaktiv) eller `soloncode web 0` (Web-interaktiv) fra hvilken som helst katalog i konsollen (dvs. arbeidsområdet ditt).
+Kjør kommandoen `soloncode cli` (CLI-interaktiv) eller `soloncode web` (Web-interaktiv) fra hvilken som helst katalog i konsollen (dvs. arbeidsområdet ditt).
 
 * `soloncode cli` (CLI-interaktiv)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web-interaktiv)
+* `soloncode web` (Web-interaktiv)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Funksjonstesting (prøv følgende oppgaver, fra enkel til kompleks):

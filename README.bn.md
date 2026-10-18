@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 কনফিগারেশন (নতুন ব্যবহারকারীদের প্রথমে ওয়েব সেটিংস পৃষ্ঠা ব্যবহার করে কনফিগার করার পরামর্শ দেওয়া হয়):
 
 ```bash
-soloncode web 0
+soloncode web
 ```
 
 পৃষ্ঠায় প্রবেশ করার পর "সেটিংস -> বড় ভাষার মডেল (LLM)" খুলুন, একটি মডেল যোগ করুন এবং সংযোগ পরীক্ষা করুন।
@@ -42,7 +42,7 @@ soloncode web 0
 
 ## চলমান
 
-কনসোলে যেকোনো ডিরেক্টরি থেকে `soloncode cli` (CLI ইন্টারেক্টিভ) অথবা `soloncode web 0` (Web ইন্টারেক্টিভ) কমান্ড চালান (অর্থাৎ, আপনার ওয়ার্কস্পেস)।
+কনসোলে যেকোনো ডিরেক্টরি থেকে `soloncode cli` (CLI ইন্টারেক্টিভ) অথবা `soloncode web` (Web ইন্টারেক্টিভ) কমান্ড চালান (অর্থাৎ, আপনার ওয়ার্কস্পেস)।
 
 * `soloncode` (CLI ইন্টারেক্টিভ)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web ইন্টারেক্টিভ)
+* `soloncode web` (Web ইন্টারেক্টিভ)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 বৈশিষ্ট্য পরীক্ষা (নিম্নলিখিত কাজগুলো চেষ্টা করুন, সহজ থেকে জটিল):

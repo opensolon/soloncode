@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Configuración (se recomienda a los nuevos usuarios configurar primero a través de la página web de configuración):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Una vez en la página, abra "Configuración -> LLM", agregue un modelo y pruebe la conexión.
@@ -42,7 +42,7 @@ Una vez en la página, abra "Configuración -> LLM", agregue un modelo y pruebe 
 
 ## Ejecución
 
-Ejecute el comando `soloncode cli` (CLI interactivo) o `soloncode web 0` (Web interactivo) desde cualquier directorio en la consola (es decir, su espacio de trabajo).
+Ejecute el comando `soloncode cli` (CLI interactivo) o `soloncode web` (Web interactivo) desde cualquier directorio en la consola (es decir, su espacio de trabajo).
 
 * `soloncode cli` (CLI interactivo)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web interactivo)
+* `soloncode web` (Web interactivo)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Prueba de funcionalidades (intente las siguientes tareas, de simple a compleja):

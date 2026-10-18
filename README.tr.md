@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Yapılandırma (yeni kullanıcıların önce Web ayarları sayfası üzerinden yapılandırma yapması önerilir):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Sayfaya girdikten sonra "Ayarlar -> Büyük Dil Modeli (LLM)" bölümünü açın, bir model ekleyin ve bağlantıyı test edin.
@@ -42,7 +42,7 @@ Sayfaya girdikten sonra "Ayarlar -> Büyük Dil Modeli (LLM)" bölümünü açı
 
 ## Çalıştırma
 
-Konsolda herhangi bir dizinden `soloncode cli` (CLI etkileşimli) veya `soloncode web 0` (Web etkileşimli) komutunu çalıştırın (yani çalışma alanınızdan).
+Konsolda herhangi bir dizinden `soloncode cli` (CLI etkileşimli) veya `soloncode web` (Web etkileşimli) komutunu çalıştırın (yani çalışma alanınızdan).
 
 * `soloncode cli` (CLI etkileşimli)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web etkileşimli)
+* `soloncode web` (Web etkileşimli)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Özellik Testi (basitten karmaşığa aşağıdaki görevleri deneyin):

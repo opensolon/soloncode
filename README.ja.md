@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 設定（新規ユーザーは最初にWeb設定ページを使用することをお勧めします）：
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 ページに入ったら「設定 -> 大規模言語モデル」を開き、モデルを追加して接続をテストしてください。
@@ -42,7 +42,7 @@ soloncode web 0
 
 ## 実行
 
-コンソールの任意のディレクトリ（ワークスペース）で、`soloncode cli`（CLI対話）または `soloncode web 0`（Web対話）コマンドを実行してください。
+コンソールの任意のディレクトリ（ワークスペース）で、`soloncode cli`（CLI対話）または `soloncode web`（Web対話）コマンドを実行してください。
 
 * `soloncode cli`（CLI対話）
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0`（Web対話）
+* `soloncode web`（Web対話）
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 機能テスト（以下のタスクをお試しください、簡単なものから複雑なものへ）：

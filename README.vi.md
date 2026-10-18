@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Cấu hình (người dùng mới được khuyến nghị cấu hình trước qua trang cài đặt Web):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Sau khi vào trang, mở "Cài đặt -> Mô hình ngôn ngữ lớn (LLM)", thêm mô hình và kiểm tra kết nối.
@@ -42,7 +42,7 @@ Sau khi vào trang, mở "Cài đặt -> Mô hình ngôn ngữ lớn (LLM)", th�
 
 ## Chạy
 
-Chạy lệnh `soloncode cli` (CLI tương tác) hoặc `soloncode web 0` (Web tương tác) từ bất kỳ thư mục nào trong bảng điều khiển (tức là không gian làm việc của bạn).
+Chạy lệnh `soloncode cli` (CLI tương tác) hoặc `soloncode web` (Web tương tác) từ bất kỳ thư mục nào trong bảng điều khiển (tức là không gian làm việc của bạn).
 
 * `soloncode cli` (CLI tương tác)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web tương tác)
+* `soloncode web` (Web tương tác)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Kiểm tra Tính năng (thử các tác vụ sau, từ đơn giản đến phức tạp):

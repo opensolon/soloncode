@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Διαμόρφωση (οι νέοι χρήστες συνιστάται να διαμορφώσουν πρώτα μέσω της σελίδας ρυθμίσεων Web):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Μόλις μπείτε στη σελίδα, ανοίξτε "Ρυθμίσεις -> LLM", προσθέστε ένα μοντέλο και ελέγξτε τη σύνδεση.
@@ -42,7 +42,7 @@ soloncode web 0
 
 ## Εκτέλεση
 
-Εκτελέστε την εντολή `soloncode cli` (CLI διαδραστικό) ή `soloncode web 0` (Web διαδραστικό) από οποιονδήποτε κατάλογο στην κονσόλα (δηλαδή, τον χώρο εργασίας σας).
+Εκτελέστε την εντολή `soloncode cli` (CLI διαδραστικό) ή `soloncode web` (Web διαδραστικό) από οποιονδήποτε κατάλογο στην κονσόλα (δηλαδή, τον χώρο εργασίας σας).
 
 * `soloncode cli` (CLI διαδραστικό)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web διαδραστικό)
+* `soloncode web` (Web διαδραστικό)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Δοκιμή Λειτουργιών (δοκιμάστε τις παρακάτω εργασίες, από απλές σε σύνθετες):

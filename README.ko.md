@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 설정 (신규 사용자는 먼저 웹 설정 페이지를 통해 구성하는 것을 권장합니다):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 페이지에 진입한 후 "설정 -> 대규모 언어 모델"을 열고 모델을 추가한 후 연결을 테스트하세요.
@@ -42,7 +42,7 @@ soloncode web 0
 
 ## 실행
 
-콘솔의 임의 디렉토리(작업 공간)에서 `soloncode cli`(CLI 대화형) 또는 `soloncode web 0`(Web 대화형) 명령을 실행하세요.
+콘솔의 임의 디렉토리(작업 공간)에서 `soloncode cli`(CLI 대화형) 또는 `soloncode web`(Web 대화형) 명령을 실행하세요.
 
 * `soloncode cli`(CLI 대화형)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0`(Web 대화형)
+* `soloncode web`(Web 대화형)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 기능 테스트 (다음 작업을 시도해 보세요, 단순한 것부터 복잡한 것까지):

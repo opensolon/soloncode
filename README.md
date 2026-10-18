@@ -34,7 +34,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Configuration (new users are recommended to configure via the Web settings page first):
 
 ```
-soloncode web 0
+soloncode web
 ```
 
 Once on the page, open "Settings -> LLM", add a model, and test the connection.
@@ -43,7 +43,7 @@ Once on the page, open "Settings -> LLM", add a model, and test the connection.
 
 ## Running
 
-Run the `soloncode cli` (CLI interactive), `soloncode web 0` (Web interactive), or SolonCode Desktop from your project workspace.
+Run the `soloncode cli` (CLI interactive), `soloncode web` (Web interactive), or SolonCode Desktop from your project workspace.
 
 * `soloncode` (CLI interactive)
 
@@ -57,14 +57,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web interactive)
+* `soloncode web` (Web interactive)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /Users/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 ## SolonCode Desktop

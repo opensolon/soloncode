@@ -33,7 +33,7 @@ irm https://solon.noear.org/soloncode/setup.ps1 | iex
 Konfiguracija (novim korisnicima se preporučuje da prvo konfigurišu putem Web stranice za postavke):
 
 ```bash
-soloncode web 0
+soloncode web
 ```
 
 Nakon ulaska na stranicu, otvorite "Postavke -> Veliki jezički model (LLM)", dodajte model i testirajte vezu.
@@ -42,7 +42,7 @@ Nakon ulaska na stranicu, otvorite "Postavke -> Veliki jezički model (LLM)", do
 
 ## Pokretanje
 
-Pokrenite naredbu `soloncode cli` (CLI interaktivno) ili `soloncode web 0` (Web interaktivno) iz bilo kojeg direktorija u konzoli (tj. vaš radni prostor).
+Pokrenite naredbu `soloncode cli` (CLI interaktivno) ili `soloncode web` (Web interaktivno) iz bilo kojeg direktorija u konzoli (tj. vaš radni prostor).
 
 * `soloncode` (CLI interaktivno)
 
@@ -56,14 +56,14 @@ User
 ❯ 
 ```
 
-* `soloncode web 0` (Web interaktivno)
+* `soloncode web` (Web interaktivno)
 
 ```bash
-demo@MacBook-Pro ~ % soloncode web 0
+demo@MacBook-Pro ~ % soloncode web
 SolonCode v2026.10.15 PID-73617 Model:deepseek-v4-flash
 /path/demo
 2026-07-09 11:26
-Web interface: http://localhost:50488/
+Web interface: http://localhost:4808/
 ```
 
 Testiranje funkcija (isprobajte sljedeće zadatke, od jednostavnih do složenih):
