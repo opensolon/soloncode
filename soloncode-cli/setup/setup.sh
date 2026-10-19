@@ -8,7 +8,7 @@ set -e
 
 VERSION="v2026.10.15"
 PACKAGE_URL="https://gitee.com/opensolon/soloncode/releases/download/${VERSION}/soloncode-cli-bin-${VERSION}.tar.gz"
-TEMP_DIR="/tmp/soloncode-install"
+TEMP_DIR=""
 
 # Colors
 RED='\033[0;31m'
@@ -35,7 +35,9 @@ cleanup() {
     if [ -n "$DOWNLOAD_PID" ]; then
         kill "$DOWNLOAD_PID" 2>/dev/null || true
     fi
-    rm -rf "$TEMP_DIR"
+    if [ -n "$TEMP_DIR" ]; then
+        rm -rf "$TEMP_DIR"
+    fi
 }
 
 trap cleanup EXIT
@@ -158,8 +160,11 @@ download_with_progress() {
     echo ""
 }
 
-# Create temp directory
-mkdir -p "$TEMP_DIR"
+# Use a private directory; never reuse or remove another installation's files.
+TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/soloncode-install.XXXXXX") || {
+    error "Could not create temporary directory"
+    exit 1
+}
 
 info "Downloading SolonCode CLI ${VERSION}..."
 
@@ -204,12 +209,14 @@ info "Installation complete!"
 echo ""
 
 if [ "$SYMLINK_EXISTS" = true ]; then
-    echo -e "You can now run: ${CYAN}soloncode cli${NC} or ${CYAN}soloncode web 0${NC}"
+    echo -e "You can now run: ${CYAN}soloncode cli${NC} or ${CYAN}soloncode web${NC}"
+    echo -e "If SolonCode is already running, ${CYAN}soloncode web${NC} reuses it and opens the current directory."
 else
     echo -e "To use soloncode immediately, run:"
     echo -e "  ${CYAN}source ~/.${USER_SHELL}rc${NC}"
     echo ""
-    echo -e "Then run: ${CYAN}soloncode cli${NC} or ${CYAN}soloncode web 0${NC}"
+    echo -e "Then run: ${CYAN}soloncode cli${NC} or ${CYAN}soloncode web${NC}"
+    echo -e "If SolonCode is already running, ${CYAN}soloncode web${NC} reuses it and opens the current directory."
 fi
 
 echo ""

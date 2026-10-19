@@ -291,12 +291,14 @@ public class HelpMode {
     private String renderWeb() {
         StringBuilder sb = new StringBuilder();
         sb.append(header());
-        sb.append("Usage: soloncode web [options]\n");
+        sb.append("Usage: soloncode web [port]\n");
         sb.append("\n");
-        sb.append("Starts the Web UI server and opens it in the default browser.\n");
+        sb.append("Starts the Web UI server on port 4808 and opens it in the default browser.\n");
+        sb.append("The launcher checks the port before starting Java: an existing SolonCode\n");
+        sb.append("instance is reused and the current directory is opened as a workspace.\n");
         sb.append("\n");
         sb.append("Options:\n");
-        sb.append("  --server.port <port>       HTTP port to listen on\n");
+        sb.append("  <port>                     HTTP port to use (default: 4808)\n");
         sb.append("  -h, --help                 Show this help and exit\n");
         return sb.toString();
     }

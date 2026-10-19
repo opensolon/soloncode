@@ -1,6 +1,14 @@
 #
 # SolonCode CLI Installer for Windows
-# Usage: irm https://solon.noear.org/soloncode/setup.ps1 | iex
+# Modern PowerShell (3+): irm https://solon.noear.org/soloncode/setup.ps1 | iex
+# PowerShell 2.0 (WebClient; no irm):
+#   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
+#   $client = New-Object Net.WebClient
+#   try { iex ($client.DownloadString('https://solon.noear.org/soloncode/setup.ps1')) } finally { $client.Dispose() }
+# The FIRST HTTPS download already requires OS/.NET TLS 1.2 support and trusted
+# certificates; this script cannot fix TLS before it has been downloaded.
+# If unavailable, download the release on a supported machine, transfer/extract
+# it locally, then run its unified install.ps1 (Java 8+ is still required).
 #
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +17,7 @@ $ProgressPreference = "SilentlyContinue"
 
 $VERSION = "v2026.10.15"
 $PACKAGE_URL = "https://gitee.com/opensolon/soloncode/releases/download/$VERSION/soloncode-cli-bin-$VERSION.tar.gz"
-$TEMP_DIR = Join-Path $env:TEMP "soloncode-install"
+$TEMP_DIR = Join-Path $env:TEMP ("soloncode-install-" + [Guid]::NewGuid().ToString("N"))
 
 function Write-Info {
     param([string]$Message)
@@ -17,7 +25,7 @@ function Write-Info {
     Write-Host $Message
 }
 
-function Write-Error {
+function Write-SetupError {
     param([string]$Message)
     Write-Host "[ERROR] " -ForegroundColor Red -NoNewline
     Write-Host $Message
@@ -63,21 +71,34 @@ function Invoke-DownloadWithProgress {
 
     try {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072
-    } catch { }
-
-    $request = [Net.WebRequest]::Create($Url)
-    $request.Timeout = 60000
-    if ($request -is [Net.HttpWebRequest]) {
-        $request.UserAgent = "soloncode-setup"
-        $request.AllowAutoRedirect = $true
+    } catch {
+        Write-Warning "Cannot enable TLS 1.2. Update OS/.NET, or download/extract the release on another machine and run install.ps1 offline." -WarningAction Continue
+        throw
     }
 
-    $response = $request.GetResponse()
-    $total = $response.ContentLength
-    $stream = $response.GetResponseStream()
-    $file = [IO.File]::Create($OutFile)
-
+    $response = $null
+    $stream = $null
+    $file = $null
     try {
+        $downloadUri = [Uri]$Url
+        # Follow HTTPS redirects only; older .NET may otherwise allow downgrade.
+        for ($redirects = 0; ; $redirects++) {
+            if ($downloadUri.Scheme -ne 'https') { throw "Refusing non-HTTPS download: $downloadUri" }
+            $request = [Net.WebRequest]::Create($downloadUri)
+            $request.Timeout = 60000
+            $request.UserAgent = "soloncode-setup"
+            $request.AllowAutoRedirect = $false
+            $response = $request.GetResponse()
+            if (@(301, 302, 303, 307, 308) -notcontains [int]$response.StatusCode) { break }
+            $location = $response.Headers['Location']
+            if (-not $location -or $redirects -ge 10) { throw "Invalid or excessive HTTPS redirects." }
+            $downloadUri = New-Object System.Uri -ArgumentList $downloadUri, $location
+            $response.Close()
+            $response = $null
+        }
+        $total = $response.ContentLength
+        $stream = $response.GetResponseStream()
+        $file = [IO.File]::Create($OutFile)
         $buffer = New-Object byte[] 81920
         $downloaded = [long]0
         $lastDraw = 0
@@ -98,23 +119,32 @@ function Invoke-DownloadWithProgress {
             }
         }
 
+        if ($total -ge 0 -and $downloaded -ne $total) {
+            throw "Incomplete download: expected $total bytes, received $downloaded."
+        }
+        # Flush/close errors are download failures, not successful completion.
+        $file.Close()
+        $file = $null
         if ($total -le 0) { $total = $downloaded }
         Write-ProgressBar $downloaded $total
         Write-Host ""
     } finally {
-        $file.Close()
-        $stream.Close()
-        $response.Close()
+        foreach ($resource in @($file, $stream, $response)) {
+            if ($null -ne $resource) {
+                try { $resource.Close() }
+                catch { Write-Warning "Download resource cleanup failed: $($_.Exception.Message)" -WarningAction Continue }
+            }
+        }
     }
 }
 
-# Cleanup temp directory
-if (Test-Path $TEMP_DIR) {
-    Remove-Item -Recurse -Force $TEMP_DIR
-}
-New-Item -ItemType Directory -Path $TEMP_DIR | Out-Null
-
 try {
+    # PS2 does not imply that tar is installed. Fail before downloading anything.
+    $tarCommand = Get-Command tar -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $tarCommand) {
+        throw "tar is required to extract tar.gz packages. Provide tar on PATH, or manually extract the release and run install.ps1 offline."
+    }
+    New-Item -ItemType Directory -Path $TEMP_DIR | Out-Null
     Write-Info "Downloading SolonCode CLI $VERSION..."
 
     $packageFile = Join-Path $TEMP_DIR "package.tar.gz"
@@ -122,15 +152,18 @@ try {
 
     Write-Info "Extracting package..."
 
-    # Extract tar.gz using built-in tar (Windows 10+)
-    tar -xzf $packageFile -C $TEMP_DIR
+    # Use the preflighted executable; native failures do not throw in PS2.
+    & $tarCommand.Definition -xzf $packageFile -C $TEMP_DIR
+    if ($LASTEXITCODE -ne 0) {
+        throw "Package extraction failed (tar exit code $LASTEXITCODE)."
+    }
 
-    # Find install.ps1
-    $installScript = Get-ChildItem -Path $TEMP_DIR -Filter "install.ps1" -Recurse | Select-Object -First 1
+    # Find the unified installer, treating source paths literally (including []).
+    $installScript = Get-ChildItem -LiteralPath $TEMP_DIR -Filter "install.ps1" -Recurse |
+        Where-Object { -not $_.PSIsContainer } | Select-Object -First 1
 
     if (-not $installScript) {
-        Write-Error "install.ps1 not found in package"
-        exit 1
+        throw "install.ps1 not found in package"
     }
 
     Write-Info "Running installer..."
@@ -141,20 +174,40 @@ try {
     
     Write-Host "Install path: $installPath" -ForegroundColor Gray
     
-    # Set environment variable to tell install.ps1 not to wait
-    $env:SOLONCODE_SETUP = "1"
-    
-    # Set environment variable to pass the source directory (because $MyInvocation.MyCommand.Definition
-    # doesn't work correctly when script is executed via Get-Content | Invoke-Expression)
-    $env:SOLONCODE_INSTALL_DIR = $installDir
-    
-    # Execute the installer script via Invoke-Expression to bypass execution policy
-    # Using & triggers PowerShell's execution policy check (Restricted), causing "禁止运行脚本" error
-    Get-Content -Path $installPath -Raw | Invoke-Expression
+    $previousSetup = [Environment]::GetEnvironmentVariable('SOLONCODE_SETUP', 'Process')
+    $previousInstallDir = [Environment]::GetEnvironmentVariable('SOLONCODE_INSTALL_DIR', 'Process')
+    $previousProcessPath = $env:Path
+    try {
+        $env:SOLONCODE_SETUP = "1"
+        # IEX cannot infer the source directory from MyInvocation.
+        $env:SOLONCODE_INSTALL_DIR = $installDir
 
-    # Refresh PATH for current session
-    $env:Path = [Environment]::GetEnvironmentVariable('Path', 'User') + ';' + [Environment]::GetEnvironmentVariable('Path', 'Machine')
-    $env:Path = $env:Path.TrimEnd(';')
+        # Keep the unified installer in a child scope. ReadAllText is PS2-safe,
+        # explicitly UTF-8, and treats the source file name literally.
+        & {
+            param([string]$InstallerPath)
+            Invoke-Expression ([IO.File]::ReadAllText($InstallerPath, [Text.Encoding]::UTF8))
+            if (-not $?) { throw "install.ps1 failed." }
+        } $installPath
+    } finally {
+        $env:Path = $previousProcessPath
+        [Environment]::SetEnvironmentVariable('SOLONCODE_SETUP', $previousSetup, 'Process')
+        [Environment]::SetEnvironmentVariable('SOLONCODE_INSTALL_DIR', $previousInstallDir, 'Process')
+    }
+
+    # Preserve process-only PATH entries; add only our installed bin, once.
+    $installedBin = Join-Path (Join-Path $env:USERPROFILE ".soloncode") "bin"
+    $binOnPath = $false
+    foreach ($entry in ($env:Path -split ';')) {
+        if ($entry.Trim().Trim('"').TrimEnd('\') -ieq $installedBin.TrimEnd('\')) {
+            $binOnPath = $true
+            break
+        }
+    }
+    if (-not $binOnPath) {
+        if ([string]::IsNullOrEmpty($env:Path)) { $env:Path = $installedBin }
+        else { $env:Path += ';' + $installedBin }
+    }
 
     Write-Host ""
     Write-Info "Installation complete!"
@@ -162,10 +215,20 @@ try {
     Write-Host "You can now run: " -NoNewline
     Write-Host "soloncode cli" -ForegroundColor Cyan -NoNewline
     Write-Host " or " -NoNewline
-    Write-Host "soloncode web 0" -ForegroundColor Cyan
+    Write-Host "soloncode web" -ForegroundColor Cyan
+    Write-Host "If SolonCode is already running, soloncode web reuses it and opens the current directory." -ForegroundColor Gray
     Write-Host ""
 
 } catch {
-    Write-Error $_.Exception.Message
-    throw $_
+    Write-SetupError $_.Exception.Message
+    throw
+} finally {
+    # Cleanup is best-effort: never replace a download/extraction/install error.
+    try {
+        if (Test-Path -LiteralPath $TEMP_DIR) {
+            Remove-Item -LiteralPath $TEMP_DIR -Recurse -Force -ErrorAction Stop
+        }
+    } catch {
+        Write-Warning "Could not remove temporary directory '$TEMP_DIR': $($_.Exception.Message)" -WarningAction Continue
+    }
 }

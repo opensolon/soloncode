@@ -27,7 +27,8 @@ public class UserAuthFilter implements Filter {
     private UserStore userStore;
 
     private static final Set<String> PUBLIC_PATHS = new HashSet<>(Arrays.asList(
-            "/web/login", "/web/logout", "/web/user/me", "/login", "/web/chat/meta"));
+            "/web/login", "/web/logout", "/web/user/me", "/login", "/web/chat/meta",
+            "/web/instance/info", "/web/instance/attach"));
 
     private static final Set<String> STATIC_PREFIXES = new HashSet<>(Arrays.asList(
             "/css/", "/js/", "/layui/", "/highlight/", "/img/", "/skin/", "/favicon.ico"));
@@ -48,7 +49,8 @@ public class UserAuthFilter implements Filter {
 
     static boolean isSharedEntryPath(String path) {
         return isStaticPath(path) || "/login".equals(path) || "/web/login".equals(path)
-                || "/web/logout".equals(path) || "/web/user/me".equals(path);
+                || "/web/logout".equals(path) || "/web/user/me".equals(path)
+                || "/web/instance/info".equals(path) || "/web/instance/attach".equals(path);
     }
 
     static boolean isAdminPath(String path) {

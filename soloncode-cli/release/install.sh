@@ -215,41 +215,83 @@ echo ""
 echo "[5/5] Creating 'soloncode' command..."
 cat > "$TARGET_BIN_DIR/soloncode" << 'LAUNCHER_EOF'
 #!/bin/bash
-# Solon Code CLI Launcher
-# 获取脚本真实路径（兼容软链接）
+# Solon Code CLI Launcher. Web 的端口判断必须发生在启动 Java 之前。
 SCRIPT_PATH="$0"
-# 解析软链接（兼容 macOS 和 Linux）
 while [ -L "$SCRIPT_PATH" ]; do
     SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
     SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
-    # 如果是相对路径，转换为绝对路径
-    case "$SCRIPT_PATH" in
-        /*) ;;  # 已经是绝对路径
-        *)  SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH" ;;
-    esac
+    case "$SCRIPT_PATH" in /*) ;; *) SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_PATH" ;; esac
 done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
-# 检测 Java 版本，如果是 21+ 则添加 --enable-native-access 参数
-JAVA_VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | grep -oE '[0-9]+' | head -1)
-if [ -z "$JAVA_VER" ]; then
-    # 如果提取失败，尝试另一种方式
-    JAVA_VER=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
-fi
-JAVA_OPTS="-Dfile.encoding=UTF-8"
-if [ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ]; then
-    JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
-fi
+open_existing_web() {
+    local port="$1" path="$2" info token body response workspace_id curl_status url
+    info=$(curl --noproxy '*' -fsS --connect-timeout 0.5 --max-time 2 "http://localhost:${port}/web/instance/info" 2>/dev/null)
+    curl_status=$?
+    if [ "$curl_status" -ne 0 ]; then
+        # 只有连接失败才允许启动；响应超时不能证明端口空闲。
+        case "$curl_status" in 7) return 2 ;; *)
+            echo "[Error] Port ${port} is occupied or could not be verified as SolonCode (curl ${curl_status}); refusing to start another instance." >&2
+            return 1 ;;
+        esac
+    fi
+    # 字段顺序和 JSON 排版不属于协议；值必须完整匹配，不能把 protocol:10 当作 1。
+    info=$(printf '%s' "$info" | tr '\r\n' '  ')
+    if ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"product"[[:space:]]*:[[:space:]]*"soloncode"[[:space:]]*[,}]' ||
+       ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"protocol"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]' ||
+       ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"attachSupported"[[:space:]]*:[[:space:]]*true[[:space:]]*[,}]'; then
+        echo "[Error] Port ${port} is occupied by another service, not SolonCode." >&2
+        return 1
+    fi
+    token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.soloncode/web-instance-${port}.json" 2>/dev/null)
+    [ -n "$token" ] || { echo "[Error] SolonCode is already running on port ${port}, but its local handoff record is unavailable." >&2; return 1; }
+    body=$(printf '%s' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    # 冷工作区需要同步初始化，不能使用健康探测的短超时；失败也不得回退启动 Java。
+    response=$(curl --noproxy '*' -fsS --connect-timeout 0.5 --max-time 60 -X POST \
+        -H "Accept: application/json" -H "Content-Type: application/json" \
+        -H "X-Soloncode-Attach-Token: ${token}" \
+        --data "{\"path\":\"${body}\"}" \
+        "http://localhost:${port}/web/instance/attach" 2>/dev/null) || {
+        echo "[Error] Could not open the current directory in the existing SolonCode instance." >&2
+        return 1
+    }
+    workspace_id=$(printf '%s' "$response" | sed -n 's/.*"workspaceId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
+    [ -n "$workspace_id" ] || { echo "[Error] Existing SolonCode returned no workspace id." >&2; return 1; }
+    url="http://localhost:${port}/?workspaceId=${workspace_id}"
+    if command -v open >/dev/null 2>&1; then
+        open "$url" >/dev/null 2>&1 && return 0
+    elif command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$url" >/dev/null 2>&1 && return 0
+    fi
+    echo "Open this URL in your browser: $url"
+    return 0
+}
 
-# Git Bash / MSYS terminals on Windows often need winpty for correct line editing.
-if [ -n "$MSYSTEM" ]; then
-    JAVA_OPTS="$JAVA_OPTS -Djline.terminal.type=xterm-256color"
-    if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then
-        exec winpty java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
+# 帮助请求必须直接交给 CLI，不能先探测或打开已有实例。
+web_help=false
+for arg in "$@"; do
+    case "$arg" in -h|--help|-help|--h) web_help=true ;; esac
+done
+if [ "${1:-}" = "web" ] && [ "$web_help" = false ]; then
+    port="${2:-4808}"
+    if [ "$port" != "0" ] && printf '%s' "$port" | grep -Eq '^[0-9]+$' && [ "$port" -gt 0 ] && [ "$port" -le 65535 ]; then
+        if ! command -v curl >/dev/null 2>&1; then
+            echo "[Error] curl is required to inspect the Web port before starting SolonCode." >&2
+            exit 1
+        fi
+        if open_existing_web "$port" "$PWD"; then exit 0; else status=$?; [ "$status" -eq 1 ] && exit "$status"; fi
     fi
 fi
 
-java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
+JAVA_VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | grep -oE '[0-9]+' | head -1)
+[ -n "$JAVA_VER" ] || JAVA_VER=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
+JAVA_OPTS="-Dfile.encoding=UTF-8"
+[ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ] && JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
+if [ -n "$MSYSTEM" ]; then
+    JAVA_OPTS="$JAVA_OPTS -Djline.terminal.type=xterm-256color"
+    if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then exec winpty java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"; fi
+fi
+exec java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"
 LAUNCHER_EOF
 chmod +x "$TARGET_BIN_DIR/soloncode"
 echo "      Created: $TARGET_BIN_DIR/soloncode"
@@ -376,7 +418,7 @@ else
     echo -e "  ${CYAN}Usage:${NC}"
     echo "    1. Run: source ~/.${USER_SHELL}rc"
     echo "    2. Or restart your terminal"
-    echo "    3. Then run: 'soloncode cli' or 'soloncode web 0'"
+    echo "    3. Then run: 'soloncode cli' or 'soloncode web'"
 fi
 
 echo ""

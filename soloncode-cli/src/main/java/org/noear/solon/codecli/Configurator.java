@@ -28,6 +28,7 @@ import org.noear.solon.codecli.entry.headless.PrintModeOptions;
 import org.noear.solon.codecli.entry.headless.StreamMode;
 import org.noear.solon.codecli.api.web.WebChannel;
 import org.noear.solon.codecli.api.web.controller.PageWebController;
+import org.noear.solon.codecli.api.web.controller.InstanceWebController;
 import org.noear.solon.codecli.api.web.controller.WorkspaceWebController;
 import org.noear.solon.codecli.api.web.controller.SessionWebController;
 import org.noear.solon.codecli.api.web.controller.ChatWebController;
@@ -46,6 +47,9 @@ import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.BeanWrap;
 import org.noear.solon.codecli.util.OsOpenUtil;
+import org.noear.solon.codecli.util.WebInstanceRegistry;
+import org.noear.solon.core.event.AppLoadEndEvent;
+import org.noear.solon.core.event.AppStopEndEvent;
 import org.noear.solon.core.util.JavaUtil;
 import org.noear.solon.core.util.RunUtil;
 import org.noear.solon.net.websocket.WebSocketRouter;
@@ -250,6 +254,16 @@ public class Configurator {
         WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
         WebGate webGate = new WebGate(workspaceManager);
         workspaceManager.setRuntimePort(webGate);
+        final int webPort = Solon.cfg().serverPort();
+        // 实例凭据始终保存在内存；启动完成前不得覆盖已运行实例的记录。
+        final String registryToken = WebInstanceRegistry.generateToken();
+        final InstanceWebController instanceController = new InstanceWebController(workspaceManager, registryToken);
+        Runnable cleanup = () -> {
+            instanceController.setAttachSupported(false);
+            WebInstanceRegistry.remove(webPort, registryToken);
+        };
+        Runtime.getRuntime().addShutdownHook(new Thread(cleanup, "soloncode-web-instance-cleanup"));
+        Solon.app().onEvent(AppStopEndEvent.class, event -> cleanup.run());
         WebSocketRouter.getInstance().of("/web/gate", webGate);
 
         // 复用默认工作区上下文中已创建并启动的 FileWatchService：
@@ -286,6 +300,7 @@ public class Configurator {
         //web
         //web（原 WebController 已按领域拆分为 controller 包下的 7 个 Controller，路由不变）
         addWebBean(new PageWebController(workspaceManager));
+        addWebBean(instanceController);
         addWebBean(new WorkspaceWebController(workspaceManager));
         addWebBean(new SessionWebController(workspaceManager));
         addWebBean(new ChatWebController(workspaceManager));
@@ -337,6 +352,20 @@ public class Configurator {
         if (cliShell != null) {
             String url = "http://localhost:" + Solon.cfg().serverPort() + "/";
             cliShell.printWelcome("Web interface: " + url);
+        }
+        // AppLoadEndEvent 在服务插件及 AppContext 启动完成后发布；绑定失败不会走到这里。
+        Solon.app().onEvent(AppLoadEndEvent.class,
+                event -> publishWebInstance(webPort, registryToken, instanceController));
+    }
+
+    static void publishWebInstance(int port, String token, InstanceWebController controller) {
+        controller.setAttachSupported(false);
+        try {
+            WebInstanceRegistry.register(port, token);
+            controller.setAttachSupported(true);
+        } catch (Exception e) {
+            // 发现能力失败不能阻止 Web 服务启动，也不能宣称支持 attach。
+            LOG.warn("Web 实例注册信息写入失败，后续 CLI 可能无法自动复用当前实例: {}", e.getMessage());
         }
     }
 
