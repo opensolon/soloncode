@@ -379,15 +379,15 @@ body {
 .msg-nav { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 16px; max-height: 100%; overflow-y: auto; scrollbar-width: none; z-index: 20; pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
 .msg-nav::-webkit-scrollbar { display: none; }
 .msg-nav-block { flex-shrink: 0; width: 12px; height: 4px; background: var(--msg-nav-dot, var(--text-secondary)); border-radius: 2px; cursor: pointer; transition: background 0.15s; }
-.msg-nav-block:hover { background: var(--text-primary, var(--msg-nav-dot)); }
-.msg-nav-block.active { background: var(--text-primary, #333); }
+.msg-nav-block:hover { background: var(--msg-nav-dot-hover, var(--text-secondary)); }
+.msg-nav-block.active { background: var(--msg-nav-dot-active, var(--accent)); width: 16px; }
 .msg-nav-panel { position: fixed; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 0; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 220px; max-height: 400px; overflow-y: auto; overflow-x: hidden}
 
 .msg-nav-panel::after { content: ''; position: absolute; right: -6px; top: var(--arrow-top, 50%); transform: translateY(-50%); border: 6px solid transparent; border-left-color: var(--border-color); border-right: none; pointer-events: none; }
 .msg-nav-panel-item { display: block; padding: 5px 14px; font-size: var(--fs-sm); line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; color: var(--text-primary, #e0e0e0); }
 .msg-nav-panel-item:hover { background: var(--bg-hover, rgba(255,255,255,0.08)); }
 .msg-nav-panel-item.active { font-weight: 600; color: var(--accent);}
-.msg-nav-block.highlight { opacity: 1; background: var(--accent); }
+.msg-nav-block.highlight { background: var(--msg-nav-dot-highlight, var(--accent)); }
 .msg-nav-panel-item.highlight { background: var(--bg-hover, rgba(255,255,255,0.08)); }
 
 /* Message */
@@ -688,22 +688,22 @@ body {
 /* Thinking Block (collapsible reasoning content) */
 .reason-group-think { border: 1px solid var(--reason-group-think-border); border-radius: 10px; overflow: hidden; background: var(--reason-group-think-bg); }
 .reason-group-think-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font-size: var(--fs-base); user-select: none; transition: background 0.15s; }
-.reason-group-think-header:hover { background: var(--bg-hover); }
-.reason-group-think-label { color: var(--text-secondary); font-weight: 500; }
-.reason-group-think-toggle { margin-left: auto; color: var(--text-secondary); font-size: var(--fs-sm); transition: transform 0.25s; }
+.reason-group-think-header:hover { background: var(--reason-header-hover-bg, var(--bg-hover)); }
+.reason-group-think-label { color: var(--reason-header-color, var(--text-secondary)); font-weight: 500; }
+.reason-group-think-toggle { margin-left: auto; color: var(--reason-header-color, var(--text-secondary)); font-size: var(--fs-sm); transition: transform 0.25s; }
 .reason-group-think.expanded .reason-group-think-toggle { transform: rotate(90deg); }
 .reason-group-think-body { padding: 8px 14px; font-size: var(--fs-base); color: var(--text-secondary); line-height: 1.7; max-height: 300px; overflow-y: auto; }
 .reason-group-think-body .md-content { color: var(--text-secondary); font-size: var(--fs-base); }
 .reason-group-think:not(.expanded) .reason-group-think-body { display: none; }
-.reason-group-think.streaming .reason-group-think-label { color: var(--accent); }
+.reason-group-think.streaming .reason-group-think-label { color: var(--reason-header-streaming-color, var(--accent)); }
 .reason-group-think-dots { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
-.reason-group-think-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: none; }
+.reason-group-think-dots span { width: 5px; height: 5px; border-radius: 50%; background: var(--reason-header-streaming-color, var(--accent)); animation: none; }
 .reason-group-think-dots span:nth-child(2) { animation-delay: 0.2s; }
 .reason-group-think-dots span:nth-child(3) { animation-delay: 0.4s; }
 
 /* 思考块流式旋转图标 */
 @keyframes think-spin { to { transform: rotate(360deg); } }
-.reason-group-think-spinner { width: 14px; height: 14px; color: var(--accent); display: none; vertical-align: middle; flex-shrink: 0; }
+.reason-group-think-spinner { width: 14px; height: 14px; color: var(--reason-header-streaming-color, var(--accent)); display: none; vertical-align: middle; flex-shrink: 0; }
 .reason-group-think.streaming .reason-group-think-spinner { display: inline-block; animation: think-spin 1s linear infinite; }
 
 /* Thinking Group: background and spacing define the group; inner records do not repeat borders. */

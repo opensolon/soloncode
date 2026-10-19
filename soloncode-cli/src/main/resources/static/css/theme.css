@@ -129,7 +129,14 @@
     --thinking-dot: #4f6ef7;
     --tag-bg: #f3f4f8;
     --tag-border: #e5e7eb;
-    --msg-nav-dot: #7e88a6;
+    /* Auxiliary controls: softer than body text, with separate interaction levels. */
+    --msg-nav-dot: #8994ae;
+    --msg-nav-dot-hover: #697998;
+    --msg-nav-dot-active: #526b9d;
+    --msg-nav-dot-highlight: var(--accent);
+    --reason-header-color: #626e86;
+    --reason-header-hover-bg: #eef1f7;
+    --reason-header-streaming-color: #4b63a6;
     --reason-group-think-bg: #f8f9fc;
     --reason-group-think-border: #e0e3eb;
 
@@ -252,7 +259,13 @@
     --thinking-dot: #6b8aff;
     --tag-bg: #222222;
     --tag-border: #333333;
-    --msg-nav-dot: #8b93b8;
+    --msg-nav-dot: #747e9c;
+    --msg-nav-dot-hover: #9aa8c9;
+    --msg-nav-dot-active: #b0c1e8;
+    --msg-nav-dot-highlight: var(--accent);
+    --reason-header-color: #a1a9ba;
+    --reason-header-hover-bg: #252934;
+    --reason-header-streaming-color: #9aafe6;
     --reason-group-think-bg: #1a1a1a;
     --reason-group-think-border: #2a2a2a;
 
@@ -371,6 +384,13 @@
         --thinking-dot: #6b8aff;
         --tag-bg: #222222;
         --tag-border: #333333;
+        --msg-nav-dot: #747e9c;
+        --msg-nav-dot-hover: #9aa8c9;
+        --msg-nav-dot-active: #b0c1e8;
+        --msg-nav-dot-highlight: var(--accent);
+        --reason-header-color: #a1a9ba;
+        --reason-header-hover-bg: #252934;
+        --reason-header-streaming-color: #9aafe6;
         --reason-group-think-bg: #1a1a1a;
         --reason-group-think-border: #2a2a2a;
 

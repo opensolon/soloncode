@@ -4,6 +4,8 @@
 
 * 添加 soloncode web 输出本地链接可点击支持（查看文件内容）
 * 添加 soloncode im 图片推送支持
+* 优化 soloncode web msg-nav 导航样式
+* 细节优化
 
 ### v2026.10.19
 

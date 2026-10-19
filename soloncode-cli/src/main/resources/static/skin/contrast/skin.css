@@ -27,6 +27,12 @@
     --border-color: #9ca3af;
     --border-input: #6b7280;
     --msg-nav-dot: #6b7280;
+    --msg-nav-dot-hover: #374151;
+    --msg-nav-dot-active: #0a0a0a;
+    --msg-nav-dot-highlight: #1a1a1a;
+    --reason-header-color: #374151;
+    --reason-header-hover-bg: #e5e7eb;
+    --reason-header-streaming-color: #1a1a1a;
     --thinking-dot: #1a1a1a;
     --bg-body: #f3f4f6;
     --bg-main: #ffffff;
@@ -35,7 +41,7 @@
     --bg-input-box: #ffffff;
     --tag-bg: #e5e7eb;
     --tag-border: #9ca3af;
-    --reason-group-think-bg: #f9fafb;
+    --reason-group-think-bg: #f3f4f6;
     --reason-group-think-border: #9ca3af;
     --shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
     --shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.12);
@@ -70,6 +76,12 @@
     --border-color: #64748b;
     --border-input: #94a3b8;
     --msg-nav-dot: #9ca3af;
+    --msg-nav-dot-hover: #cbd5e1;
+    --msg-nav-dot-active: #f8fafc;
+    --msg-nav-dot-highlight: #e0e0e0;
+    --reason-header-color: #cbd5e1;
+    --reason-header-hover-bg: #2e2e2e;
+    --reason-header-streaming-color: #e0e0e0;
     --thinking-dot: #e0e0e0;
     --bg-body: #0a0a0a;
     --bg-main: #161616;
@@ -80,7 +92,7 @@
     --bg-secondary: #111111;
     --tag-bg: #222222;
     --tag-border: #444444;
-    --reason-group-think-bg: #1a1a1a;
+    --reason-group-think-bg: #202020;
     --reason-group-think-border: #64748b;
     --bg-code: #242424;
     --bg-code-block: #101010;
