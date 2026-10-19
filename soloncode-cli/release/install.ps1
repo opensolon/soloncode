@@ -304,31 +304,19 @@ function Invoke-LocalJson([string]$Uri, [int]$TimeoutMs, [string]$Token, [byte[]
 }
 
 function Test-LocalPort([int]$Port) {
-    $tcp = New-Object System.Net.Sockets.TcpClient
-    $waitHandle = $null
+    # Windows can take seconds to refuse a connection even on an idle loopback port.
+    # Query the IPv4/IPv6 listener table instead of treating a short TCP timeout as busy.
+    # This API is available on .NET 2.0 / PS2. Query failures must stop the launcher.
     try {
-        if ($null -ne $tcp.PSObject.Methods["ConnectAsync"]) {
-            $connectTask = $tcp.ConnectAsync("localhost", $Port)
-            $completed = $connectTask.Wait(500)
-        } else {
-            $pending = $tcp.BeginConnect("localhost", $Port, $null, $null)
-            $waitHandle = $pending.AsyncWaitHandle
-            $completed = $waitHandle.WaitOne(500, $false)
-            if ($completed) { [void]$tcp.EndConnect($pending) }
-        }
-        if (-not $completed) { throw "Connection to port $Port timed out; refusing to start another instance." }
-        if (-not $tcp.Connected) { throw "Could not determine whether port $Port is available." }
-        return $true
+        $properties = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()
+        $listeners = $properties.GetActiveTcpListeners()
     } catch {
-        $cause = $_.Exception
-        while ($cause.InnerException) { $cause = $cause.InnerException }
-        # Only an explicit refusal means the port is idle. Timeout is not idle.
-        if ($cause -is [System.Net.Sockets.SocketException] -and $cause.SocketErrorCode -eq [System.Net.Sockets.SocketError]::ConnectionRefused) { return $false }
-        throw
-    } finally {
-        $tcp.Close()
-        if ($waitHandle) { $waitHandle.Close() }
+        throw "Could not query TCP listeners for port $Port; refusing to start another instance: $($_.Exception.Message)"
     }
+    foreach ($endpoint in $listeners) {
+        if ($endpoint.Port -eq $Port) { return $true }
+    }
+    return $false
 }
 
 function Open-ExistingWeb([int]$Port, [string]$Path) {

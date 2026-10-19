@@ -226,10 +226,10 @@ SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
 open_existing_web() {
     local port="$1" path="$2" info token body response workspace_id curl_status url
-    info=$(curl --noproxy '*' -fsS --connect-timeout 0.5 --max-time 2 "http://localhost:${port}/web/instance/info" 2>/dev/null)
+    info=$(curl --noproxy '*' -fsS --connect-timeout 2 --max-time 2 "http://localhost:${port}/web/instance/info" 2>/dev/null)
     curl_status=$?
     if [ "$curl_status" -ne 0 ]; then
-        # 只有连接失败才允许启动；响应超时不能证明端口空闲。
+        # 只有连接失败才允许启动；连接或响应超时均不能证明端口空闲。
         case "$curl_status" in 7) return 2 ;; *)
             echo "[Error] Port ${port} is occupied or could not be verified as SolonCode (curl ${curl_status}); refusing to start another instance." >&2
             return 1 ;;
@@ -247,7 +247,7 @@ open_existing_web() {
     [ -n "$token" ] || { echo "[Error] SolonCode is already running on port ${port}, but its local handoff record is unavailable." >&2; return 1; }
     body=$(printf '%s' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g')
     # 冷工作区需要同步初始化，不能使用健康探测的短超时；失败也不得回退启动 Java。
-    response=$(curl --noproxy '*' -fsS --connect-timeout 0.5 --max-time 60 -X POST \
+    response=$(curl --noproxy '*' -fsS --connect-timeout 2 --max-time 60 -X POST \
         -H "Accept: application/json" -H "Content-Type: application/json" \
         -H "X-Soloncode-Attach-Token: ${token}" \
         --data "{\"path\":\"${body}\"}" \
