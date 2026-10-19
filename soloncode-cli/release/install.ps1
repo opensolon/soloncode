@@ -323,16 +323,32 @@ function Open-ExistingWeb([int]$Port, [string]$Path) {
     if (-not (Test-LocalPort $Port)) { return $false }
     # Only a live instance handoff requires JSON support at launcher runtime.
     Initialize-LocalJson
-    try { $info = Invoke-LocalJson -Uri "http://localhost:$Port/web/instance/info" -TimeoutMs 2000 }
-    catch { throw "Could not verify SolonCode on port $Port; refusing to start another instance: $($_.Exception.Message)" }
-    $data = Get-JsonField $info "data"
-    if ($null -eq $data) { $data = $info }
-    $product = Get-JsonField $data "product"
-    $protocol = Get-JsonField $data "protocol"
-    $attachSupported = Get-JsonField $data "attachSupported"
-    $numericProtocol = $protocol -is [int] -or $protocol -is [long] -or $protocol -is [decimal] -or $protocol -is [double]
-    if ($product -isnot [string] -or $product -ne "soloncode" -or -not $numericProtocol -or $protocol -ne 1 -or $attachSupported -isnot [bool] -or -not $attachSupported) {
-        throw "Port $Port is occupied by another service, not SolonCode."
+    $wait = New-Object System.Diagnostics.Stopwatch
+    while ($true) {
+        try { $info = Invoke-LocalJson -Uri "http://localhost:$Port/web/instance/info" -TimeoutMs 2000 }
+        catch { throw "Could not verify SolonCode on port $Port; refusing to start another instance: $($_.Exception.Message)" }
+        $data = Get-JsonField $info "data"
+        if ($null -eq $data) { $data = $info }
+        $product = Get-JsonField $data "product"
+        $protocol = Get-JsonField $data "protocol"
+        $attachSupported = Get-JsonField $data "attachSupported"
+        $numericProtocol = $protocol -is [int] -or $protocol -is [long] -or $protocol -is [decimal] -or $protocol -is [double]
+        if ($product -isnot [string] -or $product -ne "soloncode") {
+            throw "Port $Port is occupied by another service, not SolonCode."
+        }
+        if (-not $numericProtocol -or $protocol -ne 1) {
+            throw "SolonCode on port $Port uses an incompatible handoff protocol."
+        }
+        if ($attachSupported -isnot [bool]) { throw "SolonCode returned an invalid handoff capability." }
+        if ($attachSupported) { break }
+        if (-not $wait.IsRunning) {
+            $wait.Start()
+            Write-Host "SolonCode is not ready yet. Waiting..."
+        }
+        if ($wait.ElapsedMilliseconds -ge 10000) {
+            throw "SolonCode is still not ready after 10 seconds. Please retry shortly; no new instance was started."
+        }
+        Start-Sleep -Milliseconds 1000
     }
     $record = Join-Path (Join-Path $env:USERPROFILE ".soloncode") "web-instance-$Port.json"
     if (-not (Test-Path -LiteralPath $record)) { throw "SolonCode is already running on port $Port, but its local handoff record is unavailable." }
@@ -340,19 +356,29 @@ function Open-ExistingWeb([int]$Port, [string]$Path) {
     $token = Get-JsonField $recordData "token"
     if ($token -isnot [string] -or -not $token.Trim()) { throw "SolonCode handoff record contains no token." }
     $payload = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-LocalJson @{ path = $Path }))
-    try { $result = Invoke-LocalJson -Uri "http://localhost:$Port/web/instance/attach" -TimeoutMs 5000 -Token $token -Body $payload }
-    catch { throw "Could not open the current directory in the existing SolonCode instance: $($_.Exception.Message)" }
+    Write-Host "Using the running SolonCode instance on port $Port"
+    Write-Host "Opening workspace: $Path"
+    try { $result = Invoke-LocalJson -Uri "http://localhost:$Port/web/instance/attach" -TimeoutMs 10000 -Token $token -Body $payload }
+    catch {
+        # A timed-out request may still be initializing the workspace on the server.
+        $cause = $_.Exception
+        while ($cause) {
+            if ($cause -is [System.Net.WebException] -and $cause.Status -eq [System.Net.WebExceptionStatus]::Timeout) {
+                throw "Opening the workspace timed out; the result is not confirmed. Please retry shortly."
+            }
+            $cause = $cause.InnerException
+        }
+        throw "Could not open the current directory in the existing SolonCode instance: $($_.Exception.Message)"
+    }
     $resultData = Get-JsonField $result "data"
     $workspaceId = Get-JsonField $resultData "workspaceId"
     if ($null -eq $workspaceId) { $workspaceId = Get-JsonField $result "workspaceId" }
     if ($workspaceId -isnot [string] -or -not $workspaceId.Trim()) { throw "Existing SolonCode returned no workspace id." }
     $url = "http://localhost:$Port/?workspaceId=$([Uri]::EscapeDataString([string]$workspaceId))"
-    Write-Host "SolonCode is already running on port $Port; reusing the existing instance."
-    Write-Host "Workspace: $Path"
     Write-Host "URL: $url"
     try {
         Start-Process $url -ErrorAction Stop
-        Write-Host "Browser launch requested for the current workspace. No new instance was started."
+        Write-Host "Browser launch requested."
     }
     catch { Write-Host "Could not launch the browser. Open this URL manually: $url" }
     return $true
@@ -362,7 +388,11 @@ $helpRequested = @($RestArgs | Where-Object { @("--help", "-h", "-?", "/?") -con
 if (-not $helpRequested -and $RestArgs.Count -gt 0 -and $RestArgs[0] -eq "web") {
     $port = 4808
     $validPort = $RestArgs.Count -le 1 -or [int]::TryParse([string]$RestArgs[1], [ref]$port)
-    if ($validPort -and $port -gt 0 -and $port -le 65535) { if (Open-ExistingWeb $port ((Get-Location).Path)) { exit 0 } }
+    if ($validPort -and $port -gt 0 -and $port -le 65535) {
+        if (Open-ExistingWeb $port ((Get-Location).Path)) { exit 0 }
+        Write-Host "Starting SolonCode..."
+        Write-Host "Keep this terminal open. Press Ctrl+C to stop."
+    }
 }
 
 try { $OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch { }

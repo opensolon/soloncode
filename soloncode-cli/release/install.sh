@@ -225,49 +225,79 @@ done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
 open_existing_web() {
-    local port="$1" path="$2" info token body response workspace_id curl_status url
-    info=$(curl --noproxy '*' -fsS --connect-timeout 2 --max-time 2 "http://localhost:${port}/web/instance/info" 2>/dev/null)
-    curl_status=$?
-    if [ "$curl_status" -ne 0 ]; then
-        # 只有连接失败才允许启动；连接或响应超时均不能证明端口空闲。
-        case "$curl_status" in 7) return 2 ;; *)
-            echo "[Error] Port ${port} is occupied or could not be verified as SolonCode (curl ${curl_status}); refusing to start another instance." >&2
-            return 1 ;;
-        esac
-    fi
-    # 字段顺序和 JSON 排版不属于协议；值必须完整匹配，不能把 protocol:10 当作 1。
-    info=$(printf '%s' "$info" | tr '\r\n' '  ')
-    if ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"product"[[:space:]]*:[[:space:]]*"soloncode"[[:space:]]*[,}]' ||
-       ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"protocol"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]' ||
-       ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"attachSupported"[[:space:]]*:[[:space:]]*true[[:space:]]*[,}]'; then
-        echo "[Error] Port ${port} is occupied by another service, not SolonCode." >&2
-        return 1
-    fi
+    local port="$1" path="$2" info token body response workspace_id curl_status url deadline=0 now
+    while :; do
+        info=$(curl --noproxy '*' -fsS --connect-timeout 2 --max-time 2 "http://localhost:${port}/web/instance/info" 2>/dev/null)
+        curl_status=$?
+        if [ "$curl_status" -ne 0 ]; then
+            # 只有连接失败才允许启动；连接或响应超时均不能证明端口空闲。
+            case "$curl_status" in 7)
+                # 曾确认有实例后，连接失败也不能回退启动另一个 Java。
+                if [ "$deadline" -eq 0 ]; then return 2; fi
+                echo "[Error] SolonCode became unavailable while waiting; please retry." >&2
+                return 1 ;; *)
+                echo "[Error] Port ${port} is occupied or could not be verified as SolonCode (curl ${curl_status}); refusing to start another instance." >&2
+                return 1 ;;
+            esac
+        fi
+        # 字段顺序和 JSON 排版不属于协议；值必须完整匹配，不能把 protocol:10 当作 1。
+        info=$(printf '%s' "$info" | tr '\r\n' '  ')
+        if ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"product"[[:space:]]*:[[:space:]]*"soloncode"[[:space:]]*[,}]'; then
+            echo "[Error] Port ${port} is occupied by another service, not SolonCode." >&2
+            return 1
+        fi
+        if ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"protocol"[[:space:]]*:[[:space:]]*1[[:space:]]*[,}]'; then
+            echo "[Error] SolonCode on port ${port} uses an incompatible handoff protocol." >&2
+            return 1
+        fi
+        if printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"attachSupported"[[:space:]]*:[[:space:]]*true[[:space:]]*[,}]'; then break; fi
+        if ! printf '%s' "$info" | grep -Eq '[{,][[:space:]]*"attachSupported"[[:space:]]*:[[:space:]]*false[[:space:]]*[,}]'; then
+            echo "[Error] SolonCode returned an invalid handoff capability." >&2
+            return 1
+        fi
+        now=$(date +%s)
+        if [ "$deadline" -eq 0 ]; then
+            deadline=$((now + 10))
+            echo "SolonCode is not ready yet. Waiting..."
+        fi
+        if [ "$now" -ge "$deadline" ]; then
+            echo "[Error] SolonCode is still not ready after 10 seconds. Please retry shortly; no new instance was started." >&2
+            return 1
+        fi
+        sleep 1
+    done
     token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$HOME/.soloncode/web-instance-${port}.json" 2>/dev/null)
     [ -n "$token" ] || { echo "[Error] SolonCode is already running on port ${port}, but its local handoff record is unavailable." >&2; return 1; }
     body=$(printf '%s' "$path" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    printf 'Using the running SolonCode instance on port %s\n' "$port"
+    printf 'Opening workspace: %s\n' "$path"
     # 冷工作区需要同步初始化，不能使用健康探测的短超时；失败也不得回退启动 Java。
-    response=$(curl --noproxy '*' -fsS --connect-timeout 2 --max-time 60 -X POST \
+    response=$(curl --noproxy '*' -fsS --connect-timeout 2 --max-time 10 -X POST \
         -H "Accept: application/json" -H "Content-Type: application/json" \
         -H "X-Soloncode-Attach-Token: ${token}" \
         --data "{\"path\":\"${body}\"}" \
-        "http://localhost:${port}/web/instance/attach" 2>/dev/null) || {
-        echo "[Error] Could not open the current directory in the existing SolonCode instance." >&2
+        "http://localhost:${port}/web/instance/attach" 2>/dev/null)
+    curl_status=$?
+    if [ "$curl_status" -ne 0 ]; then
+        if [ "$curl_status" -eq 28 ]; then
+            echo "[Error] Opening the workspace timed out; the result is not confirmed. Please retry shortly." >&2
+        else
+            echo "[Error] Could not open the current directory in the existing SolonCode instance (curl ${curl_status})." >&2
+        fi
         return 1
-    }
+    fi
     workspace_id=$(printf '%s' "$response" | sed -n 's/.*"workspaceId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     [ -n "$workspace_id" ] || { echo "[Error] Existing SolonCode returned no workspace id." >&2; return 1; }
     url="http://localhost:${port}/?workspaceId=${workspace_id}"
-    printf 'SolonCode is already running on port %s; reusing the existing instance.\n' "$port"
-    printf 'Workspace: %s\nURL: %s\n' "$path" "$url"
+    printf 'URL: %s\n' "$url"
     if command -v open >/dev/null 2>&1; then
         if open "$url" >/dev/null 2>&1; then
-            printf '%s\n' "Browser launch requested for the current workspace. No new instance was started."
+            printf '%s\n' "Browser launch requested."
             return 0
         fi
     elif command -v xdg-open >/dev/null 2>&1; then
         if xdg-open "$url" >/dev/null 2>&1; then
-            printf '%s\n' "Browser launch requested for the current workspace. No new instance was started."
+            printf '%s\n' "Browser launch requested."
             return 0
         fi
     fi
@@ -288,6 +318,7 @@ if [ "${1:-}" = "web" ] && [ "$web_help" = false ]; then
             exit 1
         fi
         if open_existing_web "$port" "$PWD"; then exit 0; else status=$?; [ "$status" -eq 1 ] && exit "$status"; fi
+        printf '%s\n' "Starting SolonCode..." "Keep this terminal open. Press Ctrl+C to stop."
     fi
 fi
 
