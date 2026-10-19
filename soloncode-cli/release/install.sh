@@ -258,10 +258,18 @@ open_existing_web() {
     workspace_id=$(printf '%s' "$response" | sed -n 's/.*"workspaceId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')
     [ -n "$workspace_id" ] || { echo "[Error] Existing SolonCode returned no workspace id." >&2; return 1; }
     url="http://localhost:${port}/?workspaceId=${workspace_id}"
+    printf 'SolonCode is already running on port %s; reusing the existing instance.\n' "$port"
+    printf 'Workspace: %s\nURL: %s\n' "$path" "$url"
     if command -v open >/dev/null 2>&1; then
-        open "$url" >/dev/null 2>&1 && return 0
+        if open "$url" >/dev/null 2>&1; then
+            printf '%s\n' "Browser launch requested for the current workspace. No new instance was started."
+            return 0
+        fi
     elif command -v xdg-open >/dev/null 2>&1; then
-        xdg-open "$url" >/dev/null 2>&1 && return 0
+        if xdg-open "$url" >/dev/null 2>&1; then
+            printf '%s\n' "Browser launch requested for the current workspace. No new instance was started."
+            return 0
+        fi
     fi
     echo "Open this URL in your browser: $url"
     return 0

@@ -347,7 +347,13 @@ function Open-ExistingWeb([int]$Port, [string]$Path) {
     if ($null -eq $workspaceId) { $workspaceId = Get-JsonField $result "workspaceId" }
     if ($workspaceId -isnot [string] -or -not $workspaceId.Trim()) { throw "Existing SolonCode returned no workspace id." }
     $url = "http://localhost:$Port/?workspaceId=$([Uri]::EscapeDataString([string]$workspaceId))"
-    try { Start-Process $url -ErrorAction Stop }
+    Write-Host "SolonCode is already running on port $Port; reusing the existing instance."
+    Write-Host "Workspace: $Path"
+    Write-Host "URL: $url"
+    try {
+        Start-Process $url -ErrorAction Stop
+        Write-Host "Browser launch requested for the current workspace. No new instance was started."
+    }
     catch { Write-Host "Could not launch the browser. Open this URL manually: $url" }
     return $true
 }
