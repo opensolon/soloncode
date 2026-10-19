@@ -7,6 +7,7 @@ import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.function.Consumer;
 
 /** 进程共享的目标串行调度；容量包含执行中的任务，排空即删除目标。 */
@@ -52,10 +53,11 @@ final class FeishuReplyQueue {
             if (outstanding >= totalLimit || (lane != null && lane.count >= perTargetLimit)
                     || imageBytes > totalByteLimit - outstandingBytes
                     || imageBytes > perTargetByteLimit - (lane == null ? 0 : lane.bytes)) {
-                LOG.warn("[Feishu] Reply queue overloaded; newest reply rejected (targetPending={}, totalPending={}, targetLimit={}, totalLimit={}, imageBytes={}, targetBytes={}, totalBytes={}, targetByteLimit={}, totalByteLimit={})",
-                        lane == null ? 0 : lane.count, outstanding, perTargetLimit, totalLimit,
-                        imageBytes, lane == null ? 0 : lane.bytes, outstandingBytes, perTargetByteLimit, totalByteLimit);
-                return false;
+                throw new RejectedExecutionException("Feishu reply queue capacity exceeded"
+                        + " (targetPending=" + (lane == null ? 0 : lane.count)
+                        + ", totalPending=" + outstanding + ", imageBytes=" + imageBytes
+                        + ", targetBytes=" + (lane == null ? 0 : lane.bytes)
+                        + ", totalBytes=" + outstandingBytes + ")");
             }
             start = lane == null;
             if (start) {
@@ -85,7 +87,10 @@ final class FeishuReplyQueue {
                         LOG.warn("[Feishu] Reply queue submit threw after consumer started", e);
                     }
                 }
-                return false;
+                if (e instanceof RejectedExecutionException) {
+                    throw (RejectedExecutionException) e;
+                }
+                throw new RejectedExecutionException("Feishu reply queue submission failed", e);
             }
         }
         return true;
@@ -100,6 +105,11 @@ final class FeishuReplyQueue {
         }
         try {
             while (true) {
+                // 在任务边界响应中断；保留标志并由 finally 显式丢弃剩余项。
+                // 不清中断继续消费，也不重投消费者，以免绕过执行器的关闭语义。
+                if (Thread.currentThread().isInterrupted()) {
+                    return;
+                }
                 PendingReply task;
                 synchronized (this) {
                     task = lane.tasks.pollFirst();
@@ -111,7 +121,7 @@ final class FeishuReplyQueue {
                 try {
                     task.task.run();
                 } catch (RuntimeException e) {
-                    LOG.error("[Feishu] Queued reply failed; continuing next reply", e);
+                    LOG.error("[Feishu] Queued reply failed", e);
                 } finally {
                     synchronized (this) {
                         lane.count--;
@@ -123,12 +133,15 @@ final class FeishuReplyQueue {
             }
         } finally {
             synchronized (this) {
-                // 致命异常退出也要释放剩余计数；不得删除已替换的新队列。
+                // 中断或致命异常退出也要释放剩余容量；不得删除已替换的新队列。
                 if (lanes.get(key) == lane) {
                     lanes.remove(key);
                     outstanding -= lane.count;
                     outstandingBytes -= lane.bytes;
                     lane.tasks.clear();
+                    if (Thread.currentThread().isInterrupted()) {
+                        LOG.warn("[Feishu] Reply queue consumer interrupted; stopped draining and dropped {} queued replies", lane.count);
+                    }
                 }
             }
         }

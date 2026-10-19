@@ -8,85 +8,112 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/** 图片失败占位及 Markdown 失败时安全纯文本降级，不再发送独立图片失败提示。 */
 class FeishuFailureHintTest {
     @Test
-    void actualHintIsSafeSingleAttemptAndFinishesBeforeNextReplyOnSameSnapshot() {
-        for (boolean throwHint : Arrays.asList(false, true)) {
-            HintLink link = new HintLink();
-            link.throwHint = throwHint;
-            link.queueImages();
-            link.sendReply("s", "next", true, null, "target", null);
-            link.binding.openId = "changed";
-            link.binding.appSecret = "changed";
-            assertEquals(1, link.consumers.size());
-            link.consumers.get(0).run();
-            assertEquals(Arrays.asList("upload:one.png", "upload:two.png", "image:two.png",
-                    "hint:图片发送失败（2/2 张），请在工作区查看图片或稍后重试。", "next"), link.events);
-            assertEquals(2, link.tokenCalls); // 提示一次，后续普通文本一次。
-            assertEquals(1, link.hintCalls);
-            assertEquals(Arrays.asList("secret|target", "secret|target"), link.routes);
-        }
+    void failedUploadRendersSafeBodyBeforeNextReplyOnCapturedBinding() {
+        FallbackLink link = new FallbackLink();
+        link.failUpload = true;
+        ChannelReply reply = FeishuImageFixtures.reply("正文", link.image);
+        link.sendReply("s", reply, null, "target", null);
+        link.sendReply("s", "next", true, null, "target", null);
+        link.binding.openId = "changed";
+        link.binding.appSecret = "changed";
+        link.flush();
+        String expectedText = "正文\n（图片不可用：图1；上传失败或渠道不支持）";
+        assertEquals(Arrays.asList("upload", "md:" + expectedText, "md:next"), link.events);
+        String failedBody = link.events.get(1);
+        assertFalse(failedBody.contains("private"));
+        assertFalse(failedBody.contains("local.png"));
+        assertFalse(failedBody.contains("img_secret"));
+        assertFalse(failedBody.contains("不得追加"));
+        assertEquals(Arrays.asList("secret|target", "secret|target", "secret|target"), link.routes);
+        assertEquals(1, link.uploads);
+        assertTrue(link.plain.isEmpty());
     }
 
     @Test
-    void failedHintTokenDoesNotRetryOrSendPlainText() {
-        HintLink link = new HintLink();
-        link.failToken = true;
-        link.queueImages();
-        link.consumers.get(0).run();
-        assertEquals(1, link.tokenCalls);
-        assertEquals(0, link.hintCalls);
-        assertEquals(Arrays.asList("upload:one.png", "upload:two.png", "image:two.png"), link.events);
+    void markdownFailureDegradesUsingSafeRenderingNotUploadedKeyOrLocalPath() {
+        FallbackLink link = new FallbackLink();
+        link.failMarkdown = true;
+        ChannelReply reply = FeishuImageFixtures.reply("正文", link.image, link.image);
+        link.sendReply("s", reply, null, "target", null);
+        link.flush();
+        assertEquals(1, link.uploads);
+        assertEquals(3, link.markdownCalls);
+        assertEquals(Collections.singletonList(reply.renderImages(img -> null)), link.plain);
+        assertFalse(link.plain.get(0).contains("img_secret"));
+        assertFalse(link.plain.get(0).contains("private"));
+        assertFalse(link.plain.get(0).contains("local"));
     }
 
-    private static class HintLink extends FeishuLink {
+    @Test
+    void outerBodyRetryReusesSuccessfulAndFailedUploadCache() {
+        FallbackLink link = new FallbackLink();
+        link.failMarkdown = true;
+        link.plainFailures = 3; // 第一轮纯文本分片重试全部失败，第二轮成功。
+        ChannelReply reply = FeishuImageFixtures.reply("正文", link.image);
+        link.sendReply("s", reply, null, "target", null);
+        link.flush();
+        assertEquals(1, link.uploads);
+        assertEquals(2, link.tokenCalls);
+        assertEquals(6, link.markdownCalls);
+        assertEquals(4, link.plain.size());
+        for (String text : link.plain) assertEquals(reply.renderImages(img -> null), text);
+    }
+
+    private static class FallbackLink extends FeishuLink {
         final FeishuBinding binding = new FeishuBinding();
+        final PublishedImage image = FeishuImageFixtures.image(1, "private/local.png", "不得追加");
         final List<Runnable> consumers = new ArrayList<>();
         final List<String> events = new ArrayList<>();
         final List<String> routes = new ArrayList<>();
-        boolean throwHint;
-        boolean failToken;
+        final List<String> plain = new ArrayList<>();
+        boolean failUpload;
+        boolean failMarkdown;
+        int plainFailures;
         int tokenCalls;
-        int hintCalls;
+        int markdownCalls;
+        int uploads;
 
-        HintLink() {
+        FallbackLink() {
             super("workspace", null);
             binding.appId = UUID.randomUUID().toString();
             binding.appSecret = "secret";
             binding.openId = "user";
         }
-        void queueImages() {
-            sendReply("s", new ChannelReply(null, true, "run", Arrays.asList(
-                    new PublishedImage(new byte[]{1}, "one.png", null),
-                    new PublishedImage(new byte[]{2}, "two.png", null))), null, "target", null);
+        void flush() {
+            assertEquals(1, consumers.size());
+            consumers.get(0).run();
+        }
+        private void route(FeishuBinding snapshot) {
+            routes.add(snapshot.appSecret + "|" + snapshot.openId);
         }
         @Override protected FeishuBinding currentBinding(String session) { return binding; }
         @Override protected void submitReplyTask(Runnable task) { consumers.add(task); }
         @Override protected String getReplyAccessToken(FeishuBinding snapshot) {
             tokenCalls++;
-            routes.add(snapshot.appSecret + "|" + snapshot.openId);
-            return failToken ? null : "token";
+            route(snapshot);
+            return "token";
         }
         @Override protected String uploadReplyImage(FeishuBinding snapshot, byte[] bytes, String filename) {
-            events.add("upload:" + filename);
-            return filename.equals("one.png") ? null : filename;
-        }
-        @Override protected String sendReplyImage(FeishuBinding snapshot, String key, String uuid) {
-            events.add("image:" + key);
-            return "";
+            assertEquals(1, FeishuImageFixtures.imageId(bytes));
+            uploads++;
+            route(snapshot);
+            events.add("upload");
+            return failUpload ? null : "img_secret";
         }
         @Override protected boolean sendReplyPlainTextChunk(String token, String user, String text) {
             assertEquals("target", user);
-            hintCalls++;
-            events.add("hint:" + text);
-            assertFalse(text.contains("raw server response"));
-            if (throwHint) throw new IllegalStateException("raw server response");
-            return false;
+            plain.add(text);
+            events.add("plain:" + text);
+            return plainFailures-- <= 0;
         }
         @Override protected boolean sendReplyTextChunk(String token, String user, String text, int part) {
             assertEquals("target", user);
-            events.add(text);
-            return true;
+            markdownCalls++;
+            events.add("md:" + text);
+            return !failMarkdown;
         }
     }
 }

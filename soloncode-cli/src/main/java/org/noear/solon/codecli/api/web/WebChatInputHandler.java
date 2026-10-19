@@ -613,37 +613,41 @@ class WebChatInputHandler {
                 return true;
             }
 
-            // 在任何持久化/事件投递前领取取消终态，与 RunEnd 使用同一临界区。
-            // 投递延后到持久化之后，但只能使用此刻捕获的本轮路由。
-            Runnable replyCanceled = gate.getStreamBuilder().prepareCanceledReply(wsContext, session);
+            try {
+                // 在任何持久化/事件投递前领取取消终态，与 RunEnd 使用同一临界区。
+                // 投递延后到持久化之后，但只能使用此刻捕获的本轮路由。
+                Runnable replyCanceled = gate.getStreamBuilder().prepareCanceledReply(wsContext, session);
 
-            // 1) 取消语义：error + 可选 final/trace（落库消息带上 runId，便于按 runId 锚点删除）
-            AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
-            ReActTrace trace = TraceUtil.getCurrentTrace(session);
-            if (trace != null) {
-                cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
-            }
-            session.addMessage(cancelMessage);
-            // 中断时 agent 的 call() 收尾被跳过，这里必须补快照：把当前 trace（含已完成的思考/工具调用）
-            // 与取消消息一起持久化，否则进程重启/会话重载后本轮 trace 会丢失。
-            // 参照 rewind 路径（见 isCommand 中 /rewind 处理）的做法。
-            session.updateSnapshot();
-            gate.emitToClient(wsContext, sessionId, WebEvent.ofError("用户已取消任务."));
-            // 取消终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
-            replyCanceled.run();
-
-            if (trace != null) {
-                Long totalTokens = (trace.getMetrics() != null) ? trace.getMetrics().getTotalTokens() : 0L;
-                long elapsedSeconds = 0L;
-                if (trace.getBeginTimeMs() > 0) {
-                    elapsedSeconds = (System.currentTimeMillis() - trace.getBeginTimeMs()) / 1000;
+                // 1) 取消语义：error + 可选 final/trace（落库消息带上 runId，便于按 runId 锚点删除）
+                AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
+                ReActTrace trace = TraceUtil.getCurrentTrace(session);
+                if (trace != null) {
+                    cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
                 }
-                gate.emitToClient(wsContext, sessionId, WebEvent.ofTrace(null, totalTokens, elapsedSeconds, "用户已取消任务."));
-            }
+                session.addMessage(cancelMessage);
+                // 中断时 agent 的 call() 收尾被跳过，这里必须补快照：把当前 trace（含已完成的思考/工具调用）
+                // 与取消消息一起持久化，否则进程重启/会话重载后本轮 trace 会丢失。
+                // 参照 rewind 路径（见 isCommand 中 /rewind 处理）的做法。
+                session.updateSnapshot();
+                gate.emitToClient(wsContext, sessionId, WebEvent.ofError("用户已取消任务."));
+                // 取消终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
+                replyCanceled.run();
 
-            // 2) 同线程先发 done，再 dispose；doFinally 中 emitDoneOnce 因 CAS 跳过
-            gate.getEventPublisher().emitDoneOnce(wsContext, session);
-            composite.dispose();
+                if (trace != null) {
+                    Long totalTokens = (trace.getMetrics() != null) ? trace.getMetrics().getTotalTokens() : 0L;
+                    long elapsedSeconds = 0L;
+                    if (trace.getBeginTimeMs() > 0) {
+                        elapsedSeconds = (System.currentTimeMillis() - trace.getBeginTimeMs()) / 1000;
+                    }
+                    gate.emitToClient(wsContext, sessionId, WebEvent.ofTrace(null, totalTokens, elapsedSeconds, "用户已取消任务."));
+                }
+
+                // 2) 正常路径同线程先发 done，再 dispose；doFinally 中 emitDoneOnce 因 CAS 跳过
+                gate.getEventPublisher().emitDoneOnce(wsContext, session);
+            } finally {
+                // 句柄已经移出会话，持久化或回执失败也不能留下无法再次取消的活跃流。
+                composite.dispose();
+            }
             LOG.info("[WebGate] Session {} interrupted", sessionId);
             return true;
         } catch (Exception e) {

@@ -11,10 +11,10 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.channel.ChannelReply;
+import org.noear.solon.codecli.channel.feishu.FeishuLink;
+import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 
-import org.noear.solon.codecli.artifact.PublishedImage;
 import org.noear.solon.codecli.artifact.ImageReplyTurn;
-import java.util.List;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.pipeline.SessionMetricsRecorder;
@@ -137,19 +137,29 @@ public class WebStreamBuilder {
     /** 仅由顶层 RunEnd 调用；成功与 isFinal 是两个不同的条件。 */
     public void replyRunEnd(WorkspaceContext context, AgentSession session, ImageReplyTurn turn,
                             String runId, String text, boolean abnormal) {
+        synchronized (session.attrs()) {
+            if (!turn.canClaim(runId)
+                    || Boolean.TRUE.equals(session.attrs().get(ATTR_IM_TERMINAL_SENT))) return;
+        }
+        // 能力查询、Markdown 解析、路径验证、读取和解码均不得持有 attrs 锁。
+        // 纯 Web、未绑定或仅绑定文本 IM 时，只生成安全占位，不准备本地图片。
+        ChannelReply prepared = abnormal
+                ? ChannelReply.fromMarkdown("任务执行异常结束。", true, runId, null, null, false)
+                : hasBoundImageChannel(context, session.getSessionId())
+                    ? prepareRunEndReply(turn, stripAnsi(text), runId)
+                    : ChannelReply.fromMarkdown(stripAnsi(text), true, runId, null, null, false);
         Runnable delivery;
         synchronized (session.attrs()) {
-            if (!turn.claim(runId)) return;
-            if (Boolean.TRUE.equals(session.attrs().get(ATTR_IM_TERMINAL_SENT))) {
-                turn.getImages().discard();
-                return;
-            }
-            List<PublishedImage> images = turn.getImages().finish(runId, !abnormal);
+            // 准备期间可能取消、异常、HITL 或切换请求；只有当前轮能领取终态。
+            if (!turn.canClaim(runId)
+                    || Boolean.TRUE.equals(session.attrs().get(ATTR_IM_TERMINAL_SENT))
+                    || !turn.claim(runId)) return;
+            ChannelReply reply = turn.isImagesAllowed() ? prepared : prepared.withoutImages();
+            // 成功终态在此提交交付；后续取消不撤销已领取的快照或渠道排队图片。
+            // 取消仍按 Web 既有流程处理，本轮不引入可撤销发送队列。
             session.attrs().put(ATTR_IM_TERMINAL_SENT, Boolean.TRUE);
             cancelLongRunningWatch(session);
             resetCommandHint(session);
-            ChannelReply reply = new ChannelReply(stripAnsi(abnormal ? "任务执行异常结束。" : text),
-                    true, runId, images);
             Map<String, String> route = turn.getRoute();
             String sessionId = session.getSessionId();
             delivery = prepareDelivery(session, turn, null, () -> {
@@ -169,6 +179,20 @@ public class WebStreamBuilder {
             });
         }
         delivery.run();
+    }
+
+    /** 只读查询实际绑定的图片接收端；未绑定渠道的能力不构成读取本地文件的许可。 */
+    private boolean hasBoundImageChannel(WorkspaceContext context, String sessionId) {
+        for (Channel link : context.getChannelHub().getImLinks()) {
+            // 仅纳入现有支持本地图片的实现；未来有统一能力接口后再替换此有限判断。
+            if (link.isBound(sessionId) && (link instanceof FeishuLink || link instanceof DingTalkLink)) return true;
+        }
+        return false;
+    }
+
+    /** 仅有绑定图片 IM 时在锁外准备最终 Markdown 快照，与终态领取分离。 */
+    protected ChannelReply prepareRunEndReply(ImageReplyTurn turn, String text, String runId) {
+        return turn.prepare(text, runId);
     }
 
     /**
@@ -234,12 +258,17 @@ public class WebStreamBuilder {
         String source = route == null ? null : route.get("source");
         String imText = stripAnsi(text);
         for (Channel link : context.getChannelHub().getImLinks()) {
-            if (!link.isBound(sessionId)) continue;
-            if (source != null && source.equalsIgnoreCase(link.getChannelName())) {
-                link.sendReply(sessionId, imText, isFinal,
-                        route.get("sourceUserId"), route.get("replyTarget"), route.get("messageId"));
-            } else {
-                link.sendReply(sessionId, imText, isFinal);
+            try {
+                if (!link.isBound(sessionId)) continue;
+                if (source != null && source.equalsIgnoreCase(link.getChannelName())) {
+                    link.sendReply(sessionId, imText, isFinal,
+                            route.get("sourceUserId"), route.get("replyTarget"), route.get("messageId"));
+                } else {
+                    link.sendReply(sessionId, imText, isFinal);
+                }
+            } catch (RuntimeException e) {
+                // 单个渠道的失败不能阻断其它绑定端的文本终态。
+                log.warn("Channel text reply failed", e);
             }
         }
     }
@@ -448,7 +477,7 @@ public class WebStreamBuilder {
                         ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
                         o.interceptorAdd(steerInterceptor);
                         o.interceptorAdd(imageTurn);
-                        o.toolContextPut(org.noear.solon.codecli.artifact.PublishImageTalent.CONTEXT_KEY, imageTurn.getToken());
+
 
                         if (Assert.isNotEmpty(sessionCwd)) {
                             o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);

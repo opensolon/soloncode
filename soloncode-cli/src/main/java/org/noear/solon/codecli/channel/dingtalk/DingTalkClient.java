@@ -22,6 +22,8 @@ import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.net.URLEncoder;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -235,6 +237,12 @@ public class DingTalkClient {
      */
     public static boolean sendSingleMarkdownMessage(String accessToken, String robotCode, String userId,
                                                      String title, String mdText) {
+        return sendSingleMarkdownMessage(accessToken, robotCode, userId, title, mdText, NEW_API_BASE);
+    }
+
+    // 显式测试端点，仅替换 HTTP 地址，不改变 Markdown 消息语义。
+    static boolean sendSingleMarkdownMessage(String accessToken, String robotCode, String userId,
+                                            String title, String mdText, String endpoint) {
         try {
             ONode body = new ONode();
             body.set("robotCode", robotCode);
@@ -249,7 +257,7 @@ public class DingTalkClient {
             msgParam.set("text", mdText);
             body.set("msgParam", msgParam.toJson());
 
-            String resp = httpPost(NEW_API_BASE + "/v1.0/robot/oToMessages/batchSend", body.toJson(), accessToken);
+            String resp = httpPost(endpoint + "/v1.0/robot/oToMessages/batchSend", body.toJson(), accessToken);
             if (resp == null) return false;
 
             if (resp.isEmpty()) {
@@ -270,6 +278,88 @@ public class DingTalkClient {
         } catch (Exception e) {
             LOG.error("[DingTalk] sendSingleMarkdownMessage error: {}", e.getMessage());
             return false;
+        }
+    }
+
+    /**
+     * 上传 PNG/JPEG 原始字节，返回 media_id；钉钉产品限额为 1 MiB，不重编码。
+     *
+     * @throws IllegalArgumentException 参数为空、文件名包含路径、图片超限或格式不支持
+     * @throws IllegalStateException HTTP、业务或响应格式错误（不包含敏感响应及底层异常）
+     */
+    public static String uploadImage(String token, byte[] data, String filename) {
+        return uploadImage(token, data, filename, API_BASE);
+    }
+
+    // 显式测试端点，不修改全局地址，也不影响旧文本接口。
+    static String uploadImage(String token, byte[] data, String filename, String endpoint) {
+        requireImageText(token, "token");
+        requireImageText(filename, "filename");
+        if (filename.indexOf('/') >= 0 || filename.indexOf('\\') >= 0) {
+            throw new IllegalArgumentException("filename must be a basename");
+        }
+        if (data == null || data.length == 0 || data.length > 1024 * 1024) {
+            throw new IllegalArgumentException("image must contain 1 to 1048576 bytes");
+        }
+        String mimeType;
+        if (data.length >= 8 && data[0] == (byte) 0x89
+                && data[1] == 'P' && data[2] == 'N' && data[3] == 'G'
+                && data[4] == 13 && data[5] == 10 && data[6] == 26 && data[7] == 10) {
+            mimeType = "image/png";
+        } else if (data.length >= 3 && data[0] == (byte) 0xff
+                && data[1] == (byte) 0xd8 && data[2] == (byte) 0xff) {
+            mimeType = "image/jpeg";
+        } else {
+            throw new IllegalArgumentException("image must contain PNG or JPEG bytes");
+        }
+        // multipart 不透传原文件名，避免引号、换行等合法文件名字符进入头部。
+        String uploadFilename = "image/png".equals(mimeType) ? "image.png" : "image.jpg";
+        try {
+            HttpUtils http = newImageRequest(endpoint + "/media/upload?access_token="
+                    + URLEncoder.encode(token, "UTF-8"), null).multipart(true)
+                    .data("type", "image")
+                    .data("media", uploadFilename, new ByteArrayInputStream(data), mimeType);
+            ONode root = executeImageApi(http);
+            // 不使用 getInt 默认值，缺失、null 或非数值不得误判为成功。
+            if (!"0".equals(root.get("errcode").getString()) || !hasImageText(root.get("media_id"))) {
+                throw new IllegalStateException("invalid upload response");
+            }
+            return root.get("media_id").getString();
+        } catch (Exception e) {
+            // URL 含 token，异常链及响应原文均不能暴露。
+            throw new IllegalStateException("[DingTalk] uploadImage failed: HTTP, business or response error");
+        }
+    }
+
+    private static void requireImageText(String value, String name) {
+        if (value == null || value.trim().isEmpty()) {
+            throw new IllegalArgumentException(name + " must not be blank");
+        }
+    }
+
+    private static boolean hasImageText(ONode node) {
+        return node.isString() && node.getString() != null && !node.getString().trim().isEmpty();
+    }
+
+    private static HttpUtils newImageRequest(String url, String token) {
+        HttpUtils http = HttpUtils.http(url).timeout(10, 10, 15);
+        ProxyConfig.applyIfNeeded(http);
+        if (token != null) {
+            http.header("x-acs-dingtalk-access-token", token);
+        }
+        return http;
+    }
+
+    private static ONode executeImageApi(HttpUtils http) throws Exception {
+        try (HttpResponse response = http.exec("POST")) {
+            if (response.code() < 200 || response.code() >= 300) {
+                throw new IllegalStateException("HTTP error");
+            }
+            ONode root = ONode.ofJson(response.bodyAsString());
+            if (!root.isObject()) {
+                throw new IllegalStateException("invalid JSON response");
+            }
+            return root;
         }
     }
 

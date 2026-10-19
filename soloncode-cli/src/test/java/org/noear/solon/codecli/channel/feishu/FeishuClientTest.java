@@ -92,11 +92,12 @@ class FeishuClientTest {
     }
 
     @Test
-    void sendsImageWithJsonStringContentStableUuidAndCachedToken() throws IOException {
-        upload(image("png"), "local.png");
-        String key = "img_\"escaped\\key";
-        for (int i = 0; i < 2; i++) {
-            assertEquals("om_mock", send(key, "stable-retry-id"));
+    void sendsMarkdownPostWithUploadedImageKeyAndJsonStringContent() throws IOException {
+        String imageKey = upload(image("png"), "local.png");
+        String markdown = "## 图片\n\n![示例图片](" + imageKey + ")\n\n带有\"引号\"和\\反斜杠的正文";
+        for (String title : Arrays.asList("图片标题", null)) {
+            assertEquals("om_mock", FeishuClient.sendMdPostMessage("mock-token", "open_id",
+                    "ou_mock", title, markdown, endpoint));
             Request request = lastRequest();
             assertEquals("POST", request.method);
             assertEquals("/open-apis/im/v1/messages", request.path);
@@ -104,28 +105,56 @@ class FeishuClientTest {
             assertEquals("Bearer mock-token", request.authorization);
             assertTrue(request.contentType.startsWith("application/json"));
             ONode body = ONode.ofJson(new String(request.body, StandardCharsets.UTF_8));
+            assertEquals("open_id", body.get("receive_id_type").getString());
             assertEquals("ou_mock", body.get("receive_id").getString());
-            assertEquals("image", body.get("msg_type").getString());
-            assertEquals("stable-retry-id", body.get("uuid").getString());
+            assertEquals("post", body.get("msg_type").getString());
             assertTrue(body.get("content").isString(), "content 必须是 JSON 字符串");
-            assertEquals(key, ONode.ofJson(body.get("content").getString()).get("image_key").getString());
+            ONode post = ONode.ofJson(body.get("content").getString()).get("zh_cn");
+            assertEquals(title == null ? "" : title, post.get("title").getString());
+            ONode paragraphs = post.get("content");
+            assertEquals(1, paragraphs.getArray().size(), "md 标签独占一个段落");
+            ONode paragraph = paragraphs.get(0);
+            assertEquals(1, paragraph.getArray().size());
+            assertEquals("md", paragraph.get(0).get("tag").getString());
+            assertEquals(markdown, paragraph.get(0).get("text").getString(), "图片语法与正文须原样保留");
         }
         assertEquals(1, tokenRequests());
+        assertEquals(4, requests.size());
     }
 
     @Test
-    void isolatesTokenByAppId() {
-        send("img_mock", "one");
-        assertEquals("om_mock", FeishuClient.sendImageMessage(appId + "-other", "secret", "ou_mock",
-                "img_mock", "two", endpoint));
+    void preparedMarkdownUploadsDuplicateOnceAndPreservesPositionsInJsonContent() {
+        org.noear.solon.codecli.artifact.PublishedImage image = FeishuImageFixtures.image(1);
+        org.noear.solon.codecli.channel.ChannelReply reply = FeishuImageFixtures.inPlaceReply(
+                "前😀 {{1}} 中\"引号\" {{2}} 后\\反斜杠", image, image);
+        // fixture 已删除源文件；上传只能消费 fromMarkdown 准备的内存快照。
+        String rendered = reply.renderImages(snapshot -> upload(snapshot.getBytes(), "image.png"));
+        String expected = "前😀 ![图1](img_mock) 中\"引号\" ![图2](img_mock) 后\\反斜杠";
+        assertEquals(expected, rendered);
+        assertEquals("om_mock", FeishuClient.sendMdPostMessage("mock-token", "open_id",
+                "ou_mock", "", rendered, endpoint));
+        ONode body = ONode.ofJson(new String(lastRequest().body, StandardCharsets.UTF_8));
+        assertTrue(body.get("content").isString());
+        ONode post = ONode.ofJson(body.get("content").getString()).get("zh_cn");
+        assertEquals(expected, post.get("content").get(0).get(0).get("text").getString());
+        assertEquals(3, requests.size(), "一次 token、一次上传、一次正文发送");
+    }
+
+    @Test
+    void isolatesTokenByAppId() throws IOException {
+        byte[] png = image("png");
+        assertEquals("img_mock", upload(png, "one.png"));
+        assertEquals("img_mock", FeishuClient.uploadImage(appId + "-other", "secret", png, "two.png", endpoint));
+        assertEquals("img_mock", upload(png, "three.png"));
         assertEquals(2, tokenRequests());
     }
 
     @Test
-    void refreshesTokenNearExpiry() {
+    void refreshesTokenNearExpiry() throws IOException {
         tokenResponse = "{\"code\":0,\"tenant_access_token\":\"short-token\",\"expire\":60}";
-        send("img_mock", "one");
-        send("img_mock", "two");
+        byte[] png = image("png");
+        upload(png, "one.png");
+        upload(png, "two.png");
         assertEquals(2, tokenRequests());
         assertEquals("Bearer short-token", lastRequest().authorization);
     }
@@ -144,51 +173,40 @@ class FeishuClientTest {
     }
 
     @Test
-    void reportsSendHttpAndBusinessErrors() {
-        apiStatus = 503;
-        assertTrue(assertThrows(IllegalStateException.class, () -> send("img_mock", "one"))
-                .getMessage().contains("sendImageMessage HTTP error: status=503"));
-        apiStatus = 200;
-        apiResponse = "{\"code\":230001,\"msg\":\"invalid recipient\"}";
-        String message = assertThrows(IllegalStateException.class, () -> send("img_mock", "one")).getMessage();
-        assertTrue(message.contains("code=230001"));
-        assertTrue(message.contains("invalid recipient"));
-    }
-
-    @Test
-    void propagatesTokenErrorsWithoutSendingImage() {
+    void propagatesTokenErrorsWithoutUploadingImage() throws IOException {
+        byte[] png = image("png");
         tokenStatus = 401;
-        assertTrue(assertThrows(IllegalStateException.class, () -> send("img_mock", "one"))
+        assertTrue(assertThrows(IllegalStateException.class, () -> upload(png, "a.png"))
                 .getMessage().contains("getTenantAccessToken HTTP error: status=401"));
         tokenStatus = 200;
         tokenResponse = "{\"code\":10003,\"msg\":\"bad credentials\"}";
-        assertTrue(assertThrows(IllegalStateException.class, () -> send("img_mock", "one"))
+        assertTrue(assertThrows(IllegalStateException.class, () -> upload(png, "a.png"))
                 .getMessage().contains("code=10003"));
         assertEquals(2, requests.size());
         assertEquals(2, tokenRequests());
     }
 
     @Test
-    void rejectsMissingTokenAndDoesNotCacheIt() {
+    void rejectsMissingTokenAndDoesNotCacheIt() throws IOException {
+        byte[] png = image("png");
         tokenResponse = "{\"code\":0,\"expire\":7200}";
-        assertTrue(assertThrows(IllegalStateException.class, () -> send("img_mock", "one"))
+        assertTrue(assertThrows(IllegalStateException.class, () -> upload(png, "a.png"))
                 .getMessage().contains("tenant_access_token"));
         tokenResponse = "{\"code\":0,\"tenant_access_token\":\"mock-token\",\"expire\":7200}";
-        assertEquals("om_mock", send("img_mock", "one"));
+        assertEquals("img_mock", upload(png, "a.png"));
         assertEquals(2, tokenRequests());
     }
 
     @Test
     void rejectsMalformedAndIncompleteApiResponses() throws IOException {
+        byte[] png = image("png");
         for (String response : Arrays.asList("not json", "{}", "{\"data\":{\"image_key\":\"x\"}}")) {
             apiResponse = response;
-            assertTrue(assertThrows(IllegalStateException.class, () -> send("img_mock", "one"))
+            assertTrue(assertThrows(IllegalStateException.class, () -> upload(png, "a.png"))
                     .getMessage().contains("invalid JSON response"));
         }
         apiResponse = "{\"code\":0,\"data\":{}}";
-        assertTrue(assertThrows(IllegalStateException.class, () -> send("img_mock", "one"))
-                .getMessage().contains("message_id"));
-        byte[] png = image("png");
+
         assertTrue(assertThrows(IllegalStateException.class, () -> upload(png, "a.png"))
                 .getMessage().contains("image_key"));
     }
@@ -202,28 +220,22 @@ class FeishuClientTest {
         assertThrows(IllegalArgumentException.class, () -> upload(png, ""));
         assertThrows(IllegalArgumentException.class, () -> upload(png, "bad\r\nname.png"));
         assertThrows(IllegalArgumentException.class, () -> upload(png, "dir/a.png"));
-        assertThrows(IllegalArgumentException.class, () -> send("", "one"));
-        assertThrows(IllegalArgumentException.class, () -> send("img_mock", " "));
-        assertThrows(IllegalArgumentException.class, () -> send("img_mock", new String(new char[51]).replace('\0', 'x')));
-        assertThrows(IllegalArgumentException.class, () -> FeishuClient.sendImageMessage(appId, "secret", " ", "img_mock", "one", endpoint));
-        assertThrows(IllegalArgumentException.class, () -> FeishuClient.sendImageMessage(appId, null, "ou_mock", "img_mock", "one", endpoint));
+        assertThrows(IllegalArgumentException.class, () -> FeishuClient.uploadImage(" ", "secret", png, "a.png", endpoint));
+        assertThrows(IllegalArgumentException.class, () -> FeishuClient.uploadImage(appId, null, png, "a.png", endpoint));
         assertEquals(0, requests.size());
     }
 
     @Test
-    void reportsTransportFailureWithCause() {
+    void reportsTransportFailureWithCause() throws IOException {
+        byte[] png = image("png");
         server.stop(0);
-        IllegalStateException error = assertThrows(IllegalStateException.class, () -> send("img_mock", "one"));
+        IllegalStateException error = assertThrows(IllegalStateException.class, () -> upload(png, "a.png"));
         assertTrue(error.getMessage().contains("getTenantAccessToken HTTP transport/response error"));
         assertNotNull(error.getCause());
     }
 
     private String upload(byte[] image, String filename) {
         return FeishuClient.uploadImage(appId, "secret", image, filename, endpoint);
-    }
-
-    private String send(String imageKey, String uuid) {
-        return FeishuClient.sendImageMessage(appId, "secret", "ou_mock", imageKey, uuid, endpoint);
     }
 
     private Request lastRequest() {

@@ -15,7 +15,9 @@
  */
 package org.noear.solon.codecli.channel.dingtalk;
 
+import org.noear.solon.codecli.artifact.PublishedImage;
 import org.noear.solon.codecli.channel.Channel;
+import org.noear.solon.codecli.channel.ChannelReply;
 import org.noear.solon.codecli.channel.ChunkedSender;
 import org.noear.solon.codecli.channel.ImBindingRegistry;
 import org.noear.solon.codecli.channel.ImGateway;
@@ -58,6 +60,12 @@ public class DingTalkLink implements Channel, Runnable {
         // 构造期不做任何副作用：这里既不认领历史条目、也不落盘。
         // ChannelHub 由 WorkspaceContext 构造，而工作区在 acp/cli 模式下同样会被创建，
         // 在构造器里改登记表会让「无入口端口模式不碰 IM」的约定失效。
+    }
+
+    /** 供渠道适配测试注入网关，不启动连接或创建工作区。 */
+    protected DingTalkLink(String workspaceId, ImGateway gateway) {
+        this.workspaceId = workspaceId;
+        this.gateway = gateway;
     }
 
     // ==================== Channel 接口实现 ====================
@@ -110,6 +118,92 @@ public class DingTalkLink implements Channel, Runnable {
     }
 
     /**
+     * 图片在原引用位置渲染为 Markdown。上传结果（包括失败）只在本次回复内缓存，
+     * 正文仍使用旧分片重试；本次调用固定目标与凭据，不引入渠道队列。
+     */
+    @Override
+    public void sendReply(String sessionId, ChannelReply reply,
+                          String sourceUserId, String replyTarget, String messageId) {
+        if (reply == null) {
+            return;
+        }
+        if (!reply.hasImageReferences()) {
+            sendReply(sessionId, reply.getText(), reply.isFinal(), sourceUserId, replyTarget, messageId);
+            return;
+        }
+        if (Thread.currentThread().isInterrupted()) {
+            return;
+        }
+        DingTalkBinding binding = replyBinding(currentBinding(sessionId), sourceUserId, replyTarget);
+        if (binding == null) {
+            if (gateway.isPendingDingTalk(workspaceId, sessionId)) {
+                sendReplyViaQrPending(sessionId, reply.renderImages(image -> null));
+            }
+            return;
+        }
+        if (Assert.isEmpty(binding.userId)) {
+            return;
+        }
+        Map<String, String> uploaded = new HashMap<>();
+        String token = null;
+        boolean tokenAttempted = false;
+        for (PublishedImage image : reply.getImages()) {
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
+            String uuid = image.getUuid();
+            if (uploaded.containsKey(uuid)) {
+                continue;
+            }
+            // null 也缓存：超限和上传失败的重复引用不得再次上传。
+            boolean withinCount = uploaded.size() < 5;
+            uploaded.put(uuid, null);
+            if (!withinCount || image.byteSize() > 1024 * 1024) {
+                continue;
+            }
+            try {
+                if (!tokenAttempted) {
+                    tokenAttempted = true;
+                    token = getReplyAccessToken(binding);
+                }
+                if (Thread.currentThread().isInterrupted()) {
+                    return;
+                }
+                if (!Assert.isEmpty(token)) {
+                    byte[] bytes = image.getBytes();
+                    // 渠道边界不透传用户文件名，按 JPEG magic 固定上传名称。
+                    String filename = bytes.length >= 3 && bytes[0] == (byte) 0xff
+                            && bytes[1] == (byte) 0xd8 && bytes[2] == (byte) 0xff
+                            ? "image.jpg" : "image.png";
+                    String mediaId = uploadReplyImage(token, bytes, filename);
+                    if (!Assert.isEmpty(mediaId)) {
+                        uploaded.put(uuid, mediaId);
+                    }
+                }
+            } catch (Exception e) {
+                // 不记录底层异常：上传 URL、原文件名或服务端响应可能含敏感信息。
+                LOG.warn("[DingTalk] Reply image upload failed; using inline fallback");
+            }
+        }
+        if (Thread.currentThread().isInterrupted()) {
+            return;
+        }
+        ChannelReply.RenderedImages markdown = reply.renderImageNodes(image -> uploaded.get(image.getUuid()),
+                ChannelReply.ExternalImagePolicy.HTTPS_IMAGE);
+        String fallback = reply.renderImages(image -> null);
+        sendReplyViaApi(binding, markdown.getText(), fallback, markdown);
+    }
+
+    protected String getReplyAccessToken(DingTalkBinding binding) {
+        return DingTalkClient.getAccessToken(binding.appKey, binding.appSecret);
+    }
+
+    protected String uploadReplyImage(String token, byte[] bytes, String filename) {
+        return DingTalkClient.uploadImage(token, bytes, filename);
+    }
+
+
+    /**
      * 交互状态信号：只下发非流式提示文本，不走流式分片。
      */
     @Override
@@ -126,7 +220,7 @@ public class DingTalkLink implements Channel, Runnable {
     }
 
     /** 会话当前绑定（进程级网关为单一真相源）。 */
-    private DingTalkBinding currentBinding(String sessionId) {
+    protected DingTalkBinding currentBinding(String sessionId) {
         ImBindingRegistry.Binding binding = gateway.findDingTalkBySession(workspaceId, sessionId);
         if (binding == null) {
             return null;
@@ -332,11 +426,31 @@ public class DingTalkLink implements Channel, Runnable {
     /**
      * 通过 API 发送回复（钉钉通道固定走 OpenAPI）。
      */
-    private void sendReplyViaApi(DingTalkBinding binding, String reply) {
-        // 外层重试：应对 token 获取失败或偶发网络抖动
+    protected void sendReplyViaApi(DingTalkBinding binding, String reply) {
+        sendReplyViaApi(binding, reply, null);
+    }
+
+    protected boolean sendReplyMarkdown(String token, DingTalkBinding binding, String title, String text) {
+        String robotCode = Assert.isEmpty(binding.robotCode) ? binding.appKey : binding.robotCode;
+        return DingTalkClient.sendSingleMarkdownMessage(token, robotCode, binding.userId, title, text);
+    }
+
+    protected void sendReplyViaApi(DingTalkBinding binding, String reply, String fallback) {
+        sendReplyViaApi(binding, reply, fallback, null);
+    }
+
+    protected void sendReplyViaApi(DingTalkBinding binding, String reply, String fallback,
+                                   ChannelReply.RenderedImages nodes) {
+        // 外层重试只重发已经渲染的正文，不重新上传图片。
         for (int attempt = 0; attempt < MAX_SEND_RETRIES; attempt++) {
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
             try {
-                String token = DingTalkClient.getAccessToken(binding.appKey, binding.appSecret);
+                String token = getReplyAccessToken(binding);
+                if (Thread.currentThread().isInterrupted()) {
+                    return;
+                }
                 if (token == null) {
                     if (attempt < MAX_SEND_RETRIES - 1) {
                         long delay = 1000L * (1L << attempt);
@@ -358,20 +472,32 @@ public class DingTalkLink implements Channel, Runnable {
                         fRobotCode, fUserId, reply.length(), attempt + 1);
 
                 // 使用 Markdown 格式分段发送（含限速 + 重试）
-                ChunkedSender.SendResult result = ChunkedSender.sendChunked(reply,
-                        ChunkedSender.Config.dingtalk(),
-                        (chunk, part) -> {
+                ChunkedSender.SendFunc sender = (chunk, part) -> {
+                            if (Thread.currentThread().isInterrupted()) {
+                                return false;
+                            }
                             String title;
                             if (part > 1) {
                                 title = "(" + part + ") " + DingTalkClient.extractTitle(chunk);
                             } else {
                                 title = DingTalkClient.extractTitle(chunk);
                             }
-                            boolean ok = DingTalkClient.sendSingleMarkdownMessage(fToken, fRobotCode, fUserId, title, chunk);
+                            // 图片 mediaId 只用于 Markdown target，不能进入通知标题。
+                            if (fallback != null) {
+                                title = part > 1 ? "(" + part + ") SolonCode" : "SolonCode";
+                            }
+                            boolean ok = sendReplyMarkdown(fToken, binding, title, chunk);
                             LOG.info("[DingTalk] sendSingleMarkdownMessage part={} ok={}, robotCode={}, userId={}",
                                     part, ok, fRobotCode, fUserId);
                             return ok;
-                        });
+                        };
+                ChunkedSender.SendResult result = nodes == null
+                        ? ChunkedSender.sendChunked(reply, ChunkedSender.Config.dingtalk(), sender)
+                        : ChunkedSender.sendImageNodes(nodes, ChunkedSender.Config.dingtalk(), sender);
+
+                if (Thread.currentThread().isInterrupted()) {
+                    return;
+                }
 
                 // 部分失败告警
                 if (result.getFailedParts() > 0 && result.getFailedParts() < result.getTotalParts()) {
@@ -389,6 +515,12 @@ public class DingTalkLink implements Channel, Runnable {
                         continue;
                     }
                     LOG.error("[DingTalk] All send attempts failed for {} part(s)", result.getTotalParts());
+                    if (fallback != null && !fallback.equals(reply)) {
+                        // 只在全部正文发送失败后尽力降级，不能把含 mediaId 的原文当作提示。
+                        ChunkedSender.sendChunked(fallback, ChunkedSender.Config.dingtalk(),
+                                (chunk, part) -> !Thread.currentThread().isInterrupted()
+                                        && sendReplyMarkdown(fToken, binding, "SolonCode", chunk));
+                    }
                 }
 
                 // 发送成功，退出重试
@@ -398,8 +530,8 @@ public class DingTalkLink implements Channel, Runnable {
                 LOG.warn("[DingTalk] sendReplyViaApi interrupted");
                 return;
             } catch (Exception e) {
-                LOG.error("[DingTalk] sendReplyViaApi error (attempt {}/{}): {}",
-                        attempt + 1, MAX_SEND_RETRIES, e.getMessage());
+                LOG.error("[DingTalk] sendReplyViaApi error (attempt {}/{})",
+                        attempt + 1, MAX_SEND_RETRIES);
                 if (attempt < MAX_SEND_RETRIES - 1) {
                     try {
                         long delay = 1000L * (1L << attempt);

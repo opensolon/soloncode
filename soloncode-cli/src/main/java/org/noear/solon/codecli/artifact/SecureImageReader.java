@@ -19,6 +19,19 @@ final class SecureImageReader {
     private SecureImageReader() {
     }
 
+    /** 读取前验证普通文件及大小；实际读取仍独立复核全部路径属性。 */
+    static int size(Path root, Object rootKey, Path target, int maxBytes) throws IOException {
+        try {
+            requireAbsoluteNormalized(root);
+            requireAbsoluteNormalized(target);
+            if (rootKey == null || maxBytes < 0 || target.equals(root) || !target.startsWith(root)) {
+                throw new IOException("图片读取路径、根身份或预算无效");
+            }
+            return (int) inspect(root, rootKey, target, maxBytes).size();
+        } catch (RuntimeException e) {
+            throw new IOException("无法安全检查图片大小", e);
+        }
+    }
     static byte[] read(Path root, Object rootKey, Path target, int maxBytes) throws IOException {
         try {
             requireAbsoluteNormalized(root);
@@ -28,12 +41,13 @@ final class SecureImageReader {
             }
 
             BasicFileAttributes before = inspect(root, rootKey, target, maxBytes);
-            byte[] bytes = new byte[(int) before.size()];
             try (SeekableByteChannel channel = Files.newByteChannel(target,
                     StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
                 if (channel.size() != before.size()) {
                     throw new IOException("图片大小已改变");
                 }
+                // 打开后先复核大小，再为完整内容分配内存。
+                byte[] bytes = new byte[(int) before.size()];
                 ByteBuffer buffer = ByteBuffer.wrap(bytes);
                 while (buffer.hasRemaining()) {
                     if (channel.read(buffer) <= 0) {
@@ -51,8 +65,8 @@ final class SecureImageReader {
                         || after.size() != bytes.length || channel.size() != bytes.length) {
                     throw new IOException("图片身份、大小或修改时间已改变");
                 }
+                return bytes;
             }
-            return bytes;
         } catch (RuntimeException e) {
             throw new IOException("无法安全读取图片", e);
         }
@@ -92,8 +106,11 @@ final class SecureImageReader {
             throw new IOException("图片真实路径不匹配或越出工作区");
         }
         BasicFileAttributes attributes = attributes(target);
+        if (attributes.size() > maxBytes) {
+            throw new ImageLoadException(ImageLoadException.Reason.LIMIT, "图片超过读取预算");
+        }
         if (!attributes.isRegularFile() || attributes.isSymbolicLink() || attributes.isOther()
-                || attributes.fileKey() == null || attributes.size() < 0 || attributes.size() > maxBytes) {
+                || attributes.fileKey() == null || attributes.size() < 0) {
             throw new IOException("图片不是可验证的普通文件或超过读取预算");
         }
         return attributes;

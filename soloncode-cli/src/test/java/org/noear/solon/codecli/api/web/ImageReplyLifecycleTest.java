@@ -21,11 +21,12 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
 import org.noear.solon.codecli.artifact.ImageReplyTurn;
-import org.noear.solon.codecli.artifact.PublishedImage;
-import org.noear.solon.codecli.artifact.PublishImageTalent;
+
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.channel.ChannelReply;
+import org.noear.solon.codecli.channel.feishu.FeishuLink;
+import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMeta;
 import reactor.core.Disposable;
@@ -53,6 +54,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class ImageReplyLifecycleTest {
+    private static final String IMAGE_MARKDOWN = "![图片说明](image.png)";
+
+    private String withImage(String text) {
+        return text.isEmpty() ? IMAGE_MARKDOWN : text + "\n\n" + IMAGE_MARKDOWN;
+    }
     @TempDir
     Path temp;
 
@@ -68,18 +74,97 @@ class ImageReplyLifecycleTest {
         f.attrs.put(WebStreamBuilder.ATTR_IM_TERMINAL_SENT, Boolean.TRUE);
         ImageReplyTurn turn = f.newTurn();
         assertSame(turn, f.attrs.get(ImageReplyTurn.ATTR));
-        assertFalse(f.attrs.containsValue(turn.getImages()));
+        assertTrue(turn.isImagesAllowed());
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-        assertNull(turn.getImages().getRunId());
+        assertFalse(turn.canClaim("run-1"));
 
         turn.onReasonStart(trace(mock(AgentSession.class), "foreign"), new StringBuilder());
-        assertNull(turn.getImages().getRunId());
+        assertFalse(turn.canClaim("run-1"));
         f.bind(turn, "run-1");
         f.bind(turn, "run-2");
-        assertEquals("run-1", turn.getImages().getRunId());
+        assertTrue(turn.canClaim("run-1"));
+        assertFalse(turn.canClaim("run-2"));
         turn.cleanup();
         assertDoesNotThrow(() -> f.bind(turn, "late"));
         assertFalse(turn.isCurrent());
+    }
+
+    @Test
+    void pureWebRunEndSkipsImagePreparation() throws Exception {
+        Fixture f = new Fixture();
+        when(f.context.getChannelHub().getImLinks()).thenReturn(Collections.emptyList());
+        ImageReplyTurn turn = f.newTurn();
+        f.bind(turn, "run");
+        createImage();
+
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false);
+
+        assertEquals(0, f.prepareCalls, "纯 Web 不得进入真实图片准备 hook");
+        verifyNoInteractions(f.origin, f.other, f.unbound);
+        assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+        assertFalse(turn.canClaim("run"));
+        turn.cleanup();
+        f.assertCleaned();
+    }
+
+    @Test
+    void unboundImageChannelsDoNotEnablePreparation() throws Exception {
+        Fixture f = new Fixture();
+        when(f.origin.isBound("s1")).thenReturn(false);
+        when(f.other.isBound("s1")).thenReturn(false);
+
+        ImageReplyTurn turn = f.newTurn();
+        f.bind(turn, "run");
+        createImage();
+
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false);
+
+        assertEquals(0, f.prepareCalls, "未绑定图片 IM 不得触发本地准备");
+
+        f.assertNoStructured();
+        assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+        turn.cleanup();
+        f.assertCleaned();
+    }
+
+    @Test
+    void boundTextOnlyChannelsReceiveSafePlaceholdersWithoutPreparation() throws Exception {
+        // 普通 Channel 是文本端；fixture 中仍注册一个未绑定的图片渠道。
+        Fixture f = new Fixture(Channel.class, Channel.class);
+        ImageReplyTurn turn = f.newTurn();
+        f.bind(turn, "run");
+        createImage();
+
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false);
+
+        assertEquals(0, f.prepareCalls, "绑定文本 IM 不得进入真实图片准备 hook");
+        ChannelReply reply = f.captureStructured();
+        assertTrue(reply.getImages().isEmpty());
+        assertEquals("run", reply.getRunId());
+        assertTrue(reply.isFinal());
+        assertTrue(reply.hasImageReferences());
+        assertNull(reply.getImageReferences().get(0).getImage());
+        assertEquals("完成\n\n（图片不可用：图片说明；图片发送已禁用）", reply.renderImages(image -> {
+            fail("禁图占位不得调用图片发布器");
+            return null;
+        }));
+        turn.cleanup();
+        f.assertCleaned();
+    }
+
+    @Test
+    void boundImageChannelEnablesPreparationEvenWhenOriginIsTextOnly() throws Exception {
+        Fixture f = new Fixture(Channel.class, DingTalkLink.class);
+        ImageReplyTurn turn = f.newTurn();
+        f.bind(turn, "run");
+        Path image = createImage();
+
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false);
+
+        assertEquals(1, f.prepareCalls, "绑定的非来源图片 IM 同样允许准备快照");
+        assertSnapshot(image, f.captureStructured());
+        turn.cleanup();
+        f.assertCleaned();
     }
 
     @Test
@@ -96,22 +181,30 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        PublishedImage image = publish(turn);
-        byte[] bytes = image.getBytes();
-        Files.delete(temp.resolve("image.png"));
-
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", text, false);
+        Path image = createImage();
+        assertEquals(0, f.prepareCalls);
+        verifyNoInteractions(f.origin, f.other, f.unbound);
+        // fixture 只写文件；直到最终 Markdown 的 RunEnd 才允许读取图片。
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage(text), false);
         f.builder.replyRunEnd(f.context, f.session, turn, "run", "重复", false);
         turn.cleanup();
         ChannelReply reply = f.captureStructured();
-        assertEquals(WebStreamBuilder.stripAnsi(text), reply.getText());
+        assertEquals(WebStreamBuilder.stripAnsi(withImage(text)), reply.getText());
         assertTrue(reply.isFinal());
         assertEquals("run", reply.getRunId());
         assertEquals(1, reply.getImages().size());
-        assertSame(image, reply.getImages().get(0));
+        assertSnapshot(image, reply);
+        byte[] bytes = reply.getImages().get(0).getBytes();
+        Files.delete(image);
         assertArrayEquals(bytes, reply.getImages().get(0).getBytes());
+        assertEquals(withImage(WebStreamBuilder.stripAnsi(text)).replace(IMAGE_MARKDOWN,
+                "![图片说明](https://example.test/snapshot.png)"),
+                reply.renderImages(snapshot -> {
+                    assertArrayEquals(bytes, snapshot.getBytes());
+                    return "https://example.test/snapshot.png";
+                }));
         assertThrows(UnsupportedOperationException.class, () -> reply.getImages().clear());
-        assertTrue(turn.getImages().finish("run", true).isEmpty());
+        assertFalse(turn.canClaim("run"));
         f.assertCleaned();
     }
 
@@ -120,15 +213,16 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "不应作为成功答复", true);
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "迟到成功", false);
+        createImage();
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("不应作为成功答复"), true);
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到成功"), false);
         ChannelReply reply = f.captureStructured();
         assertEquals("任务执行异常结束。", reply.getText());
         assertTrue(reply.isFinal());
         assertEquals("run", reply.getRunId());
         assertTrue(reply.getImages().isEmpty());
-        assertTrue(turn.getImages().finish("run", true).isEmpty());
+        assertEquals(0, f.prepareCalls, "异常终态不得准备成功答复图片");
+        assertFalse(turn.canClaim("run"));
         turn.cleanup();
         f.assertCleaned();
     }
@@ -138,14 +232,14 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
+        createImage();
         f.builder.replyCanceledToBoundChannels(f.context, f.session);
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "迟到", false);
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到"), false);
         f.builder.replyErrorToBoundChannels(f.context, f.session, new IOException("boom"));
         verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
         verify(f.other).sendReply("s1", "用户已取消任务。", true);
         f.assertNoStructured();
-        assertTrue(turn.getImages().finish("run", true).isEmpty());
+        assertFalse(turn.canClaim("run"));
         turn.cleanup();
         f.assertCleaned();
     }
@@ -155,14 +249,14 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
+        createImage();
         f.builder.replyErrorToBoundChannels(f.context, f.session, new IOException("boom"));
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "迟到", false);
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到"), false);
         f.builder.replyCanceledToBoundChannels(f.context, f.session);
         verify(f.origin).sendReply("s1", "任务执行失败：boom", true, "user", "target", "message");
         verify(f.other).sendReply("s1", "任务执行失败：boom", true);
         f.assertNoStructured();
-        assertTrue(turn.getImages().finish("run", true).isEmpty());
+        assertFalse(turn.canClaim("run"));
         turn.cleanup();
         f.assertCleaned();
     }
@@ -172,12 +266,12 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
+        createImage();
         turn.cleanup();
         turn.cleanup();
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "迟到", false);
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到"), false);
         verifyNoInteractions(f.origin, f.other, f.unbound);
-        assertTrue(turn.getImages().finish("run", true).isEmpty());
+        assertFalse(turn.canClaim("run"));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         f.assertCleaned();
     }
@@ -187,27 +281,27 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn old = f.newTurn();
         f.bind(old, "old");
-        publish(old);
+        createImage();
         // 值相等但身份不同，防止 remove(key, value) 误删新路由。
         Map<String, String> newRoute = new HashMap<>(f.route);
         f.attrs.put("session.replyRoute", newRoute);
         ImageReplyTurn current = f.newTurn();
         f.bind(current, "new");
-        PublishedImage newImage = publish(current);
-        assertTrue(old.getImages().finish("old", true).isEmpty());
+        Path newImage = createImage();
+        assertFalse(old.canClaim("old"));
         old.cleanup();
-        f.builder.replyRunEnd(f.context, f.session, old, "old", "旧答复", false);
+        f.builder.replyRunEnd(f.context, f.session, old, "old", withImage("旧答复"), false);
         assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
-        assertFalse(f.attrs.containsValue(current.getImages()));
+        assertTrue(current.isImagesAllowed());
         assertSame(newRoute, f.attrs.get("session.replyRoute"));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         verifyNoInteractions(f.origin, f.other, f.unbound);
 
-        f.builder.replyRunEnd(f.context, f.session, current, "new", "新答复", false);
+        f.builder.replyRunEnd(f.context, f.session, current, "new", withImage("新答复"), false);
         old.cleanup();
         ChannelReply reply = f.captureStructured();
         assertEquals("new", reply.getRunId());
-        assertSame(newImage, reply.getImages().get(0));
+        assertSnapshot(newImage, reply);
         assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
         current.cleanup();
         f.assertCleaned();
@@ -217,16 +311,18 @@ class ImageReplyLifecycleTest {
     void mismatchedOrUnboundRunEndCannotClaimTurn() throws Exception {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
-        PublishedImage image = publish(turn);
-        f.builder.replyRunEnd(f.context, f.session, turn, null, "无身份", false);
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "未绑定", false);
+        Path image = createImage();
+        f.builder.replyRunEnd(f.context, f.session, turn, null, withImage("无身份"), false);
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("未绑定"), false);
         f.bind(turn, "run");
-        f.builder.replyRunEnd(f.context, f.session, turn, "other", "错误身份", false);
+        f.builder.replyRunEnd(f.context, f.session, turn, "other", withImage("错误身份"), false);
         verifyNoInteractions(f.origin, f.other, f.unbound);
         assertSame(f.route, f.attrs.get("session.replyRoute"));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "正确", false);
-        assertSame(image, f.captureStructured().getImages().get(0));
+        assertEquals(0, f.prepareCalls, "身份预检失败不得进入 Markdown 解析与图片读取");
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("正确"), false);
+        assertEquals(1, f.prepareCalls);
+        assertSnapshot(image, f.captureStructured());
         turn.cleanup();
     }
 
@@ -235,11 +331,11 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "成功", false);
+        createImage();
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("成功"), false);
         f.builder.replyErrorToBoundChannels(f.context, f.session, new IOException("boom"));
         f.builder.replyCanceledToBoundChannels(f.context, f.session);
-        assertEquals("成功", f.captureStructured().getText());
+        assertEquals(withImage("成功"), f.captureStructured().getText());
         assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         turn.cleanup();
     }
@@ -249,13 +345,13 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
+        createImage();
         f.route.clear();
         f.route.put("source", "other");
         Map<String, String> replacement = new HashMap<>(f.route);
         f.attrs.put("session.replyRoute", replacement);
         assertThrows(UnsupportedOperationException.class, () -> turn.getRoute().clear());
-        f.builder.replyRunEnd(f.context, f.session, turn, "run", "完成", false);
+        f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false);
         f.captureStructured();
         assertSame(replacement, f.attrs.get("session.replyRoute"));
         turn.cleanup();
@@ -267,14 +363,14 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        PublishedImage image = publish(turn);
+        Path image = createImage();
         WebEventMapper mapper = new WebEventMapper(f.builder, f.context, f.session, null, turn);
-        List<WebEvent<?>> events = mapper.mapEvent(runEnd(f.session, "run", "最终答复"));
+        List<WebEvent<?>> events = mapper.mapEvent(runEnd(f.session, "run", withImage("最终答复")));
         assertEquals(1, events.size());
         assertEquals(WebEventNames.SYSTEM_TRACE, events.get(0).getEvent());
         ChannelReply reply = f.captureStructured();
-        assertEquals("最终答复", reply.getText());
-        assertSame(image, reply.getImages().get(0));
+        assertEquals(withImage("最终答复"), reply.getText());
+        assertSnapshot(image, reply);
         turn.cleanup();
     }
 
@@ -283,10 +379,10 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        PublishedImage image = publish(turn);
+        Path image = createImage();
         TaskWrapEvent task = mock(TaskWrapEvent.class);
         // 即使子事件碰巧携带父 runId，也必须先按 task 分支隔离。
-        RunEndEvent childEnd = runEnd(f.session, "run", "子任务答复");
+        RunEndEvent childEnd = runEnd(f.session, "run", withImage("子任务答复"));
         when(task.getRealEvent()).thenReturn(childEnd);
         when(task.getTaskId()).thenReturn("task-1");
         when(task.getParentRunId()).thenReturn("run");
@@ -296,10 +392,11 @@ class ImageReplyLifecycleTest {
         assertEquals(1, events.size());
         assertEquals(WebEventNames.TASK_DONE, events.get(0).getEvent());
         assertEquals("task-1", events.get(0).getTaskId());
+        assertEquals(0, f.prepareCalls, "子任务 RunEnd 不得解析父轮最终图片");
         verifyNoInteractions(f.origin, f.other, f.unbound);
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-        mapper.mapEvent(runEnd(f.session, "run", "父任务答复"));
-        assertSame(image, f.captureStructured().getImages().get(0));
+        mapper.mapEvent(runEnd(f.session, "run", withImage("父任务答复")));
+        assertSnapshot(image, f.captureStructured());
         turn.cleanup();
     }
 
@@ -308,7 +405,7 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
+        createImage();
         HITLPendingEvent pending = mock(HITLPendingEvent.class);
         HITLTask task = mock(HITLTask.class);
         when(task.getToolName()).thenReturn("approval");
@@ -318,13 +415,20 @@ class ImageReplyLifecycleTest {
 
         assertEquals(1, mapper.mapEvent(pending).size());
         verifyNoInteractions(f.origin, f.other, f.unbound);
-        assertThrows(IOException.class, () -> publish(turn));
-        mapper.mapEvent(runEnd(f.session, "run", "等待确认后结束"));
+        assertEquals(0, f.prepareCalls, "HITL 之前的生命周期不得解析最终图片");
+        assertFalse(turn.isImagesAllowed());
+        Files.delete(temp.resolve("image.png"));
+        mapper.mapEvent(runEnd(f.session, "run", withImage("等待确认后结束")));
         ChannelReply reply = f.captureStructured();
-        assertEquals("等待确认后结束", reply.getText());
+        assertEquals(withImage("等待确认后结束"), reply.getText());
         assertTrue(reply.isFinal());
         assertTrue(reply.getImages().isEmpty());
-        assertThrows(IOException.class, () -> publish(turn));
+        assertTrue(reply.hasImageReferences());
+        assertEquals("等待确认后结束\n\n（图片不可用：图片说明；图片发送已禁用）", reply.renderImages(snapshot -> {
+            fail("禁图降级不得调用图片发布器");
+            return null;
+        }));
+        assertFalse(turn.isImagesAllowed());
         turn.cleanup();
         f.assertCleaned();
     }
@@ -345,8 +449,8 @@ class ImageReplyLifecycleTest {
         verify(f.other).sendReply("s1", "任务执行失败：assembly boom", true);
         f.assertNoStructured();
         f.assertCleaned();
-        assertThrows(IOException.class, () -> publish(captured[0]));
-        assertTrue(captured[0].getImages().finish("run", true).isEmpty());
+        assertFalse(captured[0].isImagesAllowed());
+        assertFalse(captured[0].canClaim("run"));
     }
 
     @Test
@@ -365,8 +469,8 @@ class ImageReplyLifecycleTest {
         verify(f.other).sendReply("s1", "任务执行失败：flux boom", true);
         f.assertNoStructured();
         f.assertCleaned();
-        assertThrows(IOException.class, () -> publish(turn));
-        assertTrue(turn.getImages().finish("run", true).isEmpty());
+        assertFalse(turn.isImagesAllowed());
+        assertFalse(turn.canClaim("run"));
     }
 
     @Test
@@ -384,8 +488,8 @@ class ImageReplyLifecycleTest {
             subscription.dispose();
             assertTrue(upstreamCanceled.await(5, TimeUnit.SECONDS));
             f.assertCleaned();
-            assertThrows(IOException.class, () -> publish(turn));
-            f.builder.replyRunEnd(f.context, f.session, turn, "run", "迟到成功", false);
+            assertFalse(turn.isImagesAllowed());
+            f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到成功"), false);
             verifyNoInteractions(f.origin, f.other, f.unbound);
             assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         } finally {
@@ -398,7 +502,7 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        publish(turn);
+        createImage();
         CountDownLatch cancelSending = new CountDownLatch(1);
         CountDownLatch releaseCancel = new CountDownLatch(1);
         CountDownLatch finalStarted = new CountDownLatch(1);
@@ -414,7 +518,7 @@ class ImageReplyLifecycleTest {
             assertTrue(cancelSending.await(5, TimeUnit.SECONDS));
             Future<?> ended = workers.submit(() -> {
                 finalStarted.countDown();
-                f.builder.replyRunEnd(f.context, f.session, turn, "run", "迟到成功", false);
+                f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到成功"), false);
             });
             assertTrue(finalStarted.await(5, TimeUnit.SECONDS));
             // 取消发送仍阻塞时，RunEnd 必须能完成终态检查。
@@ -424,8 +528,8 @@ class ImageReplyLifecycleTest {
             verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
             verify(f.other).sendReply("s1", "用户已取消任务。", true);
             f.assertNoStructured();
-            assertTrue(turn.getImages().finish("run", true).isEmpty());
-            assertThrows(IOException.class, () -> publish(turn));
+            assertFalse(turn.canClaim("run"));
+            assertFalse(turn.isImagesAllowed());
             assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         } finally {
             releaseCancel.countDown();
@@ -486,9 +590,9 @@ class ImageReplyLifecycleTest {
             Future<Boolean> canceled = workers.submit(() -> gate.interruptSession(f.context, "s1"));
             assertTrue(snapshotEntered.await(5, TimeUnit.SECONDS));
             assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-            assertThrows(IOException.class, () -> publish(old));
+            assertFalse(old.isImagesAllowed());
             WebEventMapper mapper = new WebEventMapper(f.builder, f.context, f.session, null, old);
-            Future<?> ended = workers.submit(() -> mapper.mapEvent(runEnd(f.session, "run", "窗口内成功")));
+            Future<?> ended = workers.submit(() -> mapper.mapEvent(runEnd(f.session, "run", withImage("窗口内成功"))));
             ended.get(5, TimeUnit.SECONDS);
             // RunEnd 必须在持久化仍阻塞时返回，且不能投递成功文本或图片。
             f.assertNoStructured();
@@ -503,11 +607,11 @@ class ImageReplyLifecycleTest {
             replacement.put("messageId", "new-message");
             f.route.clear();
             f.attrs.put("session.replyRoute", replacement);
-            PublishedImage newImage = null;
+            Path newImage = null;
             if (replaceTurn) {
                 current = f.newTurn();
                 f.bind(current, "new");
-                newImage = publish(current);
+                newImage = createImage();
                 assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
             }
             releaseSnapshot.countDown();
@@ -519,18 +623,18 @@ class ImageReplyLifecycleTest {
                     "new-user", "new-target", "new-message");
             f.assertNoStructured();
             old.cleanup();
-            mapper.mapEvent(runEnd(f.session, "run", "迟到成功"));
+            mapper.mapEvent(runEnd(f.session, "run", withImage("迟到成功")));
             assertSame(replacement, f.attrs.get("session.replyRoute"));
             if (replaceTurn) {
                 assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
-                assertFalse(f.attrs.containsValue(current.getImages()));
+                assertTrue(current.isImagesAllowed());
                 assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-                f.builder.replyRunEnd(f.context, f.session, current, "new", "新轮成功", false);
+                f.builder.replyRunEnd(f.context, f.session, current, "new", withImage("新轮成功"), false);
                 ArgumentCaptor<ChannelReply> reply = ArgumentCaptor.forClass(ChannelReply.class);
                 verify(f.origin).sendReply(eq("s1"), reply.capture(), eq("new-user"),
                         eq("new-target"), eq("new-message"));
-                assertEquals("新轮成功", reply.getValue().getText());
-                assertSame(newImage, reply.getValue().getImages().get(0));
+                assertEquals(withImage("新轮成功"), reply.getValue().getText());
+                assertSnapshot(newImage, reply.getValue());
                 verify(f.other).sendReply(eq("s1"), same(reply.getValue()), isNull(), isNull(), isNull());
             } else {
                 assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
@@ -544,6 +648,63 @@ class ImageReplyLifecycleTest {
             composite.dispose();
             old.cleanup();
             if (current != null) current.cleanup();
+        }
+    }
+
+    @Test
+    void realInterruptDisposesCompositeWhenCanceledDeliveryThrows() throws Exception {
+        Fixture f = new Fixture();
+        org.noear.solon.codecli.session.SessionManager manager =
+                mock(org.noear.solon.codecli.session.SessionManager.class);
+        when(f.context.getSessionManager()).thenReturn(manager);
+        when(manager.getSession("s1")).thenReturn(f.session);
+        ReActRequest request = f.mockRequest();
+        CountDownLatch upstreamCanceled = new CountDownLatch(1);
+        when(request.stream()).thenReturn(Flux.<AgentEvent>never().doOnCancel(upstreamCanceled::countDown));
+        Flux<WebEvent<?>> stream = f.buildStream();
+        ImageReplyTurn turn = f.currentTurnWithImage();
+        Disposable.Composite composite = reactor.core.Disposables.composite();
+        composite.add(stream.subscribe());
+        f.attrs.put("disposable", composite);
+        WebStreamBuilder failingBuilder = new WebStreamBuilder() {
+            @Override
+            Runnable prepareCanceledReply(WorkspaceContext context, AgentSession session) {
+                // 先真实领取终态，再模拟回执动作整体失败；渠道异常会被广播层隔离，不能覆盖此路径。
+                Runnable delivery = super.prepareCanceledReply(context, session);
+                return () -> {
+                    delivery.run();
+                    throw new IllegalStateException("canceled delivery failed");
+                };
+            }
+        };
+        WebGate gate = new WebGate(null) {
+            @Override
+            public WebStreamBuilder getStreamBuilder() {
+                return failingBuilder;
+            }
+
+            @Override
+            public void emitToClient(WorkspaceContext context, String sessionId, WebEvent<?> event) {
+                // 仅替换 WebSocket 出口，保留真实取消入口。
+            }
+        };
+        try {
+            assertFalse(gate.interruptSession(f.context, "s1"));
+            // 必须在测试 finally 主动清理之前断言，避免清理掩盖生产取消失效。
+            assertTrue(composite.isDisposed());
+            assertTrue(upstreamCanceled.await(5, TimeUnit.SECONDS));
+            assertFalse(f.attrs.containsKey("disposable"));
+            f.assertCleaned();
+            assertFalse(turn.isImagesAllowed());
+            assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+            f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("迟到成功"), false);
+            f.assertNoStructured();
+            verify(f.session).updateSnapshot();
+            verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
+            verify(f.other).sendReply("s1", "用户已取消任务。", true);
+        } finally {
+            composite.dispose();
+            turn.cleanup();
         }
     }
 
@@ -572,15 +733,15 @@ class ImageReplyLifecycleTest {
         f.attrs.put("session.replyRoute", replacement);
         ImageReplyTurn current = f.newTurn();
         f.bind(current, "new");
-        PublishedImage image = publish(current);
+        Path image = createImage();
         assertEquals(1, oldStream.collectList().block(Duration.ofSeconds(5)).size());
         verifyNoInteractions(f.origin, f.other, f.unbound);
         assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
         assertSame(replacement, f.attrs.get("session.replyRoute"));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-        assertThrows(IOException.class, () -> publish(old));
-        f.builder.replyRunEnd(f.context, f.session, current, "new", "新答复", false);
-        assertSame(image, f.captureStructured().getImages().get(0));
+        assertFalse(old.isImagesAllowed());
+        f.builder.replyRunEnd(f.context, f.session, current, "new", withImage("新答复"), false);
+        assertSnapshot(image, f.captureStructured());
         current.cleanup();
     }
 
@@ -589,7 +750,7 @@ class ImageReplyLifecycleTest {
         Fixture f = new Fixture();
         ImageReplyTurn turn = f.newTurn();
         f.bind(turn, "run");
-        PublishedImage image = publish(turn);
+        Path image = createImage();
         CountDownLatch sending = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
         doAnswer(invocation -> {
@@ -602,8 +763,9 @@ class ImageReplyLifecycleTest {
         ImageReplyTurn current = null;
         try {
             Future<?> ended = workers.submit(() ->
-                    f.builder.replyRunEnd(f.context, f.session, turn, "run", "完成", false));
+                    f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false));
             assertTrue(sending.await(5, TimeUnit.SECONDS));
+            // 成功终态已提交交付：后续取消不得撤销快照，尚未发送的 other 也继续接收图片。
             workers.submit(() -> f.builder.replyCanceledToBoundChannels(f.context, f.session))
                     .get(5, TimeUnit.SECONDS);
             Map<String, String> replacement = new HashMap<>(f.route);
@@ -612,11 +774,11 @@ class ImageReplyLifecycleTest {
             f.bind(current, "new");
             release.countDown();
             ended.get(5, TimeUnit.SECONDS);
-            assertSame(image, f.captureStructured().getImages().get(0));
+            assertSnapshot(image, f.captureStructured());
             assertSame(replacement, f.attrs.get("session.replyRoute"));
             assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
             assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-            assertDoesNotThrow(() -> publish((ImageReplyTurn) f.attrs.get(ImageReplyTurn.ATTR)));
+            assertTrue(((ImageReplyTurn) f.attrs.get(ImageReplyTurn.ATTR)).isImagesAllowed());
         } finally {
             release.countDown();
             workers.shutdownNow();
@@ -624,6 +786,123 @@ class ImageReplyLifecycleTest {
             turn.cleanup();
             if (current != null) current.cleanup();
         }
+    }
+
+    @Test
+    void cancellationDuringPrepareRejectsAlreadyPreparedImagesAndAnswer() throws Exception {
+        assertPrepareWindow("cancel");
+    }
+
+    @Test
+    void replacementDuringPrepareRejectsOldReplyWithoutTouchingNewRoute() throws Exception {
+        assertPrepareWindow("replace");
+    }
+
+    @Test
+    void hitlDuringPrepareDowngradesAlreadyPreparedSnapshotAtClaim() throws Exception {
+        assertPrepareWindow("hitl");
+    }
+
+    @Test
+    void errorDuringPrepareRejectsAlreadyPreparedImagesAndAnswer() throws Exception {
+        assertPrepareWindow("error");
+    }
+
+    private void assertPrepareWindow(String action) throws Exception {
+        Fixture f = new Fixture();
+        ImageReplyTurn old = f.newTurn();
+        f.bind(old, "old");
+        Path image = createImage();
+        f.blockedPrepareTurn = old;
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        ImageReplyTurn current = null;
+        try {
+            Future<?> ended = workers.submit(() ->
+                    f.builder.replyRunEnd(f.context, f.session, old, "old", withImage("旧轮完成"), false));
+            assertTrue(f.prepareEntered.await(5, TimeUnit.SECONDS));
+            assertSnapshot(image, f.preparedReply);
+            byte[] preparedBytes = f.preparedReply.getImages().get(0).getBytes();
+            assertTrue(old.canClaim("old"), "prepare 不能提前领取终态");
+            // 第二线程必须在 prepare 仍暂停时完成，防止锁内解析或读取扩大临界区。
+            Future<?> changed = workers.submit(() -> {
+                if ("cancel".equals(action)) {
+                    f.builder.replyCanceledToBoundChannels(f.context, f.session);
+                } else if ("error".equals(action)) {
+                    f.builder.replyErrorToBoundChannels(f.context, f.session, new IOException("prepare boom"));
+                } else if ("hitl".equals(action)) {
+                    new WebEventMapper(f.builder, f.context, f.session, null, old).mapEvent(pending("old"));
+                } else {
+                    Map<String, String> replacement = new HashMap<>(f.route);
+                    f.attrs.put("session.replyRoute", replacement);
+                    ImageReplyTurn replacementTurn = f.newTurn();
+                    f.bind(replacementTurn, "new");
+                }
+            });
+            changed.get(5, TimeUnit.SECONDS);
+            assertFalse(old.isImagesAllowed());
+            Files.delete(image);
+            if ("replace".equals(action)) {
+                current = (ImageReplyTurn) f.attrs.get(ImageReplyTurn.ATTR);
+                assertNotSame(old, current);
+            }
+            f.releasePrepare.countDown();
+            ended.get(5, TimeUnit.SECONDS);
+            assertArrayEquals(preparedBytes, f.preparedReply.getImages().get(0).getBytes());
+            if ("hitl".equals(action)) {
+                ChannelReply reply = f.captureStructured();
+                assertEquals(withImage("旧轮完成"), reply.getText());
+                assertEquals("old", reply.getRunId());
+                assertTrue(reply.isFinal());
+                assertTrue(reply.getImages().isEmpty());
+                assertEquals("旧轮完成\n\n（图片不可用：图片说明；图片发送已禁用）", reply.renderImages(snapshot -> {
+                    fail("HITL 后不得上传 prepare 阶段的图片");
+                    return null;
+                }));
+                assertEquals(1, reply.getImageReferences().size());
+                assertNull(reply.getImageReferences().get(0).getImage());
+                assertFalse(old.canClaim("old"));
+            } else if ("replace".equals(action)) {
+                // 准备前已有绑定与能力查询，但旧轮不得向任何渠道交付消息。
+                f.assertNoStructured();
+                verify(f.origin, never()).sendReply(anyString(), anyString(), anyBoolean(), any(), any(), any());
+                verify(f.other, never()).sendReply(anyString(), anyString(), anyBoolean());
+                Object replacement = f.attrs.get("session.replyRoute");
+                old.cleanup();
+                assertSame(replacement, f.attrs.get("session.replyRoute"));
+                assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
+                assertTrue(current.canClaim("new"));
+                assertTrue(current.isImagesAllowed());
+                assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+                Path newImage = createImage();
+                f.builder.replyRunEnd(f.context, f.session, current, "new", withImage("新轮完成"), false);
+                ChannelReply reply = f.captureStructured();
+                assertEquals("new", reply.getRunId());
+                assertSnapshot(newImage, reply);
+            } else {
+                String expected = "cancel".equals(action) ? "用户已取消任务。" : "任务执行失败：prepare boom";
+                verify(f.origin).sendReply("s1", expected, true, "user", "target", "message");
+                verify(f.other).sendReply("s1", expected, true);
+                f.assertNoStructured();
+                assertFalse(old.canClaim("old"));
+                assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+            }
+        } finally {
+            f.releasePrepare.countDown();
+            workers.shutdownNow();
+            assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
+            old.cleanup();
+            if (current != null) current.cleanup();
+        }
+        f.assertCleaned();
+    }
+
+    private HITLPendingEvent pending(String runId) {
+        HITLPendingEvent pending = mock(HITLPendingEvent.class);
+        HITLTask task = mock(HITLTask.class);
+        when(task.getToolName()).thenReturn("approval");
+        when(pending.getPendingTasks()).thenReturn(Collections.singletonList(task));
+        when(pending.getRunId()).thenReturn(runId);
+        return pending;
     }
 
     private ReActTrace trace(AgentSession session, String runId) {
@@ -643,27 +922,67 @@ class ImageReplyLifecycleTest {
         return event;
     }
 
-    private PublishedImage publish(ImageReplyTurn turn) throws IOException {
+    private void assertSnapshot(Path source, ChannelReply reply) throws IOException {
+        assertEquals(1, reply.getImages().size());
+        assertEquals(1, reply.getImageReferences().size());
+        assertEquals("图片说明", reply.getImageReferences().get(0).getAlt());
+        assertSame(reply.getImages().get(0), reply.getImageReferences().get(0).getImage());
+        assertArrayEquals(Files.readAllBytes(source), reply.getImages().get(0).getBytes());
+    }
+
+    private Path createImage() throws IOException {
         BufferedImage pixels = new BufferedImage(2, 2, BufferedImage.TYPE_INT_RGB);
         try {
             assertTrue(ImageIO.write(pixels, "png", temp.resolve("image.png").toFile()));
         } finally {
             pixels.flush();
         }
-        return turn.getImages().publish("image.png", "图片说明");
+        return temp.resolve("image.png");
     }
 
     private class Fixture {
         final WorkspaceContext context = mock(WorkspaceContext.class);
         final AgentSession session = mock(AgentSession.class);
-        final Channel origin = channelWithoutSessionLock();
-        final Channel other = channelWithoutSessionLock();
-        final Channel unbound = channelWithoutSessionLock();
+        final Channel origin;
+        final Channel other;
+        final Channel unbound;
         final Map<String, Object> attrs = new java.util.concurrent.ConcurrentHashMap<>();
         final Map<String, String> route = new HashMap<>();
-        final WebStreamBuilder builder = new WebStreamBuilder();
+        volatile ImageReplyTurn blockedPrepareTurn;
+        volatile ChannelReply preparedReply;
+        final CountDownLatch prepareEntered = new CountDownLatch(1);
+        final CountDownLatch releasePrepare = new CountDownLatch(1);
+        int prepareCalls;
+        final WebStreamBuilder builder = new WebStreamBuilder() {
+            @Override
+            protected ChannelReply prepareRunEndReply(ImageReplyTurn turn, String text, String runId) {
+                assertFalse(Thread.holdsLock(session.attrs()),
+                        "Markdown 解析与图片读取不得持有 session.attrs 锁");
+                prepareCalls++;
+                ChannelReply reply = super.prepareRunEndReply(turn, text, runId);
+                if (turn == blockedPrepareTurn) {
+                    preparedReply = reply;
+                    prepareEntered.countDown();
+                    try {
+                        assertTrue(releasePrepare.await(5, TimeUnit.SECONDS));
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(e);
+                    }
+                }
+                return reply;
+            }
+        };
 
         Fixture() {
+            // hook 竞态测试必须使用图片实现类型，确保进入真实快照准备流程。
+            this(FeishuLink.class, DingTalkLink.class);
+        }
+
+        Fixture(Class<? extends Channel> originType, Class<? extends Channel> otherType) {
+            origin = channelWithoutSessionLock(originType);
+            other = channelWithoutSessionLock(otherType);
+            unbound = channelWithoutSessionLock(FeishuLink.class);
             HarnessEngine engine = mock(HarnessEngine.class);
             ChannelHub hub = mock(ChannelHub.class);
             when(context.getEngine()).thenReturn(engine);
@@ -674,6 +993,7 @@ class ImageReplyLifecycleTest {
             when(hub.getImLinks()).thenReturn(Arrays.asList(origin, other, unbound));
             when(origin.isBound("s1")).thenReturn(true);
             when(other.isBound("s1")).thenReturn(true);
+
             when(origin.getChannelName()).thenReturn("origin");
             when(other.getChannelName()).thenReturn("other");
             route.put("source", "Origin");
@@ -683,10 +1003,11 @@ class ImageReplyLifecycleTest {
             attrs.put("session.replyRoute", route);
         }
 
-        private Channel channelWithoutSessionLock() {
-            // 所有 sendReply 重载及所有绑定端均在实际调用时检查；覆盖正常、取消和错误回执。
-            return mock(Channel.class, invocation -> {
-                if ("sendReply".equals(invocation.getMethod().getName())) {
+        private Channel channelWithoutSessionLock(Class<? extends Channel> type) {
+            // 发送在实际调用时检查；图片能力由明确的实现类型判断，无需调用渠道 API。
+            return mock(type, invocation -> {
+                String method = invocation.getMethod().getName();
+                if ("sendReply".equals(method)) {
                     assertFalse(Thread.holdsLock(session.attrs()), "Channel 发送不得持有 session.attrs 锁");
                 }
                 return RETURNS_DEFAULTS.answer(invocation);
@@ -722,12 +1043,10 @@ class ImageReplyLifecycleTest {
         ImageReplyTurn currentTurnWithImage() throws IOException {
             ImageReplyTurn turn = (ImageReplyTurn) attrs.get(ImageReplyTurn.ATTR);
             assertNotNull(turn);
-            assertFalse(attrs.containsValue(turn.getImages()));
-            assertNotNull(turn.getToken());
-            assertFalse(turn.getToken().isEmpty());
-            assertEquals(turn.getToken(), options.getToolContext().get(PublishImageTalent.CONTEXT_KEY));
+            assertTrue(turn.isImagesAllowed());
+            assertFalse(turn.canClaim("run"));
             bind(turn, "run");
-            publish(turn);
+            createImage();
             return turn;
         }
 

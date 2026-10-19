@@ -90,6 +90,72 @@ class WebStreamBuilderReplyRouteTest {
     }
 
     @Test
+    void textBroadcastContinuesWhenOriginDeliveryThrows() {
+        assertTextBroadcastContinuesAfterFailure("origin");
+    }
+
+    @Test
+    void textBroadcastContinuesWhenFallbackDeliveryThrows() {
+        assertTextBroadcastContinuesAfterFailure("fallback");
+    }
+
+    @Test
+    void textBroadcastContinuesWhenBindingLookupThrows() {
+        assertTextBroadcastContinuesAfterFailure("binding");
+    }
+
+    @Test
+    void textBroadcastContinuesWhenChannelNameLookupThrows() {
+        assertTextBroadcastContinuesAfterFailure("name");
+    }
+
+    private void assertTextBroadcastContinuesAfterFailure(String failurePoint) {
+        WorkspaceContext context = mock(WorkspaceContext.class);
+        HarnessEngine engine = mock(HarnessEngine.class);
+        AgentSession session = mock(AgentSession.class);
+        ChannelHub hub = mock(ChannelHub.class);
+        Channel broken = mock(Channel.class);
+        Channel healthy = mock(Channel.class);
+        Map<String, Object> attrs = new HashMap<>();
+        Map<String, String> route = new HashMap<>();
+        route.put("source", "origin");
+        route.put("sourceUserId", "user");
+        route.put("replyTarget", "target");
+        route.put("messageId", "message");
+        attrs.put("session.replyRoute", route);
+        when(context.getEngine()).thenReturn(engine);
+        when(engine.getSession("s1")).thenReturn(session);
+        when(session.attrs()).thenReturn(attrs);
+        when(context.getChannelHub()).thenReturn(hub);
+        when(hub.getImLinks()).thenReturn(Arrays.asList(broken, healthy));
+        when(broken.isBound("s1")).thenReturn(true);
+        when(healthy.isBound("s1")).thenReturn(true);
+        when(broken.getChannelName()).thenReturn("origin".equals(failurePoint) ? "origin" : "other");
+        when(healthy.getChannelName()).thenReturn("healthy");
+        IllegalStateException failure = new IllegalStateException("channel unavailable");
+        if ("binding".equals(failurePoint)) {
+            when(broken.isBound("s1")).thenThrow(failure);
+        } else if ("name".equals(failurePoint)) {
+            when(broken.getChannelName()).thenThrow(failure);
+        } else if ("origin".equals(failurePoint)) {
+            doThrow(failure).when(broken).sendReply("s1", "answer", true, "user", "target", "message");
+        } else {
+            doThrow(failure).when(broken).sendReply("s1", "answer", true);
+        }
+
+        WebStreamBuilder builder = new WebStreamBuilder();
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> builder.replyToBoundChannel(context, "s1", "answer", true));
+        verify(healthy).sendReply("s1", "answer", true);
+        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey("session.replyRoute"));
+        org.junit.jupiter.api.Assertions.assertEquals(Boolean.TRUE, attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+        // 已成功的渠道不能因为其它渠道失败而在重复终态时重投。
+        builder.replyToBoundChannel(context, "s1", "duplicate", true);
+        verify(healthy, never()).sendReply("s1", "duplicate", true);
+        verify(hub, times(1)).getImLinks();
+    }
+
+    @Test
     void statusSignalGoesOnlyToOriginChannel() {
         // 交互状态信号（排队/长任务/拒收）只投来源端，不跨端广播
         WorkspaceContext context = mock(WorkspaceContext.class);

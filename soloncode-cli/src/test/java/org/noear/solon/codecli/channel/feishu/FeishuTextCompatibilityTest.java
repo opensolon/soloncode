@@ -56,7 +56,7 @@ class FeishuTextCompatibilityTest {
 
     private static void send(TextLink link, boolean structured, String text) {
         if (structured) {
-            link.sendReply("session", new ChannelReply(text, true, "run", Collections.emptyList()), null, null, null);
+            link.sendReply("session", ChannelReply.fromMarkdown(text, true, "run", null, null), null, null, null);
         } else {
             link.sendReply("session", text, true);
         }

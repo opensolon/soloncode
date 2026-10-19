@@ -195,6 +195,7 @@ public class FeishuClient {
      * <p>飞书 post 格式支持 {@code tag: "md"}，可渲染完整 GFM Markdown（标题、加粗、
      * 斜体、代码块、引用、列表、表格、任务列表等）。</p>
      *
+     * <p>图片使用 {@code ![alt](image_key)}，其中 image_key 由 {@link #uploadImage} 返回。</p>
      * <p>注意：{@code md} 标签独占一个段落，不能与其他标签（如 text、a）混排。</p>
      *
      * @param accessToken    tenant_access_token
@@ -206,6 +207,12 @@ public class FeishuClient {
      */
     public static String sendMdPostMessage(String accessToken, String receiveIdType,
                                             String receiveId, String title, String mdBody) {
+        return sendMdPostMessage(accessToken, receiveIdType, receiveId, title, mdBody, BASE_URL);
+    }
+
+    // 显式端点参数供本地 HTTP 测试使用，保持公开入口行为不变。
+    static String sendMdPostMessage(String accessToken, String receiveIdType,
+                                    String receiveId, String title, String mdBody, String endpoint) {
         try {
             ONode body = new ONode();
             body.set("receive_id_type", receiveIdType);
@@ -226,7 +233,7 @@ public class FeishuClient {
 
             body.set("content", postContent.toJson());
 
-            String resp = httpPost(BASE_URL + "/im/v1/messages?receive_id_type=" + receiveIdType,
+            String resp = httpPost(endpoint + "/im/v1/messages?receive_id_type=" + receiveIdType,
                     body.toJson(), accessToken);
             if (resp == null) return null;
 
@@ -307,38 +314,6 @@ public class FeishuClient {
                 .data("image_type", "message")
                 .data("image", filename, new ByteArrayInputStream(image), mimeType);
         return requireResult(executeApi(http, "uploadImage").get("data").get("image_key"), "image_key");
-    }
-
-    /**
-     * 向 open_id 发送图片消息，返回 message_id。
-     * 同一逻辑消息重试时必须传入相同 uuid，由飞书服务端去重；客户端不生成或替换 uuid。
-     *
-     * @throws IllegalArgumentException 必填参数为空或 uuid 超过飞书限制的 50 字符
-     * @throws IllegalStateException HTTP、业务或响应格式错误（包含 token 获取错误）
-     */
-    public static String sendImageMessage(String appId, String appSecret, String openId, String imageKey, String uuid) {
-        return sendImageMessage(appId, appSecret, openId, imageKey, uuid, BASE_URL);
-    }
-
-    static String sendImageMessage(String appId, String appSecret, String openId, String imageKey,
-                                   String uuid, String endpoint) {
-        requireText(openId, "openId");
-        requireText(imageKey, "imageKey");
-        requireText(uuid, "uuid");
-        if (uuid.length() > 50) {
-            throw new IllegalArgumentException("uuid must not exceed 50 characters");
-        }
-        String token = requireTenantAccessToken(appId, appSecret, endpoint);
-        ONode content = new ONode();
-        content.set("image_key", imageKey);
-        ONode body = new ONode();
-        body.set("receive_id", openId);
-        body.set("msg_type", "image");
-        body.set("content", content.toJson()); // 飞书要求 JSON 字符串，不能直接嵌套对象
-        body.set("uuid", uuid);
-        ONode root = executeApi(newRequest(endpoint + "/im/v1/messages?receive_id_type=open_id", token)
-                .bodyOfJson(body.toJson()), "sendImageMessage");
-        return requireResult(root.get("data").get("message_id"), "message_id");
     }
 
     private static void requireText(String value, String name) {

@@ -3,28 +3,31 @@ package org.noear.solon.codecli.artifact;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActInterceptor;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.codecli.channel.ChannelReply;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
-/** 请求级图片生命周期与路由快照；session 仅保存本对象，旧请求只能操作自己的登记簿。 */
+/** 请求级图片许可与路由快照；解析 Markdown 和读取图片不占用会话锁。 */
 public final class ImageReplyTurn implements ReActInterceptor {
     public static final String ATTR = ImageReplyTurn.class.getName();
     public static final String ATTR_IM_TERMINAL_SENT = "session.im.terminal.sent";
     private final AgentSession session;
-    private final ImagePublishTurn images;
+    private final String root;
+    private final String cwd;
     private final Map<String, String> route;
     private final Object originalRoute;
-    // 与图片登记簿的 finished 不同：HITL 只封闭图片，仍允许后续文本终态。
+    private String runId;
+    // 终态领取与图片许可分离：领取后的正常回复仍可发送准备好的图片。
     private boolean terminal;
-    private final String token = UUID.randomUUID().toString();
+    private boolean imagesAllowed = true;
 
     @SuppressWarnings("unchecked")
     public ImageReplyTurn(AgentSession session, String root, String cwd) {
         this.session = session;
-        this.images = new ImagePublishTurn(root, cwd);
+        this.root = root;
+        this.cwd = cwd;
         synchronized (session.attrs()) {
             originalRoute = session.attrs().get("session.replyRoute");
             route = originalRoute instanceof Map
@@ -41,47 +44,79 @@ public final class ImageReplyTurn implements ReActInterceptor {
     @Override
     public void onReasonStart(ReActTrace trace, StringBuilder systemPromptBuf) {
         synchronized (session.attrs()) {
-            if (isCurrent() && !terminal && trace.getSession() == session && images.getRunId() == null) {
-                images.bindRunId(trace.getRunId());
+            if (isCurrent() && !terminal && trace.getSession() == session && runId == null) {
+                String traceRunId = trace.getRunId();
+                if (traceRunId != null && !traceRunId.trim().isEmpty()) {
+                    runId = traceRunId;
+                }
             }
         }
     }
 
-    public String getToken() { return token; }
-    public ImagePublishTurn getImages() { return images; }
+    /** 只在锁内获取许可快照；解析、路径检查和图片读取全部在锁外执行。 */
+    public ChannelReply prepare(String text, String runId) {
+        final boolean allowed;
+        synchronized (session.attrs()) {
+            allowed = imagesAllowed && canClaim(runId);
+        }
+        return ChannelReply.fromMarkdown(text, true, runId, root, cwd, allowed);
+    }
 
-    /** HITL 后立即封闭登记簿，之后即便出现正常 RunEnd 也没有图片可发。 */
+    /** HITL 只禁用图片，仍允许后续文本终态安全降级。 */
     public void discardImages() {
         synchronized (session.attrs()) {
-            images.discard();
+            imagesAllowed = false;
         }
     }
 
-    /** 取消不仅丢弃图片，也封闭迟到 RunEnd 的终态领取。 */
+    /** 取消不仅禁用图片，也封闭迟到 RunEnd 的终态领取。 */
     public void closeTerminal() {
         synchronized (session.attrs()) {
             terminal = true;
-            images.discard();
+            imagesAllowed = false;
         }
     }
 
     public Map<String, String> getRoute() { return route; }
-    public boolean isCurrent() { return session.attrs().get(ATTR) == this; }
 
-    /** 调用方持有 attrs 锁。RunEnd 必须匹配本请求真正绑定的 runId。 */
-    public boolean claim(String runId) {
-        if (!isCurrent() || terminal || runId == null || !runId.equals(images.getRunId())) return false;
-        terminal = true;
-        return true;
-    }
-
-    public void clearRoute() {
-        if (isCurrent() && session.attrs().get("session.replyRoute") == originalRoute) {
-            session.attrs().remove("session.replyRoute");
+    public boolean isCurrent() {
+        synchronized (session.attrs()) {
+            return session.attrs().get(ATTR) == this;
         }
     }
 
-    /** doFinally 只丢弃，绝不将流完成误判为正常 RunEnd。 */
+    /** 不以 terminal 判断许可：claim 之后发送正常图片仍需再次检查此状态。 */
+    public boolean isImagesAllowed() {
+        synchronized (session.attrs()) {
+            return isCurrent() && imagesAllowed;
+        }
+    }
+
+    /** 锁内预检；准备完成后 claim 仍必须重新检查，不能依赖此结果。 */
+    public boolean canClaim(String runId) {
+        synchronized (session.attrs()) {
+            return isCurrent() && !terminal && runId != null && runId.equals(this.runId);
+        }
+    }
+
+    /** RunEnd 必须匹配本请求真正绑定的 runId，且最多领取一次。 */
+    public boolean claim(String runId) {
+        synchronized (session.attrs()) {
+            if (!canClaim(runId)) return false;
+            terminal = true;
+            return true;
+        }
+    }
+
+    public void clearRoute() {
+        synchronized (session.attrs()) {
+            if (isCurrent() && session.attrs().get("session.replyRoute") == originalRoute) {
+                session.attrs().remove("session.replyRoute");
+            }
+        }
+    }
+
+    /** doFinally 只禁用与清理，绝不将流完成误判为正常 RunEnd。 */
     public void cleanup() {
         synchronized (session.attrs()) {
             closeTerminal();

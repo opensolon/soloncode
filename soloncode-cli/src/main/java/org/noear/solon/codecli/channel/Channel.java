@@ -51,12 +51,9 @@ public interface Channel {
         if (reply == null) {
             return;
         }
-        String text = reply.getText();
+        String text = reply.renderImages(image -> null);
         if (text == null || text.isEmpty()) {
-            if (reply.getImages().isEmpty()) {
-                return;
-            }
-            text = "当前渠道不支持图片回复。";
+            return;
         }
         sendReply(sessionId, text, reply.isFinal(), sourceUserId, replyTarget, messageId);
     }

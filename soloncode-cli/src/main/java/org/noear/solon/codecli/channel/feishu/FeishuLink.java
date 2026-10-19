@@ -101,14 +101,13 @@ public class FeishuLink implements Channel, Runnable {
     }
 
     /**
-     * 结构化回复：发送前固定路由、凭据与最多五张图片，同一任务内先文字后图片。
-     * 有图时逐项单次尝试；无图时保留旧文本的重试及 Markdown 降级。
-     * 两个入口共享目标 FIFO，整个回复（含失败提示）完成后才发送下一条。
+     * 结构化回复：固定绑定快照，在目标 FIFO 内上传并原位替换图片。
+     * 上传结果（包括失败）只在本次回复中缓存，正文复用旧 Markdown 分片、重试与降级。
      */
     @Override
     public void sendReply(String sessionId, ChannelReply reply,
                           String sourceUserId, String replyTarget, String messageId) {
-        if (reply == null || (Assert.isEmpty(reply.getText()) && reply.getImages().isEmpty())) {
+        if (reply == null || (Assert.isEmpty(reply.getText()) && !reply.hasImageReferences())) {
             return;
         }
         FeishuBinding binding = replyBinding(currentBinding(sessionId), sourceUserId, replyTarget);
@@ -119,19 +118,16 @@ public class FeishuLink implements Channel, Runnable {
             LOG.warn("[Feishu] Cannot send reply: binding credentials not initialized");
             return;
         }
-        List<PublishedImage> images = new ArrayList<>(reply.getImages().subList(0,
-                Math.min(5, reply.getImages().size())));
         long imageBytes = 0;
-        for (PublishedImage image : images) {
+        // 闭包持有完整引用快照，预算必须包含未上传（超出五图限制）的图片。
+        for (PublishedImage image : reply.getImages()) {
             imageBytes += image.byteSize();
         }
-        // 只保留实际发送的图片及文本，避免闭包持有原回复中未发送的图片。
-        String text = reply.getText();
         REPLY_QUEUE.enqueue(binding.appId, binding.openId, imageBytes, () -> {
-            if (images.isEmpty()) {
-                sendReplyDo(binding, text);
+            if (reply.hasImageReferences()) {
+                sendStructuredReply(binding, reply);
             } else {
-                sendStructuredReply(binding, text, images);
+                sendReplyDo(binding, reply.getText());
             }
         }, this::submitReplyTask);
     }
@@ -144,73 +140,37 @@ public class FeishuLink implements Channel, Runnable {
         RunUtil.async(task);
     }
 
-    private void sendStructuredReply(FeishuBinding binding, String text, List<PublishedImage> images) {
-        // 只使用登记的 caption，按图片顺序追加，不扫描或改写原始 Markdown。
-        StringBuilder finalText = new StringBuilder(text == null ? "" : text);
-        for (PublishedImage image : images) {
-            if (!Assert.isEmpty(image.getCaption())) {
-                if (finalText.length() > 0) {
-                    finalText.append('\n');
-                }
-                finalText.append(image.getCaption());
+    private void sendStructuredReply(FeishuBinding binding, ChannelReply reply) {
+        Map<String, String> uploaded = new HashMap<>();
+        ChannelReply.RenderedImages markdown = reply.renderImageNodes(image -> {
+            String id = image.getUuid();
+            if (uploaded.containsKey(id)) {
+                return uploaded.get(id);
             }
-        }
-        if (finalText.length() > 0) {
-            try {
-                sendTextOnce(binding, finalText.toString());
-            } catch (Exception e) {
-                LOG.error("[Feishu] Reply text failed; continuing images without retry: {}", e.getMessage(), e);
+            if (Thread.currentThread().isInterrupted() || uploaded.size() >= 5) {
+                return null;
             }
-        }
-        int failedImages = 0;
-        for (PublishedImage image : images) {
+            // 先缓存失败，保证重复引用、异常及正文重试都不会触发再次上传。
+            uploaded.put(id, null);
             try {
-                String imageKey = uploadReplyImage(binding, image.getBytes(), image.getFilename());
-                if (Assert.isEmpty(imageKey)) {
-                    throw new IllegalStateException("missing image_key");
-                }
-                String sent = sendReplyImage(binding, imageKey, image.getUuid());
-                if (Assert.isEmpty(sent)) {
-                    throw new IllegalStateException("missing message_id");
+                byte[] bytes = image.getBytes();
+                String filename = bytes.length >= 3 && bytes[0] == (byte) 0xff
+                        && bytes[1] == (byte) 0xd8 && bytes[2] == (byte) 0xff
+                        ? "image.jpg" : "image.png";
+                String key = uploadReplyImage(binding, bytes, filename);
+                if (!Assert.isEmpty(key)) {
+                    uploaded.put(id, key);
+                } else {
+                    LOG.warn("[Feishu] Reply image upload returned no image_key; using safe placeholder");
                 }
             } catch (Exception e) {
-                failedImages++;
-                LOG.error("[Feishu] Reply image failed (uuid={}); continuing without retry: {}",
-                        image.getUuid(), e.getMessage(), e);
+                // 不把响应、原文件名或本地路径带入正文和日志。
+                LOG.warn("[Feishu] Reply image upload failed; using safe placeholder");
             }
-        }
-        if (failedImages > 0) {
-            String hint = "图片发送失败（" + failedImages + "/" + images.size()
-                    + " 张），请在工作区查看图片或稍后重试。";
-            try {
-                sendImageFailureHint(binding, hint);
-            } catch (Exception e) {
-                LOG.warn("[Feishu] Image failure hint could not be sent", e);
-            }
-        }
-    }
-
-    /** 对同一快照尽力一次，不重试、不附带服务端响应或异常内容。 */
-    protected void sendImageFailureHint(FeishuBinding binding, String text) {
-        String token = getReplyAccessToken(binding);
-        if (token == null || !sendReplyPlainTextChunk(token, binding.openId, text)) {
-            LOG.warn("[Feishu] Image failure hint was not delivered");
-        }
-    }
-
-    /** 保留 Markdown 分片格式，每片仅尝试一次，不降级重发。 */
-    protected void sendTextOnce(FeishuBinding binding, String text) {
-        String token = getReplyAccessToken(binding);
-        if (token == null) {
-            throw new IllegalStateException("failed to get access token");
-        }
-        ChunkedSender.Config cfg = ChunkedSender.Config.feishu();
-        ChunkedSender.SendResult result = ChunkedSender.sendChunked(text,
-                new ChunkedSender.Config(cfg.getMaxLen(), cfg.getIntervalMs(), 0, 0),
-                (chunk, part) -> sendReplyTextChunk(token, binding.openId, chunk, part));
-        if (result.getFailedParts() > 0) {
-            LOG.warn("[Feishu] Reply text: {}/{} parts failed; no retry, continuing images",
-                    result.getFailedParts(), result.getTotalParts());
+            return uploaded.get(id);
+        }, ChannelReply.ExternalImagePolicy.HTTP_LINK);
+        if (!Thread.currentThread().isInterrupted()) {
+            sendReplyDo(binding, markdown.getText(), reply.renderImages(image -> null), markdown);
         }
     }
 
@@ -231,9 +191,6 @@ public class FeishuLink implements Channel, Runnable {
         return FeishuClient.uploadImage(binding.appId, binding.appSecret, bytes, filename);
     }
 
-    protected String sendReplyImage(FeishuBinding binding, String imageKey, String uuid) {
-        return FeishuClient.sendImageMessage(binding.appId, binding.appSecret, binding.openId, imageKey, uuid);
-    }
 
     /**
      * 交互状态信号：只下发非流式提示文本，不走流式分片。
@@ -410,8 +367,19 @@ public class FeishuLink implements Channel, Runnable {
     private static final int MAX_SEND_RETRIES = 3;
 
     private void sendReplyDo(FeishuBinding binding, String reply) {
-        // 外层重试：应对 token 获取失败或偶发网络抖动
+        sendReplyDo(binding, reply, reply);
+    }
+
+    private void sendReplyDo(FeishuBinding binding, String reply, String safeText) {
+        sendReplyDo(binding, reply, safeText, null);
+    }
+
+    private void sendReplyDo(FeishuBinding binding, String reply, String safeText, ChannelReply.RenderedImages nodes) {
+        // 外层重试：应对 token 获取失败或偶发网络抖动；上传已在此循环外完成。
         for (int attempt = 0; attempt < MAX_SEND_RETRIES; attempt++) {
+            if (Thread.currentThread().isInterrupted()) {
+                return;
+            }
             try {
                 // 获取 tenant_access_token（使用绑定自己的凭据）
                 String token = getReplyAccessToken(binding);
@@ -431,12 +399,15 @@ public class FeishuLink implements Channel, Runnable {
                 final String fOpenId = binding.openId;
 
                 // ★ 不再 cleanMarkdown：直接以 Markdown 格式发送（飞书 post + md tag）
-                ChunkedSender.SendResult result = ChunkedSender.sendChunked(reply,
-                        ChunkedSender.Config.feishu(),
-                        (chunk, part) -> {
-                            return sendReplyTextChunk(fToken, fOpenId, chunk, part);
-                        });
+                ChunkedSender.SendFunc sender = (chunk, part) -> !Thread.currentThread().isInterrupted()
+                        && sendReplyTextChunk(fToken, fOpenId, chunk, part);
+                ChunkedSender.SendResult result = nodes == null
+                        ? ChunkedSender.sendChunked(reply, ChunkedSender.Config.feishu(), sender)
+                        : ChunkedSender.sendImageNodes(nodes, ChunkedSender.Config.feishu(), sender);
 
+                if (Thread.currentThread().isInterrupted()) {
+                    return;
+                }
                 // 部分发送失败告警（非全部失败，不需要降级，但需记录）
                 if (result.getFailedParts() > 0 && result.getFailedParts() < result.getTotalParts()) {
                     LOG.warn("[Feishu] Partial send failure: {}/{} parts failed", result.getFailedParts(), result.getTotalParts());
@@ -445,16 +416,20 @@ public class FeishuLink implements Channel, Runnable {
                 // 如果全部失败，降级为纯文本发送
                 if (result.getFailedParts() == result.getTotalParts() && result.getTotalParts() > 0) {
                     LOG.warn("[Feishu] MD post failed, degrading to plain text for {} part(s)", result.getTotalParts());
-                    String cleanReply = cleanMarkdown(reply);
+                    String cleanReply = cleanMarkdown(safeText);
                     if (cleanReply.isEmpty()) {
-                        cleanReply = reply;
+                        cleanReply = safeText;
                     }
                     ChunkedSender.SendResult textResult = ChunkedSender.sendChunked(cleanReply,
                             ChunkedSender.Config.feishu(),
                             (chunk, part) -> {
-                                return sendReplyPlainTextChunk(fToken, fOpenId, chunk);
+                                return !Thread.currentThread().isInterrupted()
+                                        && sendReplyPlainTextChunk(fToken, fOpenId, chunk);
                             });
 
+                    if (Thread.currentThread().isInterrupted()) {
+                        return;
+                    }
                     // 降级也失败，走外层重试
                     if (textResult.getFailedParts() == textResult.getTotalParts() && textResult.getTotalParts() > 0) {
                         if (attempt < MAX_SEND_RETRIES - 1) {
