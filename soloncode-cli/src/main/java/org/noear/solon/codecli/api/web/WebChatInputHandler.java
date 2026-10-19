@@ -613,6 +613,10 @@ class WebChatInputHandler {
                 return true;
             }
 
+            // 在任何持久化/事件投递前领取取消终态，与 RunEnd 使用同一临界区。
+            // 投递延后到持久化之后，但只能使用此刻捕获的本轮路由。
+            Runnable replyCanceled = gate.getStreamBuilder().prepareCanceledReply(wsContext, session);
+
             // 1) 取消语义：error + 可选 final/trace（落库消息带上 runId，便于按 runId 锚点删除）
             AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
             ReActTrace trace = TraceUtil.getCurrentTrace(session);
@@ -626,7 +630,7 @@ class WebChatInputHandler {
             session.updateSnapshot();
             gate.emitToClient(wsContext, sessionId, WebEvent.ofError("用户已取消任务."));
             // 取消终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
-            gate.getStreamBuilder().replyCanceledToBoundChannels(wsContext, session);
+            replyCanceled.run();
 
             if (trace != null) {
                 Long totalTokens = (trace.getMetrics() != null) ? trace.getMetrics().getTotalTokens() : 0L;

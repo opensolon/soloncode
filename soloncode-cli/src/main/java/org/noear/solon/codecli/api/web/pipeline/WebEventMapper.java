@@ -17,6 +17,7 @@ import org.noear.solon.ai.harness.agent.TaskWrapEvent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.loop.GoalTalent;
 import org.noear.solon.codecli.api.web.WebStreamBuilder;
+import org.noear.solon.codecli.artifact.ImageReplyTurn;
 import org.noear.solon.codecli.api.web.event.UiPatchEvent;
 import org.noear.solon.codecli.api.web.event.UiRenderEvent;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -43,8 +44,15 @@ public class WebEventMapper {
     private final WorkspaceContext wsContext;
     private final AgentSession session;
     private final ChatModel chatModel;
+    private final ImageReplyTurn imageTurn;
 
     public WebEventMapper(WebStreamBuilder streamBuilder, WorkspaceContext wsContext, AgentSession session, ChatModel chatModel) {
+        this(streamBuilder, wsContext, session, chatModel, null);
+    }
+
+    public WebEventMapper(WebStreamBuilder streamBuilder, WorkspaceContext wsContext, AgentSession session,
+                          ChatModel chatModel, ImageReplyTurn imageTurn) {
+        this.imageTurn = imageTurn;
         this.streamBuilder = streamBuilder;
         this.wsContext = wsContext;
         this.session = session;
@@ -109,6 +117,7 @@ public class WebEventMapper {
             fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
             result.add(evt);
         } else if (event instanceof HITLPendingEvent) {
+            if (imageTurn != null) imageTurn.discardImages();
             List<WebEvent<?>> hitlEvents = onHITLPendingEvent(session, (HITLPendingEvent) event);
             for (WebEvent<?> evt : hitlEvents) {
                 fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
@@ -394,7 +403,14 @@ public class WebEventMapper {
         if (eventAgentName == null
                 || "main".equals(eventAgentName)
                 || eventAgentName.equals(agentSelectedTmp)) {
-            streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), finalAnswer, true);
+            if (imageTurn != null) {
+                streamBuilder.replyRunEnd(wsContext, session, imageTurn, event.getRunId(), finalAnswer, event.isAbnormal());
+            } else if (!event.isAbnormal()) {
+                streamBuilder.replyToBoundChannel(wsContext, session.getSessionId(), finalAnswer, true);
+            } else {
+                streamBuilder.replyErrorToBoundChannels(wsContext, session,
+                        new IllegalStateException("任务执行异常结束"));
+            }
         }
 
         return WebEvent.ofTrace(model, totalTokens, elapsedSeconds, finalAnswer);

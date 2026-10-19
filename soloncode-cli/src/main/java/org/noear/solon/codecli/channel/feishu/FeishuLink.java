@@ -16,7 +16,9 @@
 package org.noear.solon.codecli.channel.feishu;
 
 import java.util.*;
+import org.noear.solon.codecli.artifact.PublishedImage;
 import org.noear.solon.codecli.channel.Channel;
+import org.noear.solon.codecli.channel.ChannelReply;
 import org.noear.solon.codecli.channel.ChunkedSender;
 import org.noear.solon.codecli.channel.ImBindingRegistry;
 import org.noear.solon.codecli.channel.ImGateway;
@@ -44,6 +46,7 @@ import org.slf4j.LoggerFactory;
  */
 public class FeishuLink implements Channel, Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(FeishuLink.class);
+    private static final FeishuReplyQueue REPLY_QUEUE = new FeishuReplyQueue(64, 1024);
 
     /** 进程级网关：绑定归属与连接归属的单一真相源。 */
     private final ImGateway gateway;
@@ -56,6 +59,12 @@ public class FeishuLink implements Channel, Runnable {
         // 构造期不做任何副作用：这里既不认领历史条目、也不落盘。
         // ChannelHub 由 WorkspaceContext 构造，而工作区在 acp/cli 模式下同样会被创建，
         // 在构造器里改登记表会让「无入口端口模式不碰 IM」的约定失效。
+    }
+
+    /** 供渠道适配测试注入网关，不启动连接或创建工作区。 */
+    protected FeishuLink(String workspaceId, ImGateway gateway) {
+        this.workspaceId = workspaceId;
+        this.gateway = gateway;
     }
 
     // ==================== Channel 接口实现 ====================
@@ -88,13 +97,142 @@ public class FeishuLink implements Channel, Runnable {
             return;
         }
 
-        RunUtil.async(() -> {
-            try {
-                sendReplyDo(binding, reply);
-            } catch (Exception e) {
-                LOG.error("[Feishu] Reply error: {}", e.getMessage(), e);
+        enqueueReply(binding, () -> sendReplyDo(binding, reply));
+    }
+
+    /**
+     * 结构化回复：发送前固定路由、凭据与最多五张图片，同一任务内先文字后图片。
+     * 有图时逐项单次尝试；无图时保留旧文本的重试及 Markdown 降级。
+     * 两个入口共享目标 FIFO，整个回复（含失败提示）完成后才发送下一条。
+     */
+    @Override
+    public void sendReply(String sessionId, ChannelReply reply,
+                          String sourceUserId, String replyTarget, String messageId) {
+        if (reply == null || (Assert.isEmpty(reply.getText()) && reply.getImages().isEmpty())) {
+            return;
+        }
+        FeishuBinding binding = replyBinding(currentBinding(sessionId), sourceUserId, replyTarget);
+        if (binding == null) {
+            return;
+        }
+        if (binding.appId == null || binding.appSecret == null) {
+            LOG.warn("[Feishu] Cannot send reply: binding credentials not initialized");
+            return;
+        }
+        List<PublishedImage> images = new ArrayList<>(reply.getImages().subList(0,
+                Math.min(5, reply.getImages().size())));
+        long imageBytes = 0;
+        for (PublishedImage image : images) {
+            imageBytes += image.byteSize();
+        }
+        // 只保留实际发送的图片及文本，避免闭包持有原回复中未发送的图片。
+        String text = reply.getText();
+        REPLY_QUEUE.enqueue(binding.appId, binding.openId, imageBytes, () -> {
+            if (images.isEmpty()) {
+                sendReplyDo(binding, text);
+            } else {
+                sendStructuredReply(binding, text, images);
             }
-        });
+        }, this::submitReplyTask);
+    }
+
+    private void enqueueReply(FeishuBinding binding, Runnable task) {
+        REPLY_QUEUE.enqueue(binding.appId, binding.openId, task, this::submitReplyTask);
+    }
+    /** 可替换的消费者启动边界；发送任务已经入队，覆盖此方法不会绕过串行调度。 */
+    protected void submitReplyTask(Runnable task) {
+        RunUtil.async(task);
+    }
+
+    private void sendStructuredReply(FeishuBinding binding, String text, List<PublishedImage> images) {
+        // 只使用登记的 caption，按图片顺序追加，不扫描或改写原始 Markdown。
+        StringBuilder finalText = new StringBuilder(text == null ? "" : text);
+        for (PublishedImage image : images) {
+            if (!Assert.isEmpty(image.getCaption())) {
+                if (finalText.length() > 0) {
+                    finalText.append('\n');
+                }
+                finalText.append(image.getCaption());
+            }
+        }
+        if (finalText.length() > 0) {
+            try {
+                sendTextOnce(binding, finalText.toString());
+            } catch (Exception e) {
+                LOG.error("[Feishu] Reply text failed; continuing images without retry: {}", e.getMessage(), e);
+            }
+        }
+        int failedImages = 0;
+        for (PublishedImage image : images) {
+            try {
+                String imageKey = uploadReplyImage(binding, image.getBytes(), image.getFilename());
+                if (Assert.isEmpty(imageKey)) {
+                    throw new IllegalStateException("missing image_key");
+                }
+                String sent = sendReplyImage(binding, imageKey, image.getUuid());
+                if (Assert.isEmpty(sent)) {
+                    throw new IllegalStateException("missing message_id");
+                }
+            } catch (Exception e) {
+                failedImages++;
+                LOG.error("[Feishu] Reply image failed (uuid={}); continuing without retry: {}",
+                        image.getUuid(), e.getMessage(), e);
+            }
+        }
+        if (failedImages > 0) {
+            String hint = "图片发送失败（" + failedImages + "/" + images.size()
+                    + " 张），请在工作区查看图片或稍后重试。";
+            try {
+                sendImageFailureHint(binding, hint);
+            } catch (Exception e) {
+                LOG.warn("[Feishu] Image failure hint could not be sent", e);
+            }
+        }
+    }
+
+    /** 对同一快照尽力一次，不重试、不附带服务端响应或异常内容。 */
+    protected void sendImageFailureHint(FeishuBinding binding, String text) {
+        String token = getReplyAccessToken(binding);
+        if (token == null || !sendReplyPlainTextChunk(token, binding.openId, text)) {
+            LOG.warn("[Feishu] Image failure hint was not delivered");
+        }
+    }
+
+    /** 保留 Markdown 分片格式，每片仅尝试一次，不降级重发。 */
+    protected void sendTextOnce(FeishuBinding binding, String text) {
+        String token = getReplyAccessToken(binding);
+        if (token == null) {
+            throw new IllegalStateException("failed to get access token");
+        }
+        ChunkedSender.Config cfg = ChunkedSender.Config.feishu();
+        ChunkedSender.SendResult result = ChunkedSender.sendChunked(text,
+                new ChunkedSender.Config(cfg.getMaxLen(), cfg.getIntervalMs(), 0, 0),
+                (chunk, part) -> sendReplyTextChunk(token, binding.openId, chunk, part));
+        if (result.getFailedParts() > 0) {
+            LOG.warn("[Feishu] Reply text: {}/{} parts failed; no retry, continuing images",
+                    result.getFailedParts(), result.getTotalParts());
+        }
+    }
+
+    protected String getReplyAccessToken(FeishuBinding binding) {
+        return FeishuClient.getTenantAccessToken(binding.appId, binding.appSecret);
+    }
+
+    protected boolean sendReplyTextChunk(String token, String openId, String chunk, int part) {
+        return FeishuClient.sendMdPostMessage(token, "open_id", openId,
+                part > 1 ? "(" + part + ")" : "", chunk) != null;
+    }
+
+    protected boolean sendReplyPlainTextChunk(String token, String openId, String chunk) {
+        return FeishuClient.sendMessage(token, "open_id", openId, chunk) != null;
+    }
+
+    protected String uploadReplyImage(FeishuBinding binding, byte[] bytes, String filename) {
+        return FeishuClient.uploadImage(binding.appId, binding.appSecret, bytes, filename);
+    }
+
+    protected String sendReplyImage(FeishuBinding binding, String imageKey, String uuid) {
+        return FeishuClient.sendImageMessage(binding.appId, binding.appSecret, binding.openId, imageKey, uuid);
     }
 
     /**
@@ -114,7 +252,7 @@ public class FeishuLink implements Channel, Runnable {
     }
 
     /** 会话当前绑定（进程级网关为单一真相源）。 */
-    private FeishuBinding currentBinding(String sessionId) {
+    protected FeishuBinding currentBinding(String sessionId) {
         ImBindingRegistry.Binding binding = gateway.findFeishuBySession(workspaceId, sessionId);
         if (binding == null) {
             return null;
@@ -276,7 +414,7 @@ public class FeishuLink implements Channel, Runnable {
         for (int attempt = 0; attempt < MAX_SEND_RETRIES; attempt++) {
             try {
                 // 获取 tenant_access_token（使用绑定自己的凭据）
-                String token = FeishuClient.getTenantAccessToken(binding.appId, binding.appSecret);
+                String token = getReplyAccessToken(binding);
                 if (token == null) {
                     if (attempt < MAX_SEND_RETRIES - 1) {
                         long delay = 1000L * (1L << attempt); // 1s, 2s
@@ -296,9 +434,7 @@ public class FeishuLink implements Channel, Runnable {
                 ChunkedSender.SendResult result = ChunkedSender.sendChunked(reply,
                         ChunkedSender.Config.feishu(),
                         (chunk, part) -> {
-                            String title = part > 1 ? "(" + part + ")" : "";
-                            String msgId = FeishuClient.sendMdPostMessage(fToken, "open_id", fOpenId, title, chunk);
-                            return msgId != null;
+                            return sendReplyTextChunk(fToken, fOpenId, chunk, part);
                         });
 
                 // 部分发送失败告警（非全部失败，不需要降级，但需记录）
@@ -316,8 +452,7 @@ public class FeishuLink implements Channel, Runnable {
                     ChunkedSender.SendResult textResult = ChunkedSender.sendChunked(cleanReply,
                             ChunkedSender.Config.feishu(),
                             (chunk, part) -> {
-                                String msgId = FeishuClient.sendMessage(fToken, "open_id", fOpenId, chunk);
-                                return msgId != null;
+                                return sendReplyPlainTextChunk(fToken, fOpenId, chunk);
                             });
 
                     // 降级也失败，走外层重试

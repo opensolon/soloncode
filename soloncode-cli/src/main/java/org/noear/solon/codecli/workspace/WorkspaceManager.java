@@ -12,6 +12,7 @@ import org.noear.solon.ai.talents.lsp.LspServerParameters;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
+import org.noear.solon.codecli.artifact.PublishImageExtension;
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.loop.*;
@@ -791,6 +792,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
 
         engine.addExtension(new LoopExtension(loopScheduler, wsSettings));
         engine.addExtension(new ManagerExtension(engine, wsSettings));
+        engine.addExtension(new PublishImageExtension());
 
         // 注入 HarnessExtension 扩展
         Solon.context().subBeansOfType(HarnessExtension.class, extension -> {

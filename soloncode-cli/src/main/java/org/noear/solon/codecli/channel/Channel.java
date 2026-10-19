@@ -44,6 +44,24 @@ public interface Channel {
                    String sourceUserId, String replyTarget, String messageId);
 
     /**
+     * 结构化回复的兼容入口。不支持图片的渠道只回退文本；纯图给出明确提示，不发送空文本。
+     */
+    default void sendReply(String sessionId, ChannelReply reply,
+                           String sourceUserId, String replyTarget, String messageId) {
+        if (reply == null) {
+            return;
+        }
+        String text = reply.getText();
+        if (text == null || text.isEmpty()) {
+            if (reply.getImages().isEmpty()) {
+                return;
+            }
+            text = "当前渠道不支持图片回复。";
+        }
+        sendReply(sessionId, text, reply.isFinal(), sourceUserId, replyTarget, messageId);
+    }
+
+    /**
      * 下发一条交互状态信号（非聊天内容，不进历史、不走流式）。
      *
      * <p>IM 的感知远不如 web：排队、长任务、拒收这些 web 侧的可见状态，

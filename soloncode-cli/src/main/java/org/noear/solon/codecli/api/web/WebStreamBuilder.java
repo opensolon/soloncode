@@ -10,6 +10,11 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
 import org.noear.solon.codecli.channel.ImStatus;
+import org.noear.solon.codecli.channel.ChannelReply;
+
+import org.noear.solon.codecli.artifact.PublishedImage;
+import org.noear.solon.codecli.artifact.ImageReplyTurn;
+import java.util.List;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.pipeline.SessionMetricsRecorder;
@@ -48,7 +53,7 @@ public class WebStreamBuilder {
     }
 
     /** IM 非流式终态去重标记：一轮只允许一条终态消息（final/error/canceled）落 IM。 */
-    public static final String ATTR_IM_TERMINAL_SENT = "session.im.terminal.sent";
+    public static final String ATTR_IM_TERMINAL_SENT = ImageReplyTurn.ATTR_IM_TERMINAL_SENT;
 
     /** 长任务心跳定时器句柄（终态时取消）。 */
     private static final String ATTR_IM_HEARTBEAT = "session.im.heartbeat";
@@ -77,46 +82,93 @@ public class WebStreamBuilder {
     public void replyToBoundChannel(WorkspaceContext wsContext, String sessionId, String text, boolean isFinal) {
         if (sessionId == null) return;
         AgentSession session = wsContext.getEngine().getSession(sessionId);
-        @SuppressWarnings("unchecked")
-        java.util.Map<String, String> route = session == null ? null
-                : (java.util.Map<String, String>) session.attrs().get("session.replyRoute");
+        prepareTextReply(wsContext, sessionId, text, isFinal, session, null).run();
+    }
 
-        // 多终端（web/im）同步：无论本轮由谁发起（IM / WEB / Loop），都把终态广播到
-        // 所有绑定该会话的 IM 通道。入站来源通道带上定向参数（群聊/消息线程回复），
-        // 其它通道（含 WEB/Loop 发起时 route 为空的情况）退回到绑定用户（binding.openId）。
-        String routeSource = route == null ? null : route.get("source");
-        String sourceUserId = route == null ? null : route.get("sourceUserId");
-        String replyTarget = route == null ? null : route.get("replyTarget");
-        String messageId = route == null ? null : route.get("messageId");
-
-        boolean allowSend = true;
-        if (isFinal && session != null) {
-            // 终态去重门：final / error / canceled 共用，保证 IM 每轮只收一条终态。
-            Object prev = session.attrs().put(ATTR_IM_TERMINAL_SENT, Boolean.TRUE);
-            allowSend = !Boolean.TRUE.equals(prev);
-            // 本轮已收尾，停掉长任务心跳（若尚未触发）。
-            cancelLongRunningWatch(session);
-            // 本轮已收尾，忙态命令引导标记复位：下一轮忙态重新教学一次。
-            resetCommandHint(session);
+    /** 锁内领取终态并冻结路由；返回的动作只能在锁外执行。expected 隔离旧请求的错误。 */
+    @SuppressWarnings("unchecked")
+    private Runnable prepareTextReply(WorkspaceContext context, String sessionId, String text,
+                                      boolean isFinal, AgentSession session, ImageReplyTurn expected) {
+        String imText = stripAnsi(text);
+        if (session == null) {
+            return () -> sendTextReply(context, sessionId, imText, isFinal, null);
         }
-
-        if (allowSend) {
-            String imText = stripAnsi(text);
-            for (Channel link : wsContext.getChannelHub().getImLinks()) {
-                if (!link.isBound(sessionId)) {
-                    continue;
+        synchronized (session.attrs()) {
+            if (expected != null && !expected.isCurrent()) return () -> { };
+            ImageReplyTurn turn = (ImageReplyTurn) session.attrs().get(ImageReplyTurn.ATTR);
+            Object originalRoute = session.attrs().get("session.replyRoute");
+            Map<String, String> route = turn != null ? turn.getRoute()
+                    : originalRoute instanceof Map ? java.util.Collections.unmodifiableMap(
+                            new java.util.HashMap<>((Map<String, String>) originalRoute))
+                    : java.util.Collections.emptyMap();
+            if (isFinal) {
+                // 文本终态立即封闭本轮图片和迟到 RunEnd，与成功终态共用去重门。
+                if (turn != null) turn.closeTerminal();
+                if (Boolean.TRUE.equals(session.attrs().put(ATTR_IM_TERMINAL_SENT, Boolean.TRUE))) {
+                    return () -> { };
                 }
-                if (routeSource != null && routeSource.equalsIgnoreCase(link.getChannelName())) {
-                    link.sendReply(sessionId, imText, isFinal, sourceUserId, replyTarget, messageId);
-                } else {
-                    link.sendReply(sessionId, imText, isFinal);
+                cancelLongRunningWatch(session);
+                resetCommandHint(session);
+            }
+            Runnable send = () -> sendTextReply(context, sessionId, imText, isFinal, route);
+            return isFinal ? prepareDelivery(session, turn, originalRoute, send) : send;
+        }
+    }
+
+    /** 延迟发送只消费已领取的快照，不再读写终态门；清理时按身份保护新请求。 */
+    private Runnable prepareDelivery(AgentSession session, ImageReplyTurn turn, Object originalRoute,
+                                     Runnable send) {
+        java.util.concurrent.atomic.AtomicBoolean sent = new java.util.concurrent.atomic.AtomicBoolean();
+        return () -> {
+            if (!sent.compareAndSet(false, true)) return;
+            try {
+                send.run();
+            } finally {
+                synchronized (session.attrs()) {
+                    if (turn != null) turn.clearRoute();
+                    else if (session.attrs().get("session.replyRoute") == originalRoute) {
+                        session.attrs().remove("session.replyRoute");
+                    }
                 }
             }
-        }
+        };
+    }
 
-        if (isFinal && route != null && session != null) {
-            session.attrs().remove("session.replyRoute", route);
+    /** 仅由顶层 RunEnd 调用；成功与 isFinal 是两个不同的条件。 */
+    public void replyRunEnd(WorkspaceContext context, AgentSession session, ImageReplyTurn turn,
+                            String runId, String text, boolean abnormal) {
+        Runnable delivery;
+        synchronized (session.attrs()) {
+            if (!turn.claim(runId)) return;
+            if (Boolean.TRUE.equals(session.attrs().get(ATTR_IM_TERMINAL_SENT))) {
+                turn.getImages().discard();
+                return;
+            }
+            List<PublishedImage> images = turn.getImages().finish(runId, !abnormal);
+            session.attrs().put(ATTR_IM_TERMINAL_SENT, Boolean.TRUE);
+            cancelLongRunningWatch(session);
+            resetCommandHint(session);
+            ChannelReply reply = new ChannelReply(stripAnsi(abnormal ? "任务执行异常结束。" : text),
+                    true, runId, images);
+            Map<String, String> route = turn.getRoute();
+            String sessionId = session.getSessionId();
+            delivery = prepareDelivery(session, turn, null, () -> {
+                for (Channel link : context.getChannelHub().getImLinks()) {
+                    if (!link.isBound(sessionId)) continue;
+                    boolean origin = link.getChannelName().equalsIgnoreCase(route.get("source"));
+                    try {
+                        link.sendReply(sessionId, reply,
+                                origin ? route.get("sourceUserId") : null,
+                                origin ? route.get("replyTarget") : null,
+                                origin ? route.get("messageId") : null);
+                    } catch (RuntimeException e) {
+                        // 一个渠道失败不能阻止其它绑定端收尾，且不重新投递已成功渠道。
+                        log.warn("Channel final reply failed: {}", link.getChannelName(), e);
+                    }
+                }
+            });
         }
+        delivery.run();
     }
 
     /**
@@ -152,6 +204,11 @@ public class WebStreamBuilder {
     /** 失败终态：以非流式终态语义同步到 IM（与 final 共用去重门与投递通道）。 */
     public void replyErrorToBoundChannels(WorkspaceContext wsContext, AgentSession session, Throwable e) {
         if (session == null) return;
+        prepareErrorReply(wsContext, session, null, e).run();
+    }
+
+    private Runnable prepareErrorReply(WorkspaceContext context, AgentSession session,
+                                       ImageReplyTurn expected, Throwable e) {
         String msg = e == null ? null : e.getMessage();
         if (Assert.isEmpty(msg)) {
             msg = e == null ? "未知错误" : e.getClass().getSimpleName();
@@ -160,7 +217,31 @@ public class WebStreamBuilder {
         if (msg.length() > 200) {
             msg = msg.substring(0, 200) + "...";
         }
-        replyToBoundChannel(wsContext, session.getSessionId(), "任务执行失败：" + msg, true);
+        return prepareTextReply(context, session.getSessionId(), "任务执行失败：" + msg,
+                true, session, expected);
+    }
+
+    /**
+     * 锁内先领取取消终态，持久化后在锁外投递。
+     * 回执只保留本轮路由快照，不会在延迟执行时读取或改写新一轮的终态门。
+     */
+    Runnable prepareCanceledReply(WorkspaceContext context, AgentSession session) {
+        return prepareTextReply(context, session.getSessionId(), "用户已取消任务。", true, session, null);
+    }
+
+    private void sendTextReply(WorkspaceContext context, String sessionId, String text, boolean isFinal,
+                               Map<String, String> route) {
+        String source = route == null ? null : route.get("source");
+        String imText = stripAnsi(text);
+        for (Channel link : context.getChannelHub().getImLinks()) {
+            if (!link.isBound(sessionId)) continue;
+            if (source != null && source.equalsIgnoreCase(link.getChannelName())) {
+                link.sendReply(sessionId, imText, isFinal,
+                        route.get("sourceUserId"), route.get("replyTarget"), route.get("messageId"));
+            } else {
+                link.sendReply(sessionId, imText, isFinal);
+            }
+        }
     }
 
     /** 取消终态：与失败同路，保证 IM 端不会停在「已读不回」。 */
@@ -348,43 +429,57 @@ public class WebStreamBuilder {
                 session, globalEffort, cap);
         ReasoningSupportUtil.applyToPrompt(prompt, sessionThinkingMode, effectiveEffort);
 
-        WebEventMapper mapper = new WebEventMapper(this, wsContext, session, targetModel);
-        ToolPresentationFilter toolFilter = new ToolPresentationFilter(buildLspState(wsContext));
-        UiRenderFilter uiRenderFilter = new UiRenderFilter();
-        SessionMetricsRecorder metricsRecorder = new SessionMetricsRecorder(session);
-        // 运行中插话（steer）拦截器：请求级挂载，LinkedHashMap 插入序保证排在默认拦截器（含上下文压缩）之后
-        SteerInterceptor steerInterceptor = new SteerInterceptor(webGate, wsContext);
+        ImageReplyTurn imageTurn = new ImageReplyTurn(session, wsContext.getMeta().getPath(), sessionCwd);
+        try {
+            WebEventMapper mapper = new WebEventMapper(this, wsContext, session, targetModel, imageTurn);
+            ToolPresentationFilter toolFilter = new ToolPresentationFilter(buildLspState(wsContext));
+            UiRenderFilter uiRenderFilter = new UiRenderFilter();
+            SessionMetricsRecorder metricsRecorder = new SessionMetricsRecorder(session);
+            // 运行中插话（steer）拦截器：请求级挂载，LinkedHashMap 插入序保证排在默认拦截器（含上下文压缩）之后
+            SteerInterceptor steerInterceptor = new SteerInterceptor(webGate, wsContext);
 
-        final Flux<AgentEvent> stream = targetAgent.prompt(prompt)
-                .session(session)
-                .options(o -> {
-                    if (targetModel != null) {
-                        o.chatModel(targetModel);
-                    }
+            final Flux<AgentEvent> stream = targetAgent.prompt(prompt)
+                    .session(session)
+                    .options(o -> {
+                        if (targetModel != null) {
+                            o.chatModel(targetModel);
+                        }
 
-                    ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
-                    o.interceptorAdd(steerInterceptor);
+                        ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
+                        o.interceptorAdd(steerInterceptor);
+                        o.interceptorAdd(imageTurn);
+                        o.toolContextPut(org.noear.solon.codecli.artifact.PublishImageTalent.CONTEXT_KEY, imageTurn.getToken());
 
-                    if (Assert.isNotEmpty(sessionCwd)) {
-                        o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
-                    }
-                })
-                .stream();
+                        if (Assert.isNotEmpty(sessionCwd)) {
+                            o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
+                        }
+                    })
+                    .stream();
 
-        return   stream
-                .flatMap(event -> Flux.fromIterable(mapper.mapEvent(event)))
-                .filter(WebEvent::isNotEmpty)
-                .map(toolFilter::apply)
-                .map(uiRenderFilter::apply)
-                .doOnNext(metricsRecorder::record)
-                .onErrorResume(e -> {
-                    log.error("Stream execution error", e);
-                    //IM 与 web 是同一 session 的输出端：流式 error 仅 web 可见，
-                    //这里再补一条非流式终态给 IM，否则 IM 端会永久停在「已读不回」。
-                    replyErrorToBoundChannels(wsContext, session, e);
-                    //只发 error：done 统一由订阅侧 doFinally 走 emitDoneOnce 去重门发出。
-                    //此处再拼一个 ofDone 会绕过去重门直推给前端，造成同一轮双 done。
-                    return Flux.just(WebEvent.ofError(e));
-                });
+            return   stream
+                    .flatMap(event -> Flux.fromIterable(mapper.mapEvent(event)))
+                    .filter(WebEvent::isNotEmpty)
+                    .map(toolFilter::apply)
+                    .map(uiRenderFilter::apply)
+                    .doOnNext(metricsRecorder::record)
+                    .onErrorResume(e -> {
+                        log.error("Stream execution error", e);
+                        //IM 与 web 是同一 session 的输出端：流式 error 仅 web 可见，
+                        //这里再补一条非流式终态给 IM，否则 IM 端会永久停在「已读不回」。
+                        prepareErrorReply(wsContext, session, imageTurn, e).run();
+                        //只发 error：done 统一由订阅侧 doFinally 走 emitDoneOnce 去重门发出。
+                        //此处再拼一个 ofDone 会绕过去重门直推给前端，造成同一轮双 done。
+                        return Flux.just(WebEvent.ofError(e));
+                    })
+                    .doFinally(signal -> imageTurn.cleanup());
+        } catch (RuntimeException | Error e) {
+            // stream() 装配期也可能同步失败，此时尚无 doFinally。
+            try {
+                prepareErrorReply(wsContext, session, imageTurn, e).run();
+            } finally {
+                imageTurn.cleanup();
+            }
+            throw e;
+        }
     }
 }

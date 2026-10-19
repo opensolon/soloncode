@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.api.web.pipeline;
 
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
@@ -55,7 +56,7 @@ class WebEventMapperChannelReplyTest {
     }
 
     @Test
-    void abnormalRunDoesNotCreateASecondFinalReplyPath() {
+    void abnormalRunRepliesWithErrorInsteadOfFinalReply() {
         WebStreamBuilder streamBuilder = mock(WebStreamBuilder.class);
         WorkspaceContext wsContext = mock(WorkspaceContext.class);
         AgentSession session = mock(AgentSession.class);
@@ -81,7 +82,13 @@ class WebEventMapperChannelReplyTest {
         mapper.mapEvent(reasonEnd);
         mapper.mapEvent(runEnd);
 
+        ArgumentCaptor<Throwable> errorCaptor = ArgumentCaptor.forClass(Throwable.class);
         verify(streamBuilder, times(1))
-                .replyToBoundChannel(wsContext, "s1", "相同答复", true);
+                .replyErrorToBoundChannels(eq(wsContext), eq(session), errorCaptor.capture());
+        assertEquals(IllegalStateException.class, errorCaptor.getValue().getClass());
+        assertEquals("任务执行异常结束", errorCaptor.getValue().getMessage());
+        verify(streamBuilder, never())
+                .replyToBoundChannel(any(), anyString(), anyString(), eq(true));
+        verifyNoMoreInteractions(streamBuilder);
     }
 }
