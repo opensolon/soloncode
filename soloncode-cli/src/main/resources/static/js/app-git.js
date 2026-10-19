@@ -531,12 +531,12 @@
     // ---- File Viewer：打开文件内容（在 main-area 内）----
     var diffViewerActive = false;
 
-    function openFileViewer(path, name, status) {
+    function openFileViewer(path, name, status, options) {
         if (!centerViewer) return;
 
         // 编辑态保护：有未保存修改时先确认，确认丢弃后重试打开新文件
         if (fileEditorState) {
-            confirmDiscardFileEdit(function() { openFileViewer(path, name, status); });
+            confirmDiscardFileEdit(function() { openFileViewer(path, name, status, options); });
             return; // 同步路径已通过回调重入；异步路径等待确认
         }
 
@@ -565,8 +565,8 @@
                 // displayPath 保持原样（含 @xxx/ 前缀）
             }
         } else {
-            // 无 @ 前缀时，回退到全局工作区状态
-            fileWorkspace = window.activeFilerWorkspace || 'workspace';
+            // 聊天链接显式指定 workspace；旧的文件树入口仍沿用面板选择。
+            fileWorkspace = (options && options.mount) || window.activeFilerWorkspace || 'workspace';
             // 如果全局状态是挂载工作区，displayPath 也要补上 @xxx/ 前缀
             if (fileWorkspace !== 'workspace') {
                 displayPath = fileWorkspace + '/' + displayPath;

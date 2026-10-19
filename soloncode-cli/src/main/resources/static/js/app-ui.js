@@ -288,6 +288,38 @@ function escapeHtmlAttr(value) {
         .replace(/>/g, '&gt;');
 }
 
+// 聊天中的相对路径以当前页面所属工作区为根，不跟随文件面板的挂载选择。
+function classifyMarkdownLink(href) {
+    var value = String(href || '').trim();
+    if (!value || /[\u0000-\u001f\u007f]/.test(value)) return { type: 'blocked' };
+    if (/^(https?:\/\/|mailto:|tel:)/i.test(value) || /^\/\//.test(value)) return { type: 'external', href: value };
+    if (value.charAt(0) === '#') return { type: 'anchor', href: value };
+    // 不把站点路由、绝对路径或其它协议当作本地文件。
+    if (/^(?:[a-z][a-z0-9+.-]*:|[\/\\?])/i.test(value)) return { type: 'blocked' };
+    var path;
+    try { path = decodeURIComponent(value.split(/[?#]/)[0]); } catch (e) { return { type: 'blocked' }; }
+    if (!path || /[\u0000-\u001f\u007f\\:]/.test(path) || path.charAt(0) === '/') return { type: 'blocked' };
+    var parts = path.split('/').filter(function(part) { return part && part !== '.'; });
+    if (!parts.length || parts.indexOf('..') !== -1) return { type: 'blocked' };
+    if (parts[0].charAt(0) === '@' && (parts[0].length === 1 || parts.length < 2)) return { type: 'blocked' };
+    return { type: 'local', path: parts.join('/') };
+}
+
+function handleMarkdownFileClick(event) {
+    if (event.type === 'auxclick' && event.button !== 1) return;
+    var link = event.target.closest && event.target.closest('a[data-local-file]');
+    if (!link) return;
+    event.preventDefault();
+    var result = classifyMarkdownLink(link.getAttribute('data-local-file'));
+    if (result.type !== 'local') return;
+    if (typeof window.openFileViewer === 'function') {
+        window.openFileViewer(result.path, result.path.substring(result.path.lastIndexOf('/') + 1), null, { mount: 'workspace' });
+    }
+}
+// 委托覆盖流式内容、历史消息及后续动态生成的 Markdown。
+document.addEventListener('click', handleMarkdownFileClick);
+document.addEventListener('auxclick', handleMarkdownFileClick);
+
 function createMarkdownRenderer() {
     var renderer = new marked.Renderer();
 
@@ -295,11 +327,15 @@ function createMarkdownRenderer() {
         var href = token && typeof token === 'object' ? token.href : token;
         var title = token && typeof token === 'object' ? token.title : '';
         var text = token && typeof token === 'object' ? token.text : '';
-        var safeHref = href || '';
+        var link = classifyMarkdownLink(href);
         var safeTitle = title ? ' title="' + escapeHtmlAttr(title) + '"' : '';
-        var safeText = text || '';
-
-        return '<a href="' + escapeHtmlAttr(safeHref) + '" target="_blank" rel="noopener noreferrer"' + safeTitle + '>' + safeText + '</a>';
+        var safeText = token && token.tokens && this.parser ? this.parser.parseInline(token.tokens) : escapeHtmlAttr(text || '');
+        if (link.type === 'blocked') return '<span' + safeTitle + '>' + safeText + '</span>';
+        if (link.type === 'local') {
+            return '<a href="#" data-local-file="' + escapeHtmlAttr(href) + '" title="' + escapeHtmlAttr(link.path) + '">' + safeText + '</a>';
+        }
+        return '<a href="' + escapeHtmlAttr(link.href) + '"'
+            + (link.type === 'external' ? ' target="_blank" rel="noopener noreferrer"' : '') + safeTitle + '>' + safeText + '</a>';
     };
 
     // 多工作区隔离：Markdown 内嵌图片 ![](path) 的 <img src> 由浏览器直发，
