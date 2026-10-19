@@ -6,7 +6,7 @@
 
 set -e
 
-VERSION="v2026.10.15"
+VERSION="v2026.10.19"
 PACKAGE_URL="https://gitee.com/opensolon/soloncode/releases/download/${VERSION}/soloncode-cli-bin-${VERSION}.tar.gz"
 TEMP_DIR=""
 

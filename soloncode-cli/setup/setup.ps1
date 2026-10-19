@@ -15,7 +15,7 @@ $ErrorActionPreference = "Stop"
 # Suppress PowerShell's built-in download progress UI (we render our own)
 $ProgressPreference = "SilentlyContinue"
 
-$VERSION = "v2026.10.15"
+$VERSION = "v2026.10.19"
 $PACKAGE_URL = "https://gitee.com/opensolon/soloncode/releases/download/$VERSION/soloncode-cli-bin-$VERSION.tar.gz"
 $TEMP_DIR = Join-Path $env:TEMP ("soloncode-install-" + [Guid]::NewGuid().ToString("N"))
 

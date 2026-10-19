@@ -45,7 +45,7 @@ public class AgentFlags {
     public final static String TRACE_KEY_MAIN = "__main";
 
     public static String getVersion() {
-        return "v2026.10.15";
+        return "v2026.10.19";
     }
 
     private static String lastVersion;
