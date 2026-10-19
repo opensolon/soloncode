@@ -1964,6 +1964,8 @@ body {
     flex: 1;
     display: flex;
     flex-direction: column;
+    min-height: 0;
+    min-width: 0;
     overflow: hidden;
 }
 .center-viewer-header {
@@ -2015,7 +2017,10 @@ body {
 /* Diff 行号 */
 .git-diff-line {
     display: flex;
+    width: max-content;
+    min-width: 100%;
     line-height: inherit;
+    white-space: pre;
 }
 .git-line-num {
     width: 48px;
@@ -2337,13 +2342,32 @@ body {
 }
 .center-viewer-content {
     flex: 1;
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
     margin: 0;
     font-family: var(--font-mono);
     font-size: calc(12.5px * var(--font-scale));
     line-height: 1.6;
-    white-space: pre;
+    white-space: normal;
     background: none;
+}
+.git-diff-view {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    white-space: pre;
+}
+.center-viewer-scroll {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 /* 中间主区全屏视图（心智记忆 / 审查详情 / 文件详情共用）：
@@ -2422,10 +2446,12 @@ body.memory-active .main-header { display: none; }
 
 /* ===== 文件编辑（centerViewer 编辑态）===== */
 .file-edit-wrap {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    height: 100%;
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
 }
 .file-edit-toolbar {
     display: flex;
@@ -2440,6 +2466,7 @@ body.memory-active .main-header { display: none; }
     flex: 1;
     width: 100%;
     min-height: 0;
+    min-width: 0;
     box-sizing: border-box;
     padding: 12px 16px;
     border: none;
@@ -2506,20 +2533,17 @@ body.memory-active .main-header { display: none; }
 .file-edit-host {
     flex: 1;
     min-height: 0;
+    min-width: 0;
     position: relative;
     overflow: hidden;
 }
-/* 查看态宿主：CodeMirror 模式下由 .CodeMirror-scroll 作为唯一滚动容器 */
+/* 查看态宿主：绝对撑满代码容器，由 .CodeMirror-scroll 作为唯一滚动容器 */
 .file-view-host {
-    position: relative;
+    position: absolute;
+    inset: 0;
+    min-height: 0;
+    min-width: 0;
     overflow: hidden;
-    height: 100%;
-}
-.file-view-cm-active .file-view-code {
-    height: 100%;
-}
-.file-view-cm-active .file-view-host {
-    height: 100%;
 }
 :is(.file-view-host, .file-edit-host) .CodeMirror {
     position: absolute;
@@ -2763,19 +2787,33 @@ body.memory-active .main-header { display: none; }
 
 /* iframe 包裹容器：当切换视图时显示 */
 .file-view-md-frame-wrap {
+    flex: 1;
     display: none;
+    min-height: 0;
+    min-width: 0;
     overflow: hidden;
 }
 .file-view-md-frame {
+    display: block;
     width: 100%;
+    height: 100%;
     border: none;
     background: #ffffff;
 }
 
 .file-view-code {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    white-space: pre;
     font-family: var(--font-mono);
     font-size: calc(12.5px * var(--font-scale));
     line-height: 1.65;
+}
+.file-view-code.file-view-cm-active {
+    position: relative;
+    overflow: hidden;
 }
 .file-view-line {
     display: flex;
@@ -2798,7 +2836,14 @@ body.memory-active .main-header { display: none; }
 }
 
 /* ===== 文件查看器：媒体文件预览（图片/视频）===== */
-.center-viewer-content .file-view-media {}
+.center-viewer-content .file-view-media {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    overflow: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
 
 .center-viewer-content .file-view-media-preview {
     display: flex;
@@ -3577,7 +3622,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 
 
 /* ===== 心智记忆管理面板 ===== */
-.center-viewer-content .memory-panel { white-space: normal; display: flex; flex-direction: column; height: 100%; font-size: var(--fs-md); }
+.center-viewer-content .memory-panel { white-space: normal; display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; font-size: var(--fs-md); }
 .memory-btn { height: 32px; padding: 0 16px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--fs-base); transition: all 0.15s; }
 .memory-btn-danger { color: var(--color-danger); display: inline-flex; align-items: center; gap: 4px; }
 .memory-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -3587,7 +3632,7 @@ pre:hover .code-copy-btn { opacity: 1; }
 /* 删除：纯文字按钮，hover 才现浅危险底 */
 .memory-btn-danger { color: var(--color-danger); }
 .memory-btn-danger:hover { background: rgba(220,53,69,0.1); color: var(--color-danger); }
-    .memory-list { flex: 1; overflow-y: auto; padding: 8px 16px 24px; }
+    .memory-list { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; padding: 8px 16px 24px; }
     .memory-list-empty { padding: 32px 16px; color: var(--text-secondary); font-size: var(--fs-base); text-align: center; }
     /* 手风琴行 */
     .mem-row { border-radius: 10px; margin-bottom: 8px; overflow: hidden; background: transparent; transition: border-color 0.15s; }
@@ -3731,8 +3776,8 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .model-empty-add-btn:hover { background: var(--accent-fill, var(--accent)); color: #fff; }
 
 /* ===== 自动任务：复用心智记忆行和聊天消息外观 ===== */
-.automation-page { color: var(--text-primary); white-space: normal; height: 100%; display: flex; flex-direction: column; font-size: var(--fs-md); }
-.automation-list { flex: 1; overflow-y: auto; padding: 8px 16px 24px; }
+.automation-page { color: var(--text-primary); white-space: normal; flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; font-size: var(--fs-md); }
+.automation-list { flex: 1; min-height: 0; min-width: 0; overflow-y: auto; padding: 8px 16px 24px; }
 .automation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .viewer-file-meta { min-width: 0; color: var(--text-secondary); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .automation-title { margin: 0; font-size: var(--fs-xl); font-weight: 600; }

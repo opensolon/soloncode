@@ -583,7 +583,7 @@
         var oldActions = centerViewer.querySelector('.center-viewer-actions');
         if (oldActions) oldActions.remove();
 
-        if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
+        if (centerViewerContent) centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
 
         var readUrl = '/web/chat/filer/read?path=' + encodeURIComponent(apiPath);
         if (fileWorkspace !== 'workspace') {
@@ -596,7 +596,7 @@
                 if (requestSerial !== fileViewRequestSerial) return;
                 var d = (res && res.data) ? res.data : {};
                 if (res && res.code !== 200) {
-                    centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">'
+                    centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:var(--color-danger)">'
                         + escapeHtml((res && res.data && res.data.message) || res.description || I18n.t('gitdiff.cannotReadFile'))
                         + '</div>';
                     return;
@@ -624,7 +624,7 @@
                 renderFileContent(d.content, d.name || name, d.size, path, rawUrl);
             })
             .catch(function(e) {
-                if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--color-danger)">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
+                if (centerViewerContent) centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:var(--color-danger)">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
             })
             .finally(function() {
                 if (requestSerial !== fileViewRequestSerial) return;
@@ -697,7 +697,6 @@
         }
         html += '</div></div>';
         centerViewerContent.innerHTML = html;
-        centerViewerContent.scrollTop = 0;
     }
 
     /**
@@ -718,7 +717,7 @@
         var _addToChatBin = document.getElementById('centerViewerAddToChat');
         if (_addToChatBin) _addToChatBin.style.display = 'none';
 
-        centerViewerContent.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-secondary)">'
+        centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:40px 20px;text-align:center;color:var(--text-secondary)">'
             + '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;margin-bottom:16px">'
             + '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>'
             + '<polyline points="14 2 14 8 20 8"/>'
@@ -727,17 +726,12 @@
             + '<div style="font-size:14px;font-weight:500;margin-bottom:6px">' + I18n.t('gitdiff.binaryFile') + '</div>'
             + '<div style="font-size:12px;opacity:0.6">' + escapeHtml(fileName || '') + ' ' + I18n.t('gitdiff.binaryFileHint') + '</div>'
             + '</div>';
-        centerViewerContent.scrollTop = 0;
     }
 
     // ---- File Viewer：渲染文件内容（语法高亮 + 行号 / 媒体预览 / 二进制提示）----
     function renderFileContent(content, fileName, fileSize, filePath, rawUrl) {
         if (!centerViewerContent) return;
         var renderSerial = ++fileRenderSerial;
-
-        // 重置容器状态（清理之前文件留下的 overflow 等样式）
-        centerViewerContent.style.overflow = '';
-        centerViewerContent.classList.remove('file-view-cm-active');
 
         // ---- 媒体文件类型检测（优先于文本渲染）----
         if (rawUrl && isImageFile(filePath || fileName)) {
@@ -811,9 +805,8 @@
         function renderCmView(mime) {
             var codeBlock = centerViewerContent.querySelector('.file-view-code');
             if (!codeBlock) return renderHljsView();
-            // CodeMirror 自己负责纵向滚动；外层 viewer 关闭滚动，避免出现双滚动条。
-            centerViewerContent.classList.add('file-view-cm-active');
-            centerViewerContent.style.overflow = 'hidden';
+            // 模式状态只属于文件内层，CodeMirror 独立负责滚动。
+            codeBlock.classList.add('file-view-cm-active');
             var host = document.createElement('div');
             host.className = 'file-view-host';
             codeBlock.innerHTML = '';
@@ -852,12 +845,12 @@
         // hljs 降级渲染（CM 资产不可用时；结构与旧显示态一致）
         function renderHljsView() {
             fileViewerCtx && (fileViewerCtx.cm = null);
-            centerViewerContent.classList.remove('file-view-cm-active');
-            centerViewerContent.style.overflow = '';
+
             var lines = (content || '').split('\n');
             var totalLines = lines.length;
             var codeBlock = centerViewerContent.querySelector('.file-view-code');
             if (!codeBlock) return;
+            codeBlock.classList.remove('file-view-cm-active');
             var codeHtml = '';
             for (var i = 0; i < totalLines; i++) {
                 var escapedLine = escapeHtml(lines[i]);
@@ -943,17 +936,8 @@
                             // 切换到预览模式
                             code.style.display = 'none';
                             wrap.style.display = 'block';
-                            // 隐藏外层滚动条，与全屏模式行为一致
-                            centerViewerContent.style.overflow = 'hidden';
-
-                            // 调整 iframe 高度
+                            // 预览尺寸由内层布局约束，iframe 文档自行滚动。
                             var iframe = wrap.querySelector('iframe');
-                            if (iframe) {
-                                var headerHeight = 8;
-                                var availHeight = centerViewerContent.clientHeight - headerHeight - 8;
-                                if (availHeight < 300) availHeight = 300;
-                                iframe.style.height = availHeight + 'px';
-                            }
 
                             if (!mdRenderedFlag && iframe) {
                                 var mdHtml = renderMdForPreview(content);
@@ -973,8 +957,7 @@
                             // 切换回"源码"模式
                             code.style.display = 'block';
                             wrap.style.display = 'none';
-                            // 恢复外层滚动条（源码模式需要）
-                            centerViewerContent.style.overflow = '';
+
                             // CM 实例经 display:none 后需重算尺寸
                             if (fileViewerCtx && fileViewerCtx.cm) {
                                 try { fileViewerCtx.cm.refresh(); } catch (e) { /* 忽略 */ }
@@ -988,8 +971,6 @@
                 })(content, mdToggleBtn, mdFrameWrap, codeBlock);
             }
         }
-
-        centerViewerContent.scrollTop = 0;
     }
 
     // ---- 将选中行/选中内容加入对话输入框 ----
@@ -1335,7 +1316,7 @@
         if (isDir) {
             // 目录：列出目录下文件列表
             if (centerViewerContent) {
-                centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
+                centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:var(--text-secondary)">'
                     + '<div style="margin-bottom:8px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ' + escapeHtml(displayDiffPath) + '</div>'
                     + '<div id="gitDirFileList" style="margin-top:12px">' + I18n.t('common.loading') + '...</div>'
                     + '</div>';
@@ -1390,7 +1371,7 @@
             return;
         }
 
-        if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
+        if (centerViewerContent) centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:var(--text-secondary)">' + I18n.t('common.loading') + '...</div>';
 
         fetch(gitUrl('/web/chat/git/diff', 'path=' + encodeURIComponent(path)))
             .then(function(r) { return r.json(); })
@@ -1399,7 +1380,7 @@
                 var diffText = d.diff || '';
                 if (!diffText.trim()) {
                     // 后端已对未跟踪文件生成整文件新增 diff；此处仅作兜底空态
-                    centerViewerContent.innerHTML = '<div style="padding:20px;color:var(--text-secondary)">'
+                    centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:var(--text-secondary)">'
                         + (status === '?'
                             ? I18n.t('gitdiff.newFileHint')
                             : I18n.t('gitdiff.noChanges'))
@@ -1409,7 +1390,7 @@
                 }
             })
             .catch(function(e) {
-                if (centerViewerContent) centerViewerContent.innerHTML = '<div style="padding:20px;color:#cb2431">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
+                if (centerViewerContent) centerViewerContent.innerHTML = '<div class="center-viewer-scroll" style="padding:20px;color:#cb2431">' + I18n.t('gitdiff.loadFailed') + ': ' + escapeHtml(e.message) + '</div>';
             })
             .finally(function() {
                 renderViewerActions(path, status);
@@ -1816,7 +1797,6 @@
         }
 
         // 渲染编辑区（工具栏 + 编辑器宿主，CodeMirror 优先，失败回退 textarea）
-        centerViewerContent.style.overflow = 'hidden';
         var wrap = document.createElement('div');
         wrap.className = 'file-edit-wrap';
         var bar = document.createElement('div');
@@ -2112,8 +2092,8 @@
                     + '</div>';
             }
         }
-        centerViewerContent.innerHTML = html;
-        centerViewerContent.scrollTop = 0;
+        centerViewerContent.innerHTML = '<div class="git-diff-view">' + html + '</div>';
+        centerViewerContent.querySelector('.git-diff-view').scrollTop = 0;
     }
 
     // ---- Diff Viewer：关闭，恢复原始视图 ----
