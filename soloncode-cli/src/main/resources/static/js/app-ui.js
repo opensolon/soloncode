@@ -307,6 +307,7 @@ function classifyMarkdownLink(href) {
 
 function handleMarkdownFileClick(event) {
     if (event.type === 'auxclick' && event.button !== 1) return;
+    if (event.type === 'keydown' && (event.key !== 'Enter' || event.repeat)) return;
     var link = event.target.closest && event.target.closest('a[data-local-file]');
     if (!link) return;
     event.preventDefault();
@@ -319,6 +320,8 @@ function handleMarkdownFileClick(event) {
 // 委托覆盖流式内容、历史消息及后续动态生成的 Markdown。
 document.addEventListener('click', handleMarkdownFileClick);
 document.addEventListener('auxclick', handleMarkdownFileClick);
+// 无 href 的本地链接仍可通过 Tab 聚焦、Enter 打开。
+document.addEventListener('keydown', handleMarkdownFileClick);
 
 function createMarkdownRenderer() {
     var renderer = new marked.Renderer();
@@ -332,7 +335,8 @@ function createMarkdownRenderer() {
         var safeText = token && token.tokens && this.parser ? this.parser.parseInline(token.tokens) : escapeHtmlAttr(text || '');
         if (link.type === 'blocked') return '<span' + safeTitle + '>' + safeText + '</span>';
         if (link.type === 'local') {
-            return '<a href="#" data-local-file="' + escapeHtmlAttr(href) + '" title="' + escapeHtmlAttr(link.path) + '">' + safeText + '</a>';
+            // 不设置 href（包括占位 #），避免浏览器悬停时显示当前页面地址。
+            return '<a role="link" tabindex="0" style="cursor:pointer" data-local-file="' + escapeHtmlAttr(href) + '" title="' + escapeHtmlAttr(link.path) + '">' + safeText + '</a>';
         }
         return '<a href="' + escapeHtmlAttr(link.href) + '"'
             + (link.type === 'external' ? ' target="_blank" rel="noopener noreferrer"' : '') + safeTitle + '>' + safeText + '</a>';
