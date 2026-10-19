@@ -354,7 +354,9 @@
         var box = document.getElementById('autoList'); if (!box) return;
         var html = expandedId === NEW_ID ? rowHtml({}, true) : '';
         html += tasks.map(function (t) { return rowHtml(t, false); }).join('');
-        box.innerHTML = html || '<div class="automation-empty">' + I18n.t('automation.empty.title') + '<br><span>' + I18n.t('automation.empty.desc') + '</span></div>';
+        box.innerHTML = html || '<div class="panel-list-empty">' +
+            '<div class="panel-list-empty-title">' + esc(I18n.t('automation.empty.title')) + '</div>' +
+            '<div class="panel-list-empty-desc">' + esc(I18n.t('automation.empty.desc')) + '</div></div>';
         box.querySelectorAll('.automation-row').forEach(function (row) {
             var id = row.getAttribute('data-id');
             var head = row.querySelector('.automation-row-head');

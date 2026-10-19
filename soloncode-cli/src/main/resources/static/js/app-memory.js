@@ -155,7 +155,9 @@
         }
 
         if (items.length === 0 && expandedKey !== NEW_KEY) {
-            listEl.innerHTML = '<div class="mem-list-empty">' + I18n.t('memory.empty') + '</div>';
+            listEl.innerHTML = '<div class="panel-list-empty">' +
+                '<div class="panel-list-empty-title">' + escapeHtml(I18n.t('memory.empty.title')) + '</div>' +
+                '<div class="panel-list-empty-desc">' + escapeHtml(I18n.t('memory.empty.desc')) + '</div></div>';
             return;
         }
 

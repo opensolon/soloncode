@@ -2,6 +2,8 @@
 ### v2026.10.19
 
 * 添加 soloncode web 启用实例同端口复用机制
+* 优化 soloncode web 心智记忆列表没有记录时的提示
+* 修复 soloncode web git-diff 视图不能滚动的问题
 * 细节优化
 
 ### v2026.10.15
