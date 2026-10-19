@@ -378,9 +378,9 @@ body {
 /* ===== 消息导航条 ===== */
 .msg-nav { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 16px; max-height: 100%; overflow-y: auto; scrollbar-width: none; z-index: 20; pointer-events: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 0; }
 .msg-nav::-webkit-scrollbar { display: none; }
-.msg-nav-block { flex-shrink: 0; width: 12px; height: 4px; background: var(--bg-user-msg); border-radius: 2px; opacity: 0.55; cursor: pointer; transition: opacity 0.15s; }
-.msg-nav-block:hover { opacity: 1; }
-.msg-nav-block.active { opacity: 1; background: var(--text-primary, #333); }
+.msg-nav-block { flex-shrink: 0; width: 12px; height: 4px; background: var(--msg-nav-dot, var(--text-secondary)); border-radius: 2px; cursor: pointer; transition: background 0.15s; }
+.msg-nav-block:hover { background: var(--text-primary, var(--msg-nav-dot)); }
+.msg-nav-block.active { background: var(--text-primary, #333); }
 .msg-nav-panel { position: fixed; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 0; z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.25); min-width: 220px; max-height: 400px; overflow-y: auto; overflow-x: hidden}
 
 .msg-nav-panel::after { content: ''; position: absolute; right: -6px; top: var(--arrow-top, 50%); transform: translateY(-50%); border: 6px solid transparent; border-left-color: var(--border-color); border-right: none; pointer-events: none; }

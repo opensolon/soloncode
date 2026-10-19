@@ -36,6 +36,7 @@
     --bg-input-box: #fafcf6;
     --border-color: #d4deca;
     --border-input: #c5d2b8;
+    --msg-nav-dot: #78866a;
     --shadow: 0 2px 10px rgba(74, 100, 60, 0.07);
     --shadow-lg: 0 4px 24px rgba(74, 100, 60, 0.09);
     --tag-bg: #e8f0df;
@@ -79,6 +80,7 @@
     --bg-secondary: #151b13;
     --border-color: #2f3c29;
     --border-input: #3a4a32;
+    --msg-nav-dot: #8a9a7c;
     --shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
     --shadow-lg: 0 4px 24px rgba(0, 0, 0, 0.36);
     --tag-bg: #24301f;

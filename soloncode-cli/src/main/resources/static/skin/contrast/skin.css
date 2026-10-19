@@ -26,6 +26,7 @@
     --text-ai-msg: #0a0a0a;
     --border-color: #9ca3af;
     --border-input: #6b7280;
+    --msg-nav-dot: #6b7280;
     --thinking-dot: #1a1a1a;
     --bg-body: #f3f4f6;
     --bg-main: #ffffff;
@@ -68,6 +69,7 @@
     --text-ai-msg: #f8fafc;
     --border-color: #64748b;
     --border-input: #94a3b8;
+    --msg-nav-dot: #9ca3af;
     --thinking-dot: #e0e0e0;
     --bg-body: #0a0a0a;
     --bg-main: #161616;
@@ -79,7 +81,7 @@
     --tag-bg: #222222;
     --tag-border: #444444;
     --reason-group-think-bg: #1a1a1a;
-    --reason-group-think-border: #444444;
+    --reason-group-think-border: #64748b;
     --bg-code: #242424;
     --bg-code-block: #101010;
     --text-code: #e6e6e6;
