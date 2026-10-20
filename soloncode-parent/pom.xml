@@ -28,24 +28,35 @@
         <flexmark.version>0.50.50</flexmark.version>
     </properties>
 
+    <!-- 仓库 id 不能叫 sonatype-snapshots：全局 settings.xml 会把该 id 镜像到不含
+         org.noear 快照的腾讯镜像，导致 solon-parent 等 SNAPSHOT 无法解析。
+         换名后直连 Sonatype 官方快照仓库。 -->
     <repositories>
         <repository>
-            <id>sonatype-snapshots</id>
-            <name>Sonatype Snapshots</name>
+            <id>sonatype-central-snapshots</id>
+            <name>Sonatype Central Snapshots</name>
             <url>https://central.sonatype.com/repository/maven-snapshots/</url>
             <releases>
                 <enabled>false</enabled>
             </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>daily</updatePolicy>
+            </snapshots>
         </repository>
     </repositories>
     <pluginRepositories>
         <pluginRepository>
-            <id>sonatype-snapshots</id>
-            <name>Sonatype Snapshots</name>
+            <id>sonatype-central-snapshots</id>
+            <name>Sonatype Central Snapshots</name>
             <url>https://central.sonatype.com/repository/maven-snapshots/</url>
             <releases>
                 <enabled>false</enabled>
             </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>daily</updatePolicy>
+            </snapshots>
         </pluginRepository>
     </pluginRepositories>
 </project>

@@ -5,6 +5,7 @@ import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.market.Market;
 import org.noear.solon.codecli.market.MarketDetail;
 import org.noear.solon.codecli.market.MarketItem;
+import org.noear.solon.codecli.market.MarketSslSupplier;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -165,7 +166,8 @@ public class ClawhubMarket implements Market {
             try {
                 HttpUtils httpForDownload = HttpUtils.http(downloadUrl)
                         .header("User-Agent", USER_AGENT)
-                        .timeout(30000);
+                        .timeout(30000)
+                        .ssl(MarketSslSupplier.getInstance());
                 ProxyConfig.applyIfNeeded(httpForDownload);
                 try (HttpResponse httpResp = httpForDownload.exec("GET")) {
 
@@ -207,7 +209,8 @@ public class ClawhubMarket implements Market {
             try {
                 HttpUtils http = HttpUtils.http(url)
                         .header("User-Agent", USER_AGENT)
-                        .timeout(15000);
+                        .timeout(15000)
+                        .ssl(MarketSslSupplier.getInstance());
                 ProxyConfig.applyIfNeeded(http);
                 return http.get();
             } catch (Exception e) {
