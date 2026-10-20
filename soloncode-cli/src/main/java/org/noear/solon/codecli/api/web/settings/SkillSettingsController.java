@@ -73,6 +73,24 @@ public class SkillSettingsController extends BaseSettingsController{
     }
 
     /**
+     * 技能详情（预览）— 供前端安装前预览技能的完整信息。
+     *
+     * @param slug       技能 slug（必填）
+     * @param marketName 市场名字（可选，默认使用默认市场）
+     */
+    @Get
+    @Mapping("/web/settings/skills/detail")
+    public Result skillsDetail(Context ctx, @Param("slug") String slug,
+                               @Param(value = "marketName", defaultValue = "") String marketName) {
+        if (Assert.isEmpty(slug)) {
+            return Result.failure("slug is required");
+        }
+
+        Market market = marketManager.getMarketByName(marketName);
+        return market.detail(slug);
+    }
+
+    /**
      * 安装技能 — 委派给 Market 适配器完成下载、解压，然后刷新技能池。
      *
      * @param slug       技能 slug（必填）

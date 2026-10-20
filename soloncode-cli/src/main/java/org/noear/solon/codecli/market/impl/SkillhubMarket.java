@@ -5,6 +5,7 @@ import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.market.Market;
 import org.noear.solon.codecli.market.MarketDetail;
 import org.noear.solon.codecli.market.MarketItem;
+import org.noear.solon.codecli.market.MarketSslSupplier;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -111,8 +112,11 @@ public class SkillhubMarket implements Market {
             }
 
             // 解析 skillhub 详情响应
-            // 响应结构: { skill: { slug, displayName, summary, summary_zh, stats: { installs, stars, downloads } },
-            //             owner: { handle, displayName }, latestVersion: { version } }
+            // 响应结构: { skill: { slug, displayName, summary, summary_zh, overviewMd, category, subCategories,
+            //             stats: { installs, stars, downloads } },
+            //             owner: { handle, displayName }, publisher: { verified },
+            //             latestVersion: { version, changelog },
+            //             securityReports: { <scanner>: { status, statusText } } }
             ONode skillNode = root.get("skill");
             if (skillNode == null) {
                 return Result.failure("技能不存在: " + slug);
@@ -123,6 +127,19 @@ public class SkillhubMarket implements Market {
             String summary = firstNonEmpty(
                     getStringValue(skillNode, "summary_zh"),
                     getStringValue(skillNode, "summary"));
+            // 完整介绍（markdown）；为空时回退摘要，保证预览不空白
+            String overview = firstNonEmpty(
+                    getStringValue(skillNode, "overviewMd"),
+                    summary);
+
+            String category = getStringValue(skillNode, "category");
+            ONode subCategoriesNode = skillNode.get("subCategories");
+            if (subCategoriesNode != null && subCategoriesNode.isArray() && subCategoriesNode.getArray().size() > 0) {
+                String subName = getStringValue(subCategoriesNode.getArray().get(0), "name");
+                if (subName != null && !subName.isEmpty()) {
+                    category = (category == null || category.isEmpty()) ? subName : category + " / " + subName;
+                }
+            }
 
             long installs = 0;
             long stars = 0;
@@ -139,20 +156,27 @@ public class SkillhubMarket implements Market {
             }
 
             String latestVersion = null;
+            String changelog = null;
             ONode versionNode = root.get("latestVersion");
             if (versionNode != null) {
                 latestVersion = getStringValue(versionNode, "version");
+                changelog = getStringValue(versionNode, "changelog");
             }
 
             MarketDetail detail = new MarketDetail()
                     .slug(resolvedSlug)
                     .displayName(displayName)
                     .summary(summary)
-                    .description(summary)
+                    .description(overview)
                     .ownerHandle(ownerHandle)
                     .installs(installs)
                     .stars(stars)
-                    .installSlug(resolvedSlug);
+                    .installSlug(resolvedSlug)
+                    .version(latestVersion)
+                    .changelog(changelog)
+                    .category(category)
+                    .verified(parseVerified(root, skillNode))
+                    .securityStatus(parseSecurityStatus(root));
 
             return Result.succeed(detail);
         } catch (Exception e) {
@@ -193,10 +217,11 @@ public class SkillhubMarket implements Market {
 
             Path tempZip = Files.createTempFile("skill-", ".zip");
             try {
-                HttpUtils httpForDownload = HttpUtils.http(downloadUrl)
-                        .header("User-Agent", USER_AGENT)
-                        .timeout(30000);
-                ProxyConfig.applyIfNeeded(httpForDownload);
+            HttpUtils httpForDownload = HttpUtils.http(downloadUrl)
+                    .header("User-Agent", USER_AGENT)
+                    .timeout(30000)
+                    .ssl(MarketSslSupplier.getInstance());
+            ProxyConfig.applyIfNeeded(httpForDownload);
                 try (HttpResponse httpResp = httpForDownload.exec("GET")) {
 
                     byte[] zipBytes = httpResp.bodyAsBytes();
@@ -234,7 +259,8 @@ public class SkillhubMarket implements Market {
     private String httpGet(String url) throws Exception {
         HttpUtils http = HttpUtils.http(url)
                 .header("User-Agent", USER_AGENT)
-                .timeout(15000);
+                .timeout(15000)
+                .ssl(MarketSslSupplier.getInstance());
         ProxyConfig.applyIfNeeded(http);
         return http.get();
     }
@@ -293,6 +319,54 @@ public class SkillhubMarket implements Market {
     private String getStringValue(ONode node, String key) {
         ONode child = node.get(key);
         return (child != null && !child.isNull()) ? child.getString() : null;
+    }
+
+    /**
+     * 解析认证状态：publisher.verified 优先，其次 skill.verified；都取不到返回 null（前端不显示）。
+     */
+    private Boolean parseVerified(ONode root, ONode skillNode) {
+        ONode publisherNode = root.get("publisher");
+        if (publisherNode != null) {
+            ONode v = publisherNode.get("verified");
+            if (v != null && !v.isNull()) {
+                return v.getBoolean();
+            }
+        }
+        ONode v = skillNode.get("verified");
+        return (v != null && !v.isNull()) ? v.getBoolean() : null;
+    }
+
+    /**
+     * 解析安全扫描状态（keen/sanbu 等）：有非 benign 的结果时拼接提示，否则取第一个 statusText。
+     */
+    private String parseSecurityStatus(ONode root) {
+        ONode reportsNode = root.get("securityReports");
+        if (reportsNode == null || !reportsNode.isObject()) {
+            return null;
+        }
+
+        List<String> warnings = new ArrayList<>();
+        String okText = null;
+        for (Map.Entry<String, ONode> entry : reportsNode.getObject().entrySet()) {
+            ONode report = entry.getValue();
+            if (report == null || report.isNull() || !report.isObject()) {
+                continue;
+            }
+            String status = getStringValue(report, "status");
+            String statusText = getStringValue(report, "statusText");
+            if ("benign".equalsIgnoreCase(status)) {
+                if (okText == null) {
+                    okText = (statusText != null && !statusText.isEmpty()) ? statusText : status;
+                }
+            } else if (statusText != null && !statusText.isEmpty()) {
+                warnings.add(statusText);
+            }
+        }
+
+        if (!warnings.isEmpty()) {
+            return String.join("；", warnings);
+        }
+        return okText;
     }
 
     private long getLongValue(ONode node, String key) {

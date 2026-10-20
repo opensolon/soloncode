@@ -16,6 +16,13 @@ public class MarketDetail {
     private String installSlug; // 用于安装时的实际 slug（如 owner/repo/skill-name）
     private String sourceUrl;   // 源代码仓库地址（如 GitHub 链接），用于下载回退
 
+    // 预览扩展字段（各市场按需填充，无则前端不显示）
+    private String version;        // 最新版本号
+    private String changelog;      // 最新版本更新日志
+    private String category;       // 分类
+    private Boolean verified;      // 发布方是否认证
+    private String securityStatus; // 安全扫描状态描述
+
     public MarketDetail() {
     }
 
@@ -28,6 +35,11 @@ public class MarketDetail {
     public MarketDetail stars(long stars) { this.stars = stars; return this; }
     public MarketDetail installSlug(String installSlug) { this.installSlug = installSlug; return this; }
     public MarketDetail sourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; return this; }
+    public MarketDetail version(String version) { this.version = version; return this; }
+    public MarketDetail changelog(String changelog) { this.changelog = changelog; return this; }
+    public MarketDetail category(String category) { this.category = category; return this; }
+    public MarketDetail verified(Boolean verified) { this.verified = verified; return this; }
+    public MarketDetail securityStatus(String securityStatus) { this.securityStatus = securityStatus; return this; }
 
     public String getSlug() { return slug; }
     public void setSlug(String slug) { this.slug = slug; }
@@ -47,4 +59,14 @@ public class MarketDetail {
     public void setInstallSlug(String installSlug) { this.installSlug = installSlug; }
     public String getSourceUrl() { return sourceUrl; }
     public void setSourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; }
+    public String getVersion() { return version; }
+    public void setVersion(String version) { this.version = version; }
+    public String getChangelog() { return changelog; }
+    public void setChangelog(String changelog) { this.changelog = changelog; }
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+    public Boolean getVerified() { return verified; }
+    public void setVerified(Boolean verified) { this.verified = verified; }
+    public String getSecurityStatus() { return securityStatus; }
+    public void setSecurityStatus(String securityStatus) { this.securityStatus = securityStatus; }
 }
