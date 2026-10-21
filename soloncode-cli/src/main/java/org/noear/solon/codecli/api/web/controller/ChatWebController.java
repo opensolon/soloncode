@@ -85,6 +85,7 @@ public class ChatWebController extends AbstractWebController {
                 item.put("description", config.getDescriptionOrModel());
                 item.put("contextLength", config.getContextLength());
                 item.put("standard", config.getStandardOrProvider());
+                item.put("provider", config.getProvider());
                 ReasoningSupportUtil.ModelCapability cap = ReasoningSupportUtil.resolveCapability(config);
                 item.putAll(ReasoningSupportUtil.toCapabilityMap(cap));
                 list.add(item);
@@ -95,6 +96,22 @@ public class ChatWebController extends AbstractWebController {
             String nameB = (String) b.getOrDefault("name", "");
             return nameA.compareToIgnoreCase(nameB);
         });
+
+        // 同一模型配置了多个渠道时，在名称后标注渠道，否则下拉里几项长得一模一样
+        Map<String, Integer> nameCount = new LinkedHashMap<>();
+        for (Map item : list) {
+            String name = (String) item.getOrDefault("name", "");
+            nameCount.merge(name, 1, Integer::sum);
+        }
+        for (Map item : list) {
+            String name = (String) item.getOrDefault("name", "");
+            if (nameCount.getOrDefault(name, 0) > 1) {
+                String provider = (String) item.get("provider");
+                if (Assert.isNotEmpty(provider)) {
+                    item.put("displayName", name + " (" + provider + ")");
+                }
+            }
+        }
 
         data.put("list", list);
 
