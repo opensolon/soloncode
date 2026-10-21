@@ -50,6 +50,8 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -156,6 +158,159 @@ public class SessionWebController extends AbstractWebController {
         }
 
         return Result.succeed(data);
+    }
+
+    /**
+     * 跨会话检索消息内容。
+     *
+     * <p>遍历所有会话的消息文件，返回内容中包含关键词的片段，供前端做
+     * 「查找聊天记录」式的模糊检索与定位。匹配大小写不敏感。</p>
+     *
+     * @param keyword 检索关键词
+     * @param limit   最多返回的片段数，默认 50，上限 200
+     * @return 命中的片段列表，每项含 sessionId、label、role、content、createdAt
+     */
+    @Get
+    @Mapping("/web/chat/search")
+    public Result<List<Map>> search(@org.noear.solon.annotation.Param("keyword") String keyword, @org.noear.solon.annotation.Param("limit") Integer limit) throws Exception {
+        List<Map> data = new ArrayList<>();
+
+        String kw = keyword == null ? "" : keyword.trim();
+        if (Assert.isEmpty(kw)) {
+            return Result.succeed(data);
+        }
+
+        int max = limit == null || limit <= 0 ? 50 : Math.min(limit, 200);
+        String kwLower = kw.toLowerCase();
+        // 对话隔离开启时，只检索当前用户名下的会话，与会话列表保持一致
+        String userId = getCurrentUserId();
+
+        Path sessionsPath = currentContext().getSessionsRoot();
+        File sessionsDir = sessionsPath.toFile();
+
+        if (sessionsDir.exists() && sessionsDir.isDirectory()) {
+            File[] dirs = sessionsDir.listFiles(f -> f.isDirectory() && f.getName().startsWith("web-"));
+            if (dirs != null) {
+                // 最近修改的会话优先，命中上限时先返回最新的
+                Arrays.sort(dirs, Comparator.comparingLong(File::lastModified).reversed());
+
+                for (File dir : dirs) {
+                    if (data.size() >= max) {
+                        break;
+                    }
+
+                    String sid = dir.getName();
+                    SessionMeta meta = SessionMeta.load(dir);
+
+                    if (userId != null) {
+                        String ownerId = meta.getOwnerUserId();
+                        if (ownerId == null || ownerId.isEmpty() || !ownerId.equals(userId)) {
+                            continue;
+                        }
+                    }
+
+                    File msgFile = new File(dir, sid + ".messages.ndjson");
+                    if (!msgFile.exists()) {
+                        continue;
+                    }
+
+                    String label = readSessionLabel(dir, sid);
+                    searchInFile(msgFile, sid, label, kwLower, max - data.size(), data);
+                }
+            }
+        }
+
+        return Result.succeed(data);
+    }
+
+    /**
+     * 在单个会话的消息文件中检索关键词，把命中的片段追加到 out。
+     *
+     * @param remaining 还能追加多少条
+     */
+    private void searchInFile(File msgFile, String sid, String label, String kwLower,
+                              int remaining, List<Map> out) {
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(msgFile), "UTF-8"))) {
+            String line;
+            while ((line = br.readLine()) != null && remaining > 0) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+
+                ONode node;
+                try {
+                    node = ONode.ofJson(line);
+                } catch (Exception e) {
+                    continue;
+                }
+
+                String role = node.get("role").getString();
+                String content = MessageLineUtil.readContent(node);
+                if (role == null || content == null) {
+                    continue;
+                }
+                if (content.toLowerCase().indexOf(kwLower) < 0) {
+                    continue;
+                }
+
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("sessionId", sid);
+                item.put("label", label);
+                item.put("role", role);
+                item.put("content", snippetAround(content, kwLower));
+                item.put("createdAt", node.get("createdAt").getString());
+                out.add(item);
+                remaining--;
+            }
+        } catch (Exception e) {
+            LOG.warn("[Search] Failed to search in {}: {}", msgFile, e.getMessage());
+        }
+    }
+
+    /**
+     * 读取会话标签：优先自定义标签，其次首条用户消息。
+     */
+    private String readSessionLabel(File dir, String sid) {
+        String label = SessionMeta.load(dir).getLabel();
+        if (Assert.isNotEmpty(label)) {
+            return label.length() > 30 ? label.substring(0, 30) + "..." : label;
+        }
+
+        File msgFile = new File(dir, sid + ".messages.ndjson");
+        label = extractFirstUserMessage(msgFile);
+        if (Assert.isEmpty(label)) {
+            return sid;
+        }
+        return label.length() > 30 ? label.substring(0, 30) + "..." : label;
+    }
+
+    /**
+     * 截取关键词周围的片段，避免返回整条长消息。
+     *
+     * <p>关键词居中，前后各留约 60 字符；已在片段内则原样返回。</p>
+     */
+    static String snippetAround(String content, String kwLower) {
+        if (content == null || content.length() <= 160) {
+            return content;
+        }
+
+        int idx = content.toLowerCase().indexOf(kwLower);
+        if (idx < 0) {
+            return content.substring(0, 160);
+        }
+
+        int start = Math.max(0, idx - 60);
+        int end = Math.min(content.length(), idx + kwLower.length() + 60);
+
+        StringBuilder sb = new StringBuilder();
+        if (start > 0) {
+            sb.append("...");
+        }
+        sb.append(content, start, end);
+        if (end < content.length()) {
+            sb.append("...");
+        }
+        return sb.toString();
     }
 
     /**
