@@ -1328,9 +1328,11 @@ function getCurrentModelMeta() {
 
     function parseModelItem(raw) {
     return {
-        name: raw.name,
+        name: raw.name || raw.model,
         model: raw.model,
         provider: raw.provider || '',
+        // 同一模型配置了多个渠道时，后端给出带渠道标注的展示名；仅用于展示，选中值仍是 name
+        displayName: raw.displayName || window.modelDisplayName(raw),
         desc: raw.description,
         contextLength: raw.contextLength || 0,
         standard: raw.standard || '',
@@ -1517,7 +1519,7 @@ function renderModelUI() {
         // data-model 保持完整 name（选中与回填的锚点）；data-search 汇总三种可检索文本
         var searchKey = (m.name + ' ' + (m.model || '') + ' ' + window.modelProviderLabel(m)).toLowerCase();
         html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '" data-search="' + escapeHtml(searchKey) + '">'
-            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
+            + '<span class="model-item-name">' + escapeHtml(m.displayName || m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + buildDescLine(m)
             + '</div>';
     }
