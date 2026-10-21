@@ -11,6 +11,39 @@
     var escapeHtml = core.escapeHtml;
     var escapeAttr = core.escapeAttr;
 
+    // ==================== 自定义请求头 ====================
+    // 每行一个 "名称=值"，与 openapi 的自定义头部编辑方式保持一致
+    function headersToText(headers) {
+        if (!headers) {
+            return '';
+        }
+        var lines = [];
+        Object.keys(headers).forEach(function (k) {
+            lines.push(k + '=' + headers[k]);
+        });
+        return lines.join('\n');
+    }
+
+    function textToHeaders(text) {
+        var headers = {};
+        (text || '').split('\n').forEach(function (line) {
+            var trimmed = line.trim();
+            if (!trimmed) {
+                return;
+            }
+            var idx = trimmed.indexOf('=');
+            if (idx <= 0) {
+                return;
+            }
+            var key = trimmed.substring(0, idx).trim();
+            var value = trimmed.substring(idx + 1).trim();
+            if (key && value) {
+                headers[key] = value;
+            }
+        });
+        return headers;
+    }
+
     // ==================== 状态管理 ====================
     var providers = [];
     var currentProvider = null; // 当前编辑的供应商（null 表示新增）
@@ -240,6 +273,7 @@
         $('#providerStandard').val(provider ? provider.standard : 'openai');
         $('#providerApiUrl').val(provider ? provider.apiUrl : '');
         $('#providerApiKey').val(provider ? provider.apiKey : '');
+        $('#providerHeaders').val(headersToText(provider ? provider.headers : null));
         $('#providerScope').val(provider ? (provider.scope || 'user') : 'user');
 
         // 设置作用域按钮状态
@@ -436,6 +470,7 @@
         var apiUrl = String($('#providerApiUrl').val() || '').trim();
         var apiKey = $('#providerApiKey').val();
         var standard = $('#providerStandard').val();
+        var headers = textToHeaders($('#providerHeaders').val());
 
         if (!apiUrl) {
             layui.layer.msg(I18n.t('provider.apiUrlRequired'), { icon: 0, time: 2200, offset: '120px' });
@@ -455,7 +490,8 @@
             data: {
                 apiUrl: apiUrl,
                 apiKey: apiKey,
-                standard: standard
+                standard: standard,
+                headers: JSON.stringify(headers)
             },
             success: function (res) {
                 if (res.code === 200) {
@@ -710,6 +746,7 @@
         var standard = $('#providerStandard').val();
         var apiUrl = $('#providerApiUrl').val();
         var apiKey = $('#providerApiKey').val();
+        var headers = textToHeaders($('#providerHeaders').val());
         var scope = $('#providerScope').val();
         var models = fetchedModels.map(function (m) {
             var model = { id: m.id, manual: m.manual || false };
@@ -746,6 +783,7 @@
             standard: standard,
             apiUrl: apiUrl,
             apiKey: apiKey,
+            headers: headers,
             scope: scope,
             models: models,
             enabled: true

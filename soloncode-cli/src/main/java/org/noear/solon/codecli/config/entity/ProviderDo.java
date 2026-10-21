@@ -7,7 +7,9 @@ import org.noear.solon.codecli.model.discovery.ModelInfo;
 
 import java.io.Serializable;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 供应商配置数据对象
@@ -36,6 +38,14 @@ public class ProviderDo implements Serializable {
      * API 密钥
      */
     private String apiKey;
+
+    /**
+     * 自定义请求头，随供应商下所有模型的请求一起发送。
+     *
+     * <p>用于接口规范之外的头部要求，例如 opencode 订阅需要为每段对话发送
+     * 稳定的 {@code x-opencode-session}。值为静态文本，不支持按会话动态取值。</p>
+     */
+    private Map<String, String> headers = new LinkedHashMap<>();
 
     /**
      * 是否启用
