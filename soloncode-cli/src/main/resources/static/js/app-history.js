@@ -1347,8 +1347,10 @@ function getCurrentModelMeta() {
 
     function parseModelItem(raw) {
     return {
-        name: raw.name,
+        name: raw.name || raw.model,
         model: raw.model,
+        // 同一模型有多个渠道时，后端会给出带渠道标注的展示名
+        displayName: raw.displayName || raw.name || raw.model,
         desc: raw.description,
         contextLength: raw.contextLength || 0,
         standard: raw.standard || '',
@@ -1551,7 +1553,7 @@ function renderModelUI() {
         var cls = m.name === currentModel ? ' active' : '';
         var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
         html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
-            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
+            + '<span class="model-item-name">' + escapeHtml(m.displayName || m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + buildDescLine(m)
             + '</div>';
     }
