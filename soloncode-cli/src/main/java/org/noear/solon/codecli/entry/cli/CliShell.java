@@ -221,7 +221,7 @@ public class CliShell implements Runnable {
                     terminal.writer().println();
                     terminal.flush();
 
-                    input = reader.readLine(CYAN + "❯ " + RESET).trim();
+                    input = reader.readLine(CYAN + "❯ " + RESET + DIM + workspaceShort() + RESET + " ").trim();
                 } catch (UserInterruptException e) {
                     continue;
                 } catch (EndOfFileException e) {
@@ -515,6 +515,12 @@ public class CliShell implements Runnable {
             }
 
             buf.append(trace.getMetrics().getTotalTokens()).append("tk");
+
+            // 上下文占用：prompt tokens 占模型上下文窗口的比例
+            String contextInfo = getContextInfo(trace);
+            if (contextInfo != null) {
+                buf.append(", ").append(contextInfo);
+            }
         }
 
         if (start_time > 0) {
@@ -529,6 +535,56 @@ public class CliShell implements Runnable {
         buf.append(")");
 
         return buf;
+    }
+
+    /**
+     * 上下文占用信息，形如 {@code ctx 12.3k/128k (10%)}。
+     *
+     * <p>模型未配置上下文长度时返回 null，避免显示无意义的百分比。</p>
+     */
+    private String getContextInfo(ReActTrace trace) {
+        long contextLength = trace.getOptions().getChatModel().getConfig().getContextLength();
+        if (contextLength <= 0) {
+            return null;
+        }
+
+        long promptTokens = trace.getMetrics().getPromptTokens();
+        if (promptTokens <= 0) {
+            return null;
+        }
+
+        long percent = Math.round(promptTokens * 100.0 / contextLength);
+        return "ctx " + formatTokens(promptTokens) + "/" + formatTokens(contextLength)
+                + " (" + percent + "%)";
+    }
+
+    /**
+     * token 数的紧凑写法：1234 -> 1.2k，123456 -> 123.5k
+     */
+    private String formatTokens(long tokens) {
+        if (tokens < 1000) {
+            return String.valueOf(tokens);
+        }
+        if (tokens < 1_000_000) {
+            double k = tokens / 1000.0;
+            return (k < 10 ? String.format("%.1f", k) : String.format("%.0f", k)) + "k";
+        }
+        double m = tokens / 1_000_000.0;
+        return String.format("%.1f", m) + "m";
+    }
+
+    /**
+     * 输入提示处显示的工作目录名，只取最后一段，避免提示符过长。
+     */
+    private String workspaceShort() {
+        String path = engine.getWorkspace();
+        if (Assert.isEmpty(path)) {
+            return "";
+        }
+        String normalized = path.replace('\\', '/');
+        int idx = normalized.lastIndexOf('/');
+        String name = idx >= 0 ? normalized.substring(idx + 1) : normalized;
+        return Assert.isEmpty(name) ? path : name;
     }
 
     private void onReasonDeltaEvent(ReasonDeltaEvent reasonDeltaEvent, AtomicBoolean isFirstReasonDeltaChunk, AtomicBoolean isFirstConversation) {
