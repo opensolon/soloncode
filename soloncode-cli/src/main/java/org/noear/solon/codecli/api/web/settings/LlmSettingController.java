@@ -276,6 +276,7 @@ public class LlmSettingController extends BaseSettingsController {
             item.put("standard", provider.getStandard());
             item.put("apiUrl", provider.getApiUrl());
             item.put("apiKey", maskApiKey(provider.getApiKey()));
+            item.put("headers", provider.getHeaders());
             item.put("enabled", provider.isEnabled());
             item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_USER);
             item.put("models", provider.getModels());
@@ -306,6 +307,7 @@ public class LlmSettingController extends BaseSettingsController {
         item.put("standard", provider.getStandard());
         item.put("apiUrl", provider.getApiUrl());
         item.put("apiKey", provider.getApiKey());
+        item.put("headers", provider.getHeaders());
         item.put("enabled", provider.isEnabled());
         item.put("scope", provider.getScope() != null ? provider.getScope() : AgentFlags.SCOPE_USER);
         item.put("models", provider.getModels());
@@ -335,6 +337,7 @@ public class LlmSettingController extends BaseSettingsController {
         provider.setStandard(root.get("standard").getString("openai"));
         provider.setApiUrl(root.get("apiUrl").getString());
         provider.setApiKey(root.get("apiKey").getString());
+        provider.setHeaders(parseHeaders(root));
         provider.setEnabled(root.get("enabled").getBoolean(true));
         provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : AgentFlags.SCOPE_USER);
         provider.setModels(parseProviderModels(root));
@@ -377,6 +380,7 @@ public class LlmSettingController extends BaseSettingsController {
         provider.setStandard(root.hasKey("standard") ? root.get("standard").getString() : existing.getStandard());
         provider.setApiUrl(root.hasKey("apiUrl") ? root.get("apiUrl").getString() : existing.getApiUrl());
         provider.setApiKey(root.hasKey("apiKey") ? root.get("apiKey").getString() : existing.getApiKey());
+        provider.setHeaders(root.hasKey("headers") ? parseHeaders(root) : existing.getHeaders());
         provider.setEnabled(root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : existing.isEnabled());
         provider.setScope(root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER));
 
@@ -481,7 +485,8 @@ public class LlmSettingController extends BaseSettingsController {
      */
     @Post
     @Mapping("/web/settings/llm/providers/fetch")
-    public Result providersFetch(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey, @Param("standard") String standard) {
+    public Result providersFetch(@Param("apiUrl") String apiUrl, @Param("apiKey") String apiKey,
+                                 @Param("standard") String standard, @Param("headers") String headersJson) {
         if (Assert.isEmpty(apiUrl)) {
             return Result.failure("apiUrl is required",
                     fetchErrorData(ModelsFetchReason.INVALID_URL.name(), 0));
@@ -498,6 +503,9 @@ public class LlmSettingController extends BaseSettingsController {
 
             // 认证头由各协议适配器按规范负责构建，避免给 Google/Anthropic 等协议发送错误的 Bearer 头
             Map<String, String> headers = new HashMap<>();
+            if (Assert.isNotEmpty(headersJson)) {
+                headers.putAll(parseHeaders(ONode.ofJson(headersJson)));
+            }
 
             // 调用提供商获取模型列表
             List<ModelInfo> models = provider.fetchModels(settings().getGeneral().getUserAgent(), baseUrl, headers, apiKey);
@@ -605,6 +613,7 @@ public class LlmSettingController extends BaseSettingsController {
                 modelDo.setStandard(provider.getStandard());
                 modelDo.setApiUrl(provider.getApiUrl());
                 modelDo.setApiKey(provider.getApiKey());
+                modelDo.setHeaders(provider.getHeaders());
                 modelDo.setScope(provider.getScope());
                 modelDo.setProvider(providerName);
                 modelDo.setVisibled(provider.isEnabled());
@@ -661,6 +670,7 @@ public class LlmSettingController extends BaseSettingsController {
                     existingModel.setStandard(provider.getStandard());
                     existingModel.setApiUrl(provider.getApiUrl());
                     existingModel.setApiKey(provider.getApiKey());
+                    existingModel.setHeaders(provider.getHeaders());
                     existingModel.setScope(provider.getScope());
                 }
             }
@@ -818,6 +828,25 @@ public class LlmSettingController extends BaseSettingsController {
         return apiKey.substring(0, 4) + "****" + apiKey.substring(apiKey.length() - 4);
     }
 
+    /**
+     * 从请求体解析自定义请求头。
+     *
+     * <p>头部名为空或值为空的条目会被忽略，避免拼出非法的请求头。</p>
+     */
+    private Map<String, String> parseHeaders(ONode root) {
+        Map<String, String> headers = new LinkedHashMap<>();
+        if (root.hasKey("headers") && root.get("headers").isObject()) {
+            for (Map.Entry<String, ONode> entry : root.get("headers").getObject().entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue().getString();
+                if (Assert.isNotEmpty(key) && Assert.isNotEmpty(value)) {
+                    headers.put(key.trim(), value);
+                }
+            }
+        }
+        return headers;
+    }
+
 
     /**
      * 从供应商生成模型配置
@@ -831,6 +860,10 @@ public class LlmSettingController extends BaseSettingsController {
         String apiUrl = root.get("apiUrl").getString();
         String apiKey = root.get("apiKey").getString();
         String scope = root.get("scope").getString(AgentFlags.SCOPE_USER);
+
+        // 供应商上的自定义请求头随生成的模型一起带上
+        ProviderDo provider = settings().getProviders().get(providerName);
+        Map<String, String> providerHeaders = provider != null ? provider.getHeaders() : null;
 
         // 解析模型列表
         ONode modelsNode = root.get("models");
@@ -869,6 +902,7 @@ public class LlmSettingController extends BaseSettingsController {
             modelDo.setStandard(standard);
             modelDo.setApiUrl(apiUrl);
             modelDo.setApiKey(apiKey);
+            modelDo.setHeaders(providerHeaders);
             modelDo.setScope(scope);
             modelDo.setProvider(providerName);  // 设置所属供应商
 
