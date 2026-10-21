@@ -51,6 +51,7 @@ import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.codecli.session.queue.SessionQueueDrainer;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
+import org.noear.solon.codecli.util.MarkdownTableRenderer;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
 import org.noear.solon.lang.Preview;
@@ -555,15 +556,22 @@ public class CliShell implements Runnable {
                         terminal.writer().print("\n  ");
                     }
 
-                    terminal.writer().print(trimmed.replace("\n", "\n  "));
+                    terminal.writer().print(indent(MarkdownTableRenderer.render(trimmed)));
                     isFirstReasonDeltaChunk.set(false);
                 }
             } else {
                 // 连续的思考内容，保持缩进替换即可
-                terminal.writer().print(delta.replace("\n", "\n  "));
+                terminal.writer().print(indent(MarkdownTableRenderer.render(delta)));
             }
             terminal.flush();
         }
+    }
+
+    /**
+     * 给每行加上两格缩进，与回复正文的缩进风格保持一致。
+     */
+    private String indent(String text) {
+        return text.replace("\n", "\n  ");
     }
 
 
