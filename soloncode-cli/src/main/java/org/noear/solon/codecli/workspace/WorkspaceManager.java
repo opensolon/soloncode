@@ -672,6 +672,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         String stealthIdentity = "<!--\n" +
                 "  @poweredby: soloncode\n" +
                 "  @build: " + AgentFlags.getVersion() + "\n" +
+                "  @capabilities: Markdown, Mermaid\n" +
                 "-->\n\n";
 
         // AGENTS.md 按本工作区路径解析（工作区有则用工作区的，没有才回退用户目录）；
