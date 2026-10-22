@@ -99,6 +99,8 @@
   "filer.collapseFiles": "طي شجرة الملفات",
   "filer.dirTip": "انقر للطي/التوسيع، انقر نقرًا مزدوجًا لإضافة المسار إلى المحادثة: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "توسيع شجرة الملفات",

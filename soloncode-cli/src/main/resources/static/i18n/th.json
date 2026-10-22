@@ -101,6 +101,8 @@
   "filer.collapseFiles": "ยุบแผนผังไฟล์",
   "filer.dirTip": "คลิกเพื่อขยาย/ยุบ ดับเบิลคลิกเพื่อเพิ่มเส้นทางลงในแชท: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "ขยายแผนผังไฟล์",

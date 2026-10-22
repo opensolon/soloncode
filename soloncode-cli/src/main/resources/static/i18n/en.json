@@ -130,6 +130,8 @@
   "filer.collapseFiles": "Collapse file tree",
   "filer.dirTip": "Click to expand/collapse, double-click to add to chat: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Expand file tree",

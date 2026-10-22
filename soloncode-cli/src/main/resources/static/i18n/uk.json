@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Згорнути дерево файлів",
   "filer.dirTip": "Один клік — розгорнути/згорнути, подвійний клік — додати шлях до чату: {path}",
   "filer.ctxCopyPath": "Копіювати шлях",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Відкрити як робочу область",
   "filer.ctxOpenFailed": "Не вдалося відкрити",
   "filer.expandFiles": "Розгорнути дерево файлів",

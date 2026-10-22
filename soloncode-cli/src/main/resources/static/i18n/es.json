@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Contraer árbol de archivos",
   "filer.dirTip": "Clic para expandir/contraer, doble clic para agregar la ruta al chat: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Expandir árbol de archivos",

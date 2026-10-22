@@ -99,6 +99,8 @@
   "filer.collapseFiles": "ফাইল ট্রি ভাঁজ করুন",
   "filer.dirTip": "ক্লিকে প্রসারিত/ভাঁজ, ডাবল-ক্লিকে চ্যাটে পাথ যোগ করুন: {path}",
   "filer.ctxCopyPath": "পাথ কপি করুন",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "ওয়ার্কস্পেস হিসেবে খুলুন",
   "filer.ctxOpenFailed": "খোলা যায়নি",
   "filer.expandFiles": "ফাইল ট্রি প্রসারিত করুন",

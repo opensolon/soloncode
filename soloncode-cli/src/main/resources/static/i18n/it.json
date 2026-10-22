@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Comprimi albero file",
   "filer.dirTip": "Fai clic per espandere/comprimere, doppio clic per aggiungere il percorso alla chat: {path}",
   "filer.ctxCopyPath": "Copia percorso",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Apri come spazio di lavoro",
   "filer.ctxOpenFailed": "Apertura non riuscita",
   "filer.expandFiles": "Espandi albero file",

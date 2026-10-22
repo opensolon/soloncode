@@ -101,6 +101,8 @@
   "filer.collapseFiles": "Thu gọn cây tệp",
   "filer.dirTip": "Nhấp để mở rộng/thu gọn, nhấp đúp để thêm đường dẫn vào trò chuyện: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Mở rộng cây tệp",

@@ -99,6 +99,8 @@
   "filer.collapseFiles": "파일 트리 접기",
   "filer.dirTip": "클릭하여 펼치기/접기, 더블클릭하여 채팅에 경로 추가: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "파일 트리 펼치기",

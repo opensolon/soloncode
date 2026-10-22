@@ -101,6 +101,8 @@
   "filer.collapseFiles": "收合檔案樹",
   "filer.dirTip": "按一下展開/摺疊，按兩下加入對話：{path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "開啟資料夾",
+  "filer.ctxOpenFolderFailed": "開啟資料夾失敗",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "展開檔案樹",

@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Réduire l'arborescence des fichiers",
   "filer.dirTip": "Clic pour déplier/replier, double-clic pour ajouter le chemin à la conversation : {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Déplier l'arborescence des fichiers",

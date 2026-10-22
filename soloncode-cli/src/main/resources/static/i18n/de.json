@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Dateibaum einklappen",
   "filer.dirTip": "Klicken zum Ein-/Ausklappen, Doppelklick zum Hinzufügen des Pfads zum Chat: {path}",
   "filer.ctxCopyPath": "Pfad kopieren",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Als Arbeitsbereich öffnen",
   "filer.ctxOpenFailed": "Öffnen fehlgeschlagen",
   "filer.expandFiles": "Dateibaum ausklappen",

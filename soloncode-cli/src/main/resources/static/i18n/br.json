@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Recolher árvore de arquivos",
   "filer.dirTip": "Clique para expandir/recolher, clique duas vezes para adicionar o caminho ao chat: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Expandir árvore de arquivos",

@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Skupi stablo datoteka",
   "filer.dirTip": "Klik za proširivanje/skupljanje, dvostruki klik za dodavanje putanje u chat: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Proširi stablo datoteka",

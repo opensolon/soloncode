@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Свернуть дерево файлов",
   "filer.dirTip": "Один клик — развернуть/свернуть, двойной клик — добавить путь в чат: {path}",
   "filer.ctxCopyPath": "Копировать путь",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Открыть как рабочую область",
   "filer.ctxOpenFailed": "Не удалось открыть",
   "filer.expandFiles": "Развернуть дерево файлов",

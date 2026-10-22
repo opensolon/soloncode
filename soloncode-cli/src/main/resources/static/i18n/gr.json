@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Σύμπτυξη δέντρου αρχείων",
   "filer.dirTip": "Κλικ για ανάπτυξη/σύμπτυξη, διπλό κλικ για προσθήκη διαδρομής στη συνομιλία: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Ανάπτυξη δέντρου αρχείων",

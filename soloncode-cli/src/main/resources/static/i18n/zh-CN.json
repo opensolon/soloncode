@@ -130,6 +130,8 @@
   "filer.collapseFiles": "收起文件树",
   "filer.dirTip": "单击展开/折叠，双击加入对话：{path}",
   "filer.ctxCopyPath": "复制路径",
+  "filer.ctxOpenFolder": "打开文件夹",
+  "filer.ctxOpenFolderFailed": "打开文件夹失败",
   "filer.ctxOpenAsWorkspace": "作为工作区打开",
   "filer.ctxOpenFailed": "打开失败",
   "filer.expandFiles": "展开文件树",

@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Dosya ağacını daralt",
   "filer.dirTip": "Tek tıkla genişlet/daralt, çift tıkla yolu sohbete ekle: {path}",
   "filer.ctxCopyPath": "Yolu kopyala",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Çalışma alanı olarak aç",
   "filer.ctxOpenFailed": "Açılamadı",
   "filer.expandFiles": "Dosya ağacını genişlet",

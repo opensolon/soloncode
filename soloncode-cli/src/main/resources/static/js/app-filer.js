@@ -94,6 +94,18 @@
         try { targetInput.setSelectionRange(newPos, newPos); } catch (e) {}
     }
 
+    /** 获取文件或目录所在的父目录路径（兼容 Windows 与 Unix 路径） */
+    function getParentPath(path) {
+        if (!path) return '';
+        var normalized = String(path).replace(/[\\/]+$/, '');
+        var slash = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'));
+        if (slash < 0) return '';
+        // Windows 盘符根目录（如 C:\\）和 Unix 根目录保留为可打开的目录
+        if (slash === 2 && /^[A-Za-z]:/.test(normalized)) return normalized.substring(0, 3);
+        if (slash === 0) return normalized.substring(0, 1);
+        return normalized.substring(0, slash);
+    }
+
     /** 关闭文件树右键菜单 */
     function closeFilerContextMenu() {
         $('.filer-context-menu').remove();
@@ -125,17 +137,20 @@
             }
         });
 
-        // 2. 打开目录（仅目录且真实路径可解析时显示）
-        if (info.isDirectory && info.realPath) {
-            addItem('mounts.openDir', '打开目录', function() {
-                $.get('/web/workspace/open-directory', { path: info.realPath }, function(res) {
-                    if (res && res.code !== 200) {
-                        showToast(res.message || res.description || I18n.t('mounts.openDirFailed', '打开目录失败'), 'error');
-                    }
-                }).fail(function() {
-                    showToast(I18n.t('mounts.openDirFailed', '打开目录失败'), 'error');
+        // 2. 打开所在文件夹：目录打开自身，文件打开其父目录
+        if (info.realPath) {
+            var folderPath = info.isDirectory ? info.realPath : getParentPath(info.realPath);
+            if (folderPath) {
+                addItem('filer.ctxOpenFolder', '打开文件夹', function() {
+                    $.get('/web/workspace/open-directory', { path: folderPath }, function(res) {
+                        if (res && res.code !== 200) {
+                            showToast(res.message || res.description || I18n.t('filer.ctxOpenFolderFailed', '打开文件夹失败'), 'error');
+                        }
+                    }).fail(function() {
+                        showToast(I18n.t('filer.ctxOpenFolderFailed', '打开文件夹失败'), 'error');
+                    });
                 });
-            });
+            }
         }
 
         // 3. 加入对话（与双击行为一致，不替代双击）

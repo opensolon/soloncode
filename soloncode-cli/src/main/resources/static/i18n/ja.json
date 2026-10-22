@@ -99,6 +99,8 @@
   "filer.collapseFiles": "ファイルツリーを折りたたむ",
   "filer.dirTip": "クリックで展開/折りたたみ、ダブルクリックでチャットにパスを追加：{path}",
   "filer.ctxCopyPath": "パスをコピー",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "ワークスペースとして開く",
   "filer.ctxOpenFailed": "開けませんでした",
   "filer.expandFiles": "ファイルツリーを展開",

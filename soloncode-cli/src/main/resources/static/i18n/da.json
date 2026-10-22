@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Skjul filtræ",
   "filer.dirTip": "Klik for at udvide/skjule, dobbeltklik for at føje sti til chat: {path}",
   "filer.ctxCopyPath": "Copy Path",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Open as Workspace",
   "filer.ctxOpenFailed": "Open failed",
   "filer.expandFiles": "Vis filtræ",

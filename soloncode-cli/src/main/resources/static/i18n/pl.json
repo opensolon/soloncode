@@ -99,6 +99,8 @@
   "filer.collapseFiles": "Zwiń drzewo plików",
   "filer.dirTip": "Kliknij, aby rozwinąć/zwinąć, podwójne kliknięcie dodaje ścieżkę do czatu: {path}",
   "filer.ctxCopyPath": "Kopiuj ścieżkę",
+  "filer.ctxOpenFolder": "Open Folder",
+  "filer.ctxOpenFolderFailed": "Failed to open folder",
   "filer.ctxOpenAsWorkspace": "Otwórz jako obszar roboczy",
   "filer.ctxOpenFailed": "Nie udało się otworzyć",
   "filer.expandFiles": "Rozwiń drzewo plików",
