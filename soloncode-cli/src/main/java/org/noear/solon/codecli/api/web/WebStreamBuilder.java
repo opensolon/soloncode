@@ -144,7 +144,7 @@ public class WebStreamBuilder {
         // 能力查询、Markdown 解析、路径验证、读取和解码均不得持有 attrs 锁。
         // 纯 Web、未绑定或仅绑定文本 IM 时，只生成安全占位，不准备本地图片。
         ChannelReply prepared = abnormal
-                ? ChannelReply.fromMarkdown("任务执行异常结束。", true, runId, null, null, false)
+                ? ChannelReply.fromMarkdown(Assert.isEmpty(text) ? "任务执行异常结束。" : text, true, runId, null, null, false)
                 : hasBoundImageChannel(context, session.getSessionId())
                     ? prepareRunEndReply(turn, stripAnsi(text), runId)
                     : ChannelReply.fromMarkdown(stripAnsi(text), true, runId, null, null, false);
