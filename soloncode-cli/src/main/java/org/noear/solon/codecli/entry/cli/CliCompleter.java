@@ -62,6 +62,9 @@ public class CliCompleter implements Completer {
         if (line.word().startsWith("/m")) {
             String prefix = line.word().substring(1).toLowerCase();
             for (ChatConfig c : engine.getModels()) {
+                if (!c.isEnabled()) {
+                    continue;
+                }
                 if (("model " + c.getNameOrModel()).startsWith(prefix)) {
                     candidates.add(new Candidate("/model " + c.getNameOrModel(), "/model " + c.getNameOrModel(), null, null, null, null, true));
                 }

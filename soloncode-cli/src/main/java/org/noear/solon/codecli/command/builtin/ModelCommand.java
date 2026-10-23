@@ -20,6 +20,10 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+
 /**
  * /model 命令（多子命令）
  *
@@ -60,13 +64,8 @@ public class ModelCommand implements Command {
             String currentModel = ctx.getSession().getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
             currentModel = ctx.getEngine().getModelOrDef(currentModel).getNameOrModel();
 
-            ctx.println(ctx.color(BOLD + "Models:" + RESET));
-            for (ChatConfig m : ctx.getEngine().getModels()) {
-                String model = m.getNameOrModel();
-                String desc = m.getDescriptionOrModel();
-                String suffix = model.equals(currentModel) ? " " + GREEN + "(active)" + RESET : "";
-                String label = model.equals(desc) ? model : model + DIM + " - " + desc + RESET;
-                ctx.println(ctx.color("  " + label + suffix));
+            for (String line : formatModels(ctx.getEngine().getModels(), currentModel)) {
+                ctx.println(ctx.color(line));
             }
             ctx.println(ctx.color(DIM + "\nUsage: /model <name>" + RESET));
         } else if ("help".equals(flag)) {
@@ -84,5 +83,24 @@ public class ModelCommand implements Command {
                 ctx.println(ctx.color(GREEN + "Model switched to: " + RESET + BOLD + flag + RESET));
             }
         }
+    }
+
+    /**
+     * 渲染模型列表（仅含启用模型，每行只输出 nameOrModel，当前模型带 active 标记）
+     */
+    static List<String> formatModels(Collection<? extends ChatConfig> models, String currentModel) {
+        List<String> lines = new ArrayList<>();
+        lines.add(BOLD + "Models:" + RESET);
+
+        for (ChatConfig m : models) {
+            if (m == null || !m.isEnabled()) {
+                continue;
+            }
+            String name = m.getNameOrModel();
+            String suffix = name.equals(currentModel) ? " " + GREEN + "(active)" + RESET : "";
+            lines.add("  " + name + suffix);
+        }
+
+        return lines;
     }
 }
