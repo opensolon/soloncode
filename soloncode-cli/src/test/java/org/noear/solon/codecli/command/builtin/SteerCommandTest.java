@@ -20,7 +20,7 @@ class SteerCommandTest {
 
     private WebCommandContext context(AgentSession session, AtomicInteger starts) {
         return new WebCommandContext(session, "Feishu", "user-1", "chat-1", "message-1",
-                null, "/steer 补充要求", "steer", Collections.singletonList("补充要求"),
+             "/steer 补充要求", "steer", Collections.singletonList("补充要求"),
                 (prompt, model) -> starts.incrementAndGet());
     }
 
@@ -31,7 +31,7 @@ class SteerCommandTest {
         AtomicInteger starts = new AtomicInteger();
         WebCommandContext ctx = context(session, starts);
 
-        command.execute(ctx);
+        command.execute(null, ctx);
 
         assertEquals(0, starts.get());
         assertEquals(1, SessionQueue.pendingSize(session));
@@ -51,7 +51,7 @@ class SteerCommandTest {
         session.attrs().put("disposable", slot);
         AtomicInteger starts = new AtomicInteger();
 
-        command.execute(context(session, starts));
+        command.execute(null, context(session, starts));
 
         assertEquals(0, starts.get());
         assertEquals(1, SessionQueue.pendingSize(session));
@@ -67,7 +67,7 @@ class SteerCommandTest {
         session.attrs().put("disposable", slot);
         AtomicInteger starts = new AtomicInteger();
 
-        command.execute(context(session, starts));
+        command.execute(null, context(session, starts));
 
         assertEquals(1, starts.get());
         assertEquals(0, SessionQueue.pendingSize(session));
@@ -83,7 +83,7 @@ class SteerCommandTest {
         AtomicInteger starts = new AtomicInteger();
         WebCommandContext ctx = context(session, starts);
 
-        command.execute(ctx);
+        command.execute(null, ctx);
 
         assertEquals(0, starts.get());
         assertEquals(SessionQueue.MAX_QUEUE_SIZE, SessionQueue.pendingSize(session));

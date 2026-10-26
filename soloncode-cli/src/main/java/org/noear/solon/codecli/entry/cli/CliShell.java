@@ -279,7 +279,7 @@ public class CliShell implements Runnable {
 
         // 构建 context（注入 agentTaskRunner 回调）
         CliCommandContext ctx = new CliCommandContext(session, terminal, reader,
-                engine, input, cmdName, args,
+                input, cmdName, args,
                 (prompt, model) -> {
                     try {
                         performAgentTask(session, prompt, model);
@@ -289,7 +289,7 @@ public class CliShell implements Runnable {
                 });
 
         // 执行命令
-        command.execute(ctx);
+        command.execute(engine, ctx);
         // CLI 与 Web/IM 共用 SessionQueue；命令完成后由 CLI 自身消费空闲队列。
         drainCliQueue(session);
 

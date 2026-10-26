@@ -16,12 +16,14 @@
 package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.queue.SessionQueue;
 import org.noear.solon.codecli.session.steer.SteerInterceptor;
+import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.core.util.Assert;
 
 /**
@@ -61,7 +63,7 @@ public class SteerCommand implements Command {
     }
 
     @Override
-    public void execute(CommandContext ctx) {
+    public void execute(HarnessEngine engine, CommandContext ctx) {
         String text = ctx.getArgsJoined();
         if (Assert.isEmpty(text)) {
             ctx.println("用法：/steer <补充内容>（在任务执行中向当前任务插入实时补充）");
@@ -81,8 +83,8 @@ public class SteerCommand implements Command {
             replyTarget = web.getReplyTarget();
             messageId = web.getMessageId();
         }
-        if (session != null && ctx.getEngine() != null) {
-            SessionQueue.bindStorage(session, org.noear.solon.codecli.workspace.WorkspaceDataUtil.sessionsPath(ctx.getEngine().getWorkspace()).resolve(session.getSessionId()));
+        if (session != null && engine != null) {
+            SessionQueue.bindStorage(session, WorkspaceDataUtil.sessionsPath(engine.getWorkspace()).resolve(session.getSessionId()));
         }
         SteerInterceptor.SteerResult result = SteerInterceptor.steer(session, null, null, text, source,
                 sourceUserId, replyTarget, messageId, null);

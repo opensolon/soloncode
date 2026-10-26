@@ -385,14 +385,14 @@ final class DesktopInputRouter {
             }
 
             // 构建 context（注入 agentTaskRunner 回调）
-            WebCommandContext ctx = new WebCommandContext(session, engine, input, cmdName, args,
+            WebCommandContext ctx = new WebCommandContext(session, input, cmdName, args,
                     (prompt, model) -> {
                         ChatModel selectedModel = model != null ? engine.getModelOrDefInstance(model) : chatModel;
                         runFallbackPrompt(socket, session, agent, selectedModel, sessionCwd, prompt, finalSessionId, reasoningEffort);
                     });
 
             // 执行命令
-            command.execute(ctx);
+            command.execute(engine, ctx);
 
             if (!ctx.isAgentTask()) {
                 // rewind 命令特殊处理：发送 rewind 事件让前端同步删除 DOM

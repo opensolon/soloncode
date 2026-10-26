@@ -16,9 +16,12 @@
 package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.session.queue.SessionQueue;
+import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.core.util.Assert;
 
 /**
@@ -58,7 +61,7 @@ public class QueueCommand implements Command {
     }
 
     @Override
-    public void execute(CommandContext ctx) {
+    public void execute(HarnessEngine engine, CommandContext ctx) {
         String text = ctx.getArgsJoined();
         if (Assert.isEmpty(text)) {
             ctx.println("用法：/queue <消息>（当前任务结束后自动作为新任务发送）");
@@ -71,16 +74,15 @@ public class QueueCommand implements Command {
         }
 
         AgentSession session = ctx.getSession();
-        if (session != null && ctx.getEngine() != null) {
-            SessionQueue.bindStorage(session, org.noear.solon.codecli.workspace.WorkspaceDataUtil.sessionsPath(ctx.getEngine().getWorkspace()).resolve(session.getSessionId()));
+        if (session != null && engine != null) {
+            SessionQueue.bindStorage(session, WorkspaceDataUtil.sessionsPath(engine.getWorkspace()).resolve(session.getSessionId()));
         }
-        String source = ctx instanceof org.noear.solon.codecli.command.WebCommandContext
-                ? ((org.noear.solon.codecli.command.WebCommandContext) ctx).getSource() : "CLI";
+        String source = ctx instanceof WebCommandContext ? ((WebCommandContext) ctx).getSource() : "CLI";
         String sourceUserId = null;
         String replyTarget = null;
         String messageId = null;
-        if (ctx instanceof org.noear.solon.codecli.command.WebCommandContext) {
-            org.noear.solon.codecli.command.WebCommandContext web = (org.noear.solon.codecli.command.WebCommandContext) ctx;
+        if (ctx instanceof WebCommandContext) {
+            WebCommandContext web = (WebCommandContext) ctx;
             sourceUserId = web.getSourceUserId();
             replyTarget = web.getReplyTarget();
             messageId = web.getMessageId();

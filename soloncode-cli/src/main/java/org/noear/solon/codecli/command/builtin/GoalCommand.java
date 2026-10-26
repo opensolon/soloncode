@@ -15,6 +15,7 @@
  */
 package org.noear.solon.codecli.command.builtin;
 
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 
@@ -50,7 +51,7 @@ public class GoalCommand implements Command {
     }
 
     @Override
-    public void execute(CommandContext ctx) throws Exception {
+    public void execute(HarnessEngine engine, CommandContext ctx) throws Exception {
         loopCommand.executeGoal(ctx);
     }
 }

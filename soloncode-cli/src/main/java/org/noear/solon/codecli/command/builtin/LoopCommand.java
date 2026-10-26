@@ -93,9 +93,8 @@ public class LoopCommand implements Command {
     }
 
     @Override
-    public void execute(CommandContext ctx) throws Exception {
+    public void execute(HarnessEngine engine, CommandContext ctx) throws Exception {
         String sessionId = ctx.getSession().getSessionId();
-        HarnessEngine engine = ctx.getEngine();
         Path sessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
 
         String sub = ctx.argAt(0);

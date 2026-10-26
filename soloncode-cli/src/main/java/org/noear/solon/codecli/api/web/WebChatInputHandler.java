@@ -347,16 +347,9 @@ class WebChatInputHandler {
         if (command == null) {
             return false;
         }
-        if (command.cliOnly() && !isImSource(source)) {
-            // CLI-only 命令放行 IM：模型/推理等会话设置必须能从任一终端切换（改的是同一个 session）。
-            // web 侧仍走选择器 UI，不走命令文本。
-            LOG.warn("[WebGate] CLI-only command /{} rejected from source {}", cmdName, source);
-            return true;
-        }
 
         // 构建 context（注入 agentTaskRunner 回调）；命令执行的工作区语境由本网关实例已绑定的 engine 确定。
-        WebCommandContext ctx = new WebCommandContext(session, source, sourceUserId, replyTarget, messageId,
-                wsContext.getEngine(), input, cmdName, args,
+        WebCommandContext ctx = new WebCommandContext(session, source, sourceUserId, replyTarget, messageId, input, cmdName, args,
                 (prompt, model) -> {
                     try {
                         //防重入：会话已有流在跑（含上一轮 doFinally 尚未归还槽位的瞬时窗口）时，
@@ -381,7 +374,7 @@ class WebChatInputHandler {
                 });
 
         // 执行命令
-        command.execute(ctx);
+        command.execute(wsContext.getEngine(), ctx);
 
 
         if (ctx.isAgentTask() == false) {
