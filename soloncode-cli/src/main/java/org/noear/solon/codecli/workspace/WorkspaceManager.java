@@ -766,8 +766,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
-        engine.getCommandRegistry().register(new SteerCommand());
-        engine.getCommandRegistry().register(new QueueCommand());
+        // /steer、/queue 已下沉 harness：经端口适配器注入本地队列与插话实现
+        engine.getCommandRegistry().register(new SteerCommand(new SteerPortImpl()));
+        engine.getCommandRegistry().register(new QueueCommand(new QueuePortImpl()));
         engine.getCommandRegistry().register(new RerunCommand());
         engine.getCommandRegistry().register(new RewindCommand());
         engine.getCommandRegistry().register(new ModelCommand());

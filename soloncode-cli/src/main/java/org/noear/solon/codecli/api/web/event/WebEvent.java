@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.noear.solon.codecli.session.steer.SteerMessage;
+import org.noear.solon.ai.harness.session.steer.SteerMessage;
 import org.noear.solon.codecli.api.web.event.payload.*;
 import org.noear.solon.codecli.api.web.event.payload.UiPatchPayload;
 import org.noear.solon.codecli.api.web.event.payload.UiRenderPayload;

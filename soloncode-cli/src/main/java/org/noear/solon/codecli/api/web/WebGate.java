@@ -18,11 +18,12 @@ package org.noear.solon.codecli.api.web;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
-import org.noear.solon.codecli.session.steer.SteerMessage;
-import org.noear.solon.codecli.session.steer.SteerOutputPort;
-import org.noear.solon.codecli.session.queue.SessionQueue;
+import org.noear.solon.ai.harness.session.steer.SteerMessage;
+import org.noear.solon.ai.harness.session.steer.SteerOutputPort;
+import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.codecli.workspace.WorkspaceRegistry;
@@ -56,7 +57,7 @@ import reactor.core.Disposable;
  *
  * @author noear 2026/5/8 created
  */
-public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntimePort, SteerOutputPort {
+public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntimePort, SteerOutputPort<WorkspaceContext> {
     private static final Logger LOG = LoggerFactory.getLogger(WebGate.class);
 
     /** HITL 审批时前端回传的 callUuid（通过 session context 透传） */
@@ -178,10 +179,10 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
             // 保存失败时仍留在易失邮箱，下一次开流可重试；同时明确告知用户尚未排队。
             synchronized (session.attrs()) {
                 @SuppressWarnings("unchecked")
-                Queue<SteerMessage> pending = (Queue<SteerMessage>) session.attrs().get(org.noear.solon.codecli.session.steer.SteerInterceptor.ATTR_STEER_BOX);
+                Queue<SteerMessage> pending = (Queue<SteerMessage>) session.attrs().get(SteerInterceptor.ATTR_STEER_BOX);
                 if (pending == null) {
                     pending = new java.util.concurrent.ConcurrentLinkedQueue<>();
-                    session.attrs().put(org.noear.solon.codecli.session.steer.SteerInterceptor.ATTR_STEER_BOX, pending);
+                    session.attrs().put(org.noear.solon.ai.harness.session.steer.SteerInterceptor.ATTR_STEER_BOX, pending);
                 }
                 pending.addAll(failed);
             }

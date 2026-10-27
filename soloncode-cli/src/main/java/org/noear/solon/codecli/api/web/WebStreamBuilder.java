@@ -22,7 +22,7 @@ import org.noear.solon.ai.talents.lsp.LspCheckState;
 import org.noear.solon.codecli.api.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.api.web.pipeline.UiRenderFilter;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
-import org.noear.solon.codecli.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
