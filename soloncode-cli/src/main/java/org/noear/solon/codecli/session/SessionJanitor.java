@@ -34,7 +34,8 @@ import java.util.List;
  * 本清理器只处理 {@code web-} 前缀目录，判定"无实质内容"标准：</p>
  * <ul>
  *   <li>不存在任何 {@code *.messages.ndjson} 消息文件；</li>
- *   <li>不存在 queue-tasks.json 有效排队任务；</li>
+ *   <li>会话快照无排队任务投影（经 {@link SessionSnapshots} 基于上下文判定；
+ *       迁移前的旧版队列文件也不得误删）；</li>
  *   <li>meta 无自定义标题且未置顶（{@link SessionMeta#isEmpty()}）。</li>
  * </ul>
  *
@@ -90,6 +91,8 @@ public class SessionJanitor {
      */
     public static boolean isZombieWebSession(Path sessionDir) {
         try {
+            String sessionId = sessionDir.getFileName() == null ? null : sessionDir.getFileName().toString();
+
             // 新鲜度保护：可能正在创建/写入中
             long lastModified = Files.getLastModifiedTime(sessionDir).toMillis();
             if (System.currentTimeMillis() - lastModified < FRESH_WINDOW_MS) {
@@ -103,9 +106,13 @@ public class SessionJanitor {
                 }
             }
 
-            // 有排队任务文件 → 有实质内容；迁移前的旧版 Web 队列也不得误删。
+            // 有排队任务（会话快照投影）→ 有实质内容；迁移前的旧版队列文件也不得误删。
             if (Files.isRegularFile(sessionDir.resolve("queue-tasks.json"))
                     || Files.isRegularFile(sessionDir.resolve("queue.json"))) {
+                return false;
+            }
+            // 经快照上下文判定（不直接耦合存储实现，见 SessionSnapshots）
+            if (SessionSnapshots.hasQueue(sessionDir, sessionId)) {
                 return false;
             }
 

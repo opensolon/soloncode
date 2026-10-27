@@ -16,15 +16,16 @@
 package org.noear.solon.codecli.api.web.controller;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
+import org.noear.solon.codecli.api.web.LegacyQueueMigrator;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
-import org.noear.solon.ai.harness.session.queue.SessionQueueStore;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 import org.slf4j.Logger;
@@ -153,29 +154,18 @@ public class QueueWebController extends AbstractWebController {
         }
 
         Path queuePath = resolveSessionQueuePath(sessionId);
-        if (queuePath == null || queuePath.getParent() == null) {
+        if (queuePath == null) {
             return Result.failure(400, "Invalid session path");
         }
-        if (!ownsSession(queuePath.getParent())) {
+        if (!ownsSession(queuePath)) {
             return Result.failure(404, "Session not found");
         }
 
-        Map<String, Object> data = new LinkedHashMap<>();
         try {
-            Path sessionDir = queuePath.getParent();
-            List<SessionQueueItem> unified = SessionQueueStore.load(sessionDir);
-            List<Map> items = new ArrayList<>();
-            for (SessionQueueItem item : unified) {
-                Map<String, Object> row = new LinkedHashMap<>(item.toMap());
-                row.put("displayText", item.getText());
-                items.add(row);
-            }
-            data.put("exists", !items.isEmpty());
-            data.put("items", items);
-            data.put("updatedAt", items.isEmpty() ? 0L : System.currentTimeMillis());
-            return Result.succeed(data);
+            AgentSession session = sessionManager().getSession(sessionId);
+            return Result.succeed(queueResult(session));
         } catch (Exception e) {
-            LOG.error("Failed to read queue-tasks for session {}: {}", sessionId, e.getMessage());
+            LOG.error("Failed to read queue for session {}: {}", sessionId, e.getMessage());
             return Result.failure(500, "Queue read failed");
         }
     }
@@ -197,10 +187,10 @@ public class QueueWebController extends AbstractWebController {
             String text = root == null || root.get("text") == null ? null : root.get("text").getString();
             if (!isValidSessionId(sessionId) || text == null || text.trim().isEmpty()) return Result.failure(400, "sessionId and text are required");
             Path queuePath = resolveSessionQueuePath(sessionId);
-            if (queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
+            if (queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
             if (session == null) return Result.failure(404, "Session not found");
-            SessionQueue.bindStorage(session, queuePath.getParent());
+            LegacyQueueMigrator.migrate(session, queuePath.getParent());
             String id = root.get("id") == null ? null : safeQueueString(root.get("id"), 80);
             String model = root.get("model") == null ? null : safeQueueString(root.get("model"), 200);
             String reasoningEffort = root.get("reasoningEffort") == null ? null : safeQueueString(root.get("reasoningEffort"), 50);
@@ -212,7 +202,7 @@ public class QueueWebController extends AbstractWebController {
                     model, reasoningEffort, thinkingMode, selectedAgent, false);
             if (position < 0) return Result.failure(409, "Queue is full or storage failed");
             runtimePort().drainSessionQueue(currentContext(), session);
-            return Result.succeed(queueResult(queuePath.getParent()));
+            return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue item"); }
     }
 
@@ -226,10 +216,9 @@ public class QueueWebController extends AbstractWebController {
             String itemId = root == null ? null : root.get("itemId").getString();
             Path queuePath = resolveSessionQueuePath(sessionId);
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
-            if (!isValidSessionId(sessionId) || session == null || queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
-            SessionQueue.bindStorage(session, queuePath.getParent());
+            if (!isValidSessionId(sessionId) || session == null || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
             if (!SessionQueue.cancelItem(session, itemId)) return Result.failure(404, "Queue item not found");
-            return Result.succeed(queueResult(queuePath.getParent()));
+            return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
     }
 
@@ -243,18 +232,26 @@ public class QueueWebController extends AbstractWebController {
             String itemId = root == null ? null : root.get("itemId").getString();
             Path queuePath = resolveSessionQueuePath(sessionId);
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
-            if (!isValidSessionId(sessionId) || session == null || queuePath == null || queuePath.getParent() == null || !ownsSession(queuePath.getParent())) return Result.failure(404, "Session not found");
-            SessionQueue.bindStorage(session, queuePath.getParent());
+            if (!isValidSessionId(sessionId) || session == null || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
             if (!SessionQueue.promote(session, itemId)) return Result.failure(404, "Queue item not found");
             runtimePort().drainSessionQueue(currentContext(), session);
-            return Result.succeed(queueResult(queuePath.getParent()));
+            return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
     }
 
-    private Map<String, Object> queueResult(Path sessionDir) throws IOException {
+    /** 队列统一视图（运行中在首位）；旧文件先迁移导入再展示。 */
+    private Map<String, Object> queueResult(AgentSession session) {
+        Path sessionDir = resolveSessionQueuePath(session.getSessionId());
+        if (sessionDir != null) {
+            LegacyQueueMigrator.migrate(session, sessionDir);
+        }
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map> rows = new ArrayList<>();
-        for (SessionQueueItem item : SessionQueueStore.load(sessionDir)) rows.add(new LinkedHashMap<>(item.toMap()));
+        for (SessionQueueItem item : SessionQueue.view(session)) {
+            Map<String, Object> row = new LinkedHashMap<>(item.toMap());
+            row.put("displayText", item.getText());
+            rows.add(row);
+        }
         data.put("exists", !rows.isEmpty());
         data.put("items", rows);
         data.put("updatedAt", rows.isEmpty() ? 0L : System.currentTimeMillis());
@@ -262,7 +259,7 @@ public class QueueWebController extends AbstractWebController {
     }
 
     /**
-     * 解析并校验会话目录下的 queue-tasks.json 路径（防止路径穿越）。
+     * 解析并校验会话目录路径（防止路径穿越）；队列已无独立文件，仅借用目录校验职能。
      */
     private Path resolveSessionQueuePath(String sessionId) {
         Path sessionsRoot = currentContext().getSessionsRoot();
@@ -270,7 +267,7 @@ public class QueueWebController extends AbstractWebController {
         if (!sessionPath.startsWith(sessionsRoot)) {
             return null;
         }
-        return sessionPath.resolve("queue-tasks.json");
+        return sessionPath;
     }
 
     private String safeQueueString(ONode node, int maxLen) {

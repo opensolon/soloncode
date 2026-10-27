@@ -68,6 +68,10 @@ public class SessionJanitorTest {
         Path withQueue = mkSession("web-queue");
         Files.write(withQueue.resolve("queue-tasks.json"), "{}".getBytes());
 
+        Path withSnapshotQueue = mkSession("web-snap-queue");
+        Files.write(withSnapshotQueue.resolve("web-snap-queue.snapshot.json"),
+                "{\"data\":{\"session.queue.items\":[{\"text\":\"t\"}]}}".getBytes());
+
         Path labeled = mkSession("web-labeled");
         SessionMeta.updateLabel(labeled, "重要会话");
 
@@ -82,7 +86,7 @@ public class SessionJanitorTest {
         List<String> removed = SessionJanitor.cleanWebSessions(tmp);
 
         assertTrue(removed.isEmpty(), "不应删除任何目录: " + removed);
-        for (Path p : Arrays.asList(withMsg, withQueue, labeled, pinned, notWeb, fresh)) {
+        for (Path p : Arrays.asList(withMsg, withQueue, withSnapshotQueue, labeled, pinned, notWeb, fresh)) {
             assertTrue(Files.isDirectory(p), "应保留: " + p);
         }
     }

@@ -18,10 +18,10 @@ package org.noear.solon.codecli.api.web;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
+import org.noear.solon.codecli.session.SessionSnapshots;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
 import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
-import org.noear.solon.ai.harness.session.queue.SessionQueueStore;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.LogDirUtil;
@@ -38,8 +38,9 @@ import java.nio.file.Path;
  * Session 队列的后端派发与恢复。
  *
  * <p>从 WebGate 拆出的队列职责：恢复进程重启前遗留的后端 follow-up 队列、
- * 从队头领取任务并转发给输入处理、以及队列项回执（确认完成或恢复到队首）。
- * 队列存储格式与恢复语义保持不变（queue-tasks.json / queue.json、RUNNING/PENDING、generation）。</p>
+ *  从队头领取任务并转发给输入处理、以及队列项回执（确认完成或恢复到队首）。
+ *  队列状态存于会话快照（FlowContext 的 session.queue.items 投影，由 AgentSession 实现持久化），
+ *  无独立存储文件；旧版 queue-tasks.json / queue.json 由恢复流程一次性迁移导入。</p>
  *
  * <p>事件下发与输入派发均经组合根 {@link WebGate} 中转，与其它组件保持单向依赖。</p>
  *
@@ -57,25 +58,36 @@ class WebQueueDispatcher {
         this.gate = gate;
     }
 
-    /** 工作区上下文完成初始化后恢复 session 队列，包括旧版 Web 队列。 */
+    /** 工作区上下文完成初始化后恢复 session 队列（含旧文件一次性迁移）。 */
     void recoverSessionQueues(WorkspaceContext wsContext) {
         if (wsContext == null || wsContext.getSessionManager() == null) return;
         Path root = wsContext.getSessionsRoot();
         if (root == null || !Files.isDirectory(root)) return;
         try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
             for (Path dir : dirs) {
-                if (!Files.isDirectory(dir)
-                        || !(Files.exists(dir.resolve(SessionQueueStore.FILE_NAME))
-                        || Files.exists(dir.resolve("queue.json")))) continue;
+                if (!Files.isDirectory(dir)) continue;
+                boolean legacy = Files.exists(dir.resolve("queue-tasks.json"))
+                        || Files.exists(dir.resolve("queue.json"));
+                if (!legacy && !hasQueueTask(wsContext, dir)) continue;
                 String sessionId = dir.getFileName().toString();
                 AgentSession session = wsContext.getSessionManager().getSession(sessionId);
-                SessionQueue.bindStorage(session, dir);
+                if (session == null) continue;
+                if (legacy) LegacyQueueMigrator.migrate(session, dir);
                 drainSessionQueue(wsContext, session);
             }
         } catch (IOException e) {
             LOG.warn("[WebGate] recover session queues failed for workspace {}: {}",
                     wsContext.getMeta().getId(), e.toString());
         }
+    }
+
+    /** 会话是否携带排队任务：内存会话优先（与写侧同源），未命中时只读解析快照判定。
+     *  不为探测而实例化会话（getSession 会常驻内存并装载全量历史）。 */
+    private static boolean hasQueueTask(WorkspaceContext wsContext, Path sessionDir) {
+        String sessionId = sessionDir.getFileName().toString();
+        AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
+        if (inMemory != null) return SessionQueue.hasItems(inMemory);
+        return SessionSnapshots.hasQueue(sessionDir, sessionId);
     }
 
     /**
@@ -85,9 +97,6 @@ class WebQueueDispatcher {
      * boundedElastic，否则同步执行。</p>
      */
     void drainSessionQueue(WorkspaceContext wsContext, AgentSession session) {
-        if (session != null && wsContext != null) {
-            SessionQueue.bindStorage(session, wsContext.getSessionPath(session.getSessionId()));
-        }
         if (session == null || SessionActivity.isBusy(session)) return;
         final long generation = SessionQueue.generation(session);
         final String sessionId = session.getSessionId();

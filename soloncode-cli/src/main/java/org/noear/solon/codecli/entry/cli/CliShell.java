@@ -145,7 +145,6 @@ public class CliShell implements Runnable {
         }
 
         AgentSession session = engine.getSession(sessionId);
-        SessionQueue.bindStorage(session, WorkspaceDataUtil.sessionsPath(engine.getWorkspace()).resolve(sessionId));
         printWelcome(session);
         drainCliQueue(session);
         return session;

@@ -3,9 +3,9 @@ package org.noear.solon.codecli.command.builtin;
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
+import org.noear.solon.ai.harness.command.builtin.SteerCommand;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
-import org.noear.solon.codecli.workspace.SteerPortImpl;
 
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -13,12 +13,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * /steer 全链路测试：harness SteerCommand + CLI 真实端口适配器。
+ * /steer 全链路测试：harness SteerCommand 直连领域类（会话上下文即状态）。
  * 纯投递语义：任何失败态（未运行、邮箱满、轮次切换）都如实告知，不代为排队/直发。
  */
 class SteerCommandTest {
-    private final org.noear.solon.ai.harness.command.builtin.SteerCommand command =
-            new org.noear.solon.ai.harness.command.builtin.SteerCommand(new SteerPortImpl());
+    private final SteerCommand command = new SteerCommand();
 
     private WebCommandContext context(AgentSession session, AtomicInteger starts) {
         return new WebCommandContext(session, "Feishu", "user-1", "chat-1", "message-1",

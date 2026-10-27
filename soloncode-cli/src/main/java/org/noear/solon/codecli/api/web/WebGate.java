@@ -162,9 +162,6 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     /** 未消费插话先落入 session 队列；只有保存成功才通知视图已转为排队。 */
     @Override
     public void handleDroppedSteers(WorkspaceContext wsContext, AgentSession session, Queue<SteerMessage> box, String runId) {
-        if (session != null && wsContext != null) {
-            SessionQueue.bindStorage(session, wsContext.getSessionPath(session.getSessionId()));
-        }
         List<SteerMessage> dropped = new ArrayList<>();
         List<SteerMessage> failed = new ArrayList<>();
         for (SteerMessage message; (message = box.poll()) != null; ) {

@@ -103,7 +103,6 @@ class WebGateRejectedInputTest {
         List<String> events = new ArrayList<>();
         WebGate gate = recordingGate(events);
         AgentSession session = InMemoryAgentSession.of();
-        SessionQueue.bindStorage(session, dir);
         for (int i = 0; i < SessionQueue.MAX_QUEUE_SIZE; i++) {
             assertTrue(SessionQueue.enqueue(session, "task " + i, "WEB") > 0);
         }

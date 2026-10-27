@@ -102,7 +102,6 @@ class WebChatInputHandler {
             String userId = resolveUserIdFromContext(wsContext);
             session = wsContext.getSessionManager().getSession(sessionId, userId);
             // 同一把 session 锁内检查忙态并占位，避免两个窗口同时看见空闲并各开一条流。
-            SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
             synchronized (session.attrs()) {
                 boolean dispatch = Thread.currentThread().equals(session.attrs().get(WebQueueDispatcher.ATTR_QUEUE_DISPATCH));
                 boolean busyCommand = false;
@@ -480,7 +479,6 @@ class WebChatInputHandler {
                 }
 
                 // 降级：繁忙时进入统一持久化队列，而不是只让调用方重试。
-                SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
                 int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId);
                 if (position >= 0) {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
@@ -580,7 +578,6 @@ class WebChatInputHandler {
     boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         try {
             AgentSession session = wsContext.getSessionManager().getSession(sessionId);
-            SessionQueue.bindStorage(session, wsContext.getSessionPath(sessionId));
             // 清队列保存失败时不终止当前流：否则 doFinally 会续发原队列，Stop 不能报告成功。
             if (!SessionQueue.cancelPending(session)) {
                 LOG.warn("[WebGate] Stop rejected: could not persist queue cancellation for session {}", sessionId);
