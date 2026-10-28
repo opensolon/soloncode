@@ -1,6 +1,9 @@
 
 ### vNEXT
 
+* 修复 soloncode 启动失败：挂载发现阶段遇到 Windows 目录符号链接（junction / 目录重解析点，NIO 不识别为 SymbolicLink，walkFileTree 会进入其子树）时报 `Symbolic link escapes mount root` 并抛 SecurityException，一路冒泡到 WorkspaceManager 导致默认工作区初始化失败、web 无法启动；现改为发现阶段尽力而为——find 中对越界目录返回 SKIP_SUBTREE、单条目异常（越界/无权限/瞬时消失）与 visitFileFailed 仅跳过、技能与子代理目录扫描对单个来源/单个条目异常只记日志，工作区注册挂载统一走 addMountSafely 兜底，任一挂载点异常都不再阻断启动
+* 添加 soloncode 挂载点跟随外部链接能力：本地目录上的符号链接/Junction 视为普通目录（典型场景：C 盘空间紧张，把技能/子代理目录整体放到 D/E 盘再 Junction 链回），启动路径的全部默认挂载、mountPools 配置项、设置界面添加挂载、设置跨工作区同步重放、`--add-dir` 额外目录统一开启；FileMountSource 新增 followExternalLinks 开关（库默认仍为 false，不改变既有安全语义），同时修正 MountManager.checkedLocalPath 不识别该开关导致「发现可列出、显式访问 @alias/path 却拒绝」的不一致；跟随模式下 find 不再解析挂载根真实路径（省一次 toRealPath，且避免根不可解析时整次扫描被跳过）；`..` 与绝对路径的语法级越界拒绝保持不变
+* 修复 soloncode web 文件面板与挂载层链接策略不一致：树构建、关键词搜索、文本读取、原始二进制读取、写回、“打开文件夹”等仅按“最后一段是否为符号链接”一律 403/跳过的判定，现统一改为遵循所在挂载来源的 followExternalLinks（FileService.shouldFollowExternalLinks 解析来源策略，默认工作区按挂载侧同口径跟随），消除“文件树里能看见、点开却读不到”的半开半闭状态；严格来源仍完整保留原有拦截，链接目录也不得被当作树展开根（防止绕开列表过滤直读根外内容）；跟随模式下写回先解析到链接目标再原子写，避免把链接本体替换成普通文件
 * 精简 soloncode loop/goal 共享层：删除 LoopExecutionResult 死包装（唯一调用方只消费 2/4 字段，doTrigger 直用 RoundResult）；重复的 classifyError/getFullMessage 收敛为 runtime.ErrorClassifier；删除 LoopScheduler 转发接口（TaskHandler/BusyChecker），入口统一经 getBridge() 注册
 * 重构 soloncode goal 为会话级能力（包 codecli.goal）：每会话最多一个，状态随会话快照持久化（不再写 tasks.json）；loop 纯化为定时任务体系，二者仅共享执行桥
 * 添加 soloncode `/goal` 独立命令（创建/pause/resume/clear/状态查看），`/loop goal` 提示迁移；`/loop pause|resume` 只作用于定时任务

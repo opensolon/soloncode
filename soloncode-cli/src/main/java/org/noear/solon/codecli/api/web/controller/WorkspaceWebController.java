@@ -166,17 +166,20 @@ public class WorkspaceWebController extends AbstractWebController {
             }
 
             // 只允许打开当前工作区或当前引擎已暴露的 FILES 挂载目录，避免把接口变成任意路径打开器。
+            // 链接策略与挂载层一致：来源开启跟随时，链接目录按其逻辑路径归属判定
+            // （否则会把 D 盘上的 junction 目标当成越界，出现「树里能点、打开报错」）。
             Path realTarget = target.toRealPath();
             boolean allowed = false;
             WorkspaceContext context = currentContext();
             if (context != null && context.getMeta() != null && context.getMeta().getPath() != null) {
-                allowed = isWithin(realTarget, Paths.get(context.getMeta().getPath()));
+                allowed = isWithin(target, Paths.get(context.getMeta().getPath()), true);
             }
             if (!allowed) {
                 for (Mount mount : engine().getMounts()) {
                     if (mount.getType() != MountType.FILES || !(mount.getSource() instanceof FileMountSource)) continue;
-                    Path root = ((FileMountSource) mount.getSource()).getRootPath();
-                    if (root != null && isWithin(realTarget, root)) {
+                    FileMountSource source = (FileMountSource) mount.getSource();
+                    Path root = source.getRootPath();
+                    if (root != null && isWithin(target, root, source.isFollowExternalLinks())) {
                         allowed = true;
                         break;
                     }
@@ -191,8 +194,23 @@ public class WorkspaceWebController extends AbstractWebController {
         }
     }
 
-    private boolean isWithin(Path target, Path root) throws java.io.IOException {
+    /**
+     * 判定路径是否落在根目录内。
+     *
+     * <p>严格模式（原行为）：按真实路径判定，链接展开后在根外即视为越界。
+     * 跟随模式：额外接受「逻辑路径落在根内」的判定——目标本身就在挂载目录里（只是自身是链接）时，
+     * 视作挂载内的合法入口。不会因为跟随而放行真正在根外的任意路径。</p>
+     *
+     * @param target      待校验路径
+     * @param root        根目录
+     * @param followLinks 是否允许通过链接越出根目录（挂载来源的策略）
+     * @return true 表示允许
+     */
+    private boolean isWithin(Path target, Path root, boolean followLinks) throws java.io.IOException {
         if (root == null || !Files.exists(root)) return false;
+        if (followLinks && target.startsWith(root.toAbsolutePath().normalize())) {
+            return true;
+        }
         return target.startsWith(root.toRealPath());
     }
 

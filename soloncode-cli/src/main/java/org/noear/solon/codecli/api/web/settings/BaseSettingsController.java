@@ -680,7 +680,8 @@ public class BaseSettingsController {
                 .alias(alias)
                 .description(mount.getDescription())
                 .type(mount.getType())
-                .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), engine.getWorkspace())))
+                // 与启动路径、界面添加保持同一策略：挂载池目录允许跟随 Junction/符号链接
+                .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), engine.getWorkspace()), true))
                 .primary(mount.isPrimary())
                 .enabled(mount.isEnabled())
                 .writeable(mount.isWriteable())

@@ -412,7 +412,8 @@ public class PrintMode {
                 Mount mount = Mount.builder()
                         .alias(alias)
                         .type(MountType.FILES)
-                        .source(FileMountSource.of(dir))
+                        // --add-dir 指向的本机目录同样按普通目录对待（可为 Junction/符号链接）
+                        .source(FileMountSource.of(dir, true))
                         .writeable(true)
                         .enabled(true)
                         .build();

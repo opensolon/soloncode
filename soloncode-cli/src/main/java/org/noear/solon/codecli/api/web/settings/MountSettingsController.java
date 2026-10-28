@@ -199,7 +199,9 @@ public class MountSettingsController extends BaseSettingsController {
                 .alias(alias)
                 .description(description)
                 .type(type)
-                .source(FileMountSource.of(MountPathUtil.resolve(path, engine().getWorkspace())))
+                // 与启动路径保持一致：用户通过界面添加的目录同样允许跟随 Junction（Windows 上
+                // 把目录放到其他盘再链回来是常规做法），否则“启动时可用的挂载，界面添加后不可用”。
+                .source(FileMountSource.of(MountPathUtil.resolve(path, engine().getWorkspace()), true))
                 .writeable(writeable)
                 .build());
 

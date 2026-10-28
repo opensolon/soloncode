@@ -75,6 +75,29 @@ public class FileService {
         this.engine = engine;
     }
 
+    /**
+     * 判定指定工作区的文件面板是否跟随指向根外的符号链接 / Windows Junction。
+     *
+     * <p>与挂载层保持一致：来源开启 {@code followExternalLinks} 时，链接目录按普通目录对待
+     * （可列出、可读取、可写入）；来源保持严格模式时，仍按链接拦截。</p>
+     *
+     * <p>默认工作区（启动目录）不属于挂载来源，按跟随处理——CLI 侧挂载点已统一开启跟随，
+     * 两侧策略必须一致，否则会出现「文件树里能看见、点开却被 403」的半开半闭状态。</p>
+     *
+     * @param workspaceId 工作区标识（"workspace" 或挂载别名）
+     * @return true 表示跟随链接
+     */
+    private boolean shouldFollowExternalLinks(String workspaceId) {
+        if (workspaceId == null || workspaceId.isEmpty() || "workspace".equals(workspaceId)) {
+            return true;
+        }
+        Mount mount = engine == null ? null : engine.getMount(workspaceId);
+        if (mount != null && mount.getSource() instanceof FileMountSource) {
+            return ((FileMountSource) mount.getSource()).isFollowExternalLinks();
+        }
+        return true;
+    }
+
     // ==================== 公开业务方法 ====================
 
     /**
@@ -199,11 +222,16 @@ public class FileService {
         if (!target.startsWith(rootPath)) {
             return Result.failure(403, "Access denied");
         }
+        boolean followLinks = shouldFollowExternalLinks(workspaceId);
+        // 严格来源：链接目录不得作为展开根，否则会绕开列表过滤直接读到根外内容
+        if (!followLinks && !path.isEmpty() && Files.isSymbolicLink(target)) {
+            return Result.failure(403, "Access denied: symlink");
+        }
         if (!target.toFile().exists() || !target.toFile().isDirectory()) {
             return Result.failure(404, "Directory not found");
         }
 
-        List<Map> tree = buildTree(target, rootPath, depth, 1);
+        List<Map> tree = buildTree(target, rootPath, depth, 1, followLinks);
         return Result.succeed(tree);
     }
 
@@ -243,7 +271,7 @@ public class FileService {
         String kw = keyword.trim().toLowerCase();
 
         List<Map> results = new ArrayList<>();
-        searchFiles(rootPath.toFile(), rootPath, kw, results, 0);
+        searchFiles(rootPath.toFile(), rootPath, kw, results, 0, shouldFollowExternalLinks(workspaceId));
 
         if (results.size() > 200) {
             results = results.subList(0, 200);
@@ -291,14 +319,15 @@ public class FileService {
         } catch (IllegalArgumentException e) {
             return Result.failure(404, e.getMessage());
         }
+        boolean followLinks = shouldFollowExternalLinks(workspaceId);
 
         Path target = rootPath.resolve(path).toAbsolutePath().normalize();
 
         if (!target.startsWith(rootPath)) {
             return Result.failure(403, "Access denied");
         }
-        // 检测符号链接，防止越权读取工作区外部的文件
-        if (Files.isSymbolicLink(target)) {
+        // 检测符号链接，防止越权读取工作区外部的文件（挂载层开启跟随时不拦截）
+        if (!followLinks && Files.isSymbolicLink(target)) {
             return Result.failure(403, "Access denied: symlink");
         }
         if (!target.toFile().exists() || target.toFile().isDirectory()) {
@@ -394,6 +423,7 @@ public class FileService {
                 return Result.failure(403, "Mount is readonly: " + workspaceId);
             }
         }
+        boolean followLinks = shouldFollowExternalLinks(workspaceId);
 
         Path target = rootPath.resolve(path).toAbsolutePath().normalize();
 
@@ -401,7 +431,15 @@ public class FileService {
             return Result.failure(403, "Access denied");
         }
         if (Files.isSymbolicLink(target)) {
-            return Result.failure(403, "Access denied: symlink");
+            if (!followLinks) {
+                return Result.failure(403, "Access denied: symlink");
+            }
+            // 跟随模式：写入落到链接目标而非把自己换成普通文件（否则原子写会把链接替掉）
+            try {
+                target = target.toRealPath();
+            } catch (Exception e) {
+                return Result.failure(404, "File not found: " + e.getMessage());
+            }
         }
         File file = target.toFile();
         if (!file.exists() || file.isDirectory()) {
@@ -474,12 +512,13 @@ public class FileService {
         }
 
         Path rootPath = resolveRoot(workspaceId);
+        boolean followLinks = shouldFollowExternalLinks(workspaceId);
         Path target = rootPath.resolve(path).toAbsolutePath().normalize();
 
         if (!target.startsWith(rootPath)) {
             throw new SecurityException("Access denied");
         }
-        if (Files.isSymbolicLink(target)) {
+        if (!followLinks && Files.isSymbolicLink(target)) {
             throw new SecurityException("Access denied: symlink");
         }
         File file = target.toFile();
@@ -506,9 +545,10 @@ public class FileService {
      * @param rootPath     工作区根路径，用于计算相对路径
      * @param maxDepth     最大展开深度
      * @param currentDepth 当前递归深度
+     * @param followLinks  是否跟随符号链接（与挂载层策略一致；不跟随时按越界跳过）
      * @return 当前层级的文件/目录信息列表
      */
-    private List<Map> buildTree(Path dir, Path rootPath, int maxDepth, int currentDepth) {
+    private List<Map> buildTree(Path dir, Path rootPath, int maxDepth, int currentDepth, boolean followLinks) {
         File[] files = dir.toFile().listFiles();
         if (files == null) return Collections.emptyList();
 
@@ -521,8 +561,8 @@ public class FileService {
         List<Map> result = new ArrayList<>();
         for (File f : files) {
             if (isSkippedName(f)) continue;
-            // 跳过符号链接，防止遍历到工作区外部的文件
-            if (Files.isSymbolicLink(f.toPath())) continue;
+            // 跳过符号链接，防止遍历到工作区外部的文件（挂载层开启跟随时不拦截）
+            if (!followLinks && Files.isSymbolicLink(f.toPath())) continue;
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", f.getName());
@@ -531,7 +571,7 @@ public class FileService {
 
             if (f.isDirectory() && currentDepth < maxDepth) {
                 item.put("expanded", true);
-                item.put("children", buildTree(f.toPath(), rootPath, maxDepth, currentDepth + 1));
+                item.put("children", buildTree(f.toPath(), rootPath, maxDepth, currentDepth + 1, followLinks));
             } else if (f.isDirectory()) {
                 item.put("expanded", false);
                 item.put("children", null);
@@ -549,16 +589,17 @@ public class FileService {
      * @param keyword   小写化后的搜索关键词
      * @param results   收集结果的列表
      * @param depth     当前递归深度，超过 20 层停止
+     * @param followLinks 是否跟随符号链接（与挂载层策略一致；不跟随时按越界跳过）
      */
-    private void searchFiles(File dir, Path rootPath, String keyword, List<Map> results, int depth) {
+    private void searchFiles(File dir, Path rootPath, String keyword, List<Map> results, int depth, boolean followLinks) {
         if (depth > 20) return;
         File[] files = dir.listFiles();
         if (files == null) return;
 
         for (File f : files) {
             if (isSkippedName(f)) continue;
-            // 跳过符号链接，防止遍历到工作区外部的文件
-            if (Files.isSymbolicLink(f.toPath())) continue;
+            // 跳过符号链接，防止遍历到工作区外部的文件（挂载层开启跟随时不拦截）
+            if (!followLinks && Files.isSymbolicLink(f.toPath())) continue;
 
             String relativePath = rootPath.relativize(f.toPath().toAbsolutePath().normalize()).toString().replace('\\', '/');
 
@@ -571,7 +612,7 @@ public class FileService {
             }
 
             if (f.isDirectory()) {
-                searchFiles(f, rootPath, keyword, results, depth + 1);
+                searchFiles(f, rootPath, keyword, results, depth + 1, followLinks);
             }
         }
     }

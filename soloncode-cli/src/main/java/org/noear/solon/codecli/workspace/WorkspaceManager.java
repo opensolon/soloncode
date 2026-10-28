@@ -630,6 +630,24 @@ public class WorkspaceManager implements WorkspaceRegistry {
     }
 
     /**
+     * 安全注册挂载：单个挂载（包含其技能/子代理目录扫描）失败时仅记日志并跳过，
+     * 不得因个别目录不可用（如 Windows junction 越界、权限不足、网络盘丢失）导致整个工作区构建失败。
+     *
+     * <p>但 IllegalArgumentException 属于配置/编程错误（如别名冲突、内置挂载被覆盖），
+     * 必须照常抛出：静默跳过等于悄悄丢弃用户配置的挂载点，问题更难定位。</p>
+     */
+    static void addMountSafely(HarnessEngine engine, Mount mount) {
+        try {
+            engine.addMount(mount);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Throwable e) {
+            LOG.warn("[Workspace] Skip unavailable mount {}: {}", mount == null ? null : mount.getAlias(), e.toString());
+            LOG.debug("[Workspace] Mount register failure detail: {}", mount == null ? null : mount.getAlias(), e);
+        }
+    }
+
+    /**
      * 上下文完整建成后提升 retention 为 PERSISTENT（合并协议只升不降，失败仅告警）。
      */
     private static void promoteWorkspaceMeta(String workspacePath) {
@@ -747,24 +765,28 @@ public class WorkspaceManager implements WorkspaceRegistry {
 
         for (Map.Entry<String, MountDo> entry : wsSettings.getMountPools().entrySet()) {
             MountDo mount = entry.getValue();
-            engine.addMount(Mount.builder()
+            addMountSafely(engine, Mount.builder()
                     .alias(entry.getKey())
                     .description(mount.getDescription())
                     .type(mount.getType())
-                    .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), workspacePath)))
+                    .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), workspacePath), true))
                     .primary(mount.isPrimary())
                     .enabled(mount.isEnabled())
                     .writeable(mount.isWriteable())
                     .build());
         }
 
-        engine.addMount(Mount.builder().alias("@agent-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/.agents/skills/", workspacePath))).primary(true).build());
+        // 挂载点统一允许跟随指到根外的链接（含 Windows Junction）：
+        // 本地目录上的链接就是普通目录，不应被工具特殊审判。典型场景是 C 盘空间紧张时
+        // 把技能/子代理目录整体放到 D/E 盘再建 Junction 链回。
+        // 真正的越界（".." 与绝对路径）在 FileMountSource.normalize 中照常拒绝。
+        addMountSafely(engine, Mount.builder().alias("@agent-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/.agents/skills/", workspacePath), true)).primary(true).build());
 
-        engine.addMount(Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessSkills(), workspacePath))).primary(true).build());
-        engine.addMount(Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessSkills(), workspacePath))).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessSkills(), workspacePath), true)).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessSkills(), workspacePath), true)).primary(true).build());
 
-        engine.addMount(Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessAgents(), workspacePath))).primary(true).build());
-        engine.addMount(Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessAgents(), workspacePath))).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessAgents(), workspacePath), true)).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessAgents(), workspacePath), true)).primary(true).build());
 
         // 灌入技能禁用清单
         engine.disallowSkillReset(wsSettings.getPermission().getDisallowedSkills());
