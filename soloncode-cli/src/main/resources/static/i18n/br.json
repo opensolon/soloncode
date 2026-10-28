@@ -540,6 +540,7 @@
   "loop.status.achieved": "Alcançado",
   "loop.status.blocked": "Bloqueado",
   "loop.status.budgetLimited": "Orçamento Esgotado",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Cancelado",
   "loop.status.disabled": "Desativado",
   "loop.status.paused": "Pausado",

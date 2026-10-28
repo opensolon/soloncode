@@ -540,6 +540,7 @@
   "loop.status.achieved": "Достигнуто",
   "loop.status.blocked": "Заблокировано",
   "loop.status.budgetLimited": "Бюджет исчерпан",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Отменено",
   "loop.status.disabled": "Отключено",
   "loop.status.paused": "Приостановлено",

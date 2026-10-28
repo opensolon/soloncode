@@ -540,6 +540,7 @@
   "loop.status.achieved": "تم تحقيق الهدف",
   "loop.status.blocked": "محظور",
   "loop.status.budgetLimited": "نفدت الميزانية",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "ملغى",
   "loop.status.disabled": "معطّل",
   "loop.status.paused": "متوقف مؤقتًا",

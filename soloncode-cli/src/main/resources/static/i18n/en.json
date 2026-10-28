@@ -577,6 +577,7 @@
   "loop.status.achieved": "Achieved",
   "loop.status.blocked": "Blocked",
   "loop.status.budgetLimited": "Budget Exhausted",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Cancelled",
   "loop.status.disabled": "Disabled",
   "loop.status.paused": "Paused",

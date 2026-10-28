@@ -542,6 +542,7 @@
   "loop.status.achieved": "Đã đạt",
   "loop.status.blocked": "Bị chặn",
   "loop.status.budgetLimited": "Cạn ngân sách",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Đã hủy",
   "loop.status.disabled": "Đã tắt",
   "loop.status.paused": "Đã tạm dừng",

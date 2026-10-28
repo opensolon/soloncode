@@ -540,6 +540,7 @@
   "loop.status.achieved": "달성됨",
   "loop.status.blocked": "차단됨",
   "loop.status.budgetLimited": "예산 소진",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "취소됨",
   "loop.status.disabled": "비활성화됨",
   "loop.status.paused": "일시 중지됨",

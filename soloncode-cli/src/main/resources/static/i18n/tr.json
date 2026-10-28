@@ -540,6 +540,7 @@
   "loop.status.achieved": "Hedefe ulaşıldı",
   "loop.status.blocked": "Engellendi",
   "loop.status.budgetLimited": "Bütçe Tükendi",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "İptal edildi",
   "loop.status.disabled": "Devre dışı",
   "loop.status.paused": "Duraklatıldı",

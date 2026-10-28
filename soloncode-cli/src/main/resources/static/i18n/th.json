@@ -542,6 +542,7 @@
   "loop.status.achieved": "บรรลุแล้ว",
   "loop.status.blocked": "ถูกบล็อก",
   "loop.status.budgetLimited": "งบประมาณหมด",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "ยกเลิกแล้ว",
   "loop.status.disabled": "ปิดใช้งานแล้ว",
   "loop.status.paused": "หยุดชั่วคราวแล้ว",

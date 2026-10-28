@@ -540,6 +540,7 @@
   "loop.status.achieved": "Postignuto",
   "loop.status.blocked": "Blokirano",
   "loop.status.budgetLimited": "Budžet iscrpljen",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Otkazano",
   "loop.status.disabled": "Onemogućeno",
   "loop.status.paused": "Pauzirano",

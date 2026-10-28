@@ -545,6 +545,7 @@
   "loop.status.achieved": "達成済み",
   "loop.status.blocked": "ブロック済み",
   "loop.status.budgetLimited": "予算を使い切りました",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "キャンセル済み",
   "loop.status.disabled": "無効",
   "loop.status.paused": "一時停止中",

@@ -540,6 +540,7 @@
   "loop.status.achieved": "অর্জিত",
   "loop.status.blocked": "ব্লকড",
   "loop.status.budgetLimited": "বাজেট শেষ",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "বাতিল",
   "loop.status.disabled": "নিষ্ক্রিয়",
   "loop.status.paused": "বিরতি দেওয়া",

@@ -577,6 +577,7 @@
   "loop.status.achieved": "已达成",
   "loop.status.blocked": "已阻塞",
   "loop.status.budgetLimited": "预算耗尽",
+  "loop.status.iterationLimited": "轮次耗尽",
   "loop.status.cancelled": "已取消",
   "loop.status.disabled": "已停用",
   "loop.status.paused": "已暂停",

@@ -145,6 +145,7 @@
             PAUSED: I18n.t('loop.status.paused'),
             ACHIEVED: I18n.t('loop.status.achieved'),
             BUDGET_LIMITED: I18n.t('loop.status.budgetLimited'),
+            ITERATION_LIMITED: I18n.t('loop.status.iterationLimited'),
             BLOCKED: I18n.t('loop.status.blocked')
         };
     }
@@ -152,11 +153,11 @@
     // ========== 统一状态解析（合并 running / goal 两套机制）==========
     // 无论任务是 HEARTBEAT 还是 GOAL，都通过此函数获取单一状态
     function resolveTaskState(t) {
-        // 终态/禁用态优先
-        if (t.cancelled) return { text: I18n.t('loop.status.cancelled'), cls: 'cancelled' };
-        if (!t.enabled) return { text: I18n.t('loop.status.disabled'), cls: 'disabled' };
-
-        // Goal 任务：以 goal.status 为唯一依据（running 在其面前是冗余的）
+        // Goal 任务：以 goal.status 为唯一依据，必须最先判定。
+        // 后端为复用 loop 展示契约，把 goal 语义映射进了 enabled/cancelled
+        // （enabled = 是否 PURSUING，cancelled = 是否终态），若先判这两个字段，
+        // 则 ACHIEVED/BUDGET_LIMITED/ITERATION_LIMITED 会被误显示为“已取消”、
+        // PAUSED/BLOCKED 会被误显示为“已停用”，goal 分支永远不可达。
         if (t.goal && t.goal.status) {
             var label = getGoalStatusLabel()[t.goal.status] || t.goal.status;
             // 将 goal 状态映射到已有的 CSS 语义（部分复用，部分新增）
@@ -164,11 +165,16 @@
                 PURSUING: 'running',
                 PAUSED: 'paused',
                 ACHIEVED: 'achieved',
-                BLOCKED: 'cancelled',
-                BUDGET_LIMITED: 'cancelled'
+                BLOCKED: 'blocked',
+                BUDGET_LIMITED: 'limited',
+                ITERATION_LIMITED: 'limited'
             };
             return { text: label, cls: clsMap[t.goal.status] || 'ready' };
         }
+
+        // 终态/禁用态优先（仅定时任务）
+        if (t.cancelled) return { text: I18n.t('loop.status.cancelled'), cls: 'cancelled' };
+        if (!t.enabled) return { text: I18n.t('loop.status.disabled'), cls: 'disabled' };
 
         // Heartbeat 任务：使用 running 标记
         if (t.running) return { text: I18n.t('loop.status.running'), cls: 'running' };
@@ -308,7 +314,11 @@
     function buildListItem(t) {
         // ★ 统一通过 resolveTaskState 获取状态，不再分别读 running / goal
         var state = resolveTaskState(t);
-        var scheduleText = t.cron ? ('cron: ' + t.cron) : (I18n.t('loop.every') + t.intervalMinutes + I18n.t('loop.minutesSuffix'));
+        // goal 行无调度计划（事件驱动，非定时），显示目标驱动提示而非“每 0 分钟”
+        var scheduleText = (t.goal && t.goal.status)
+            ? I18n.t('loop.tabGoal')
+            : (t.cron ? ('cron: ' + t.cron)
+                : (I18n.t('loop.every') + t.intervalMinutes + I18n.t('loop.minutesSuffix')));
 
         // 标签
         var tags = [];

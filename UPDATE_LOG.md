@@ -11,6 +11,8 @@
 * 修复 soloncode goal job 跨工作区同名会话互相覆盖的问题（job 名加工作区前缀）
 * 修复 soloncode 工作区关闭/LRU 释放时 goal job 泄漏在全局调度器的问题；有活跃 goal 的工作区不再被闲置释放
 * 修复 soloncode `/loop` 帮助文本残留的 goal 用法（goal 已迁至 `/goal`，帮助内不再教已迁走的命令）
+* 修复 soloncode web 循环任务列表中 goal 状态显示错误：resolveTaskState 先判 loop 的 cancelled/enabled，而后端为复用展示契约把 goal 语义映射进了这两个字段（enabled=是否 PURSUING，cancelled=是否终态），导致 ACHIEVED/BUDGET_LIMITED 显示为“已取消”、PAUSED/BLOCKED 显示为“已停用”，goal 分支永远不可达；改为 goal.status 优先判定，并补全 ITERATION_LIMITED 状态与 blocked/limited 样式
+* 修复 soloncode web 面板 goal 创建/编辑链路断裂（重构回归）：loop/add 与 loop/update 硬性拒绝 GOAL 后，前端 goal 标签页仍走这两个端点，创建必失败、编辑在 getTaskById 处先返回 404；改为在两端点内按 GoalState.id 分流到 GoalEngine（与桌面版 goals/add、goals/update 同语义），前端零改动
 * 清理 soloncode goal 迁移残留：WorkspaceManager 装配段变量 loopCfg→goalCfg 正名，及 WebQueueDispatcher/SessionWebController/WsGate/DesktopInputRouter/Configurator 五处行内全限定名改标准 import
 
 ### v2026.10.23

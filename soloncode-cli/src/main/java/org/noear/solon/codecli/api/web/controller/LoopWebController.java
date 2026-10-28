@@ -131,6 +131,93 @@ public class LoopWebController extends AbstractWebController {
     }
 
     /**
+     * Web 端创建会话 goal（与桌面版 /desktop/chat/goals/add 同语义）。
+     *
+     * <p>保留在 loop/add 内部分流而非新开端点，因为前端表单与列表渲染是
+     * 一套 loop 契约（同构 Map），新开端点需要同步改表单提交与列表刷新两处。</p>
+     */
+    private Result createSessionGoal(String sessionId, String prompt, Long maxTokens, Long maxDurationMs) {
+        GoalEngine engine = currentContext().getGoalEngine();
+        if (engine == null) {
+            return Result.failure(503, "Goal service is unavailable");
+        }
+        AgentSession session = engine.sessionOf(sessionId);
+        if (session == null) {
+            return Result.failure(404, "Session not found");
+        }
+        try {
+            GoalState gs = engine.attach(session, prompt.trim(),
+                    maxTokens != null ? maxTokens : 0L,
+                    maxDurationMs != null ? maxDurationMs : 0L,
+                    0);
+            if (currentContext().getGoalScheduler() != null) {
+                currentContext().getGoalScheduler().schedule(sessionId, true);
+            }
+            return Result.succeed(gs.getId());
+        } catch (IllegalStateException e) {
+            // 单槽语义：已有活跃/可恢复 goal
+            return Result.failure(409, e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return Result.failure(400, e.getMessage());
+        }
+    }
+
+    /**
+     * Web 端编辑会话 goal（目标正文与预算）。仅非终态可编辑，语义同桌面版 goals/update。
+     */
+    private Result updateSessionGoal(AgentSession session, GoalState gs,
+                                     String prompt, Long maxTokens, Long maxDurationMs) {
+        if (gs.getStatus().isTerminal()) {
+            return Result.failure(409, "已完成的 Goal 不能编辑，请先清除");
+        }
+        // 编辑前先停住旧轮次，对齐桌面版 pause → interrupt → 等停 → update → resume 的时序
+        boolean resumeAfterUpdate = gs.getStatus().isActive();
+        GoalEngine engine = currentContext().getGoalEngine();
+        if (resumeAfterUpdate) {
+            engine.pause(session, gs);
+            if (currentContext().getGoalScheduler() != null) {
+                currentContext().getGoalScheduler().unschedule(session.getSessionId());
+            }
+            // 中断在跑的轮次，否则旧目标会继续跑并回写覆盖刚改的配置
+            if (runtimePort() != null) {
+                runtimePort().interruptSession(currentContext(), session.getSessionId());
+            }
+            if (gs.getStatus() != GoalState.Status.PAUSED) {
+                return Result.failure(409, "Goal state changed before settings could be applied");
+            }
+            for (int attempt = 0; engine.isRunning(session) && attempt < 200; attempt++) {
+                try {
+                    Thread.sleep(20);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+        try {
+            String objective = (prompt != null && !prompt.trim().isEmpty())
+                    ? prompt.trim() : gs.getCondition();
+            engine.update(session, objective,
+                    maxTokens != null ? maxTokens : gs.getMaxTokens(),
+                    gs.getMaxIterations());
+            if (maxDurationMs != null) {
+                gs.setMaxDurationMs(maxDurationMs);
+                engine.commit(session, gs);
+            }
+        } catch (IllegalStateException e) {
+            return Result.failure(409, e.getMessage());
+        } finally {
+            if (resumeAfterUpdate) {
+                engine.resume(session, gs);
+                if (currentContext().getGoalScheduler() != null) {
+                    currentContext().getGoalScheduler().schedule(session.getSessionId(), true);
+                }
+            }
+        }
+        return Result.succeed();
+    }
+
+    /**
      * 构建任务 Map（通用方法，供 list/get 复用）
      */
     private Map<String, Object> buildTaskMap(LoopTask t) {
@@ -202,10 +289,9 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "prompt is required");
         }
 
-
         // goal 已属会话级独立能力（/goal 或 /desktop/chat/goals/add），定时任务页不再创建 GOAL
         if (type != null && "GOAL".equalsIgnoreCase(type)) {
-            return Result.failure(400, "GOAL is a session-scoped capability, use /goal or goal endpoints");
+            return createSessionGoal(sessionId, prompt, maxTokens, maxDurationMs);
         }
 
         // 初始化状态目录
@@ -243,6 +329,17 @@ public class LoopWebController extends AbstractWebController {
         }
         if (taskId == null || taskId.isEmpty()) {
             return Result.failure(400, "taskId is required");
+        }
+
+        // goal 行分流：必须在 LoopTask 查找之前，goal 的 taskId 是 GoalState.id，
+        // 不在 loop 任务表中，否则会在 getTaskById 处先返回 404。
+        GoalEngine updGoalEngine = currentContext().getGoalEngine();
+        if (updGoalEngine != null) {
+            AgentSession gsSession = updGoalEngine.sessionOf(sessionId);
+            GoalState gs = gsSession == null ? null : updGoalEngine.state(gsSession);
+            if (gs != null && taskId.equals(gs.getId())) {
+                return updateSessionGoal(gsSession, gs, prompt, maxTokens, maxDurationMs);
+            }
         }
 
         LoopScheduler loopScheduler = loopScheduler();

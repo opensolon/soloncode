@@ -1044,6 +1044,8 @@ body {
 .loop-item-dot.cancelled { background: var(--color-danger); opacity: 0.4; }
 .loop-item-dot.paused { background: #f0ad4e; opacity: 0.6; box-shadow: 0 0 0 2px rgba(240,173,78,0.2); }
 .loop-item-dot.achieved { background: #059669; box-shadow: 0 0 0 2px rgba(5,150,105,0.2); }
+.loop-item-dot.blocked { background: #f59e0b; opacity: 0.7; }
+.loop-item-dot.limited { background: #9ca3af; opacity: 0.7; }
 .loop-item-name { font-size: var(--fs-base); font-weight: 500; color: var(--text-primary); min-width: 60px; }
 .loop-item-id { font-size: var(--fs-xs); color: var(--text-secondary); opacity: 0.6; margin-left: 2px; }
 .loop-item-schedule { font-size: var(--fs-xs); color: var(--text-secondary); }
@@ -1054,6 +1056,8 @@ body {
 .loop-item-status.cancelled { color: var(--color-danger); background: rgba(239,68,68,0.08); }
 .loop-item-status.paused { color: #f0ad4e; background: rgba(240,173,78,0.10); opacity: 0.7; }
 .loop-item-status.achieved { color: #059669; background: rgba(5,150,105,0.12); }
+.loop-item-status.blocked { color: #f59e0b; background: rgba(245,158,11,0.12); }
+.loop-item-status.limited { color: var(--text-secondary); background: var(--bg-hover); }
 .loop-item-actions { margin-left: auto; display: flex; gap: 2px; flex-shrink: 0; }
 .loop-action-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); font-size: var(--fs-base); padding: 3px 6px; border-radius: 4px; transition: background 0.12s; }
 .loop-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }

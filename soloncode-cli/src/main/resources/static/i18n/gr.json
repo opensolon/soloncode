@@ -540,6 +540,7 @@
   "loop.status.achieved": "Επιτεύχθηκε",
   "loop.status.blocked": "Αποκλεισμένο",
   "loop.status.budgetLimited": "Εξάντληση προϋπολογισμού",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Ακυρώθηκε",
   "loop.status.disabled": "Απενεργοποιημένο",
   "loop.status.paused": "Σε παύση",

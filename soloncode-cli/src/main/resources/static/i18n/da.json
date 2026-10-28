@@ -540,6 +540,7 @@
   "loop.status.achieved": "Nået",
   "loop.status.blocked": "Blokeret",
   "loop.status.budgetLimited": "Budget opbrugt",
+  "loop.status.iterationLimited": "Iterations Exhausted",
   "loop.status.cancelled": "Annulleret",
   "loop.status.disabled": "Deaktiveret",
   "loop.status.paused": "Sat på pause",
