@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.api.web.controller;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatRole;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -26,6 +27,8 @@ import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalState;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionMeta;
@@ -646,11 +649,16 @@ public class SessionWebController extends AbstractWebController {
         }
 
         // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
-        org.noear.solon.codecli.loop.LoopScheduler loopScheduler = loopScheduler();
-        if (loopScheduler != null) {
-            org.noear.solon.codecli.loop.LoopTask activeGoal = loopScheduler.findActiveGoalInSession(sessionId);
-            if (activeGoal != null) {
-                loopScheduler.pauseGoal(sessionId, activeGoal.getId());
+        GoalEngine goalEngine = currentContext().getGoalEngine();
+        if (goalEngine != null) {
+            AgentSession goalSession = goalEngine.sessionOf(sessionId);
+            GoalState activeGoal =
+                    goalSession == null ? null : goalEngine.state(goalSession);
+            if (activeGoal != null && activeGoal.getStatus().isActive()) {
+                goalEngine.pause(goalSession, activeGoal);
+                if (currentContext().getGoalScheduler() != null) {
+                    currentContext().getGoalScheduler().unschedule(sessionId);
+                }
                 LOG.info("[SessionWebController] Goal '{}' paused due to session interrupt", activeGoal.getId());
             }
         }

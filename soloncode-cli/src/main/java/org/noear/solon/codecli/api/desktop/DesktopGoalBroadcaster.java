@@ -17,10 +17,10 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.codecli.loop.GoalState;
-import org.noear.solon.codecli.loop.LoopTask;
-import org.noear.solon.core.util.Assert;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalState;
+import org.noear.solon.core.util.Assert;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,9 +28,8 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 桌面端 Goal 流状态处理：Goal 生命周期事件 → WS 协议消息。
  *
- * <p>从原 {@code WsGate} 中拆出 {@code onGoalChanged}：LoopScheduler 的 Goal 监听器
- * 每次触发都广播 {@code goal_status}；终态时按会话一次性发送权威 {@code done}
- * （携带 modelName/totalTokens/elapsedMs）。</p>
+ * <p>监听 {@link GoalEngine#addListener}：每次状态变更广播 {@code goal_status}；
+ * 终态时按会话一次性发送权威 {@code done}（携带 modelName/totalTokens/elapsedMs）。</p>
  *
  * @author bai
  * @since 3.9.1
@@ -39,12 +38,14 @@ final class DesktopGoalBroadcaster {
     private static final String TYPE_GOAL_STATUS = "goal_status";
 
     private final HarnessEngine engine;
+    private final GoalEngine goalEngine;
     private final DesktopStreamHub streamHub;
     /** 已发送 Goal 终态 done 的会话，防止监听器多次触发重复下发。 */
     private final Set<String> completedGoalStreams = ConcurrentHashMap.newKeySet();
 
-    DesktopGoalBroadcaster(HarnessEngine engine, DesktopStreamHub streamHub) {
+    DesktopGoalBroadcaster(HarnessEngine engine, GoalEngine goalEngine, DesktopStreamHub streamHub) {
         this.engine = engine;
+        this.goalEngine = goalEngine;
         this.streamHub = streamHub;
     }
 
@@ -53,32 +54,37 @@ final class DesktopGoalBroadcaster {
         completedGoalStreams.remove(sessionId);
     }
 
-    void onGoalChanged(String sessionId, LoopTask task, boolean removed) {
-        GoalState state = task.getGoalState();
+    void onGoalChanged(String sessionId, GoalState state, boolean removed) {
         if (state == null) {
             return;
         }
 
-        String status = removed || task.isCancelled() ? "STOPPED" : state.getStatus().name();
+        boolean running = runningOf(sessionId);
+        String status = removed ? "STOPPED" : state.getStatus().name();
         ONode message = new ONode().set("type", TYPE_GOAL_STATUS)
                 .set("sessionId", sessionId)
-                .set("goalId", task.getId())
+                .set("goalId", state.getId())
                 .set("objective", state.getCondition())
                 .set("status", status)
-                .set("running", task.isRunning())
-                .set("iteration", task.getCurrentIteration())
+                .set("running", running)
+                .set("iteration", state.getCurrentIteration())
                 .set("maxIterations", state.getMaxIterations())
                 .set("consumedTokens", state.getConsumedTokens())
                 .set("maxTokens", state.getMaxTokens());
-        if (task.getLastResult() != null) {
-            message.set("lastResult", task.getLastResult());
+        if (state.getLastResult() != null) {
+            message.set("lastResult", state.getLastResult());
         }
         streamHub.emit(sessionId, message.toJson());
 
-        boolean terminal = removed || task.isCancelled() || state.getStatus().isTerminal();
+        boolean terminal = removed || state.getStatus().isTerminal();
         if (terminal && completedGoalStreams.add(sessionId)) {
-            AgentSession session = engine.getSession(sessionId);
-            String modelName = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+            String modelName = null;
+            try {
+                AgentSession session = engine.getSession(sessionId);
+                modelName = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+            } catch (Throwable ignored) {
+                // 会话不可用时回落默认模型名
+            }
             if (Assert.isEmpty(modelName)) {
                 modelName = engine.getMainModel().getConfig().getNameOrModel();
             }
@@ -90,5 +96,11 @@ final class DesktopGoalBroadcaster {
                     .set("elapsedMs", elapsed)
                     .toJson());
         }
+    }
+
+    private boolean runningOf(String sessionId) {
+        if (goalEngine == null) return false;
+        AgentSession session = goalEngine.sessionOf(sessionId);
+        return goalEngine.isRunning(session);
     }
 }

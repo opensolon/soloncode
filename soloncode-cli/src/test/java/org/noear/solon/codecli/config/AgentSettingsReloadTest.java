@@ -238,7 +238,7 @@ public class AgentSettingsReloadTest {
         assertEquals(Boolean.FALSE, settings.getGeneral().isSandboxMode());
         assertEquals(10, settings.getGeneral().getMaxTurns());
         assertNotNull(settings.getGeneral().isMemoryEnabled());
-        assertNotNull(settings.getLoop().getBudgetWarningPercent());
+        assertNotNull(settings.getGoal().getBudgetWarningPercent());
     }
     
     @Test

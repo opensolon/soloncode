@@ -1,4 +1,5 @@
 package org.noear.solon.codecli.loop;
+import org.noear.solon.codecli.goal.GoalState;
 
 import org.junit.jupiter.api.Test;
 import org.noear.snack4.ONode;
@@ -22,8 +23,23 @@ public class LoopTaskAutomationMetaTest {
     }
 
     @Test
+    public void copyWithUpdateKeepsIdentityAndRuntimeState() {
+        LoopTask task = new LoopTask("old prompt", 1, null, false);
+        task.updateLastExecution("last");
+        task.incrementIteration();
+
+        LoopTask updated = task.copyWithUpdate("new prompt", 5, null, false);
+
+        assertEquals(task.getId(), updated.getId());
+        assertEquals(task.getCreatedAt(), updated.getCreatedAt());
+        assertEquals(1, updated.getCurrentIteration());
+        assertEquals("last", updated.getLastResult());
+        assertEquals("new prompt", updated.getPrompt());
+    }
+
+    @Test
     public void plainTaskHasNoAutomationKey() {
-        LoopTask task = new LoopTask("心跳检查", 5, null, LoopTask.TaskType.HEARTBEAT, false);
+        LoopTask task = new LoopTask("心跳检查", 5, null, false);
         ONode node = task.toONode();
         assertFalse(node.hasKey("automation"), "普通会话循环任务不应写 automation 键");
         assertNull(task.getAutomation());
@@ -32,7 +48,7 @@ public class LoopTaskAutomationMetaTest {
 
     @Test
     public void automationTaskRoundTripKeepsMeta() {
-        LoopTask task = new LoopTask("每日日报", 0, "0 0 22 * * ?", LoopTask.TaskType.HEARTBEAT, false);
+        LoopTask task = new LoopTask("每日日报", 0, "0 0 22 * * ?", false);
         task.setAutomation(new AutomationMeta("日报任务", "deepseek-chat", "code_reviewer"));
 
         LoopTask restored = roundTrip(task, "auto-abc123");
@@ -48,28 +64,13 @@ public class LoopTaskAutomationMetaTest {
 
     @Test
     public void copyWithUpdateCarriesAutomation() {
-        LoopTask task = new LoopTask("旧任务", 5, null, LoopTask.TaskType.HEARTBEAT, false);
+        LoopTask task = new LoopTask("旧任务", 5, null, false);
         task.setAutomation(new AutomationMeta("名字", null, null));
 
-        LoopTask updated = task.copyWithUpdate("新提示词", 10, null, LoopTask.TaskType.HEARTBEAT,
-                null, null, null);
+        LoopTask updated = task.copyWithUpdate("新提示词", 10, null, null);
         assertNotNull(updated.getAutomation(), "更新任务定义时必须保留 automation 覆盖层");
         assertEquals("名字", updated.getAutomation().getName());
         assertEquals("新提示词", updated.getPrompt());
-    }
-
-    @Test
-    public void goalStateRoundTripWithAutomation() {
-        LoopTask task = new LoopTask("实现登录页", 0, null, LoopTask.TaskType.GOAL, true);
-        task.setMaxTokens(50000L);
-        task.setAutomation(new AutomationMeta("目标", "gpt-x", null));
-
-        LoopTask restored = roundTrip(task, "auto-goal1");
-        assertTrue(restored.isGoalMode(), "GOAL 类型必须恢复 GoalState");
-        assertNotNull(restored.getGoalState());
-        assertEquals(50000L, restored.getGoalState().getMaxTokens());
-        assertNotNull(restored.getAutomation());
-        assertEquals("目标", restored.getAutomation().getName());
     }
 
     @Test

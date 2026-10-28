@@ -1,4 +1,18 @@
 
+### vNEXT
+
+* 精简 soloncode loop/goal 共享层：删除 LoopExecutionResult 死包装（唯一调用方只消费 2/4 字段，doTrigger 直用 RoundResult）；重复的 classifyError/getFullMessage 收敛为 runtime.ErrorClassifier；删除 LoopScheduler 转发接口（TaskHandler/BusyChecker），入口统一经 getBridge() 注册
+* 重构 soloncode goal 为会话级能力（包 codecli.goal）：每会话最多一个，状态随会话快照持久化（不再写 tasks.json）；loop 纯化为定时任务体系，二者仅共享执行桥
+* 添加 soloncode `/goal` 独立命令（创建/pause/resume/clear/状态查看），`/loop goal` 提示迁移；`/loop pause|resume` 只作用于定时任务
+* 添加 soloncode web 循环任务列表合并展示 goal（恒为第一条），删除/启停/立即执行按钮对 goal 行自动分流
+* 添加 soloncode goal 重启恢复：快照中 PURSUING 的 goal 自动重新挂调度，PAUSED/BLOCKED 保持静默等用户恢复
+* 添加 soloncode goal 配置节点 soloncode.goal.*（兼容旧 soloncode.loop.* 回填）
+* 添加 soloncode goal 存量数据迁移（tasks.json 历史条目 → 会话快照，启动时一次性、幂等）
+* 修复 soloncode goal job 跨工作区同名会话互相覆盖的问题（job 名加工作区前缀）
+* 修复 soloncode 工作区关闭/LRU 释放时 goal job 泄漏在全局调度器的问题；有活跃 goal 的工作区不再被闲置释放
+* 修复 soloncode `/loop` 帮助文本残留的 goal 用法（goal 已迁至 `/goal`，帮助内不再教已迁走的命令）
+* 清理 soloncode goal 迁移残留：WorkspaceManager 装配段变量 loopCfg→goalCfg 正名，及 WebQueueDispatcher/SessionWebController/WsGate/DesktopInputRouter/Configurator 五处行内全限定名改标准 import
+
 ### v2026.10.23
 
 * 优化 soloncode `/model` 命令输出

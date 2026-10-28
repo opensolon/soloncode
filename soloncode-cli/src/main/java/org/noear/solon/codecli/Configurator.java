@@ -11,6 +11,8 @@ import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalScheduler;
 import org.noear.solon.codecli.api.web.*;
 import org.noear.solon.codecli.entry.cli.*;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
@@ -78,6 +80,8 @@ public class Configurator {
     SessionManager sessionManager;
 
     private LoopScheduler loopScheduler;
+    private GoalEngine goalEngine;
+    private GoalScheduler goalScheduler;
 
     @Inject
     AdminAuditController adminAuditController;
@@ -111,6 +115,8 @@ public class Configurator {
         workspaceManager.initDefaultWorkspace();
         WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
         this.loopScheduler = defaultCtx.getLoopScheduler();
+        this.goalEngine = defaultCtx.getGoalEngine();
+        this.goalScheduler = defaultCtx.getGoalScheduler();
         return defaultCtx.getEngine();
     }
 
@@ -225,7 +231,7 @@ public class Configurator {
     private void runDesktopServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell,
                                  SessionManager sessionManager) {
         //serve ws gate
-        WsGate wsGate = new WsGate(agentRuntime, settings, loopScheduler);
+        WsGate wsGate = new WsGate(agentRuntime, settings, loopScheduler, goalEngine, goalScheduler);
         WebSocketRouter.getInstance().of("/desktop/ws", wsGate);
 
         //serve desktop controllers（原单一 WsController 按领域拆分：版本/模型/会话/Goal）
@@ -238,9 +244,11 @@ public class Configurator {
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
                 new DesktopSessionController(agentRuntime, wsGate, loopScheduler, sessionManager));
         Solon.app().router().add(desktopBean);
-        // Goal Controller 构造时向 LoopScheduler 注册桌面端 BusyChecker/TaskExecutor
+        // 桌面端 BusyChecker/TaskExecutor 由 WsGate 构造时注册到共享执行桥，
+        // Goal 状态与 Web/CLI 同源（会话快照 session.goal）
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
-                new DesktopGoalController(agentRuntime, wsGate, loopScheduler, sessionManager));
+                new DesktopGoalController(agentRuntime, wsGate, loopScheduler, sessionManager,
+                        goalEngine, goalScheduler));
         Solon.app().router().add(desktopBean);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());

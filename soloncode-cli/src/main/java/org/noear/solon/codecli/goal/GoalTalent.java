@@ -13,30 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.loop;
+package org.noear.solon.codecli.goal;
 
+import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
-import org.noear.snack4.Feature;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.annotation.ToolMapping;
 import org.noear.solon.ai.chat.ChatSession;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.talent.AbsTalent;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.Param;
+import org.noear.solon.codecli.goal.validate.GoalValidator;
+import org.noear.solon.codecli.goal.validate.ValidatorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Goal 工具 — 模型侧 Goal 生命周期控制
+ * Goal 工具 —— 模型侧 Goal 生命周期控制。
  *
- * <p>提供两个工具（Goal 的创建由 /loop goal: 命令驱动，模型侧只读+更新）：
+ * <p>提供两个工具（Goal 的创建由用户命令或界面驱动，模型侧只读 + 更新）：
  * <ul>
  *   <li>{@code goal_get} — 查询当前 goal 状态</li>
  *   <li>{@code goal_update} — 标记 complete 或 blocked（模型驱动）</li>
  * </ul>
  *
- * <p>动态控制：{@link #isSupported(Prompt)} 仅在存在活跃 goal 时返回 true，
- * 无 goal 时工具不暴露，避免工具列表噪音。
+ * <p>只依赖 {@link GoalEngine} 与 {@link AgentSession}，与 loop 定时任务体系无关。</p>
  *
  * @author noear
  * @since 3.9.3
@@ -45,22 +48,22 @@ public class GoalTalent extends AbsTalent {
 
     private static final Logger log = LoggerFactory.getLogger(GoalTalent.class);
 
-    private final LoopScheduler scheduler;
+    private final GoalEngine goalEngine;
+    private final HarnessEngine engine;
 
-    public GoalTalent(LoopScheduler scheduler) {
-        this.scheduler = scheduler;
+    public GoalTalent(GoalEngine goalEngine, HarnessEngine engine) {
+        this.goalEngine = goalEngine;
+        this.engine = engine;
     }
 
     @Override
     public boolean isSupported(Prompt prompt) {
-        String __sessionId = prompt.attrAs(ChatSession.ATTR_SESSIONID);
-
-        if (__sessionId != null) {
-            LoopTask existing = scheduler.findActiveGoalInSession(__sessionId);
-            return existing != null;
+        String sessionId = prompt.attrAs(ChatSession.ATTR_SESSIONID);
+        if (sessionId == null) {
+            return false;
         }
-
-        return false;
+        AgentSession session = engine.getSession(sessionId);
+        return goalEngine.hasGoal(session);
     }
 
     /**
@@ -70,20 +73,22 @@ public class GoalTalent extends AbsTalent {
             description = "获取当前活跃目标的状态，若无活跃目标则返回 null。")
     public String goal_get(String __sessionId,
                           String __cwd) {
-        LoopTask task = scheduler.findActiveGoalInSession(__sessionId);
+        AgentSession session = sessionOf(__sessionId);
+        GoalState gs = goalEngine.state(session);
 
-        // isSupported 保证有活跃 goal 时才暴露此工具，task 不会为 null
-        GoalState gs = task.getGoalState();
+        if (gs == null) {
+            return errJson("NO_GOAL", "未找到目标");
+        }
 
         ONode goalNode = new ONode(Options.of(Feature.Write_PrettyFormat));
-        goalNode.set("taskId", task.getId());
+        goalNode.set("taskId", gs.getId());
         goalNode.set("objective", gs.getCondition());
         goalNode.set("status", gs.getStatus().name().toLowerCase());
-        goalNode.set("iteration", task.getCurrentIteration());
+        goalNode.set("iteration", gs.getCurrentIteration());
         if (gs.getMaxIterations() > 0) {
             goalNode.set("maxIterations", gs.getMaxIterations());
             goalNode.set("remainingIterations",
-                    Math.max(0, gs.getMaxIterations() - task.getCurrentIteration()));
+                    Math.max(0, gs.getMaxIterations() - gs.getCurrentIteration()));
         }
 
         long elapsed = (System.currentTimeMillis() - gs.getStartEpochMs()) / 1000;
@@ -94,11 +99,10 @@ public class GoalTalent extends AbsTalent {
         }
         goalNode.set("budgetExceeded", gs.isBudgetExceeded());
 
-        // ★ 暴露时间预算信息，让 AI 感知 maxDurationMs 限
-        Long maxDurationMs = task.getMaxDurationMs();
-        if (maxDurationMs != null && maxDurationMs > 0) {
-            goalNode.set("maxDurationMs", maxDurationMs);
-            long remainingSec = (maxDurationMs / 1000) - elapsed;
+        // 时间预算信息，让 AI 感知 maxDurationMs 限制
+        if (gs.getMaxDurationMs() > 0) {
+            goalNode.set("maxDurationMs", gs.getMaxDurationMs());
+            long remainingSec = (gs.getMaxDurationMs() / 1000) - elapsed;
             if (remainingSec < 0) remainingSec = 0;
             goalNode.set("remainingDurationSeconds", remainingSec);
         }
@@ -136,12 +140,12 @@ public class GoalTalent extends AbsTalent {
             return errJson("NO_SESSION", "无活跃会话");
         }
 
-        LoopTask task = scheduler.findActiveGoalInSession(__sessionId);
-        if (task == null) {
+        AgentSession session = sessionOf(__sessionId);
+        GoalState gs = goalEngine.state(session);
+        if (gs == null) {
             return errJson("NO_GOAL", "未找到活跃目标");
         }
 
-        GoalState gs = task.getGoalState();
         if (!gs.getStatus().isActive()) {
             return errJson("GOAL_NOT_ACTIVE",
                     "目标不在活跃状态（" + gs.getStatus() + "），无法更新");
@@ -151,28 +155,29 @@ public class GoalTalent extends AbsTalent {
 
         // ---- complete ----
         if ("complete".equals(status)) {
-            Boolean hasActionEvidence = scheduler.currentRoundHasActionEvidence(__sessionId);
-            if (LoopScheduler.requiresActionEvidence(gs.getCondition())
+            Boolean hasActionEvidence = engine == null ? null
+                    : goalEngine.currentRoundHasActionEvidence(__sessionId);
+            if (GoalEngine.requiresActionEvidence(gs.getCondition())
                     && Boolean.FALSE.equals(hasActionEvidence)) {
                 return errJson("ACTION_EVIDENCE_REQUIRED",
                         "目标尚未完成：本轮没有成功的实际工具操作。"
                                 + "请先创建、修改、运行或验证目标产物；goal_get/goal_update 不算执行证据。");
             }
 
-            // Todo/Goal 完成判定联动：若 TODO 清单尚有未完成项（`- [ ]`/`- [/]`），
-            // 拒绝完成并保持 PURSUING，避免“清单未清零却宣称目标达成”的语义脱节。
-            int unfinishedTodos = scheduler.countUnfinishedTodos(__sessionId);
+            // Todo/Goal 完成判定联动：TODO 清单尚有未完成项时拒绝完成
+            int unfinishedTodos = goalEngine.countUnfinishedTodos(
+                    engine.getTodoTalent(), engine.getWorkspace(), __sessionId);
             if (unfinishedTodos > 0) {
                 return errJson("TODO_UNFINISHED",
                         "目标尚未完成：任务清单还有 " + unfinishedTodos + " 项未完成（`- [ ]` 或 `- [/]`）。"
                                 + "请先完成或用 todowrite 更新清单状态后再调用 goal_update(complete)。");
             }
 
-            if (scheduler.getLoopConfig().isValidatorEnabledOrDefault()) {
+            if (goalEngine.isValidatorEnabled()) {
                 GoalValidator validator = ValidatorFactory.forCondition(gs.getCondition());
                 GoalValidator.ValidationResult vr = validator.validate(gs.getCondition(), __sessionId);
                 if (!vr.isPassed()) {
-                    log.warn("updateGoal: 验证失败 for goal '{}': {}", task.getId(), vr.detail());
+                    log.warn("updateGoal: 验证失败 for goal '{}': {}", gs.getId(), vr.detail());
                     return errJson("VALIDATION_FAILED",
                             "目标尚未完成：验证失败 - " + vr.detail()
                                     + "。请继续改进后重新调用 goal_update(complete)。");
@@ -180,11 +185,10 @@ public class GoalTalent extends AbsTalent {
             }
 
             gs.achieve();
-            scheduler.clearGoal(__sessionId, task.getId());
+            goalEngine.commit(session, gs);
 
-            // Codex 对齐：wrapper 返回 + completionBudgetReport
             ONode goalNode = new ONode();
-            goalNode.set("taskId", task.getId());
+            goalNode.set("taskId", gs.getId());
             goalNode.set("objective", gs.getCondition());
             goalNode.set("status", "achieved");
             goalNode.set("consumedTokens", gs.getConsumedTokens());
@@ -192,11 +196,10 @@ public class GoalTalent extends AbsTalent {
                 goalNode.set("maxTokens", gs.getMaxTokens());
             }
 
-            String budgetReport = buildCompletionBudgetReport(gs);
             root.set("goal", goalNode);
             root.set("remaining_tokens", gs.getMaxTokens() > 0
                     ? gs.getMaxTokens() - gs.getConsumedTokens() : null);
-            root.set("completionBudgetReport", budgetReport);
+            root.set("completionBudgetReport", buildCompletionBudgetReport(gs));
 
             return root.toJson();
         }
@@ -204,12 +207,11 @@ public class GoalTalent extends AbsTalent {
         // ---- blocked ----
         if ("blocked".equals(status)) {
             gs.markBlocked();
-            scheduler.pauseGoal(__sessionId, task.getId());
-            log.info("updateGoal: goal '{}' marked as BLOCKED by model", task.getId());
+            goalEngine.commit(session, gs);
+            log.info("updateGoal: goal '{}' marked as BLOCKED by model", gs.getId());
 
-            // Codex 对齐：wrapper 返回
             ONode goalNode = new ONode();
-            goalNode.set("taskId", task.getId());
+            goalNode.set("taskId", gs.getId());
             goalNode.set("objective", gs.getCondition());
             goalNode.set("status", "blocked");
             goalNode.set("consumedTokens", gs.getConsumedTokens());
@@ -227,6 +229,10 @@ public class GoalTalent extends AbsTalent {
 
         return errJson("INVALID_PARAMETER",
                 "未知状态 '" + status + "'. 仅支持 'complete' 或 'blocked'.");
+    }
+
+    private AgentSession sessionOf(String sessionId) {
+        return sessionId == null ? null : engine.getSession(sessionId);
     }
 
     // ===== 辅助方法 =====
@@ -266,10 +272,6 @@ public class GoalTalent extends AbsTalent {
     }
 
     public static boolean isGoalTool(String toolName) {
-        if (toolName != null && toolName.startsWith("goal_")) {
-            return true;
-        }
-
-        return false;
+        return toolName != null && toolName.startsWith("goal_");
     }
 }

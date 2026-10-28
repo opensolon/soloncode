@@ -33,6 +33,7 @@ import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.codecli.command.WebCommandContext;
+import org.noear.solon.codecli.goal.GoalState;
 import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.util.TraceUtil;
@@ -87,13 +88,18 @@ final class DesktopInputRouter {
         AgentSession session = engine.getSession(sessionId);
 
         if ("[(sec)interrupt]".equals(req.getInput())) {
-            LoopTask activeGoal = gate.loopScheduler == null ? null : gate.loopScheduler.findActiveGoalInSession(sessionId);
+            AgentSession goalSession = gate.goalEngine == null ? null : gate.goalEngine.sessionOf(sessionId);
+            GoalState activeGoal = gate.goalEngine == null
+                    ? null : gate.goalEngine.state(goalSession);
             reactor.core.Disposable disposable = (reactor.core.Disposable) session.attrs().remove("disposable");
             if (disposable != null) {
                 disposable.dispose();
             }
             if (activeGoal != null) {
-                gate.loopScheduler.remove(sessionId, activeGoal);
+                if (gate.goalScheduler != null) {
+                    gate.goalScheduler.unschedule(sessionId);
+                }
+                gate.goalEngine.clear(goalSession);
                 return;
             }
             AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");

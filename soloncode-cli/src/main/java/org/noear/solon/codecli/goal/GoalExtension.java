@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.loop;
+package org.noear.solon.codecli.goal;
 
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -6,7 +6,9 @@ import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 
 /**
- * Goal 工具扩展 — 注册 GoalTalent 到主 Agent
+ * Goal 工具扩展 — 注册 GoalTalent 到主 Agent。
+ *
+ * <p>只依赖 {@link GoalEngine}，不再耦合 loop 调度器。</p>
  *
  * @author noear
  * @since 3.9.2
@@ -14,8 +16,8 @@ import org.noear.solon.ai.harness.agent.AgentDefinition;
 public class GoalExtension implements HarnessExtension {
     private final GoalTalent goalTalent;
 
-    public GoalExtension(LoopScheduler loopScheduler) {
-        this.goalTalent = new GoalTalent(loopScheduler);
+    public GoalExtension(GoalEngine goalEngine, HarnessEngine engine) {
+        this.goalTalent = new GoalTalent(goalEngine, engine);
     }
 
     public GoalTalent getGoalTalent() {

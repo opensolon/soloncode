@@ -43,7 +43,7 @@ import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
-import org.noear.solon.codecli.loop.GoalTalent;
+import org.noear.solon.codecli.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -184,7 +184,7 @@ public class CliShell implements Runnable {
 
             // 会话繁忙守卫：CLI 为单线程模型，仅当主线程在等待用户输入（reader.isReading）时才空闲。
             // 若不在等待输入，说明 agent 任务正在执行，loop 触发应跳过本次。
-            loopScheduler.addBusyChecker(sessionId -> {
+            loopScheduler.getBridge().addBusyChecker(sessionId -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return false;
                 }
@@ -192,7 +192,7 @@ public class CliShell implements Runnable {
             });
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-            loopScheduler.addTaskExecutor((sessionId, prompt, agentName) -> {
+            loopScheduler.getBridge().addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return null;
                 }

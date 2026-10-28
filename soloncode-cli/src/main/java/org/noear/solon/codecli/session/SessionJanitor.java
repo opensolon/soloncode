@@ -116,6 +116,11 @@ public class SessionJanitor {
                 return false;
             }
 
+            // 有 goal（会话级单槽投影）→ 有实质内容，不得当僵尸清除
+            if (SessionSnapshots.hasGoal(sessionDir, sessionId)) {
+                return false;
+            }
+
             // meta 有自定义标题或已置顶 → 保留
             return SessionMeta.load(sessionDir).isEmpty();
         } catch (Exception e) {

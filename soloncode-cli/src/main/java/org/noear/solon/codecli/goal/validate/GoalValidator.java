@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.loop;
+package org.noear.solon.codecli.goal.validate;
 
 /**
  * Goal 验证器接口 — 在标记目标达成前执行外部校验。

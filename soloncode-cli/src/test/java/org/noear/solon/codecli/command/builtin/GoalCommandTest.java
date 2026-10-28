@@ -18,15 +18,42 @@ package org.noear.solon.codecli.command.builtin;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * /goal 命令元数据测试。
+ *
+ * <p>Goal 已是独立产品能力，不再自称 "/loop goal 的快捷别名"，
+ * 因此断言其描述与示例中均不出现 loop 引用（防止耦合回流）。</p>
+ */
 class GoalCommandTest {
     @Test
-    void shouldExposeGoalShortcutMetadata() {
-        GoalCommand command = new GoalCommand(null);
+    void shouldExposeGoalMetadata() {
+        GoalCommand command = new GoalCommand(null, null);
 
         assertEquals("goal", command.name());
-        assertTrue(command.description().contains("/loop goal"));
         assertEquals("/goal <objective>", command.examples()[0]);
+    }
+
+    @Test
+    void descriptionShouldNotReferenceLoop() {
+        GoalCommand command = new GoalCommand(null, null);
+
+        assertFalse(command.description().toLowerCase().contains("loop"),
+                "goal 是独立能力，描述不应再引用 loop");
+        for (String example : command.examples()) {
+            assertFalse(example.contains("/loop"),
+                    "示例不应再引用 /loop: " + example);
+        }
+    }
+
+    @Test
+    void examplesShouldCoverControlSubcommands() {
+        GoalCommand command = new GoalCommand(null, null);
+
+        String joined = String.join(" ", command.examples());
+        assertTrue(joined.contains("pause"), "应提供 pause 用法");
+        assertTrue(joined.contains("clear"), "应提供 clear 用法");
     }
 }

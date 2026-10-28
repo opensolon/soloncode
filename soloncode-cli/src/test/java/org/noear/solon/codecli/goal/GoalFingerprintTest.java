@@ -13,7 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.loop;
+package org.noear.solon.codecli.goal;
+
+import org.noear.solon.codecli.runtime.RoundResult;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -23,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @since 3.9.3
  */
-class LoopSchedulerFingerprintTest {
+class GoalFingerprintTest {
 
     // ===== 辅助：Java 8 兼容的 repeat =====
 
@@ -37,42 +39,42 @@ class LoopSchedulerFingerprintTest {
 
     @Test
     void countLinesEmptyTextReturns1() {
-        assertEquals(1, LoopScheduler.countLines(""));
+        assertEquals(1, GoalEngine.countLines(""));
     }
 
     @Test
     void countLinesSingleLineReturns1() {
-        assertEquals(1, LoopScheduler.countLines("hello world"));
+        assertEquals(1, GoalEngine.countLines("hello world"));
     }
 
     @Test
     void countLinesMultipleLines() {
-        assertEquals(3, LoopScheduler.countLines("line1\nline2\nline3"));
+        assertEquals(3, GoalEngine.countLines("line1\nline2\nline3"));
     }
 
     @Test
     void countLinesTrailingNewline() {
-        assertEquals(2, LoopScheduler.countLines("line1\n"));
+        assertEquals(2, GoalEngine.countLines("line1\n"));
     }
 
-    // ===== computeFingerprint（静态方法，无需 LoopScheduler 实例） =====
+    // ===== computeFingerprint（静态方法，无需 GoalEngine 实例） =====
 
     @Test
     void fingerprintNullResultReturnsNull() {
-        assertEquals("null", LoopScheduler.computeFingerprint(null));
+        assertEquals("null", GoalEngine.computeFingerprint(null));
     }
 
     @Test
     void fingerprintEmptyTextReturnsEmpty() {
-        LoopExecutionResult empty = LoopExecutionResult.fromText("");
-        assertEquals("empty", LoopScheduler.computeFingerprint(empty));
+        RoundResult empty = RoundResult.ofText("");
+        assertEquals("empty", GoalEngine.computeFingerprint(empty));
     }
 
     @Test
     void fingerprintFormatHasThreeDimensions() {
         // 200 字以内 → lenBucket=0, 1 行 → lineBucket=0, 无工具调用 → "0"
-        LoopExecutionResult shortText = LoopExecutionResult.fromText("short reply");
-        String fp = LoopScheduler.computeFingerprint(shortText);
+        RoundResult shortText = RoundResult.ofText("short reply");
+        String fp = GoalEngine.computeFingerprint(shortText);
         assertTrue(fp.matches("\\d+:\\d+:\\d+"),
                 "fingerprint should have 3 colon-separated dimensions, got: " + fp);
     }
@@ -82,13 +84,13 @@ class LoopSchedulerFingerprintTest {
     @Test
     void fingerprintDistinguishesToolCallPresence() {
         // 短文本（<200字），无工具调用
-        LoopExecutionResult noTool = LoopExecutionResult.fromText("analysis result");
+        RoundResult noTool = RoundResult.ofText("analysis result");
         // 长文本（>20字自动判为 hasToolCalls=true），有工具调用
-        LoopExecutionResult withTool = LoopExecutionResult.fromText(
+        RoundResult withTool = RoundResult.ofText(
                 repeat("x", 21) + "\ncommand output");
 
-        String fpNoTool = LoopScheduler.computeFingerprint(noTool);
-        String fpWithTool = LoopScheduler.computeFingerprint(withTool);
+        String fpNoTool = GoalEngine.computeFingerprint(noTool);
+        String fpWithTool = GoalEngine.computeFingerprint(withTool);
 
         // 工具维度不同（0 vs 1）
         assertNotEquals(fpNoTool.charAt(0), fpWithTool.charAt(0),
@@ -98,12 +100,12 @@ class LoopSchedulerFingerprintTest {
     @Test
     void fingerprintDistinguishesDifferentLengthBuckets() {
         // 199 字 → lenBucket=0
-        LoopExecutionResult shortText = LoopExecutionResult.fromText(repeat("x", 199));
+        RoundResult shortText = RoundResult.ofText(repeat("x", 199));
         // 201 字 → lenBucket=1（不同桶）
-        LoopExecutionResult longerText = LoopExecutionResult.fromText(repeat("x", 201));
+        RoundResult longerText = RoundResult.ofText(repeat("x", 201));
 
-        String fpShort = LoopScheduler.computeFingerprint(shortText);
-        String fpLonger = LoopScheduler.computeFingerprint(longerText);
+        String fpShort = GoalEngine.computeFingerprint(shortText);
+        String fpLonger = GoalEngine.computeFingerprint(longerText);
 
         // 200 字/桶，199 和 201 在不同桶
         assertNotEquals(fpShort, fpLonger,
@@ -120,11 +122,11 @@ class LoopSchedulerFingerprintTest {
         String text11Lines = "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10\nline11";
         text11Lines = text11Lines + repeat(" ", Math.max(0, 200 - text11Lines.length()));
 
-        LoopExecutionResult result9 = LoopExecutionResult.fromText(text9Lines);
-        LoopExecutionResult result11 = LoopExecutionResult.fromText(text11Lines);
+        RoundResult result9 = RoundResult.ofText(text9Lines);
+        RoundResult result11 = RoundResult.ofText(text11Lines);
 
-        String fp9 = LoopScheduler.computeFingerprint(result9);
-        String fp11 = LoopScheduler.computeFingerprint(result11);
+        String fp9 = GoalEngine.computeFingerprint(result9);
+        String fp11 = GoalEngine.computeFingerprint(result11);
 
         assertNotEquals(fp9, fp11,
                 "texts with 9 vs 11 lines should be in different line buckets");
@@ -134,10 +136,10 @@ class LoopSchedulerFingerprintTest {
     void fingerprintSameForSameContent() {
         String content = "same content\nwith tool calls\nand three lines";
 
-        LoopExecutionResult r1 = LoopExecutionResult.fromText(content);
-        LoopExecutionResult r2 = LoopExecutionResult.fromText(content);
+        RoundResult r1 = RoundResult.ofText(content);
+        RoundResult r2 = RoundResult.ofText(content);
 
-        assertEquals(LoopScheduler.computeFingerprint(r1), LoopScheduler.computeFingerprint(r2),
+        assertEquals(GoalEngine.computeFingerprint(r1), GoalEngine.computeFingerprint(r2),
                 "same content should produce same fingerprint");
     }
 }

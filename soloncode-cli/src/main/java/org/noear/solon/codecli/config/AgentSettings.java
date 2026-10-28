@@ -40,8 +40,10 @@ public class AgentSettings implements Serializable {
     private final PermissionGroupDo permission = new PermissionGroupDo();
     //用户认证配置
     private final UserAuthConfig userAuth = new UserAuthConfig();
-    //loop Goal 配置
+    //loop 配置（定时任务运行时兜底；旧版同时承载 goal 配置，升级时回填到 goal）
     private final LoopGroupDo loop = new LoopGroupDo();
+    //goal 配置（会话级目标，已从 loop 定时任务体系独立）
+    private final GoalGroupDo goal = new GoalGroupDo();
 
     //defaultModel
     private String defaultModel;
@@ -76,22 +78,29 @@ public class AgentSettings implements Serializable {
         //-----------------------------------------------------
         Props cfg = Solon.cfg();
 
-        // loop: 从 app.yml 的 soloncode.loop.* 回填（仅当 settings.json 未配置时）
+        // goal: 优先 app.yml 的 soloncode.goal.*，兼容升级用户的 soloncode.loop.*
         try {
-            if (loop.getBudgetWarningPercent() == null)
-                loop.setBudgetWarningPercent(cfg.getInt("soloncode.loop.budgetWarningPercent", 70));
-            if (loop.getBudgetCriticalPercent() == null)
-                loop.setBudgetCriticalPercent(cfg.getInt("soloncode.loop.budgetCriticalPercent", 85));
-            if (loop.getDefaultMaxTokens() == null)
-                loop.setDefaultMaxTokens(cfg.getLong("soloncode.loop.defaultMaxTokens", 0L));
-            if (loop.getDefaultMaxDurationMinutes() == null)
-                loop.setDefaultMaxDurationMinutes(cfg.getInt("soloncode.loop.defaultMaxDurationMinutes", 0));
-            if (loop.getStagnationThreshold() == null)
-                loop.setStagnationThreshold(cfg.getInt("soloncode.loop.stagnationThreshold", 3));
-            if (loop.getMaxConsecutiveErrors() == null)
-                loop.setMaxConsecutiveErrors(cfg.getInt("soloncode.loop.maxConsecutiveErrors", 3));
-            if (loop.getValidatorEnabled() == null)
-                loop.setValidatorEnabled(cfg.getBool("soloncode.loop.validatorEnabled", true));
+            if (goal.getBudgetWarningPercent() == null)
+                goal.setBudgetWarningPercent(cfg.getInt("soloncode.goal.budgetWarningPercent",
+                        cfg.getInt("soloncode.loop.budgetWarningPercent", 70)));
+            if (goal.getBudgetCriticalPercent() == null)
+                goal.setBudgetCriticalPercent(cfg.getInt("soloncode.goal.budgetCriticalPercent",
+                        cfg.getInt("soloncode.loop.budgetCriticalPercent", 85)));
+            if (goal.getDefaultMaxTokens() == null)
+                goal.setDefaultMaxTokens(cfg.getLong("soloncode.goal.defaultMaxTokens",
+                        cfg.getLong("soloncode.loop.defaultMaxTokens", 0L)));
+            if (goal.getDefaultMaxDurationMinutes() == null)
+                goal.setDefaultMaxDurationMinutes(cfg.getInt("soloncode.goal.defaultMaxDurationMinutes",
+                        cfg.getInt("soloncode.loop.defaultMaxDurationMinutes", 0)));
+            if (goal.getStagnationThreshold() == null)
+                goal.setStagnationThreshold(cfg.getInt("soloncode.goal.stagnationThreshold",
+                        cfg.getInt("soloncode.loop.stagnationThreshold", 3)));
+            if (goal.getMaxConsecutiveErrors() == null)
+                goal.setMaxConsecutiveErrors(cfg.getInt("soloncode.goal.maxConsecutiveErrors",
+                        cfg.getInt("soloncode.loop.maxConsecutiveErrors", 3)));
+            if (goal.getValidatorEnabled() == null)
+                goal.setValidatorEnabled(cfg.getBool("soloncode.goal.validatorEnabled",
+                        cfg.getBool("soloncode.loop.validatorEnabled", true)));
         } catch (Exception ignored) {
             // 非 Solon 环境时保持 null，便捷方法提供默认值
         }
@@ -280,23 +289,23 @@ public class AgentSettings implements Serializable {
     public synchronized void fillRuntimeDefaults() {
         mergeFrom();
         // mergeFrom 内 loop/log 依赖 Solon.cfg()；非 Solon 环境时补硬编码默认
-        if (loop.getBudgetWarningPercent() == null) {
-            loop.setBudgetWarningPercent(70);
+        if (goal.getBudgetWarningPercent() == null) {
+            goal.setBudgetWarningPercent(70);
         }
-        if (loop.getBudgetCriticalPercent() == null) {
-            loop.setBudgetCriticalPercent(85);
+        if (goal.getBudgetCriticalPercent() == null) {
+            goal.setBudgetCriticalPercent(85);
         }
-        if (loop.getDefaultMaxTokens() == null) {
-            loop.setDefaultMaxTokens(0L);
+        if (goal.getDefaultMaxTokens() == null) {
+            goal.setDefaultMaxTokens(0L);
         }
-        if (loop.getDefaultMaxDurationMinutes() == null) {
-            loop.setDefaultMaxDurationMinutes(0);
+        if (goal.getDefaultMaxDurationMinutes() == null) {
+            goal.setDefaultMaxDurationMinutes(0);
         }
-        if (loop.getStagnationThreshold() == null) {
-            loop.setStagnationThreshold(3);
+        if (goal.getStagnationThreshold() == null) {
+            goal.setStagnationThreshold(3);
         }
-        if (loop.getMaxConsecutiveErrors() == null) {
-            loop.setMaxConsecutiveErrors(3);
+        if (goal.getMaxConsecutiveErrors() == null) {
+            goal.setMaxConsecutiveErrors(3);
         }
         if (loop.getValidatorEnabled() == null) {
             loop.setValidatorEnabled(true);
@@ -325,6 +334,11 @@ public class AgentSettings implements Serializable {
         copyGeneral(this.general, other.general);
         copyPermission(this.permission, other.permission);
         copyLoop(this.loop, other.loop);
+        copyGoal(this.goal, other.goal);
+        // 升级兼容：旧版把 goal 配置放在 loop 节点内，goal 全空时从 loop 回填一次
+        if (isEmptyGoal(this.goal)) {
+            applyLegacyLoopToGoal(this.goal, this.loop);
+        }
 
         this.defaultModel = other.defaultModel;
 
@@ -408,6 +422,43 @@ public class AgentSettings implements Serializable {
         target.setValidatorEnabled(source.getValidatorEnabled());
     }
 
+    private static void copyGoal(GoalGroupDo target, GoalGroupDo source) {
+        if (source == null) {
+            source = new GoalGroupDo();
+        }
+        target.setBudgetWarningPercent(source.getBudgetWarningPercent());
+        target.setBudgetCriticalPercent(source.getBudgetCriticalPercent());
+        target.setDefaultMaxTokens(source.getDefaultMaxTokens());
+        target.setDefaultMaxDurationMinutes(source.getDefaultMaxDurationMinutes());
+        target.setStagnationThreshold(source.getStagnationThreshold());
+        target.setMaxConsecutiveErrors(source.getMaxConsecutiveErrors());
+        target.setValidatorEnabled(source.getValidatorEnabled());
+    }
+
+    private static boolean isEmptyGoal(GoalGroupDo goal) {
+        return goal == null || (goal.getBudgetWarningPercent() == null
+                && goal.getBudgetCriticalPercent() == null
+                && goal.getDefaultMaxTokens() == null
+                && goal.getDefaultMaxDurationMinutes() == null
+                && goal.getStagnationThreshold() == null
+                && goal.getMaxConsecutiveErrors() == null
+                && goal.getValidatorEnabled() == null);
+    }
+
+    /** 把旧版 loop 节点中的 goal 字段迁到 goal 节点（仅补空值）。 */
+    private static void applyLegacyLoopToGoal(GoalGroupDo goal, LoopGroupDo loop) {
+        if (goal == null || loop == null) {
+            return;
+        }
+        if (goal.getBudgetWarningPercent() == null) goal.setBudgetWarningPercent(loop.getBudgetWarningPercent());
+        if (goal.getBudgetCriticalPercent() == null) goal.setBudgetCriticalPercent(loop.getBudgetCriticalPercent());
+        if (goal.getDefaultMaxTokens() == null) goal.setDefaultMaxTokens(loop.getDefaultMaxTokens());
+        if (goal.getDefaultMaxDurationMinutes() == null) goal.setDefaultMaxDurationMinutes(loop.getDefaultMaxDurationMinutes());
+        if (goal.getStagnationThreshold() == null) goal.setStagnationThreshold(loop.getStagnationThreshold());
+        if (goal.getMaxConsecutiveErrors() == null) goal.setMaxConsecutiveErrors(loop.getMaxConsecutiveErrors());
+        if (goal.getValidatorEnabled() == null) goal.setValidatorEnabled(loop.getValidatorEnabled());
+    }
+
     /**
      * 生成配置内容指纹（用于 reload 时判断是否有变化）。
      */
@@ -419,6 +470,7 @@ public class AgentSettings implements Serializable {
         node.set("general", ONode.ofBean(s.general));
         node.set("permission", ONode.ofBean(s.permission));
         node.set("loop", ONode.ofBean(s.loop));
+        node.set("goal", ONode.ofBean(s.goal));
         node.set("defaultModel", s.defaultModel);
         node.set("models", ONode.ofBean(s.models));
         node.set("mountPools", ONode.ofBean(s.mountPools));

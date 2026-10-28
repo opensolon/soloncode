@@ -4,6 +4,8 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalScheduler;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
@@ -31,6 +33,10 @@ public class WorkspaceContext implements Closeable {
     private final GitService gitService;
     private final FileWatchService fileWatchService;
     private final LoopScheduler loopScheduler;
+    /** Goal 引擎（会话级能力；旧测试可缺省为 null）。 */
+    private volatile GoalEngine goalEngine;
+    /** Goal 调度器（会话级 job 装配）。 */
+    private volatile GoalScheduler goalScheduler;
     private final AutomationManager automationManager;
     private final WorkspaceManager manager;
     private volatile WorkspaceMessageGateway messageGateway;
@@ -117,6 +123,20 @@ public class WorkspaceContext implements Closeable {
         return fileWatchService;
     }
 
+    public GoalEngine getGoalEngine() {
+        return goalEngine;
+    }
+
+    public GoalScheduler getGoalScheduler() {
+        return goalScheduler;
+    }
+
+    /** 由 WorkspaceManager 装配时注入（避免构造器签名膨胀）。 */
+    public void attachGoal(GoalEngine goalEngine, GoalScheduler goalScheduler) {
+        this.goalEngine = goalEngine;
+        this.goalScheduler = goalScheduler;
+    }
+
     public LoopScheduler getLoopScheduler() {
         return loopScheduler;
     }
@@ -165,6 +185,15 @@ public class WorkspaceContext implements Closeable {
         if (loopScheduler != null) {
             try {
                 loopScheduler.shutdown();
+            } catch (Exception e) {
+                // Ignore
+            }
+        }
+        // 停掉本工作区全部 goal job：JobManager 是 JVM 单例，
+        // 不注销则 job 会带着已关闭引擎的引用在全局调度器里空转。
+        if (goalScheduler != null) {
+            try {
+                goalScheduler.stopAll();
             } catch (Exception e) {
                 // Ignore
             }

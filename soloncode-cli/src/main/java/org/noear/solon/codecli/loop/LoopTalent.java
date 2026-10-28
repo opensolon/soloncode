@@ -81,16 +81,6 @@ public class LoopTalent extends AbsTalent {
             }
 
             @Override
-            public void pauseGoal(String sessionId, String taskId) {
-                loopScheduler.pauseGoal(sessionId, taskId);
-            }
-
-            @Override
-            public void resumeGoal(String sessionId, String taskId) {
-                loopScheduler.resumeGoal(sessionId, taskId);
-            }
-
-            @Override
             public void trigger(String sessionId, String taskId) {
                 loopScheduler.trigger(sessionId, taskId);
             }
@@ -127,10 +117,7 @@ public class LoopTalent extends AbsTalent {
             @Param(name = "intervalMinutes", description = "固定执行间隔（分钟），默认 5；提供 cron 时以 cron 为准", required = false) Integer intervalMinutes,
             @Param(name = "cron", description = "标准 7 位 cron 表达式（秒 分 时 日 月 周 年）；提供后使用 cron 调度，例如 0 */5 * * * ? *", required = false) String cron,
             @Param(name = "oneShot", description = "是否只执行一次（默认 false）。为 true 时任务到点执行一次后自动注销；指定 at 时强制为 true", required = false) Boolean oneShot,
-            @Param(name = "type", description = "任务类型：HEARTBEAT 或 GOAL，默认 HEARTBEAT；oneShot 仅支持 HEARTBEAT", required = false) String type,
             @Param(name = "runNow", description = "是否在创建后立即执行一次，默认 false；一次性定时任务不应传 true", required = false) Boolean runNow,
-            @Param(name = "maxTokens", description = "最大 token 预算（可选，主要用于 GOAL 任务）", required = false) Long maxTokens,
-            @Param(name = "maxDurationMs", description = "最大执行时长（毫秒，可选，主要用于 GOAL 任务）", required = false) Long maxDurationMs,
             String __sessionId) {
         if (Assert.isEmpty(__sessionId)) {
             return "ERROR: 无活跃会话，无法新增定时任务。";
@@ -138,10 +125,6 @@ public class LoopTalent extends AbsTalent {
         if (Assert.isEmpty(prompt)) {
             return "ERROR: prompt 不能为空。";
         }
-
-        LoopTask.TaskType taskType = (type != null && "GOAL".equalsIgnoreCase(type))
-                ? LoopTask.TaskType.GOAL
-                : LoopTask.TaskType.HEARTBEAT;
 
         boolean oneShotVal = oneShot != null && oneShot;
         String cronVal = cron;
@@ -167,9 +150,6 @@ public class LoopTalent extends AbsTalent {
         }
 
         if (oneShotVal) {
-            if (taskType == LoopTask.TaskType.GOAL) {
-                return "ERROR: oneShot 一次性任务仅支持 HEARTBEAT 类型（GOAL 为自驱多轮模式，语义冲突）。";
-            }
             if (Assert.isEmpty(cronVal)) {
                 return "ERROR: oneShot=true 必须提供 at 或 cron（固定间隔无法表达一次性语义）。";
             }
@@ -189,18 +169,8 @@ public class LoopTalent extends AbsTalent {
             }
         }
 
-        LoopTask task = new LoopTask(
-                prompt, interval, cronVal,
-                taskType,
-                runNow != null && runNow
-        );
+        LoopTask task = new LoopTask(prompt, interval, cronVal, runNow != null && runNow);
         task.setOneShot(oneShotVal);
-        if (maxTokens != null) {
-            task.setMaxTokens(maxTokens);
-        }
-        if (maxDurationMs != null) {
-            task.setMaxDurationMs(maxDurationMs);
-        }
 
         try {
             loopTasks.schedule(__sessionId, task);
@@ -252,7 +222,7 @@ public class LoopTalent extends AbsTalent {
     @ToolMapping(name = "loop_control",
             description = "控制当前会话的定时/循环任务，通过 action 指定动作（taskId 来自 loop_add 返回值或 loop_list）：" +
                     "stop：停止并删除任务（不可恢复）；" +
-                    "pause：暂停任务（保留记录，HEARTBEAT 停止调度，GOAL 转入 PAUSED）；" +
+                    "pause：暂停任务（保留记录，停止调度）；" +
                     "resume：恢复已暂停的任务，重新开始调度；" +
                     "trigger：立即手动执行一轮（异步提交，不消耗 oneShot 一次性配额，结果稍后用 loop_list 查看）。")
     public String loopControl(
@@ -309,21 +279,9 @@ public class LoopTalent extends AbsTalent {
             return "ERROR: 定时任务不存在，taskId=" + taskId + "（可用 loop_list 查询当前任务）";
         }
 
-        // GOAL 任务走 GoalState 状态机（PURSUING<->PAUSED），HEARTBEAT 走 enabled 开关
-        if (task.isGoalMode()) {
-            if (resume) {
-                loopTasks.resumeGoal(__sessionId, taskId);
-                if (!task.isEnabled()) {
-                    loopTasks.toggle(__sessionId, taskId); // 先恢复 enabled，resumeGoal 才能重新注册调度
-                }
-            } else {
-                loopTasks.pauseGoal(__sessionId, taskId);
-            }
-        } else {
-            boolean targetEnabled = resume;
-            if (task.isEnabled() != targetEnabled) {
-                loopTasks.toggle(__sessionId, taskId);
-            }
+        boolean targetEnabled = resume;
+        if (task.isEnabled() != targetEnabled) {
+            loopTasks.toggle(__sessionId, taskId);
         }
 
         ONode root = okNode();
@@ -367,7 +325,6 @@ public class LoopTalent extends AbsTalent {
         ONode node = new ONode();
         node.set("taskId", task.getId());
         node.set("prompt", truncate(task.getPrompt(), 120));
-        node.set("type", task.getType().name());
         if (task.isCronMode()) {
             node.set("cron", task.getCron());
         } else {
@@ -381,9 +338,6 @@ public class LoopTalent extends AbsTalent {
         }
         if (task.getLastResult() != null) {
             node.set("lastResult", truncate(task.getLastResult(), 300));
-        }
-        if (task.isGoalMode()) {
-            node.set("goalStatus", task.getGoalState().getStatus().name().toLowerCase());
         }
         return node;
     }
@@ -421,10 +375,6 @@ public class LoopTalent extends AbsTalent {
         List<LoopTask> listAll(String sessionId);
 
         void toggle(String sessionId, String taskId);
-
-        void pauseGoal(String sessionId, String taskId);
-
-        void resumeGoal(String sessionId, String taskId);
 
         void trigger(String sessionId, String taskId);
     }

@@ -13,10 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.loop;
+package org.noear.solon.codecli.goal;
+import org.noear.solon.codecli.goal.GoalState;
 
 /**
- * Goal 提示词构建器 — 从 LoopScheduler 解耦。
+ * Goal 提示词构建器 — 只依赖 {@link GoalState}，与 loop 定时任务体系无关。
  *
  * <p>职责：根据预算剩余比率自动切换完整/精简/极简三种引导词模式，以及预算耗尽收尾引导词。
  *
@@ -30,11 +31,11 @@ package org.noear.solon.codecli.loop;
  * @author noear
  * @since 3.9.3
  */
-public class LoopPromptBuilder {
+public class GoalPromptBuilder {
 
     private final int stagnationThreshold;
 
-    public LoopPromptBuilder(int stagnationThreshold) {
+    public GoalPromptBuilder(int stagnationThreshold) {
         this.stagnationThreshold = stagnationThreshold;
     }
 
@@ -50,18 +51,12 @@ public class LoopPromptBuilder {
      *   <li>预算 &lt; 15%：极简单段落</li>
      * </ul>
      */
-    public String buildEffectivePrompt(LoopTask task) {
-        String prompt = task.getPrompt();
-
-        if (!task.isGoalMode()) {
-            return prompt;
-        }
-
-        GoalState gs = task.getGoalState();
-        int iter = task.getCurrentIteration();
+    public String buildEffectivePrompt(GoalState gs) {
+        String prompt = gs.getCondition();
+        int iter = gs.getCurrentIteration();
         boolean isFirstIter = iter == 0;
 
-        String budgetInfo = buildBudgetInfo(gs) + buildIterationInfo(task, gs);
+        String budgetInfo = buildBudgetInfo(gs) + buildIterationInfo(gs);
 
         // 预算感知精简模式
         double budgetRatio = budgetRatio(gs);
@@ -69,7 +64,7 @@ public class LoopPromptBuilder {
         if (budgetRatio < 0.15) {
             return buildMinimalPrompt(prompt, gs, budgetInfo);
         } else if (budgetRatio < 0.30) {
-            return buildCompactPrompt(prompt, gs, task, budgetInfo, iter, isFirstIter);
+            return buildCompactPrompt(prompt, gs, budgetInfo, iter, isFirstIter);
         }
 
         // 完整模式（7 章节）
@@ -111,9 +106,9 @@ public class LoopPromptBuilder {
         sb.append("\n");
 
         // 停滞质疑（运行时兜底，仅触发时注入）
-        if (task.getStagnationCount() >= stagnationThreshold) {
+        if (gs.getStagnationCount() >= stagnationThreshold) {
             sb.append("--- 进展质疑 (Stagnation Check) ---\n");
-            sb.append("系统检测到最近 ").append(task.getStagnationCount())
+            sb.append("系统检测到最近 ").append(gs.getStagnationCount())
                     .append(" 轮执行未产生实质性进展。\n");
             sb.append("请认真评估：你是否在同一问题上反复尝试但无法推进？\n");
             sb.append("如果是，请调用 goal_update(blocked) 声明阻塞。\n");
@@ -122,17 +117,17 @@ public class LoopPromptBuilder {
         }
 
         // ★ 错误上下文注入 — 当有连续错误时，告知 Agent 错误类型和不可重试提示
-        if (task.getConsecutiveSameTypeErrors() > 0 && task.getLastErrorType() != null) {
+        if (gs.getConsecutiveSameTypeErrors() > 0 && gs.getLastErrorType() != null) {
             sb.append("--- 错误警告 (Error Warning) ---\n");
-            sb.append("最近连续 ").append(task.getConsecutiveSameTypeErrors())
+            sb.append("最近连续 ").append(gs.getConsecutiveSameTypeErrors())
                     .append(" 次执行遇到相同类型的错误：\n");
-            sb.append("- 错误类型: ").append(task.getLastErrorType()).append("\n");
-            if (task.getLastErrorSummary() != null) {
-                sb.append("- 错误摘要: ").append(task.getLastErrorSummary()).append("\n");
+            sb.append("- 错误类型: ").append(gs.getLastErrorType()).append("\n");
+            if (gs.getLastErrorSummary() != null) {
+                sb.append("- 错误摘要: ").append(gs.getLastErrorSummary()).append("\n");
             }
 
             // 根据错误类型给出具体建议
-            String errorType = task.getLastErrorType();
+            String errorType = gs.getLastErrorType();
             if ("SSL".equals(errorType)) {
                 sb.append("- 这是 SSL/TLS 证书验证错误，属于运行环境问题，无法通过重试或更换 URL 解决。\n");
                 sb.append("- 请使用 websearch 或 codesearch 工具替代 webfetch 来获取信息。\n");
@@ -156,8 +151,8 @@ public class LoopPromptBuilder {
         }
 
         // Chapter 4: Progress visibility — 上一轮摘要
-        if (!isFirstIter && task.getLastResult() != null) {
-            String lastSummary = truncateForPrompt(task.getLastResult(), 300);
+        if (!isFirstIter && gs.getLastResult() != null) {
+            String lastSummary = truncateForPrompt(gs.getLastResult(), 300);
             sb.append("\n--- 上一轮执行摘要（第 ").append(iter).append(" 轮）---\n");
             sb.append(lastSummary).append("\n");
             sb.append("请基于以上进展继续推进，避免重复已尝试过的方案。\n");
@@ -171,7 +166,7 @@ public class LoopPromptBuilder {
     /**
      * 构建 budget_limit 引导词（对齐 Codex budget_limit.md）
      */
-    public String buildBudgetLimitPrompt(LoopTask task, GoalState gs) {
+    public String buildBudgetLimitPrompt(GoalState gs) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n--- 预算耗尽 (Budget Limit) ---\n");
         sb.append("你的目标 Token 预算已耗尽。\n\n");
@@ -203,7 +198,7 @@ public class LoopPromptBuilder {
     /**
      * 精简模式（预算 15%-30%）：3 章节
      */
-    private String buildCompactPrompt(String prompt, GoalState gs, LoopTask task,
+    private String buildCompactPrompt(String prompt, GoalState gs,
                                       String budgetInfo, int iter, boolean isFirstIter) {
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n");
@@ -217,8 +212,8 @@ public class LoopPromptBuilder {
         sb.append("创建、修改、运行类目标必须有实际工具操作，goal_get/goal_update 不算执行证据。\n");
         sb.append("\n");
 
-        if (!isFirstIter && task.getLastResult() != null) {
-            String lastSummary = truncateForPrompt(task.getLastResult(), 200);
+        if (!isFirstIter && gs.getLastResult() != null) {
+            String lastSummary = truncateForPrompt(gs.getLastResult(), 200);
             sb.append("上一轮（第 ").append(iter).append("轮）: ").append(lastSummary).append("\n");
         }
 
@@ -279,11 +274,11 @@ public class LoopPromptBuilder {
         return sb.toString();
     }
 
-    static String buildIterationInfo(LoopTask task, GoalState gs) {
+    static String buildIterationInfo(GoalState gs) {
         if (gs.getMaxIterations() <= 0) {
             return "";
         }
-        int completed = Math.max(0, task.getCurrentIteration());
+        int completed = Math.max(0, gs.getCurrentIteration());
         int current = Math.min(completed + 1, gs.getMaxIterations());
         int remainingAfterCurrent = Math.max(0, gs.getMaxIterations() - current);
         return "\n轮次限制: 当前为第 " + current + " / " + gs.getMaxIterations()

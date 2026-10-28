@@ -27,9 +27,11 @@ import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.loop.GoalTalent;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalScheduler;
+import org.noear.solon.codecli.goal.GoalState;
+import org.noear.solon.codecli.goal.GoalTalent;
 import org.noear.solon.codecli.loop.LoopScheduler;
-import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -81,6 +83,8 @@ public class WsGate extends SimpleWebSocketListener {
     final HarnessEngine engine;
     final AgentSettings agentSettings;
     final LoopScheduler loopScheduler;
+    final GoalEngine goalEngine;
+    final GoalScheduler goalScheduler;
     final DesktopStreamHub streamHub = new DesktopStreamHub();
     private final DesktopGoalBroadcaster goalBroadcaster;
     private final DesktopEventConverter eventConverter;
@@ -88,17 +92,32 @@ public class WsGate extends SimpleWebSocketListener {
     private final DesktopConfigHandler configHandler;
     private final DesktopInputRouter inputRouter;
 
-    public WsGate(HarnessEngine engine, AgentSettings agentSettings, LoopScheduler loopScheduler) {
+    public WsGate(HarnessEngine engine, AgentSettings agentSettings, LoopScheduler loopScheduler,
+                  GoalEngine goalEngine, GoalScheduler goalScheduler) {
         this.engine = engine;
         this.agentSettings = agentSettings;
         this.loopScheduler = loopScheduler;
-        this.goalBroadcaster = new DesktopGoalBroadcaster(engine, streamHub);
+        this.goalEngine = goalEngine;
+        this.goalScheduler = goalScheduler;
+        this.goalBroadcaster = new DesktopGoalBroadcaster(engine, goalEngine, streamHub);
         this.eventConverter = new DesktopEventConverter(engine);
         this.streamTurn = new DesktopStreamTurn(streamHub, eventConverter);
         this.configHandler = new DesktopConfigHandler(engine);
         this.inputRouter = new DesktopInputRouter(this);
-        if (loopScheduler != null) {
-            loopScheduler.addGoalListener(goalBroadcaster::onGoalChanged);
+
+        if (goalEngine != null) {
+            // 桌面端 Goal 轮次经共享执行桥回推：注册一次，两个引擎共用
+            goalEngine.addListener(goalBroadcaster::onGoalChanged);
+            if (loopScheduler != null) {
+                loopScheduler.getBridge().addTaskExecutor((sessionId, prompt, agentName) -> {
+                    if (!sessionId.matches("[0-9]{1,18}")) {
+                        return null;
+                    }
+                    return runGoalRoundAndCapture(sessionId, prompt, agentName);
+                });
+                loopScheduler.getBridge().addBusyChecker(sessionId ->
+                        sessionId.matches("[0-9]{1,18}") && isSessionBusy(sessionId));
+            }
         }
     }
 
@@ -180,7 +199,7 @@ public class WsGate extends SimpleWebSocketListener {
 
     void startGoalStream(WebSocket socket, String sessionId, WsMessage req,
                          String objective, String cwd, String agentName) throws IOException {
-        if (loopScheduler == null) {
+        if (goalEngine == null || goalScheduler == null) {
             throw new IllegalStateException("Goal service is unavailable");
         }
         if (Assert.isEmpty(sessionId) || !sessionId.matches("[0-9]{1,18}")) {
@@ -200,31 +219,21 @@ public class WsGate extends SimpleWebSocketListener {
 
         String goalWorkspace = Assert.isNotEmpty(cwd) && Paths.get(cwd).isAbsolute() ? cwd : null;
         configureGoalSession(sessionId, req.getModel(), agentName, goalWorkspace, req.getReasoningEffort());
-        loopScheduler.restore(sessionId);
 
-        synchronized (loopScheduler) {
-            LoopTask active = loopScheduler.findActiveGoalInSession(sessionId);
-            if (active != null) {
-                throw new IllegalStateException("当前对话已有正在执行或可恢复的 Goal");
-            }
+        AgentSession session = engine.getSession(sessionId);
+        goalBroadcaster.clearCompleted(sessionId);
+        streamHub.begin(sessionId, socket);
 
-            goalBroadcaster.clearCompleted(sessionId);
-            streamHub.begin(sessionId, socket);
-            // 先完成持久化再显式触发，避免 runNow 与任务注册并发竞速。
-            LoopTask task = new LoopTask(effectiveObjective, 0, null, LoopTask.TaskType.GOAL, false);
-            task.getGoalState().setCondition(displayedObjective);
-            if (maxTokens != null) {
-                task.setMaxTokens(maxTokens);
-            }
-            if (maxDurationMinutes != null) {
-                task.setMaxDurationMs(Math.multiplyExact(maxDurationMinutes, 60_000L));
-            }
-            if (maxIterations != null) {
-                task.getGoalState().setMaxIterations(maxIterations);
-            }
-            loopScheduler.schedule(sessionId, task);
-            loopScheduler.trigger(sessionId, task.getId());
+        // attach 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径
+        GoalState gs = goalEngine.attach(session, effectiveObjective,
+                maxTokens != null ? maxTokens : 0L,
+                maxDurationMinutes != null ? Math.multiplyExact(maxDurationMinutes, 60_000L) : 0L,
+                maxIterations != null ? maxIterations : 0);
+        if (!displayedObjective.equals(effectiveObjective)) {
+            gs.setCondition(displayedObjective);
+            goalEngine.commit(session, gs);
         }
+        goalScheduler.schedule(sessionId, false);
     }
 
     private Long normalizeGoalBudget(Long value, long maximum, String label) {

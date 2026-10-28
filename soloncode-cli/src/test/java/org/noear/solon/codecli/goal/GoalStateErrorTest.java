@@ -13,14 +13,15 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.noear.solon.codecli.loop;
+package org.noear.solon.codecli.goal;
+import org.noear.solon.codecli.goal.GoalState;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * 连续错误递增测试：验证 LoopTask 的错误计数、重置及 BLOCKED 阈值行为。
+ * 连续错误递增测试：验证 GoalState 的错误计数、重置及 BLOCKED 阈值行为。
  *
  * <p>覆盖场景：
  * <ul>
@@ -32,37 +33,37 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * @since 3.9.3
  */
-class LoopTaskErrorTest {
+class GoalStateErrorTest {
 
     // ===== 连续错误计数 =====
 
     @Test
     void consecutiveErrorsIncrementsFromZero() {
-        LoopTask task = createGoalTask();
-        assertEquals(0, task.getConsecutiveErrors(), "initial error count should be 0");
-        assertEquals(1, task.incrementConsecutiveErrors(), "first error should return 1");
-        assertEquals(2, task.incrementConsecutiveErrors(), "second error should return 2");
-        assertEquals(3, task.incrementConsecutiveErrors(), "third error should return 3");
+        GoalState gs = createGoal();
+        assertEquals(0, gs.getConsecutiveErrors(), "initial error count should be 0");
+        assertEquals(1, gs.incrementConsecutiveErrors(), "first error should return 1");
+        assertEquals(2, gs.incrementConsecutiveErrors(), "second error should return 2");
+        assertEquals(3, gs.incrementConsecutiveErrors(), "third error should return 3");
     }
 
     @Test
     void consecutiveErrorsResetAfterSuccess() {
-        LoopTask task = createGoalTask();
-        task.incrementConsecutiveErrors();
-        task.incrementConsecutiveErrors();
-        assertEquals(2, task.getConsecutiveErrors(), "should have 2 errors before reset");
+        GoalState gs = createGoal();
+        gs.incrementConsecutiveErrors();
+        gs.incrementConsecutiveErrors();
+        assertEquals(2, gs.getConsecutiveErrors(), "should have 2 errors before reset");
 
-        task.resetConsecutiveErrors();
-        assertEquals(0, task.getConsecutiveErrors(), "should be 0 after success");
+        gs.resetConsecutiveErrors();
+        assertEquals(0, gs.getConsecutiveErrors(), "should be 0 after success");
     }
 
     @Test
     void consecutiveErrorsContinuesAfterPartialReset() {
-        LoopTask task = createGoalTask();
-        task.incrementConsecutiveErrors(); // 1
-        task.incrementConsecutiveErrors(); // 2
-        task.resetConsecutiveErrors();     // 0
-        assertEquals(1, task.incrementConsecutiveErrors(),
+        GoalState gs = createGoal();
+        gs.incrementConsecutiveErrors(); // 1
+        gs.incrementConsecutiveErrors(); // 2
+        gs.resetConsecutiveErrors();     // 0
+        assertEquals(1, gs.incrementConsecutiveErrors(),
                 "should restart at 1 after reset then error");
     }
 
@@ -83,12 +84,12 @@ class LoopTaskErrorTest {
     @Test
     void goalMarkedBlockedWhenErrorsReachThreshold() {
         // maxConsecutiveErrors = 3（LoopGroupDo 默认值）
-        LoopTask task = createGoalTask();
-        GoalState gs = task.getGoalState();
+        GoalState gs = createGoal();
+        
 
         // 前 2 次错误不应触发 BLOCKED
         for (int i = 1; i <= 2; i++) {
-            int errors = task.incrementConsecutiveErrors();
+            int errors = gs.incrementConsecutiveErrors();
             if (errors < 3) {
                 // 未达阈值，不标记 BLOCKED
                 assertEquals(GoalState.Status.PURSUING, gs.getStatus());
@@ -96,7 +97,7 @@ class LoopTaskErrorTest {
         }
 
         // 第 3 次错误 → 达阈值
-        int errors = task.incrementConsecutiveErrors();
+        int errors = gs.incrementConsecutiveErrors();
         assertEquals(3, errors, "should have 3 consecutive errors");
 
         // 模拟 handleExecutionError 的阈值逻辑：
@@ -112,12 +113,12 @@ class LoopTaskErrorTest {
 
     @Test
     void goalNotBlockedBeforeThreshold() {
-        LoopTask task = createGoalTask();
-        GoalState gs = task.getGoalState();
+        GoalState gs = createGoal();
+        
 
         // 2 次错误，阈值为 3 → 不应 BLOCKED
-        task.incrementConsecutiveErrors(); // 1
-        task.incrementConsecutiveErrors(); // 2
+        gs.incrementConsecutiveErrors(); // 1
+        gs.incrementConsecutiveErrors(); // 2
 
         assertEquals(GoalState.Status.PURSUING, gs.getStatus(),
                 "goal should still be PURSUING before threshold");
@@ -129,17 +130,17 @@ class LoopTaskErrorTest {
     void goalBlockedWithCustomThreshold() {
         // 模拟 maxConsecutiveErrors=5 场景
         int threshold = 5;
-        LoopTask task = createGoalTask();
-        GoalState gs = task.getGoalState();
+        GoalState gs = createGoal();
+        
 
         for (int i = 1; i <= threshold; i++) {
-            task.incrementConsecutiveErrors();
+            gs.incrementConsecutiveErrors();
         }
 
-        assertEquals(threshold, task.getConsecutiveErrors(),
+        assertEquals(threshold, gs.getConsecutiveErrors(),
                 "should have " + threshold + " errors");
 
-        if (task.getConsecutiveErrors() >= threshold) {
+        if (gs.getConsecutiveErrors() >= threshold) {
             gs.markBlocked();
         }
 
@@ -151,21 +152,21 @@ class LoopTaskErrorTest {
 
     @Test
     void successfulExecutionResetsErrorsAndGoalRemainsPursuing() {
-        LoopTask task = createGoalTask();
-        GoalState gs = task.getGoalState();
+        GoalState gs = createGoal();
+        
 
         // 2 次连续错误
-        task.incrementConsecutiveErrors();
-        task.incrementConsecutiveErrors();
-        assertEquals(2, task.getConsecutiveErrors());
+        gs.incrementConsecutiveErrors();
+        gs.incrementConsecutiveErrors();
+        assertEquals(2, gs.getConsecutiveErrors());
 
         // 成功执行后重置
-        task.resetConsecutiveErrors();
-        assertEquals(0, task.getConsecutiveErrors(),
+        gs.resetConsecutiveErrors();
+        assertEquals(0, gs.getConsecutiveErrors(),
                 "errors should reset after success");
 
         // 再错误计数应为 1（重新从 0 开始）
-        assertEquals(1, task.incrementConsecutiveErrors(),
+        assertEquals(1, gs.incrementConsecutiveErrors(),
                 "should start from 1 after reset then error");
         assertEquals(GoalState.Status.PURSUING, gs.getStatus(),
                 "goal should remain PURSUING after reset");
@@ -173,7 +174,7 @@ class LoopTaskErrorTest {
 
     // ===== 辅助方法 =====
 
-    private static LoopTask createGoalTask() {
-        return new LoopTask("test goal", 0, null, LoopTask.TaskType.GOAL, true);
+    private static GoalState createGoal() {
+        return new GoalState("test goal", 0);
     }
 }

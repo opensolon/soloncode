@@ -20,11 +20,14 @@ import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
-import org.noear.solon.codecli.loop.GoalState;
+import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalState;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
+import org.noear.solon.core.util.RunUtil;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -55,11 +58,16 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "Invalid sessionId");
         }
 
-        List<LoopTask> tasks = loopScheduler().listAll(sessionId);
         List<Map> data = new ArrayList<>();
-        for (LoopTask t : tasks) {
-            Map<String, Object> item = buildTaskMap(t);
-            data.add(item);
+
+        // Goal 属于会话（单槽），恒为第一条；其余为定时任务（可多条）
+        Map<String, Object> goalItem = buildGoalMap(sessionId);
+        if (goalItem != null) {
+            data.add(goalItem);
+        }
+
+        for (LoopTask t : loopScheduler().listAll(sessionId)) {
+            data.add(buildTaskMap(t));
         }
         return Result.succeed(data);
     }
@@ -92,12 +100,43 @@ public class LoopWebController extends AbstractWebController {
     }
 
     /**
+     * 构建会话 goal 的展示 Map（与 loop 任务同构，供前端合并渲染）。
+     *
+     * <p>字段名与定时任务保持一致，唯一区别是 {@code type=GOAL}、
+     * 以及附带 {@code goal} 子对象（前端据此显示状态徽章与预算进度）。</p>
+     *
+     * @return 无 goal 时返回 null
+     */
+    private Map<String, Object> buildGoalMap(String sessionId) {
+        GoalEngine engine = currentContext().getGoalEngine();
+        if (engine == null) {
+            return null;
+        }
+        AgentSession session = engine.sessionOf(sessionId);
+        if (session == null) {
+            return null;
+        }
+        GoalState gs = engine.state(session);
+        if (gs == null) {
+            return null;
+        }
+
+        // 与定时任务同构的展示 Map 由 GoalEngine 统一产出（字段契约单点维护）
+        Map<String, Object> item = engine.toTaskMap(session, gs);
+        item.put("intervalMinutes", 0);
+        item.put("enabled", gs.getStatus().isActive());
+        item.put("cancelled", gs.getStatus().isTerminal());
+        item.put("runNow", true);
+        return item;
+    }
+
+    /**
      * 构建任务 Map（通用方法，供 list/get 复用）
      */
     private Map<String, Object> buildTaskMap(LoopTask t) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", t.getId());
-        item.put("type", t.getType().name());  // 任务类型（LOOP / GOAL）
+        item.put("type", "HEARTBEAT");
         item.put("prompt", t.getPrompt());
         item.put("intervalMinutes", t.getIntervalMinutes());
         if (t.getCron() != null) item.put("cron", t.getCron());
@@ -110,26 +149,6 @@ public class LoopWebController extends AbstractWebController {
 
 
         item.put("runNow", t.isRunNow());
-
-        // ★ P1: 预算字段
-        if (t.getMaxTokens() != null) item.put("maxTokens", t.getMaxTokens());
-        if (t.getMaxDurationMs() != null) item.put("maxDurationMs", t.getMaxDurationMs());
-
-        // ★ P0: Goal 状态信息
-        if (t.isGoalMode()) {
-            GoalState gs = t.getGoalState();
-            Map<String, Object> goalMap = new LinkedHashMap<>();
-            goalMap.put("condition", gs.getCondition());
-            goalMap.put("status", gs.getStatus().name());
-            goalMap.put("iteration", t.getCurrentIteration());
-            goalMap.put("consumedTokens", gs.getConsumedTokens());
-            goalMap.put("maxTokens", gs.getMaxTokens());
-            if (gs.getStartEpochMs() > 0) {
-                goalMap.put("startedAt", Instant.ofEpochMilli(gs.getStartEpochMs()).toString());
-            }
-
-            item.put("goal", goalMap);
-        }
 
         return item;
     }
@@ -146,6 +165,12 @@ public class LoopWebController extends AbstractWebController {
         }
         if (taskId == null || taskId.trim().isEmpty()) {
             return Result.failure(400, "taskId is required");
+        }
+
+        // goal 行分流：单槽语义，id 即 GoalState.id
+        Map<String, Object> goalItem = buildGoalMap(sessionId);
+        if (goalItem != null && taskId.equals(goalItem.get("id"))) {
+            return Result.succeed(goalItem);
         }
 
         List<LoopTask> tasks = loopScheduler().listAll(sessionId);
@@ -178,21 +203,17 @@ public class LoopWebController extends AbstractWebController {
         }
 
 
-        LoopTask.TaskType taskType = (type != null && "GOAL".equalsIgnoreCase(type))
-                ? LoopTask.TaskType.GOAL
-                : LoopTask.TaskType.HEARTBEAT;
+        // goal 已属会话级独立能力（/goal 或 /desktop/chat/goals/add），定时任务页不再创建 GOAL
+        if (type != null && "GOAL".equalsIgnoreCase(type)) {
+            return Result.failure(400, "GOAL is a session-scoped capability, use /goal or goal endpoints");
+        }
 
         // 初始化状态目录
         int interval = intervalMinutes != null ? intervalMinutes : 5;
         LoopTask task = new LoopTask(
                 prompt, interval, cron,
-                taskType,
                 runNow != null && runNow
         );
-        // ★ P1: 预算字段
-        if (maxTokens != null) task.setMaxTokens(maxTokens);
-        if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
-
         try {
             loopScheduler().schedule(sessionId, task);
         } catch (IllegalArgumentException | IllegalStateException e) {
@@ -234,14 +255,13 @@ public class LoopWebController extends AbstractWebController {
         int interval = intervalMinutes != null ? intervalMinutes : existing.getIntervalMinutes();
         String effectiveCron = cron != null ? cron : existing.getCron();
         String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
-        LoopTask.TaskType newType = (type != null) ? LoopTask.TaskType.valueOf(type.toUpperCase()) : null;
+        if (type != null && "GOAL".equalsIgnoreCase(type)) {
+            return Result.failure(400, "GOAL is a session-scoped capability, use /goal or goal endpoints");
+        }
 
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
-                newType,
-                runNow != null ? runNow : existing.isRunNow(),
-                maxTokens,
-                maxDurationMs
+                runNow != null ? runNow : existing.isRunNow()
         );
 
         // 保留 enabled
@@ -447,21 +467,20 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        LoopScheduler loopScheduler = loopScheduler();
-        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
-        if (task == null) {
+        GoalEngine engine = currentContext().getGoalEngine();
+        AgentSession session = engine == null ? null : engine.sessionOf(sessionId);
+        GoalState gs = session == null ? null : engine.state(session);
+        if (gs == null || !taskId.equals(gs.getId())) {
             return Result.failure(404, "Task not found");
         }
-        if (!task.isGoalMode()) {
-            return Result.failure(400, "Task has no goal");
-        }
-
-        GoalState gs = task.getGoalState();
         if (gs.getStatus() != GoalState.Status.PURSUING) {
             return Result.failure(400, "Goal cannot be paused in state: " + gs.getStatus());
         }
 
-        loopScheduler.pauseGoal(sessionId, taskId);
+        engine.pause(session, gs);
+        if (currentContext().getGoalScheduler() != null) {
+            currentContext().getGoalScheduler().unschedule(sessionId);
+        }
         return Result.succeed();
     }
 
@@ -479,22 +498,21 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        LoopScheduler loopScheduler = loopScheduler();
-        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
-        if (task == null) {
+        GoalEngine engine = currentContext().getGoalEngine();
+        AgentSession session = engine == null ? null : engine.sessionOf(sessionId);
+        GoalState gs = session == null ? null : engine.state(session);
+        if (gs == null || !taskId.equals(gs.getId())) {
             return Result.failure(404, "Task not found");
         }
-        if (!task.isGoalMode()) {
-            return Result.failure(400, "Task has no goal");
-        }
-
-        GoalState gs = task.getGoalState();
-        if (gs.getStatus() != GoalState.Status.PAUSED) {
+        if (gs.getStatus() != GoalState.Status.PAUSED && gs.getStatus() != GoalState.Status.BLOCKED) {
             return Result.failure(400, "Goal cannot be resumed in state: " + gs.getStatus()
                     + " (only PAUSED or BLOCKED can be resumed)");
         }
 
-        loopScheduler.resumeGoal(sessionId, taskId);
+        engine.resume(session, gs);
+        if (currentContext().getGoalScheduler() != null) {
+            currentContext().getGoalScheduler().schedule(sessionId, true);
+        }
         return Result.succeed();
     }
 
@@ -512,16 +530,17 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        LoopScheduler loopScheduler = loopScheduler();
-        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
-        if (task == null) {
+        GoalEngine engine = currentContext().getGoalEngine();
+        AgentSession session = engine == null ? null : engine.sessionOf(sessionId);
+        GoalState gs = session == null ? null : engine.state(session);
+        if (gs == null || !taskId.equals(gs.getId())) {
             return Result.failure(404, "Task not found");
         }
-        if (!task.isGoalMode()) {
-            return Result.failure(400, "Task has no goal");
-        }
 
-        loopScheduler.clearGoal(sessionId, taskId);
+        if (currentContext().getGoalScheduler() != null) {
+            currentContext().getGoalScheduler().unschedule(sessionId);
+        }
+        engine.clear(session);
         return Result.succeed();
     }
 
@@ -539,19 +558,17 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        LoopTask task = loopScheduler().getTaskById(sessionId, taskId);
-        if (task == null) {
+        GoalEngine engine = currentContext().getGoalEngine();
+        AgentSession session = engine == null ? null : engine.sessionOf(sessionId);
+        GoalState gs = session == null ? null : engine.state(session);
+        if (gs == null || !taskId.equals(gs.getId())) {
             return Result.failure(404, "Task not found");
         }
-        if (!task.isGoalMode()) {
-            return Result.failure(400, "Task has no goal");
-        }
 
-        GoalState gs = task.getGoalState();
         Map<String, Object> goalMap = new LinkedHashMap<>();
         goalMap.put("condition", gs.getCondition());
         goalMap.put("status", gs.getStatus().name());
-        goalMap.put("iteration", task.getCurrentIteration());
+        goalMap.put("iteration", gs.getCurrentIteration());
         goalMap.put("consumedTokens", gs.getConsumedTokens());
         goalMap.put("maxTokens", gs.getMaxTokens());
 
@@ -563,7 +580,7 @@ public class LoopWebController extends AbstractWebController {
     }
 
     /**
-     * 删除循环任务。
+     * 删除循环任务。goal 行（type=GOAL）分流到 GoalEngine 清除单槽。
      */
     @Post
     @Mapping("/web/chat/loop/remove")
@@ -573,6 +590,20 @@ public class LoopWebController extends AbstractWebController {
         }
         if (taskId == null || taskId.isEmpty()) {
             return Result.failure(400, "taskId is required");
+        }
+
+        // goal 分流：列表中 goal 行的 id 即 GoalState.id
+        GoalEngine goalEngine = currentContext().getGoalEngine();
+        if (goalEngine != null) {
+            AgentSession gsSession = goalEngine.sessionOf(sessionId);
+            GoalState gs = gsSession == null ? null : goalEngine.state(gsSession);
+            if (gs != null && taskId.equals(gs.getId())) {
+                if (currentContext().getGoalScheduler() != null) {
+                    currentContext().getGoalScheduler().unschedule(sessionId);
+                }
+                goalEngine.clear(gsSession);
+                return Result.succeed();
+            }
         }
 
         LoopScheduler loopScheduler = loopScheduler();
@@ -586,7 +617,8 @@ public class LoopWebController extends AbstractWebController {
     }
 
     /**
-     * 启用/停用循环任务（toggle）。
+     * 启用/停用循环任务（toggle）。goal 行分流：PURSUING → pause，
+     * PAUSED/BLOCKED → resume（与 goal-pause/goal-resume 端点同口径）。
      */
     @Post
     @Mapping("/web/chat/loop/toggle")
@@ -598,12 +630,39 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
+        GoalEngine goalEngine = currentContext().getGoalEngine();
+        if (goalEngine != null) {
+            AgentSession gsSession = goalEngine.sessionOf(sessionId);
+            GoalState gs = gsSession == null ? null : goalEngine.state(gsSession);
+            if (gs != null && taskId.equals(gs.getId())) {
+                if (gs.getStatus() == GoalState.Status.PURSUING) {
+                    if (!goalEngine.pause(gsSession, gs)) {
+                        return Result.failure(400, "Goal cannot be paused in state: " + gs.getStatus());
+                    }
+                    if (currentContext().getGoalScheduler() != null) {
+                        currentContext().getGoalScheduler().unschedule(sessionId);
+                    }
+                } else if (gs.getStatus().isResumable()) {
+                    if (!goalEngine.resume(gsSession, gs)) {
+                        return Result.failure(400, "Goal cannot be resumed in state: " + gs.getStatus());
+                    }
+                    if (currentContext().getGoalScheduler() != null) {
+                        currentContext().getGoalScheduler().schedule(sessionId, true);
+                    }
+                } else {
+                    return Result.failure(400, "Goal is terminal: " + gs.getStatus()
+                            + " (use remove to clear)");
+                }
+                return Result.succeed();
+            }
+        }
+
         loopScheduler().toggle(sessionId, taskId);
         return Result.succeed();
     }
 
     /**
-     * 手动触发一次循环任务执行。
+     * 手动触发一次循环任务执行。goal 行分流：立即跑一轮（仅活跃态）。
      */
     @Post
     @Mapping("/web/chat/loop/trigger")
@@ -613,6 +672,19 @@ public class LoopWebController extends AbstractWebController {
         }
         if (taskId == null || taskId.isEmpty()) {
             return Result.failure(400, "taskId is required");
+        }
+
+        GoalEngine goalEngine = currentContext().getGoalEngine();
+        if (goalEngine != null) {
+            AgentSession gsSession = goalEngine.sessionOf(sessionId);
+            GoalState gs = gsSession == null ? null : goalEngine.state(gsSession);
+            if (gs != null && taskId.equals(gs.getId())) {
+                if (!gs.getStatus().isActive()) {
+                    return Result.failure(400, "Goal is not active: " + gs.getStatus());
+                }
+                RunUtil.async(() -> goalEngine.runRound(gsSession));
+                return Result.succeed();
+            }
         }
 
         loopScheduler().trigger(sessionId, taskId);

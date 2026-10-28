@@ -5,6 +5,7 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
+import org.noear.solon.codecli.goal.GoalEngine;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 会话快照只读探测工具。
@@ -45,6 +47,33 @@ public final class SessionSnapshots {
     public static boolean hasQueue(Path sessionDir, String sessionId) {
         FlowContext context = readSnapshot(sessionDir, sessionId);
         return context != null && SessionQueue.hasPersistedItems(context);
+    }
+
+    /**
+     * 会话快照是否携带 goal（单槽投影）。
+     *
+     * <p>只读探测专用：解析快照为 {@link FlowContext} 后判定
+     * {@code session.goal} 键是否存在。会话已在内存时应直接用
+     * {@code getSessionIfPresent} + {@link GoalEngine#hasGoal}。</p>
+     */
+    public static boolean hasGoal(Path sessionDir, String sessionId) {
+        return readGoalStatus(sessionDir, sessionId) != null;
+    }
+
+    /**
+     * 轻读快照中 goal 投影的状态名（PURSUING/PAUSED/...）。
+     *
+     * <p>只读探测专用（启动恢复）：无 goal 投影、投影无 status 字段或解析失败
+     * 返回 null；非法状态字串原样返回，交由调用方
+     * （GoalEngine#isActiveStatus / #isTerminalStatus）自行判定。</p>
+     */
+    public static String readGoalStatus(Path sessionDir, String sessionId) {
+        FlowContext context = readSnapshot(sessionDir, sessionId);
+        if (context == null) return null;
+        Object value = context.data().get(GoalEngine.KEY_GOAL);
+        if (!(value instanceof Map)) return null;
+        Object status = ((Map<?, ?>) value).get("status");
+        return status != null ? String.valueOf(status) : null;
     }
 
     /** 只读解析会话目录下的快照为 FlowContext；无快照或解析失败返回 null。 */

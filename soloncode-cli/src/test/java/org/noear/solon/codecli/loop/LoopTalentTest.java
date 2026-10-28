@@ -56,16 +56,13 @@ class LoopTalentTest {
 
     @Test
     void loopAddUsesDefaults() {
-        String result = talent.loopAdd(
-                "check deployment", null, null, null, null, null, null, null, null,
-                "session-1");
+        String result = talent.loopAdd("check deployment", null, null, null, null, null, "session-1");
 
         LoopTask task = scheduler.lastScheduledTask;
         assertNotNull(task);
         assertEquals("session-1", scheduler.lastSessionId);
         assertEquals("check deployment", task.getPrompt());
         assertEquals(5, task.getIntervalMinutes());
-        assertEquals(LoopTask.TaskType.HEARTBEAT, task.getType());
         assertFalse(task.isRunNow());
         assertFalse(task.isOneShot());
         assertTrue(result.contains("taskId"));
@@ -75,17 +72,12 @@ class LoopTalentTest {
 
     @Test
     void loopAddPassesCronTypeAndBudgets() {
-        String result = talent.loopAdd(
-                "finish migration", null, 15, "0 */15 * * * ? *", null, "goal", true,
-                2000L, 60000L, "session-2");
+        String result = talent.loopAdd("finish migration", null, 15, "0 */15 * * * ? *", null, true, "session-2");
 
         LoopTask task = scheduler.lastScheduledTask;
         assertTrue(result.contains("taskId"));
         assertEquals("0 */15 * * * ? *", task.getCron());
-        assertEquals(LoopTask.TaskType.GOAL, task.getType());
         assertTrue(task.isRunNow());
-        assertEquals(Long.valueOf(2000L), task.getMaxTokens());
-        assertEquals(Long.valueOf(60000L), task.getMaxDurationMs());
         assertTrue(result.contains("nextFireTime")); // cron 模式回写首次触发时刻
     }
 
@@ -94,9 +86,7 @@ class LoopTalentTest {
         LocalDateTime future = LocalDateTime.now().plusHours(3).withSecond(0).withNano(0);
         String at = future.format(AT_FORMAT);
 
-        String result = talent.loopAdd(
-                "evening report", at, null, null, null, null, null, null, null,
-                "session-1");
+        String result = talent.loopAdd("evening report", at, null, null, null, null, "session-1");
 
         LoopTask task = scheduler.lastScheduledTask;
         assertNotNull(task);
@@ -111,8 +101,7 @@ class LoopTalentTest {
     void loopAddRejectsPastAt() {
         String past = LocalDateTime.now().minusHours(1).format(AT_FORMAT);
 
-        String result = talent.loopAdd(
-                "late task", past, null, null, null, null, null, null, null, "session-1");
+        String result = talent.loopAdd("late task", past, null, null, null, null, "session-1");
 
         assertTrue(result.startsWith("ERROR:"));
         assertNull(scheduler.lastScheduledTask);
@@ -120,8 +109,7 @@ class LoopTalentTest {
 
     @Test
     void loopAddRejectsMalformedAt() {
-        String result = talent.loopAdd(
-                "bad at", "2026/09/05 18:00", null, null, null, null, null, null, null, "session-1");
+        String result = talent.loopAdd("bad at", "2026/09/05 18:00", null, null, null, null, "session-1");
 
         assertTrue(result.startsWith("ERROR:"));
         assertNull(scheduler.lastScheduledTask);
@@ -132,9 +120,7 @@ class LoopTalentTest {
         LocalDateTime future = LocalDateTime.now().plusDays(1).withSecond(0).withNano(0);
         String cron = futureOneShotCron(future);
 
-        String result = talent.loopAdd(
-                "evening report", null, null, cron, true, null, null, null, null,
-                "session-1");
+        String result = talent.loopAdd("evening report", null, null, cron, true, null, "session-1");
 
         LoopTask task = scheduler.lastScheduledTask;
         assertNotNull(task);
@@ -146,9 +132,7 @@ class LoopTalentTest {
     @Test
     void loopAddRejectsExpiredCron() {
         // 语法正确但年份已过：底层会判为 expired 停掉 job，任务记录却永久残留
-        String result = talent.loopAdd(
-                "stale one-shot", null, null, "0 0 18 5 9 ? 2020", true, null, null, null, null,
-                "session-1");
+        String result = talent.loopAdd("stale one-shot", null, null, "0 0 18 5 9 ? 2020", true, null, "session-1");
 
         assertTrue(result.startsWith("ERROR:"));
         assertTrue(result.contains("无有效触发时刻"), result);
@@ -157,9 +141,7 @@ class LoopTalentTest {
 
     @Test
     void loopAddRejectsUnparsableCron() {
-        String result = talent.loopAdd(
-                "bad cron", null, null, "every day at 6", null, null, null, null, null,
-                "session-1");
+        String result = talent.loopAdd("bad cron", null, null, "every day at 6", null, null, "session-1");
 
         assertTrue(result.startsWith("ERROR:"));
         assertTrue(result.contains("无法解析"), result);
@@ -167,20 +149,18 @@ class LoopTalentTest {
     }
 
     @Test
-    void loopAddRejectsOneShotWithGoalType() {
-        String future = LocalDateTime.now().plusDays(1).format(AT_FORMAT);
+    void loopAddNoLongerAcceptsGoalType() {
+        // type 参数已从 loop_add 移除：goal 是会话级独立能力，不再经由定时任务创建。
+        // 这里锁定「创建出来的一定是定时任务」，防止 GOAL 通道回流。
+        talent.loopAdd("plain task", null, 10, null, null, null, "session-1");
 
-        String result = talent.loopAdd(
-                "one-shot goal", future, null, null, null, "goal", null, null, null, "session-1");
-
-        assertTrue(result.startsWith("ERROR:"));
-        assertNull(scheduler.lastScheduledTask);
+        assertNotNull(scheduler.lastScheduledTask);
+        assertTrue(scheduler.lastScheduledTask.getJobName().startsWith("loop-"));
     }
 
     @Test
     void loopAddRejectsOneShotWithoutCron() {
-        String result = talent.loopAdd(
-                "bad one-shot", null, 10, null, true, null, null, null, null, "session-1");
+        String result = talent.loopAdd("bad one-shot", null, 10, null, true, null, "session-1");
 
         assertTrue(result.startsWith("ERROR:"));
         assertNull(scheduler.lastScheduledTask);
@@ -190,8 +170,7 @@ class LoopTalentTest {
     void loopAddRejectsOneShotWithRunNow() {
         String future = LocalDateTime.now().plusHours(2).format(AT_FORMAT);
 
-        String result = talent.loopAdd(
-                "conflict", future, null, null, null, null, true, null, null, "session-1");
+        String result = talent.loopAdd("conflict", future, null, null, null, true, "session-1");
 
         assertTrue(result.startsWith("ERROR:"));
         assertNull(scheduler.lastScheduledTask);
@@ -201,8 +180,8 @@ class LoopTalentTest {
 
     @Test
     void loopListReturnsTasksWithServerNow() {
-        talent.loopAdd("task a", null, 10, null, null, null, null, null, null, "session-1");
-        talent.loopAdd("task b", null, null, "0 */5 * * * ? *", null, null, null, null, null, "session-1");
+        talent.loopAdd("task a", null, 10, null, null, null, "session-1");
+        talent.loopAdd("task b", null, null, "0 */5 * * * ? *", null, null, "session-1");
 
         String result = talent.loopList("session-1");
 
@@ -225,7 +204,7 @@ class LoopTalentTest {
 
     @Test
     void loopControlStopRemovesTaskFromCurrentSession() {
-        talent.loopAdd("check status", null, 10, null, null, null, null, null, null, "session-3");
+        talent.loopAdd("check status", null, 10, null, null, null, "session-3");
         String taskId = scheduler.lastScheduledTask.getId();
 
         String result = talent.loopControl("stop", taskId, "session-3");
@@ -243,7 +222,7 @@ class LoopTalentTest {
 
     @Test
     void loopControlPauseResumeTogglesHeartbeatEnabled() {
-        talent.loopAdd("heartbeat", null, 10, null, null, null, null, null, null, "session-5");
+        talent.loopAdd("heartbeat", null, 10, null, null, null, "session-5");
         String taskId = scheduler.lastScheduledTask.getId();
 
         String paused = talent.loopControl("pause", taskId, "session-5");
@@ -257,14 +236,14 @@ class LoopTalentTest {
     }
 
     @Test
-    void loopControlPauseGoalDelegatesToPauseGoal() {
-        talent.loopAdd("goal task", null, 0, null, null, "goal", false, null, null, "session-6");
+    void loopControlPauseTogglesEnabled() {
+        talent.loopAdd("heartbeat task", null, 10, null, null, null, "session-6");
         String taskId = scheduler.lastScheduledTask.getId();
 
         talent.loopControl("pause", taskId, "session-6");
 
-        assertEquals(taskId, scheduler.lastPausedGoalId);
-        assertEquals(0, scheduler.toggleCount); // GOAL 不走 toggle
+        assertEquals(1, scheduler.toggleCount); // 定时任务统一走 enabled 开关
+        assertFalse(scheduler.lastScheduledTask.isEnabled());
     }
 
     @Test
@@ -275,7 +254,7 @@ class LoopTalentTest {
 
     @Test
     void loopControlTriggerSubmitsExecution() {
-        talent.loopAdd("manual run", null, 10, null, null, null, null, null, null, "session-8");
+        talent.loopAdd("manual run", null, 10, null, null, null, "session-8");
         String taskId = scheduler.lastScheduledTask.getId();
 
         String result = talent.loopControl("trigger", taskId, "session-8");
@@ -286,7 +265,7 @@ class LoopTalentTest {
 
     @Test
     void loopControlTriggerRejectsDisabledTask() {
-        talent.loopAdd("paused run", null, 10, null, null, null, null, null, null, "session-9");
+        talent.loopAdd("paused run", null, 10, null, null, null, "session-9");
         String taskId = scheduler.lastScheduledTask.getId();
         talent.loopControl("pause", taskId, "session-9");
 
@@ -308,7 +287,7 @@ class LoopTalentTest {
 
     @Test
     void oneShotSurvivesSerializationRoundTrip() {
-        LoopTask task = new LoopTask("one shot", 0, "0 0 18 5 9 ? 2026", LoopTask.TaskType.HEARTBEAT, false);
+        LoopTask task = new LoopTask("one shot", 0, "0 0 18 5 9 ? 2026", false);
         task.setOneShot(true);
 
         org.noear.snack4.ONode node = task.toONode();
@@ -320,7 +299,7 @@ class LoopTalentTest {
 
     @Test
     void legacyJsonWithoutOneShotDefaultsToFalse() {
-        LoopTask task = new LoopTask("legacy", 5, null, null, false);
+        LoopTask task = new LoopTask("legacy", 5, null, false);
         org.noear.snack4.ONode node = task.toONode();
         assertNull(node.getOrNull("oneShot")); // 未开启时不写字段
 
@@ -334,7 +313,6 @@ class LoopTalentTest {
         private final Map<String, Map<String, LoopTask>> tasks = new HashMap<>();
         private String lastSessionId;
         private LoopTask lastScheduledTask;
-        private String lastPausedGoalId;
         private String lastTriggeredId;
         private int toggleCount;
 
@@ -375,23 +353,6 @@ class LoopTalentTest {
             LoopTask task = getTaskById(sessionId, taskId);
             if (task != null) {
                 task.setEnabled(!task.isEnabled());
-            }
-        }
-
-        @Override
-        public void pauseGoal(String sessionId, String taskId) {
-            lastPausedGoalId = taskId;
-            LoopTask task = getTaskById(sessionId, taskId);
-            if (task != null) {
-                task.setEnabled(false); // 模拟 pauseGoal 停用调度
-            }
-        }
-
-        @Override
-        public void resumeGoal(String sessionId, String taskId) {
-            LoopTask task = getTaskById(sessionId, taskId);
-            if (task != null) {
-                task.setEnabled(true);
             }
         }
 

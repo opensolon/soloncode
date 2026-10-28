@@ -70,16 +70,14 @@ public class AutomationManager {
                                       String cron, String type, Boolean runNow,
                                       Long maxTokens, Long maxDurationMs, String modelName,
                                       String agentName) throws IOException {
-        validate(name, prompt, intervalMinutes, cron, maxTokens, maxDurationMs);
+        validate(name, prompt, intervalMinutes, cron);
         String sessionId = SESSION_PREFIX + UUID.randomUUID().toString().replace("-", "");
         // 触发 FileAgentSession 的懒创建，确保专用会话目录在任务落盘前存在。
         sessionManager.getSession(sessionId);
 
-        LoopTask.TaskType taskType = parseType(type);
+        rejectGoalType(type);
         LoopTask task = new LoopTask(prompt.trim(), intervalMinutes == null ? 5 : intervalMinutes,
-                emptyToNull(cron), taskType, Boolean.TRUE.equals(runNow));
-        if (maxTokens != null) task.setMaxTokens(maxTokens);
-        if (maxDurationMs != null) task.setMaxDurationMs(maxDurationMs);
+                emptyToNull(cron), Boolean.TRUE.equals(runNow));
         task.setAutomation(new AutomationMeta(displayName(name, prompt.trim()),
                 emptyToNull(modelName), emptyToNull(agentName)));
         applySelections(sessionId, task.getAutomation());
@@ -113,18 +111,14 @@ public class AutomationManager {
 
         validate(name == null ? meta.getName() : name,
                 prompt == null ? old.getPrompt() : prompt,
-                intervalMinutes, cron == null ? old.getCron() : cron,
-                maxTokens == null ? old.getMaxTokens() : maxTokens,
-                maxDurationMs == null ? old.getMaxDurationMs() : maxDurationMs);
+                intervalMinutes, cron == null ? old.getCron() : cron);
 
         int interval = intervalMinutes == null ? old.getIntervalMinutes() : intervalMinutes;
         String effectivePrompt = prompt == null || prompt.trim().isEmpty() ? old.getPrompt() : prompt.trim();
-        LoopTask.TaskType newType = type == null ? old.getType() : parseType(type);
+        rejectGoalType(type);
         LoopTask replacement = old.copyWithUpdate(effectivePrompt, interval,
-                cron == null ? old.getCron() : emptyToNull(cron), newType,
-                runNow == null ? old.isRunNow() : runNow,
-                maxTokens == null ? old.getMaxTokens() : maxTokens,
-                maxDurationMs == null ? old.getMaxDurationMs() : maxDurationMs);
+                cron == null ? old.getCron() : emptyToNull(cron),
+                runNow == null ? old.isRunNow() : runNow);
         replacement.setEnabled(old.isEnabled());
         replacement.setAutomation(meta);
         meta.update(name, emptyToNull(modelName), emptyToNull(agentName));
@@ -180,7 +174,6 @@ public class AutomationManager {
         item.put("prompt", task.getPrompt());
         item.put("intervalMinutes", task.getIntervalMinutes());
         if (task.getCron() != null) item.put("cron", task.getCron());
-        item.put("taskType", task.getType().name());
         item.put("runNow", task.isRunNow());
         if (meta != null) {
             if (meta.getModelName() != null) item.put("modelName", meta.getModelName());
@@ -192,7 +185,6 @@ public class AutomationManager {
         item.put("currentIteration", task.getCurrentIteration());
         if (task.getLastResult() != null) item.put("lastResult", task.getLastResult());
         if (task.getLastExecutedAt() != null) item.put("lastExecutedAt", task.getLastExecutedAt().toString());
-        if (task.isGoalMode()) item.put("goal", task.getGoalState().getStatus().name());
         item.put("automation", task.isAutomation());
         return item;
     }
@@ -206,25 +198,23 @@ public class AutomationManager {
         session.updateSnapshot();
     }
 
-    private static LoopTask.TaskType parseType(String type) {
-        if (type == null || type.trim().isEmpty()) return LoopTask.TaskType.HEARTBEAT;
-        try { return LoopTask.TaskType.valueOf(type.trim().toUpperCase()); }
-        catch (IllegalArgumentException e) { throw new IllegalArgumentException("Invalid task type: " + type); }
+    /** GOAL 已属会话级独立能力（/goal 或桌面 goal 端点），自动任务只创建定时任务。 */
+    private static void rejectGoalType(String type) {
+        if (type != null && "GOAL".equalsIgnoreCase(type.trim())) {
+            throw new IllegalArgumentException("GOAL is a session-scoped capability, not an automation type");
+        }
     }
 
     private static String emptyToNull(String value) {
         return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
-    private static void validate(String name, String prompt, Integer intervalMinutes, String cron,
-                                 Long maxTokens, Long maxDurationMs) {
+    private static void validate(String name, String prompt, Integer intervalMinutes, String cron) {
         if (name != null && name.trim().length() > 200) throw new IllegalArgumentException("name is too long");
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt is required");
         if (prompt.length() > 100000) throw new IllegalArgumentException("prompt is too long");
         if (intervalMinutes != null && intervalMinutes <= 0) throw new IllegalArgumentException("intervalMinutes must be greater than 0");
         if (cron != null && cron.trim().length() > 200) throw new IllegalArgumentException("cron is too long");
-        if (maxTokens != null && maxTokens <= 0) throw new IllegalArgumentException("maxTokens must be greater than 0");
-        if (maxDurationMs != null && maxDurationMs <= 0) throw new IllegalArgumentException("maxDurationMs must be greater than 0");
         if ((cron == null || cron.trim().isEmpty()) && (intervalMinutes == null || intervalMinutes <= 0)) {
             throw new IllegalArgumentException("cron or intervalMinutes is required");
         }

@@ -16,12 +16,15 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.codecli.api.web.event.WebEvent;
-import org.noear.solon.codecli.session.SessionActivity;
-import org.noear.solon.codecli.session.SessionSnapshots;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
 import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
+import org.noear.solon.codecli.api.web.event.WebEvent;
+import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.codecli.goal.GoalScheduler;
+import org.noear.solon.codecli.goal.GoalState;
+import org.noear.solon.codecli.session.SessionActivity;
+import org.noear.solon.codecli.session.SessionSnapshots;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.LogDirUtil;
@@ -58,9 +61,10 @@ class WebQueueDispatcher {
         this.gate = gate;
     }
 
-    /** 工作区上下文完成初始化后恢复 session 队列（含旧文件一次性迁移）。 */
+    /** 工作区上下文完成初始化后恢复 session 队列（含旧文件一次性迁移），并恢复未终态的 goal 调度。 */
     void recoverSessionQueues(WorkspaceContext wsContext) {
         if (wsContext == null || wsContext.getSessionManager() == null) return;
+        recoverSessionGoals(wsContext);
         Path root = wsContext.getSessionsRoot();
         if (root == null || !Files.isDirectory(root)) return;
         try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
@@ -77,6 +81,50 @@ class WebQueueDispatcher {
             }
         } catch (IOException e) {
             LOG.warn("[WebGate] recover session queues failed for workspace {}: {}",
+                    wsContext.getMeta().getId(), e.toString());
+        }
+    }
+
+    /**
+     * 恢复快照中的活跃 goal：重启后 job 已丢失，PURSUING（进程中断残留，
+     * 新体系无 shutdown hook 落盘 PAUSED）重新挂上调度直接续跑，
+     * 避免「PURSUING 无法 resume 只能 clear 重建」的卡死回归。
+     *
+     * <p>PAUSED/BLOCKED 不挂 job：新体系下 PAUSED 只能来自用户显式暂停
+     * （旧 shutdown-hook 路径已随 LoopScheduler goal 链退役），重启后保持静默、
+     * 等待用户 /goal resume（或 Web toggle）是尊重用户意图的语义；
+     * BLOCKED 为熔断态，同理需显式恢复。终态则无需调度。</p>
+     */
+    private static void recoverSessionGoals(WorkspaceContext wsContext) {
+        GoalEngine engine = wsContext.getGoalEngine();
+        GoalScheduler scheduler = wsContext.getGoalScheduler();
+        if (engine == null || scheduler == null) return;
+
+        Path root = wsContext.getSessionsRoot();
+        if (root == null || !Files.isDirectory(root)) return;
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
+            for (Path dir : dirs) {
+                if (!Files.isDirectory(dir)) continue;
+                String sessionId = dir.getFileName().toString();
+
+                // 内存会话优先（与写侧同源）；未实例化则轻读投影状态，不把会话带进内存
+                AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
+                if (inMemory != null) {
+                    GoalState gs = engine.state(inMemory);
+                    if (gs != null && gs.getStatus().isActive()) {
+                        scheduler.schedule(sessionId, false);
+                    }
+                    continue;
+                }
+
+                String status = SessionSnapshots.readGoalStatus(dir, sessionId);
+                if (status == null || !GoalEngine.isActiveStatus(status)) {
+                    continue;
+                }
+                scheduler.schedule(sessionId, false);
+            }
+        } catch (IOException e) {
+            LOG.warn("[WebGate] recover session goals failed for workspace {}: {}",
                     wsContext.getMeta().getId(), e.toString());
         }
     }

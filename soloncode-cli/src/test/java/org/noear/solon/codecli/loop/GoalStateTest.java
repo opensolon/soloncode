@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 package org.noear.solon.codecli.loop;
+import org.noear.solon.codecli.goal.GoalState;
 
 import org.junit.jupiter.api.Test;
 import org.noear.snack4.ONode;
@@ -208,48 +209,36 @@ class GoalStateTest {
         assertTrue(restored.getStatus().isResumable());
     }
 
-    // ===== 4. LoopTask Goal 模式基础 =====
+    // ===== 4. Goal 状态会话投影往返 =====
 
     @Test
-    void goalModeShouldBeTrueWhenTypeIsGoal() {
-        LoopTask task = new LoopTask("prompt", 0, null, LoopTask.TaskType.GOAL, true);
-        assertTrue(task.isGoalMode());
-        assertNotNull(task.getGoalState());
-        assertEquals("prompt", task.getGoalState().getCondition());
-    }
+    void goalStateMapRoundTripShouldPreserveFields() {
+        GoalState gs = new GoalState("test prompt", 5000);
+        gs.addTokens(5000);
+        gs.incrementIteration();
+        gs.incrementIteration();
+        gs.setMaxIterations(10);
+        gs.setMaxDurationMs(60_000L);
 
-    @Test
-    void goalModeShouldBeFalseWithoutGoalCondition() {
-        LoopTask task = new LoopTask("prompt", 1, null, null, false);
-        assertFalse(task.isGoalMode());
-        assertNull(task.getGoalState());
-    }
+        GoalState restored = GoalState.fromMap(gs.toMap());
 
-    @Test
-    void goalTaskSerializationRoundTripShouldPreserveGoalState() {
-        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, true);
-        task.getGoalState().addTokens(5000);
-        task.incrementIteration();
-        task.incrementIteration();
-
-        ONode node = task.toONode();
-        LoopTask restored = LoopTask.fromONode(node);
-
-        assertTrue(restored.isGoalMode());
-        assertEquals("test prompt", restored.getGoalState().getCondition());
-        assertEquals(5000, restored.getGoalState().getConsumedTokens());
+        assertNotNull(restored);
+        assertEquals(gs.getId(), restored.getId());
+        assertEquals("test prompt", restored.getCondition());
+        assertEquals(5000, restored.getConsumedTokens());
         assertEquals(2, restored.getCurrentIteration());
+        assertEquals(10, restored.getMaxIterations());
+        assertEquals(60_000L, restored.getMaxDurationMs());
     }
 
     @Test
-    void goalTaskWithBlockedStateSerializationRoundTrip() {
-        LoopTask task = new LoopTask("test prompt", 0, null, LoopTask.TaskType.GOAL, true);
-        task.getGoalState().markBlocked();
+    void goalStateMapRoundTripShouldPreserveBlockedStatus() {
+        GoalState gs = new GoalState("test prompt", 0);
+        gs.markBlocked();
 
-        ONode node = task.toONode();
-        LoopTask restored = LoopTask.fromONode(node);
+        GoalState restored = GoalState.fromMap(gs.toMap());
 
-        assertEquals(GoalState.Status.BLOCKED, restored.getGoalState().getStatus());
-        assertTrue(restored.getGoalState().getStatus().isResumable());
+        assertEquals(GoalState.Status.BLOCKED, restored.getStatus());
+        assertTrue(restored.getStatus().isResumable());
     }
 }

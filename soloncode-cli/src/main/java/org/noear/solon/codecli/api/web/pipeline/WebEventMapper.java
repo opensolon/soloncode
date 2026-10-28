@@ -15,7 +15,7 @@ import org.noear.solon.ai.chat.event.ChatEventType;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.agent.TaskWrapEvent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
-import org.noear.solon.codecli.loop.GoalTalent;
+import org.noear.solon.codecli.goal.GoalTalent;
 import org.noear.solon.codecli.api.web.WebStreamBuilder;
 import org.noear.solon.codecli.artifact.ImageReplyTurn;
 import org.noear.solon.codecli.api.web.event.UiPatchEvent;
