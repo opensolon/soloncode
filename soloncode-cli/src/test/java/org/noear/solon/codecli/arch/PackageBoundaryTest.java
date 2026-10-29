@@ -26,125 +26,30 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * 架构边界护栏。
+ * 宿主侧架构边界护栏。
  *
- * <p>锁定本次重构的核心决策，防止耦合回流：
+ * <p>goal 域已整体下沉 harness（{@code org.noear.solon.ai.harness.session.goal}），
+ * 对应的域内护栏随之迁移到 harness 的 {@code GoalBoundaryTest}。此处只保留
+ * <b>宿主视角</b>的约束：
  * <ol>
- *   <li><b>goal 不依赖 loop</b>：{@code codecli.goal} 包下的源码不得 import
- *       {@code codecli.loop}。</li>
- *   <li><b>goal 只依赖 AgentSession 抽象</b>：{@code GoalEngine} 不得依赖
- *       {@code FileAgentSession} 等具体存储实现，以保证内存/数据库会话同构可用。</li>
+ *   <li>loop 包不得反向依赖 goal（loop 是纯定时任务体系）。</li>
+ *   <li>{@code codecli.goal} 包只允许残留历史数据迁移器，不得让领域实现回流宿主。</li>
  * </ol>
- *
- * <p>采用纯文本断言，不引入 ArchUnit 等额外依赖。</p>
  */
 class PackageBoundaryTest {
 
     private static final Path SRC = Paths.get("src/main/java/org/noear/solon/codecli");
 
-    @Test
-    void goalPackageMustNotImportLoopPackage() throws IOException {
-        List<Path> goalFiles = javaFiles(SRC.resolve("goal"));
-        assumeTrue(!goalFiles.isEmpty(), "goal 包源码不存在");
-
-        List<String> violations = new ArrayList<>();
-        for (Path file : goalFiles) {
-            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-            if (content.contains("import org.noear.solon.codecli.loop.")) {
-                violations.add(file.getFileName().toString() + " 引入了 loop 包");
-            }
-        }
-        assertTrue(violations.isEmpty(),
-                "goal 必须是独立能力，不得依赖 loop 定时任务体系：" + violations);
-    }
-
-    @Test
-    void goalEngineMustNotCoupleToConcreteSessionStorage() throws IOException {
-        Path engine = SRC.resolve("goal/GoalEngine.java");
-        assumeTrue(Files.exists(engine), "GoalEngine 源码不存在");
-
-        String content = new String(Files.readAllBytes(engine), StandardCharsets.UTF_8);
-        // 只允许依赖 AgentSession 抽象，禁止绑定具体实现（文件/内存）
-        assertTrue(!content.contains("FileAgentSession"),
-                "GoalEngine 不得依赖 FileAgentSession（应只依赖 AgentSession 接口）");
-        assertTrue(!content.contains("InMemoryAgentSession"),
-                "GoalEngine 不得依赖 InMemoryAgentSession（应只依赖 AgentSession 接口）");
-        assertTrue(!content.contains("Files.write"),
-                "GoalEngine 不得自行写盘（落盘由会话实现负责）");
-    }
-
-    @Test
-    void goalCommandMustNotDelegateToLoopCommand() throws IOException {
-        Path cmd = SRC.resolve("command/builtin/GoalCommand.java");
-        assumeTrue(Files.exists(cmd), "GoalCommand 源码不存在");
-
-        String content = new String(Files.readAllBytes(cmd), StandardCharsets.UTF_8);
-        assertTrue(!content.contains("LoopCommand"),
-                "/goal 必须是独立命令，不得委托 LoopCommand");
-        assertTrue(!content.contains("codecli.loop."),
-                "/goal 不得依赖 loop 包");
-    }
-
-    @Test
-    void goalStateMustNotUseGlobalStaticConfiguration() throws IOException {
-        Path gs = SRC.resolve("goal/GoalState.java");
-        assumeTrue(Files.exists(gs), "GoalState 源码不存在");
-
-        String content = new String(Files.readAllBytes(gs), StandardCharsets.UTF_8);
-        // 曾经的缺陷：static 预算阈值被多工作区互相覆盖
-        assertTrue(!content.contains("static volatile int budgetWarningPercent"),
-                "预算阈值必须是实例级，不得为全局静态（多工作区会互相覆盖）");
-        assertTrue(!content.contains("public static void configure"),
-                "不得再提供全局静态 configure 入口");
-    }
-
-    @Test
-    void goalPackageMustNotHoldSharedStaticState() throws IOException {
-        List<Path> goalFiles = javaFiles(SRC.resolve("goal"));
-        assumeTrue(!goalFiles.isEmpty(), "goal 包源码不存在");
-
-        List<String> violations = new ArrayList<>();
-        for (Path file : goalFiles) {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                String trimmed = line.trim();
-                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
-                    continue;
-                }
-                // 曾经的缺陷：验证器注册表是全局静态，多工作区互相污染
-                if (trimmed.contains("static") && trimmed.contains("List<") && !trimmed.contains("final long")) {
-                    violations.add(file.getFileName() + ": " + trimmed);
-                }
-            }
-        }
-        assertTrue(violations.isEmpty(),
-                "goal 不得持有全局静态注册表（每工作区须实例化）：" + violations);
-    }
-
-    @Test
-    void goalPackageMustNotReferenceLoopScheduler() throws IOException {
-        List<Path> goalFiles = javaFiles(SRC.resolve("goal"));
-        assumeTrue(!goalFiles.isEmpty(), "goal 包源码不存在");
-
-        List<String> violations = new ArrayList<>();
-        for (Path file : goalFiles) {
-            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-            if (content.contains("LoopScheduler")) {
-                violations.add(file.getFileName().toString() + " 引用了 LoopScheduler");
-            }
-        }
-        assertTrue(violations.isEmpty(),
-                "goal 不得持有 loop 的调度器（执行桥应来自组合根注入）：" + violations);
-    }
-
     /**
      * loop 包必须与 goal 彻底分离：除注释外不得出现 Goal 标识符。
      *
-     * <p>Goal 已是独立的会话级能力（{@code codecli.goal}），loop 只是定时任务。
-     * 二者唯一的交汇点是 {@code runtime.ExecutionBridge}（执行通道）。
+     * <p>Goal 已是独立的会话级能力（已下沉 harness），loop 只是定时任务。
+     * 二者唯一的交汇点是 {@code harness.runtime.ExecutionBridge}（执行通道）。
      * 允许的残留仅限：说明性注释中提及 Goal、以及拒绝 {@code type=GOAL}
      * 的入参校验（防止旧客户端把 goal 塞进定时任务表）。</p>
      */
@@ -180,11 +85,11 @@ class PackageBoundaryTest {
             }
         }
         assertTrue(violations.isEmpty(),
-                "loop 包不得再持有 goal 实现（应只剩代码外的注释）：" + violations);
+                "loop 包不得持有 goal 实现（应只剩代码外的注释）：" + violations);
     }
 
     /**
-     * loop 包不得 import goal 包任何类型。
+     * loop 包不得 import goal 包任何类型（无论旧包还是 harness 新包）。
      */
     @Test
     void loopPackageMustNotImportGoalPackage() throws IOException {
@@ -195,27 +100,38 @@ class PackageBoundaryTest {
         for (Path file : loopFiles) {
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
             if (content.contains("import org.noear.solon.codecli.goal.")) {
-                violations.add(file.getFileName().toString() + " 引入了 goal 包");
+                violations.add(file.getFileName().toString() + " 引入了旧 goal 包");
+            }
+            if (content.contains("import org.noear.solon.ai.harness.session.goal.")) {
+                violations.add(file.getFileName().toString() + " 引入了 goal 域");
             }
         }
         assertTrue(violations.isEmpty(),
                 "loop 必须是纯定时任务体系，不得依赖 goal：" + violations);
     }
 
-    /** 统计文件中 goal 相关标识出现次数（忽略 import 行的大小写差异）。 */
-    private static int couplingCount(String relative) throws IOException {
-        Path file = SRC.resolve(relative);
-        if (!Files.exists(file)) {
-            return 0;
+    /**
+     * 宿主侧 {@code codecli.goal} 包不得让领域实现回流。
+     *
+     * <p>goal 域下沉 harness 后，宿主只应保留「一次性历史数据迁移」这一
+     * 存储布局相关的私有知识（{@code GoalDataMigrator}）。若包内出现其它类，
+     * 说明有人在宿主重新实现了 goal 逻辑。</p>
+     */
+    @Test
+    void hostGoalPackageMayOnlyHoldLegacyMigrator() throws IOException {
+        List<Path> files = javaFiles(SRC.resolve("goal"));
+        if (files.isEmpty()) {
+            return; // 迁移器被彻底删除也是合法终态
         }
-        int count = 0;
-        for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-            String lower = line.toLowerCase();
-            if (lower.contains("goal") && !line.trim().startsWith("import")) {
-                count++;
-            }
+
+        List<String> names = new ArrayList<>();
+        for (Path file : files) {
+            names.add(file.getFileName().toString());
         }
-        return count;
+        assertEquals(1, names.size(),
+                "codecli.goal 只允许保留 GoalDataMigrator（goal 域应全部在 harness），实际：" + names);
+        assertEquals("GoalDataMigrator.java", names.get(0),
+                "codecli.goal 只允许保留 GoalDataMigrator（goal 域应全部在 harness），实际：" + names);
     }
 
     /**

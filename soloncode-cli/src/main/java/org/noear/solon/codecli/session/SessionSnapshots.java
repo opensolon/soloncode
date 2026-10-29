@@ -5,7 +5,7 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
-import org.noear.solon.codecli.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

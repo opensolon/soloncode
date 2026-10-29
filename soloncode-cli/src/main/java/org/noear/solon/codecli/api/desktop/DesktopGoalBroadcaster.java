@@ -18,8 +18,8 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.goal.GoalEngine;
-import org.noear.solon.codecli.goal.GoalState;
+import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.core.util.Assert;
 
 import java.util.Set;

@@ -49,6 +49,11 @@ public class ExitCommand implements Command {
     }
 
     @Override
+    public boolean cliOnly() {
+        return true;
+    }
+
+    @Override
     public boolean runnableWhenBusy() {
         return true;
     }

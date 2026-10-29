@@ -24,7 +24,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
-import org.noear.solon.codecli.goal.GoalTalent;
+import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.util.Assert;

@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 package org.noear.solon.codecli.loop;
-import org.noear.solon.codecli.goal.GoalState;
+import org.noear.solon.ai.harness.session.goal.GoalState;
 
 import org.junit.jupiter.api.Test;
 import org.noear.snack4.ONode;

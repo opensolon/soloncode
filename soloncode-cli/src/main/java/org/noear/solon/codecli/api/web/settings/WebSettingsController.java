@@ -17,7 +17,7 @@ package org.noear.solon.codecli.api.web.settings;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessExtension;
-import org.noear.solon.codecli.goal.GoalExtension;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;

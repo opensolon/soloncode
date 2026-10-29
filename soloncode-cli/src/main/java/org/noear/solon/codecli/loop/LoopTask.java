@@ -33,7 +33,7 @@ import java.util.UUID;
  * </ul>
  *
  * <p>本类只承载「按时间表触发的独立任务」。会话目标（Goal）已是独立的会话级能力，
- * 由 {@code codecli.goal} 包承载，二者不共享模型。</p>
+ * 由 {@code harness.session.goal} 包承载，二者不共享模型。</p>
  *
  * @author noear
  * @since 3.9.1

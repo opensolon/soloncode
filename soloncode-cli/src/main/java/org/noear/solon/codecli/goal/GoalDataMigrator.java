@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.goal;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,6 +1,9 @@
 
 ### vNEXT
 
+* 迁移 soloncode goal 域下沉 harness：GoalState/BudgetThresholds/GoalPromptBuilder/GoalEngine/GoalScheduler/GoalTalent/GoalExtension/validate/* 由 codecli.goal 迁至 org.noear.solon.ai.harness.session.goal（与 session/queue、session/steer 同级），执行桥三件（ErrorClassifier/ExecutionBridge/RoundResult）迁至 harness.runtime，/goal 命令迁至 harness.command.builtin；宿主 codecli.goal 仅保留 GoalDataMigrator（读 tasks.json + 直写 sessions/<id>/<id>.snapshot.json 属 codecli 私有存储知识）。harness 是被多端复用的库，goal 域不新增任何 HarnessEngine 入口，装配仍由宿主完成，HarnessEngine 本轮零改动
+* 加固 soloncode 架构护栏（随 goal 下沉重建）：原 PackageBoundaryTest 的 6 条 goal 断言依赖 src/main/java/.../codecli/goal 目录且带 assumeTrue，目录搬走后会静默跳过而非失败；现迁至 harness 的 GoalBoundaryTest，并把「goal 不得 import loop」强化为「goal 不得 import 宿主 codecli 包」，负向验证已确认会真实失败；codecli 侧新增「codecli.goal 只允许保留 GoalDataMigrator」正向锁定，防领域实现回流宿主
+
 * 清理 soloncode goal 与 loop 残余耦合：执行桥（ExecutionBridge）归属上提至组合根，由 WorkspaceManager 创建后同时注入 LoopScheduler 与 GoalEngine，删除 LoopScheduler.getBridge()（本类是桥的使用者而非拥有者，goal 的构造期不再依赖 loop 实例存活）；WorkspaceContext 新增 getExecutionBridge()，CliShell/WsGate/WorkspaceManager 六处注册点改为直接持有桥
 * 清理 soloncode 桌面端无价值类型耦合：AbstractDesktopController 删除零读取的 loopScheduler 字段与构造参数，四个子 Controller 与 Configurator 装配同步瘦身；WsGate 改收 ExecutionBridge（原先仅通过 LoopScheduler.getBridge() 取桥，是它持有 loop 的唯一理由），桌面 goal 链从此完全不接触 loop
 * 修复 soloncode goal 验证器跨工作区污染缺陷：ValidatorFactory 原为全局静态注册表且 register 只 append 不去重，而每个工作区创建时都会注册一次默认验证器，两个工作区后注册项累积为 4 条并分别携带各自 workspace 路径，goal 完成判定按 AND 语义遍历全部匹配项，导致在 A 工作区跑 goal 会连 B 工作区的 mvn test 一起跑、B 失败则 A 无法完成；现删除 ValidatorFactory，改为 GoalEngine 实例持有注册表（构造期按自身 workspace 注册 TestsPass/BuildPass 两个默认验证器），新增 resolveValidator(condition) 供 GoalTalent 调用，顺带去掉 GoalValidator.validate 中三个实现均未使用的 sessionId 参数

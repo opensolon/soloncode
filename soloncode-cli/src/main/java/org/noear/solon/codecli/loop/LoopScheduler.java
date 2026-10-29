@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 package org.noear.solon.codecli.loop;
-import org.noear.solon.codecli.runtime.ErrorClassifier;
-import org.noear.solon.codecli.runtime.ExecutionBridge;
-import org.noear.solon.codecli.runtime.RoundResult;
+import org.noear.solon.ai.harness.runtime.ErrorClassifier;
+import org.noear.solon.ai.harness.runtime.ExecutionBridge;
+import org.noear.solon.ai.harness.runtime.RoundResult;
 
 import org.noear.java_cron.CronUtils;
 import org.noear.snack4.Feature;
