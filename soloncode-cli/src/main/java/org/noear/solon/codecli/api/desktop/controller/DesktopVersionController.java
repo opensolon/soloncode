@@ -21,7 +21,6 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.handle.Result;
@@ -44,9 +43,8 @@ import java.util.Map;
 public class DesktopVersionController extends AbstractDesktopController {
     private static final Logger LOG = LoggerFactory.getLogger(DesktopVersionController.class);
 
-    public DesktopVersionController(HarnessEngine engine, LoopScheduler loopScheduler,
-                                    SessionManager sessionManager) {
-        super(engine, loopScheduler, sessionManager);
+    public DesktopVersionController(HarnessEngine engine, SessionManager sessionManager) {
+        super(engine, sessionManager);
     }
 
     /**

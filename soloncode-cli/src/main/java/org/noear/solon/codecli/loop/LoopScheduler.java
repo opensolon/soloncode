@@ -83,19 +83,19 @@ public class LoopScheduler {
     /** 全量加载标记：restore/restoreAll 幂等的依据。 */
     private volatile boolean loaded = false;
 
-    /** 执行桥（与 GoalEngine 共享同一实例，两引擎唯一交汇点）。 */
+    /**
+     * 执行桥（由组合根创建并注入，与 GoalEngine 共享同一实例）。
+     *
+     * <p>本类只是桥的使用者，不是拥有者：桥同时服务 loop 定时任务与 goal 轮次，
+     * 归属在两个引擎之外，因此不能在此 new 出来（否则 goal 的构造期会依赖本类存活）。</p>
+     */
     private final ExecutionBridge bridge;
 
-    public LoopScheduler(HarnessEngine engine, AgentSettings agentSettings) {
+    public LoopScheduler(HarnessEngine engine, AgentSettings agentSettings, ExecutionBridge bridge) {
         this.engine = engine;
         this.jobManager = JobManager.getInstance();
         this.loop = agentSettings.getLoop();
-        this.bridge = new ExecutionBridge(engine);
-    }
-
-    /** 获取共享执行桥（GoalEngine 通过它执行轮次；执行器/繁忙检测也在此注册）。 */
-    public ExecutionBridge getBridge() {
-        return bridge;
+        this.bridge = bridge;
     }
 
     // ==================== 任务注册 ====================

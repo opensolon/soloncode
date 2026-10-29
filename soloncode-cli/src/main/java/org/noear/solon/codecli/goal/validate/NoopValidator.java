@@ -18,7 +18,7 @@ public class NoopValidator implements GoalValidator {
     private static final Logger log = LoggerFactory.getLogger(NoopValidator.class);
 
     @Override
-    public ValidationResult validate(String condition, String sessionId) {
+    public ValidationResult validate(String condition) {
         log.warn("No validator matched for goal '{}', complete auto-approved", condition);
         return ValidationResult.passed();
     }

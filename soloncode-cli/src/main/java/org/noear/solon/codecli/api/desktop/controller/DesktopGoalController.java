@@ -26,7 +26,6 @@ import org.noear.solon.codecli.api.desktop.WsGate;
 import org.noear.solon.codecli.goal.GoalEngine;
 import org.noear.solon.codecli.goal.GoalScheduler;
 import org.noear.solon.codecli.goal.GoalState;
-import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -53,10 +52,10 @@ public class DesktopGoalController extends AbstractDesktopController {
     private final GoalEngine goalEngine;
     private final GoalScheduler goalScheduler;
 
-    public DesktopGoalController(HarnessEngine engine, WsGate wsGate, LoopScheduler loopScheduler,
+    public DesktopGoalController(HarnessEngine engine, WsGate wsGate,
                                  SessionManager sessionManager, GoalEngine goalEngine,
                                  GoalScheduler goalScheduler) {
-        super(engine, loopScheduler, sessionManager);
+        super(engine, sessionManager);
         this.wsGate = wsGate;
         this.goalEngine = goalEngine;
         this.goalScheduler = goalScheduler;

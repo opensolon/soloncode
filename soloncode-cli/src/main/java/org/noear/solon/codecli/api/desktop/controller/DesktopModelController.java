@@ -23,7 +23,6 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.model.discovery.ModelApiUrl;
 import org.noear.solon.codecli.model.discovery.ModelInfo;
@@ -58,9 +57,8 @@ public class DesktopModelController extends AbstractDesktopController {
     private final AgentSettings settings;
     private final ModelsAdapterManager modelsAdapterManager;
 
-    public DesktopModelController(HarnessEngine engine, AgentSettings settings, LoopScheduler loopScheduler,
-                                  SessionManager sessionManager) {
-        super(engine, loopScheduler, sessionManager);
+    public DesktopModelController(HarnessEngine engine, AgentSettings settings, SessionManager sessionManager) {
+        super(engine, sessionManager);
         this.settings = settings;
         this.modelsAdapterManager = ModelsAdapterManager.getInstance();
     }

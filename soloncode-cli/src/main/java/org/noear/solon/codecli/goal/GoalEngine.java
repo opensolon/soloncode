@@ -17,10 +17,13 @@ package org.noear.solon.codecli.goal;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.talents.cli.TodoTalent;
+import org.noear.solon.codecli.goal.validate.BuildPassValidator;
+import org.noear.solon.codecli.goal.validate.GoalValidator;
+import org.noear.solon.codecli.goal.validate.NoopValidator;
+import org.noear.solon.codecli.goal.validate.TestsPassValidator;
 import org.noear.solon.codecli.runtime.ErrorClassifier;
 import org.noear.solon.codecli.runtime.ExecutionBridge;
 import org.noear.solon.codecli.runtime.RoundResult;
-import org.noear.solon.core.util.RunUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,12 +63,7 @@ public class GoalEngine {
     /** 运行态防重入锁的 attrs key。 */
     private static final String ATTR_RUNNING = "session.goal.running";
 
-    /** 会话级 goal 轮次间隔（固定，goal 由状态驱动而非时间表驱动）。 */
-    private static final long ROUND_INTERVAL_MS = 5_000L;
-
-    /**
-     * Goal 生命周期观察者。桌面端用它把后台多轮执行持续推回同一个对话流。
-     */
+    /** Goal 生命周期观察者。桌面端用它把后台多轮执行持续推回同一个对话流。 */
     @FunctionalInterface
     public interface GoalListener {
         /**
@@ -77,28 +75,40 @@ public class GoalEngine {
     }
 
     private final ExecutionBridge bridge;
-    /** 会话解析器（由组合根注入：HarnessEngine::getSession）。 */
-    private volatile java.util.function.Function<String, AgentSession> sessionResolver;
     private final List<GoalListener> listeners = new CopyOnWriteArrayList<>();
     private final BudgetThresholds budgetThresholds;
     private final GoalPromptBuilder promptBuilder;
     private final int stagnationThreshold;
     private final int maxConsecutiveErrors;
     private final boolean validatorEnabled;
+    /**
+     * 验证器注册表（实例级，绑定本引擎所属工作区）。
+     *
+     * <p>曾为全局静态（ValidatorFactory），而每个工作区都会注册一次默认验证器，
+     * 导致注册项跨工作区累加：在 A 工作区跑 goal 会连 B 工作区的 mvn test 一起跑
+     * 并按 AND 语义阻断完成。改为实例持有后，注册项与工作区一一对应。</p>
+     */
+    private final List<ValidatorRegistration> validators = new CopyOnWriteArrayList<>();
 
     public GoalEngine(ExecutionBridge bridge, BudgetThresholds budgetThresholds,
                       int stagnationThreshold, int maxConsecutiveErrors, boolean validatorEnabled) {
+        this(bridge, budgetThresholds, stagnationThreshold, maxConsecutiveErrors, validatorEnabled, null);
+    }
+
+    /**
+     * @param workspace 验证器执行目录（null 时不注册默认验证器，验证恒通过）
+     */
+    public GoalEngine(ExecutionBridge bridge, BudgetThresholds budgetThresholds,
+                      int stagnationThreshold, int maxConsecutiveErrors, boolean validatorEnabled,
+                      String workspace) {
         this.bridge = bridge;
         this.budgetThresholds = budgetThresholds != null ? budgetThresholds : BudgetThresholds.defaults();
         this.stagnationThreshold = stagnationThreshold;
         this.maxConsecutiveErrors = maxConsecutiveErrors;
         this.validatorEnabled = validatorEnabled;
         this.promptBuilder = new GoalPromptBuilder(stagnationThreshold);
-    }
 
-    /** 注入会话解析器（组合根提供，避免 GoalEngine 依赖具体引擎装配）。 */
-    public void setSessionResolver(java.util.function.Function<String, AgentSession> resolver) {
-        this.sessionResolver = resolver;
+        registerDefaultValidators(workspace);
     }
 
     /** 注册生命周期观察者（桌面端流式回推用）。 */
@@ -125,14 +135,113 @@ public class GoalEngine {
         return Boolean.TRUE.equals(session.attrs().get(ATTR_RUNNING));
     }
 
-    /** 按 sessionId 解析会话（无解析器或失败返回 null）。 */
+    /** 按 sessionId 解析会话（委派执行桥，不另持 resolver；桥缺失或无会话时返回 null）。 */
     public AgentSession sessionOf(String sessionId) {
-        if (sessionId == null || sessionResolver == null) return null;
-        try {
-            return sessionResolver.apply(sessionId);
-        } catch (Throwable e) {
-            LOG.debug("resolve session '{}' failed: {}", sessionId, e.getMessage());
-            return null;
+        return bridge == null ? null : bridge.sessionOf(sessionId);
+    }
+
+    // ==================== 验证器（实例级注册表） ====================
+
+    /** 条件匹配器：返回 true 表示应应用该验证器。 */
+    @FunctionalInterface
+    public interface ConditionMatcher {
+        boolean matches(String conditionLowercase);
+    }
+
+    private static final class ValidatorRegistration {
+        final ConditionMatcher matcher;
+        final GoalValidator validator;
+
+        ValidatorRegistration(ConditionMatcher matcher, GoalValidator validator) {
+            this.matcher = matcher;
+            this.validator = validator;
+        }
+    }
+
+    /** 注册默认验证器（按本引擎绑定的工作区执行）。 */
+    private void registerDefaultValidators(String workspace) {
+        if (workspace == null || workspace.isEmpty()) {
+            return;
+        }
+
+        registerValidator(
+                condition -> condition.contains("test")
+                        || condition.contains("pass")
+                        || condition.contains("check")
+                        || condition.contains("ensure")
+                        || condition.contains("verify"),
+                new TestsPassValidator(workspace));
+
+        registerValidator(
+                condition -> condition.contains("build")
+                        || condition.contains("compile")
+                        || condition.contains("implement")
+                        || condition.contains("refactor")
+                        || condition.contains("fix")
+                        || condition.contains("create")
+                        || condition.contains("add")
+                        || condition.contains("write"),
+                new BuildPassValidator(workspace));
+    }
+
+    /** 注册一个带条件匹配的验证器（多次注册按 AND 语义链式生效）。 */
+    public void registerValidator(ConditionMatcher matcher, GoalValidator validator) {
+        if (matcher != null && validator != null) {
+            validators.add(new ValidatorRegistration(matcher, validator));
+        }
+    }
+
+    /** 当前已注册验证器数量（多工作区隔离回归用）。 */
+    public int validatorCount() {
+        return validators.size();
+    }
+
+    /**
+     * 按目标条件匹配验证器链（AND 语义；无匹配时返回 {@link NoopValidator}）。
+     */
+    public GoalValidator resolveValidator(String condition) {
+        if (condition == null || condition.isEmpty()) {
+            return new NoopValidator();
+        }
+
+        String lower = condition.toLowerCase(Locale.ROOT);
+        List<GoalValidator> matched = new java.util.ArrayList<>();
+        for (ValidatorRegistration reg : validators) {
+            try {
+                if (reg.matcher.matches(lower)) {
+                    matched.add(reg.validator);
+                }
+            } catch (Throwable e) {
+                LOG.debug("Validator matcher failed: {}", e.getMessage());
+            }
+        }
+
+        if (matched.isEmpty()) {
+            return new NoopValidator();
+        }
+        if (matched.size() == 1) {
+            return matched.get(0);
+        }
+        return new ChainValidator(matched);
+    }
+
+    /** 链式验证器 — 所有子验证器都通过才算通过。 */
+    private static final class ChainValidator implements GoalValidator {
+        private final List<GoalValidator> validators;
+
+        ChainValidator(List<GoalValidator> validators) {
+            this.validators = validators;
+        }
+
+        @Override
+        public ValidationResult validate(String condition) {
+            for (GoalValidator v : validators) {
+                ValidationResult vr = v.validate(condition);
+                if (!vr.isPassed()) {
+                    return vr;
+                }
+            }
+            return ValidationResult.passed();
         }
     }
 

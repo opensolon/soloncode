@@ -137,6 +137,21 @@ public class ExecutionBridge {
     }
 
     /**
+     * 按 sessionId 解析会话（供 goal 等引擎复用，避免各自持有一份 resolver）。
+     *
+     * @return 会话；引擎未就绪或解析失败时返回 null
+     */
+    public AgentSession sessionOf(String sessionId) {
+        if (sessionId == null || engine == null) return null;
+        try {
+            return engine.getSession(sessionId);
+        } catch (Throwable e) {
+            LOG.debug("resolve session '{}' failed: {}", sessionId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * 当前轮次的工具证据标记。
      *
      * @return null 表示当前入口未提供证据追踪；false/true 表示已启用追踪

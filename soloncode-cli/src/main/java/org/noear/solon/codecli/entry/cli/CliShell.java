@@ -46,6 +46,7 @@ import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.codecli.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.codecli.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
@@ -83,6 +84,8 @@ public class CliShell implements Runnable {
     private final HarnessEngine engine;
     private final AgentSettings agentProps;
     private final LoopScheduler loopScheduler;
+    /** 执行桥（loop 与 goal 共享；CLI 在此注册主线程执行器与繁忙检查器）。 */
+    private final ExecutionBridge executionBridge;
     private boolean cliQueueDraining;
 
     // ANSI 颜色常量
@@ -98,10 +101,12 @@ public class CliShell implements Runnable {
             RESET = "\033[0m";     // 重置所有样式和颜色（恢复终端默认）
 
 
-    public CliShell(HarnessEngine engine, AgentSettings agentProps, LoopScheduler loopScheduler) {
+    public CliShell(HarnessEngine engine, AgentSettings agentProps, LoopScheduler loopScheduler,
+                    ExecutionBridge executionBridge) {
         this.engine = engine;
         this.agentProps = agentProps;
         this.loopScheduler = loopScheduler;
+        this.executionBridge = executionBridge;
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -178,13 +183,16 @@ public class CliShell implements Runnable {
         AgentSession session = prepare(SESSION_ID_CLI);
 
 
+        // 恢复上次未过期的 loop 定时任务（如果有）
         if (loopScheduler != null) {
-            // 恢复上次未过期的 loop 定时任务（如果有）
             loopScheduler.restore(session.getSessionId());
+        }
 
+        // 执行桥注册：loop 定时任务与 goal 轮次共用同一桥（与 loopScheduler 是否存在无关）
+        if (executionBridge != null) {
             // 会话繁忙守卫：CLI 为单线程模型，仅当主线程在等待用户输入（reader.isReading）时才空闲。
-            // 若不在等待输入，说明 agent 任务正在执行，loop 触发应跳过本次。
-            loopScheduler.getBridge().addBusyChecker(sessionId -> {
+            // 若不在等待输入，说明 agent 任务正在执行，触发应跳过本次。
+            executionBridge.addBusyChecker(sessionId -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return false;
                 }
@@ -192,7 +200,7 @@ public class CliShell implements Runnable {
             });
 
             // 注入任务执行器：loop 定时任务触发时，由主线程执行 agent 任务
-            loopScheduler.getBridge().addTaskExecutor((sessionId, prompt, agentName) -> {
+            executionBridge.addTaskExecutor((sessionId, prompt, agentName) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return null;
                 }

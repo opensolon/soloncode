@@ -102,6 +102,44 @@ class PackageBoundaryTest {
                 "不得再提供全局静态 configure 入口");
     }
 
+    @Test
+    void goalPackageMustNotHoldSharedStaticState() throws IOException {
+        List<Path> goalFiles = javaFiles(SRC.resolve("goal"));
+        assumeTrue(!goalFiles.isEmpty(), "goal 包源码不存在");
+
+        List<String> violations = new ArrayList<>();
+        for (Path file : goalFiles) {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                // 曾经的缺陷：验证器注册表是全局静态，多工作区互相污染
+                if (trimmed.contains("static") && trimmed.contains("List<") && !trimmed.contains("final long")) {
+                    violations.add(file.getFileName() + ": " + trimmed);
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "goal 不得持有全局静态注册表（每工作区须实例化）：" + violations);
+    }
+
+    @Test
+    void goalPackageMustNotReferenceLoopScheduler() throws IOException {
+        List<Path> goalFiles = javaFiles(SRC.resolve("goal"));
+        assumeTrue(!goalFiles.isEmpty(), "goal 包源码不存在");
+
+        List<String> violations = new ArrayList<>();
+        for (Path file : goalFiles) {
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+            if (content.contains("LoopScheduler")) {
+                violations.add(file.getFileName().toString() + " 引用了 LoopScheduler");
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "goal 不得持有 loop 的调度器（执行桥应来自组合根注入）：" + violations);
+    }
+
     /**
      * loop 包必须与 goal 彻底分离：除注释外不得出现 Goal 标识符。
      *

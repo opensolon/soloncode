@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 package org.noear.solon.codecli.goal;
-import org.noear.solon.codecli.goal.GoalState;
 
 /**
  * Goal 提示词构建器 — 只依赖 {@link GoalState}，与 loop 定时任务体系无关。

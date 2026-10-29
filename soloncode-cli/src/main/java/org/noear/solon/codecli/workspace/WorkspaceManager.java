@@ -23,7 +23,7 @@ import org.noear.solon.codecli.goal.GoalEngine;
 import org.noear.solon.codecli.goal.GoalExtension;
 import org.noear.solon.codecli.goal.GoalScheduler;
 import org.noear.solon.codecli.config.entity.GoalGroupDo;
-import org.noear.solon.codecli.goal.validate.ValidatorFactory;
+import org.noear.solon.codecli.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.ManagerExtension;
@@ -810,8 +810,11 @@ public class WorkspaceManager implements WorkspaceRegistry {
 
         RunUtil.async(() -> addServers(engine, wsSettings));
 
+        // 执行桥：同时服务 loop 定时任务与 goal 轮次，归属在两个引擎之外（组合根创建）
+        ExecutionBridge executionBridge = new ExecutionBridge(engine);
+
         // loop scheduler（纯定时任务）
-        LoopScheduler loopScheduler = new LoopScheduler(engine, wsSettings);
+        LoopScheduler loopScheduler = new LoopScheduler(engine, wsSettings, executionBridge);
 
         // 一次性迁移：tasks.json 的历史 GOAL 条目 → 各会话快照 session.goal。
         // 必须在任何会话实例化之前执行（迁移直接读写快照文件，绕过会话锁）。
@@ -819,23 +822,20 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json"),
                 WorkspaceDataUtil.sessionsPath(workspacePath));
 
-        // 初始化 Goal 验证器
-        ValidatorFactory.initDefaults(workspacePath);
-
         // Goal 引擎（会话级能力，与 loop 共享执行桥）
         GoalGroupDo goalCfg = wsSettings.getGoal();
         GoalEngine goalEngine = new GoalEngine(
-                loopScheduler.getBridge(),
+                executionBridge,
                 new BudgetThresholds(
                         goalCfg.getBudgetWarningPercentOrDefault(),
                         goalCfg.getBudgetCriticalPercentOrDefault()),
                 goalCfg.getStagnationThresholdOrDefault(),
                 goalCfg.getMaxConsecutiveErrorsOrDefault(),
-                goalCfg.isValidatorEnabledOrDefault());
+                goalCfg.isValidatorEnabledOrDefault(),
+                workspacePath);
 
         // Goal 调度（会话级 job，与 loop 各自装配；job 名带工作区前缀防跨工作区撞名）
         GoalScheduler goalScheduler = new GoalScheduler(goalEngine, meta.getId());
-        goalEngine.setSessionResolver(engine::getSession);
 
         // Goal 模式
         boolean goalsEnabled = wsSettings.getGeneral().isGoalsEnabled();
@@ -860,7 +860,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 为本工作区的 LoopScheduler 就地注册 web 端执行器与忙碌检查。
         // 注意：此处不能捕获 runtimePort 字段快照——默认工作区在入口绑定之前创建，
         // 快照为 null 会导致注册被跳过；改为 lambda 内动态取值，注入完成后自然生效。
-        registerWebLoopExecutor(engine, meta.getId(), loopScheduler);
+        registerWebLoopExecutor(engine, meta.getId(), loopScheduler, executionBridge);
 
         // FileWatchService（自建轮询/初始化线程，需显式带上工作区日志归属）
         FileWatchService fileWatchService = new FileWatchService().logWorkspacePath(workspacePath);
@@ -923,7 +923,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 此处仅拉起 scheduler 的加载（含旧版三路数据迁移）。
         automationManager.restore();
         WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, automationManager, this, wsSettings);
-        context.attachGoal(goalEngine, goalScheduler);
+        context.attachGoal(goalEngine, goalScheduler, executionBridge);
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
         // Link.run() 只做一次幂等委托（gateway.startXxx 按连接维度去重），重复调用安全。
@@ -946,18 +946,20 @@ public class WorkspaceManager implements WorkspaceRegistry {
     }
 
     /**
-     * 为指定工作区的 LoopScheduler 注册 web 端任务执行器与忙碌检查器。
+     * 为本工作区的执行桥注册 web 端任务执行器与忙碌检查器。
      *
-     * <p>每个工作区拥有独立的 LoopScheduler 与入口运行时，执行器必须动态绑定当前工作区
-     * 的运行时端口，以保证定时触发的 AI 响应推送到本工作区的连接池，而非默认工作区。</p>
+     * <p>每个工作区拥有独立的执行桥与入口运行时，执行器必须动态绑定当前工作区
+     * 的运行时端口，以保证定时触发（loop）与 goal 轮次的 AI 响应推送到本工作区的连接池，
+     * 而非默认工作区。</p>
      */
-    private void registerWebLoopExecutor(HarnessEngine engine, String workspaceId, LoopScheduler loopScheduler) {
-        if (loopScheduler == null) {
+    private void registerWebLoopExecutor(HarnessEngine engine, String workspaceId,
+                                         LoopScheduler loopScheduler, ExecutionBridge bridge) {
+        if (loopScheduler == null || bridge == null) {
             return;
         }
 
         // 会话繁忙守卫：session 正在执行任务时，loop 定时触发跳过本次执行
-        loopScheduler.getBridge().addBusyChecker(sessionId -> {
+        bridge.addBusyChecker(sessionId -> {
             if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
                 return false;
             }
@@ -965,7 +967,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
             return runtime != null && runtime.isSessionBusy(engine, sessionId);
         });
 
-        loopScheduler.getBridge().addTaskExecutor((sessionId, prompt, agentName) -> {
+        bridge.addTaskExecutor((sessionId, prompt, agentName) -> {
             if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
                 return null;
             }

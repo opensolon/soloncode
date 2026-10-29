@@ -1,6 +1,13 @@
 
 ### vNEXT
 
+* 清理 soloncode goal 与 loop 残余耦合：执行桥（ExecutionBridge）归属上提至组合根，由 WorkspaceManager 创建后同时注入 LoopScheduler 与 GoalEngine，删除 LoopScheduler.getBridge()（本类是桥的使用者而非拥有者，goal 的构造期不再依赖 loop 实例存活）；WorkspaceContext 新增 getExecutionBridge()，CliShell/WsGate/WorkspaceManager 六处注册点改为直接持有桥
+* 清理 soloncode 桌面端无价值类型耦合：AbstractDesktopController 删除零读取的 loopScheduler 字段与构造参数，四个子 Controller 与 Configurator 装配同步瘦身；WsGate 改收 ExecutionBridge（原先仅通过 LoopScheduler.getBridge() 取桥，是它持有 loop 的唯一理由），桌面 goal 链从此完全不接触 loop
+* 修复 soloncode goal 验证器跨工作区污染缺陷：ValidatorFactory 原为全局静态注册表且 register 只 append 不去重，而每个工作区创建时都会注册一次默认验证器，两个工作区后注册项累积为 4 条并分别携带各自 workspace 路径，goal 完成判定按 AND 语义遍历全部匹配项，导致在 A 工作区跑 goal 会连 B 工作区的 mvn test 一起跑、B 失败则 A 无法完成；现删除 ValidatorFactory，改为 GoalEngine 实例持有注册表（构造期按自身 workspace 注册 TestsPass/BuildPass 两个默认验证器），新增 resolveValidator(condition) 供 GoalTalent 调用，顺带去掉 GoalValidator.validate 中三个实现均未使用的 sessionId 参数
+* 修复 soloncode GoalEngine 会话解析的半初始化隐患：删除 volatile sessionResolver 字段与 setSessionResolver 注入点（漏调用时静默返回 null），改为委托 ExecutionBridge.sessionOf()（桥本就持有 HarnessEngine）
+* 清理 soloncode goal 包三处重构残留：GoalEngine 死常量 ROUND_INTERVAL_MS 与死 import RunUtil、GoalPromptBuilder 的自包 import
+* 加固 soloncode 架构护栏：PackageBoundaryTest 新增「goal 包不得持有 static List 注册表」（锁定验证器实例化）与「goal 包不得引用 LoopScheduler」（锁定执行桥归属）两条断言；新增 GoalValidatorIsolationTest 四例覆盖多工作区注册隔离、验证器只绑定自身工作区、无工作区不注册、无匹配回退 Noop
+
 * 修复 soloncode 启动失败：挂载发现阶段遇到 Windows 目录符号链接（junction / 目录重解析点，NIO 不识别为 SymbolicLink，walkFileTree 会进入其子树）时报 `Symbolic link escapes mount root` 并抛 SecurityException，一路冒泡到 WorkspaceManager 导致默认工作区初始化失败、web 无法启动；现改为发现阶段尽力而为——find 中对越界目录返回 SKIP_SUBTREE、单条目异常（越界/无权限/瞬时消失）与 visitFileFailed 仅跳过、技能与子代理目录扫描对单个来源/单个条目异常只记日志，工作区注册挂载统一走 addMountSafely 兜底，任一挂载点异常都不再阻断启动
 * 添加 soloncode 挂载点跟随外部链接能力：本地目录上的符号链接/Junction 视为普通目录（典型场景：C 盘空间紧张，把技能/子代理目录整体放到 D/E 盘再 Junction 链回），启动路径的全部默认挂载、mountPools 配置项、设置界面添加挂载、设置跨工作区同步重放、`--add-dir` 额外目录统一开启；FileMountSource 新增 followExternalLinks 开关（库默认仍为 false，不改变既有安全语义），同时修正 MountManager.checkedLocalPath 不识别该开关导致「发现可列出、显式访问 @alias/path 却拒绝」的不一致；跟随模式下 find 不再解析挂载根真实路径（省一次 toRealPath，且避免根不可解析时整次扫描被跳过）；`..` 与绝对路径的语法级越界拒绝保持不变
 * 修复 soloncode web 文件面板与挂载层链接策略不一致：树构建、关键词搜索、文本读取、原始二进制读取、写回、“打开文件夹”等仅按“最后一段是否为符号链接”一律 403/跳过的判定，现统一改为遵循所在挂载来源的 followExternalLinks（FileService.shouldFollowExternalLinks 解析来源策略，默认工作区按挂载侧同口径跟随），消除“文件树里能看见、点开却读不到”的半开半闭状态；严格来源仍完整保留原有拦截，链接目录也不得被当作树展开根（防止绕开列表过滤直读根外内容）；跟随模式下写回先解析到链接目标再原子写，避免把链接本体替换成普通文件

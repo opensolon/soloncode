@@ -35,7 +35,7 @@ public class BuildPassValidator implements GoalValidator {
     }
 
     @Override
-    public ValidationResult validate(String condition, String sessionId) {
+    public ValidationResult validate(String condition) {
         if (workspace == null || workspace.isEmpty()) {
             return ValidationResult.passed(); // 无工作区信息时不阻塞
         }

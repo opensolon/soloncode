@@ -34,7 +34,7 @@ public class TestsPassValidator implements GoalValidator {
     }
 
     @Override
-    public ValidationResult validate(String condition, String sessionId) {
+    public ValidationResult validate(String condition) {
         if (workspace == null || workspace.isEmpty()) {
             return ValidationResult.failed("工作区路径为空，无法运行测试");
         }

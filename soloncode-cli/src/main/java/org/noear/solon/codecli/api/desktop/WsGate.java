@@ -31,7 +31,7 @@ import org.noear.solon.codecli.goal.GoalEngine;
 import org.noear.solon.codecli.goal.GoalScheduler;
 import org.noear.solon.codecli.goal.GoalState;
 import org.noear.solon.codecli.goal.GoalTalent;
-import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.codecli.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -82,7 +82,8 @@ public class WsGate extends SimpleWebSocketListener {
 
     final HarnessEngine engine;
     final AgentSettings agentSettings;
-    final LoopScheduler loopScheduler;
+    /** 执行桥（loop 与 goal 共享；桌面端只在此注册执行器与繁忙检查器，不持有 LoopScheduler）。 */
+    final ExecutionBridge executionBridge;
     final GoalEngine goalEngine;
     final GoalScheduler goalScheduler;
     final DesktopStreamHub streamHub = new DesktopStreamHub();
@@ -92,11 +93,11 @@ public class WsGate extends SimpleWebSocketListener {
     private final DesktopConfigHandler configHandler;
     private final DesktopInputRouter inputRouter;
 
-    public WsGate(HarnessEngine engine, AgentSettings agentSettings, LoopScheduler loopScheduler,
+    public WsGate(HarnessEngine engine, AgentSettings agentSettings, ExecutionBridge executionBridge,
                   GoalEngine goalEngine, GoalScheduler goalScheduler) {
         this.engine = engine;
         this.agentSettings = agentSettings;
-        this.loopScheduler = loopScheduler;
+        this.executionBridge = executionBridge;
         this.goalEngine = goalEngine;
         this.goalScheduler = goalScheduler;
         this.goalBroadcaster = new DesktopGoalBroadcaster(engine, goalEngine, streamHub);
@@ -108,14 +109,14 @@ public class WsGate extends SimpleWebSocketListener {
         if (goalEngine != null) {
             // 桌面端 Goal 轮次经共享执行桥回推：注册一次，两个引擎共用
             goalEngine.addListener(goalBroadcaster::onGoalChanged);
-            if (loopScheduler != null) {
-                loopScheduler.getBridge().addTaskExecutor((sessionId, prompt, agentName) -> {
+            if (executionBridge != null) {
+                executionBridge.addTaskExecutor((sessionId, prompt, agentName) -> {
                     if (!sessionId.matches("[0-9]{1,18}")) {
                         return null;
                     }
                     return runGoalRoundAndCapture(sessionId, prompt, agentName);
                 });
-                loopScheduler.getBridge().addBusyChecker(sessionId ->
+                executionBridge.addBusyChecker(sessionId ->
                         sessionId.matches("[0-9]{1,18}") && isSessionBusy(sessionId));
             }
         }
@@ -287,7 +288,7 @@ public class WsGate extends SimpleWebSocketListener {
         return input.append(objective).toString();
     }
 
-    /** LoopScheduler 的桌面 Goal 执行入口：同步等待一轮结束并返回权威最终答复。 */
+    /** 共享执行桥的桌面 Goal 执行入口：同步等待一轮结束并返回权威最终答复。 */
     public String runGoalRoundAndCapture(String sessionId, String input, String agentName) {
         AgentSession session;
         try {

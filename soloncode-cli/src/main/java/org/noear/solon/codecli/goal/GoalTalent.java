@@ -26,7 +26,6 @@ import org.noear.solon.ai.chat.talent.AbsTalent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.goal.validate.GoalValidator;
-import org.noear.solon.codecli.goal.validate.ValidatorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -120,7 +119,7 @@ public class GoalTalent extends AbsTalent {
     /**
      * 更新 goal 状态
      *
-     * <p>complete: 通过 ValidatorFactory 执行客观校验后标记完成。
+     * <p>complete: 通过实例级验证器执行客观校验后标记完成。
      * blocked: 模型主动声明阻塞（同一困境尝试了 3 次后），暂停调度等待 resume。
      */
     @ToolMapping(name = "goal_update",
@@ -174,8 +173,8 @@ public class GoalTalent extends AbsTalent {
             }
 
             if (goalEngine.isValidatorEnabled()) {
-                GoalValidator validator = ValidatorFactory.forCondition(gs.getCondition());
-                GoalValidator.ValidationResult vr = validator.validate(gs.getCondition(), __sessionId);
+                GoalValidator validator = goalEngine.resolveValidator(gs.getCondition());
+                GoalValidator.ValidationResult vr = validator.validate(gs.getCondition());
                 if (!vr.isPassed()) {
                     log.warn("updateGoal: 验证失败 for goal '{}': {}", gs.getId(), vr.detail());
                     return errJson("VALIDATION_FAILED",
