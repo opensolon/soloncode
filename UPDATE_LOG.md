@@ -1,6 +1,21 @@
 
 ### vNEXT
 
+* `CliShell` 输入链路收敛与三处行为回归修复（对照 `1f8a9b52` 逐条核对）：
+  * **队列消费归属收敛（修复回归）**：改造后 `safeChatInput` → `runMessageInput` → `dispatchOutcome` 的 TASK 分支也执行 `drainCliQueue`，而改造前 `safeChatInput → performAgentTask` 不排水。loop 执行器运行在调度线程（`LoopScheduler` 同步回调 `ExecutionBridge.execute`），此时主线程仍阻塞于 `readLine`，会让队列项在调度线程上执行并与主线程争用同一 JLine reader。现 `dispatchOutcome` 增加 `allowDrain`：仅用户手输 / 单次调用为 true，队列项与 loop 注入为 false；主循环回到提示符前统一消费积压（`while` 顶部），主线程被 `terminal.raise(INT)` 唤醒后即排水，积压不会滞留
+  * **HITL 审批空结果补可见提示**：`handleHitlRound` 返回 null（无挂起任务 / 续流未生成请求）原为静默 `continue`，随后因无请求直接返回，用户从“等待审批”无交代地回到提示符。现补一行 DIM 提示并显式收尾
+  * **等待符 `... ` 消除竞态**：原判据 `!isFirstRound && !isTaskCompleted.get()` 依赖 `doFinally`（`boundedElastic`）与 `waitForTask` 抢跑 `countDown` 的先后，同一动作有时显示有时不显示。`isTaskCompleted` 实为“流是否终结”的异步镜像，而 `waitForTask` 返回后该信息已无用，故删除该标志与等待符打印（与改造前实际观感一致：老代码因 `isTaskCompleted` 不再复位而从不打印），收尾改为“未中断且无挂起审批即返回”
+  * **结构整理**：`handleInput(session, input)` / `handleInput(..., 4参)` / `runMessageInput` 三个方法合并为 `handleInput(session, input)`（用户手输，识别命令、带终端能力、排水）与 `handleMessageInput(session, text, model)`（队列项 / loop 注入，不识别命令、不排水、不装配 terminal/factory）。`runMessageInput` 更名为 `handleMessageInput`
+  * 注释订正：`addTaskExecutor` 处“由主线程执行 agent 任务”改为“在调度线程执行，主线程此刻仍阻塞于 readLine，两者共用同一 reader”；`handleHitlRound` 残留决策处“如 Web 端预置”改为“上一轮决策残留（CLI 会话 ID 固定为 cli，不与 Web/IM 共用）”
+  * 验证：`soloncode-cli` 全量 1204 例 3 失败，其中 `ImageReplyLifecycleTest.abnormalRunEnd…`、`AgentSettingsControllerTest.builtinStillReadable…` 为既有基线；`SkillhubMarketTest.testInstallRealSlug` 为联网类（依赖 slug 缓存，离线环境 surefire 记 0 例执行）
+
+* 跟进 `solon-ai-harness` 的 `HITLAction` 枚举化（决策动作 String → 枚举，转换点在宿主侧）：
+  * `CliShell.handleHitlRound`：y/n 交互与外部预置决策（`HITLDecision`）均改写 `HITLAction.APPROVE/REJECT`；**顺带修复预置决策 bug**——原 `existing.isRejected() ? "reject" : "approve"` 漏了 `isSkipped()`，外部预置的 skip 会被升格为 approve 重新提交覆盖原决策，现改三态透传
+  * `WebChatInputHandler`：`.hitl(HITLAction.of(hitlAction), hitlCallId)`——协议字符串在交给引擎前解析，脏值由既有 try-catch 显式报错（此前会静默按拒绝执行）
+  * `DesktopInputRouter.handleHitlAction`：同模式 `.hitl(HITLAction.of(action), callId)`，脏值异常由既有 catch 回 socket 错误
+  * 协议层签名（`WorkspaceRuntimePort.onChatInput` / `WebGate`）保持 String 不动：解析点统一在交给引擎前的最后一站，每端一个转换点
+  * 验证：`soloncode-cli` 全量 1204 例 2 失败与基线完全相同（`ImageReplyLifecycleTest`、`AgentSettingsControllerTest`）
+
 * 跟进 `solon-ai-harness` 的 `HarnessInput` 命名收敛（四端同步，仅调用处改名，无行为变更）：
   * `.model(x)` → `.selectedModel(x)`、`.agent(x)` → `.selectedAgent(x)`、`.mentionAware(b)` → `.agentAware(b)`：涉及 `CliShell`、`PrintMode`、`AcpLink`、`GitService`、`WebChatInputHandler`、`WsGate`、`DesktopInputRouter`
   * `engine.handle(input, factory)` 两参形式取消，改为 `HarnessInput.commandContextFactory(x)` + `handle(input)`：CLI 的 `cliCommandFactory()`、Web 的 `webCommandFactory()`、桌面的 `desktopCommandFactory()` 三处从第二参搬进链式调用；`WsGate.runGoalRoundAndCapture` 删掉尾部 `, null`

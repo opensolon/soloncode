@@ -20,6 +20,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
+import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.message.AssistantMessage;
@@ -170,7 +171,7 @@ class WebChatInputHandler {
                 wsContext.getEngine().handle(
                         HarnessInput.of(session, null)
                                 .selectedAgent(selectedAgent)
-                                .hitl(hitlAction, hitlCallId));
+                                .hitl(HITLAction.of(hitlAction), hitlCallId)); // 协议字符串在边界解析，脏值这里报错而非静默当拒绝
 
                 // 恢复时机：批量场景下前端逐卡点击会发多次决策，
                 // 仅当本批所有挂起任务都已有决策时才恢复流，否则只写决策不 resume。

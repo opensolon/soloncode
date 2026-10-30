@@ -20,6 +20,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
+import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.AssistantMessage;
@@ -401,7 +402,8 @@ final class DesktopInputRouter {
             }
 
             // 决策应用统一交给引擎（input 唯一入口）：命中任务判定与「批准/拒绝并改写工具返回」都在引擎内完成。
-            engine.handle(HarnessInput.of(session, null).hitl(action, callId).hitlOutput(output));
+            // 协议字符串在边界解析为枚举（脏值抛 IllegalArgumentException，落入下方 catch 回错误，不再静默当拒绝）
+            engine.handle(HarnessInput.of(session, null).hitl(HITLAction.of(action), callId).hitlOutput(output));
 
             // 审批后恢复流执行：续流统一走 input 入口（resume 语义），
             // 请求主体（session/模型/挂起 trace 回落）由引擎装配。
