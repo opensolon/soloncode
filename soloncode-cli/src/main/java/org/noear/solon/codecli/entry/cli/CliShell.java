@@ -335,7 +335,9 @@ public class CliShell implements Runnable {
                 }
                 return null;
             case HITL:
-                // 仅当宿主只写决策不续流时出现；CLI 单卡审批走 .hitl().resume(true)，得到 TASK
+                // 决策已受理但未续流（两种情形：未传 resume；批内仍有未决卡；决策未命中挂起任务）
+                // CLI 正常审批路径不经此处：handleHitlRound 逐张提问直到拿到 TASK（见该方法）
+                // 仅当残留快照全已决策却拿不到请求时才会到这里，此时无可展示的卡，直接收尾
                 return null;
             case IGNORED:
             default:
@@ -514,50 +516,99 @@ public class CliShell implements Runnable {
     }
 
     /**
-     * 处理一轮 HITL 审批：读决策 → 交引擎写入 → 同一次调用完成续流装配
+     * 处理一轮 HITL 审批：读决策 → 交引擎写入 → 需要时逐卡继续
      * <p>
      * 决策与续流合并为一次 {@code handle}（{@code .hitl(...).resume(true)}）：
      * 既走唯一入口（不绕过 {@link HarnessEngine#handle}），又能享受引擎的
      * callId 精确定位与工具返回改写（{@code hitlOutput}）。
+     * <p>
+     * 批挂起（多个敏感工具同一批）时引擎不会在未齐备时续流，而是返回
+     * {@link InputOutcome.Kind#HITL} + 剩余未决数，故此处循环逐张提问，
+     * 直到本批齐备拿到可执行的续流请求。
      *
-     * @return 下一轮要执行的处置结果（必有请求）；决策不可用时返回 null
+     * @return 下一轮要执行的处置结果（必有请求）；无卡可问或决策失效时返回 null
      */
     private InputOutcome handleHitlRound(AgentSession session, String agentName, String modelName) throws Exception {
-        HITLTask task = HITL.getPendingTask(session);
+        while (true) {
+            HITLTask task = nextHitlTask(session);
 
-        if (task == null) {
-            return null;
-        }
-
-        // 上一轮决策仍有残留（CLI 会话 ID 固定为 cli，不会与 Web/IM 会话共用）：不再提问，按原决策的三态透传（skip 不能升格为 approve）
-        HITLDecision existing = HITL.getDecision(session, task);
-        HITLAction action;
-
-        if (existing != null) {
-            action = existing.isRejected() ? HITLAction.REJECT
-                    : existing.isSkipped() ? HITLAction.SKIP : HITLAction.APPROVE;
-        } else {
-            terminal.writer().println("\n" + BOLD + YELLOW + "Permission Required" + RESET);
-            if ("bash".equals(task.getToolName())) {
-                terminal.writer().println(DIM + "Command: " + RESET + task.getArgs().get("command"));
+            if (task == null) {
+                return null;
             }
 
-            String choice = reader.readLine(BOLD + GREEN + "Approve? (y/n) " + RESET).trim().toLowerCase();
-            action = ("y".equals(choice) || "yes".equals(choice)) ? HITLAction.APPROVE : HITLAction.REJECT;
+            // 上一轮决策仍有残留（CLI 会话 ID 固定为 cli，不会与 Web/IM 会话共用）：不再提问，按原决策的三态透传（skip 不能升格为 approve）
+            HITLDecision existing = HITL.getDecision(session, task);
+            HITLAction action;
 
-            if (action == HITLAction.REJECT) {
-                terminal.writer().println(DIM + "Action rejected." + RESET);
+            if (existing != null) {
+                action = existing.isRejected() ? HITLAction.REJECT
+                        : existing.isSkipped() ? HITLAction.SKIP : HITLAction.APPROVE;
+            } else {
+                terminal.writer().println("\n" + BOLD + YELLOW + "Permission Required" + RESET);
+                if ("bash".equals(task.getToolName())) {
+                    terminal.writer().println(DIM + "Command: " + RESET + task.getArgs().get("command"));
+                }
+
+                String line;
+
+                try {
+                    line = reader.readLine(BOLD + GREEN + "Approve? (y/n) " + RESET);
+                } catch (EndOfFileException e) {
+                    return null;
+                }
+
+                //EOF / 流关闭时 readLine 可能返回 null：不写决策直接退出，交由上层提示（不能 NPE）
+                if (line == null) {
+                    return null;
+                }
+
+                String choice = line.trim().toLowerCase();
+                action = ("y".equals(choice) || "yes".equals(choice)) ? HITLAction.APPROVE : HITLAction.REJECT;
+
+                if (action == HITLAction.REJECT) {
+                    terminal.writer().println(DIM + "Action rejected." + RESET);
+                }
+            }
+
+            // 按 callUuid 指定目标：避免并行挂起同名工具时误命中其它任务
+            InputOutcome outcome = engine.handle(HarnessInput.of(session, null)
+                    .hitl(action, task.getCallUuid())
+                    .resume(true)
+                    .selectedModel(modelName)
+                    .selectedAgent(agentName));
+
+            if (outcome.getKind() == InputOutcome.Kind.TASK) {
+                return outcome;
+            }
+
+            if (outcome.isHitlApplied() == Boolean.FALSE) {
+                //决策未命中挂起任务（理论上不会，task 刚查出来）：不续流，交给上层提示
+                return null;
+            }
+
+            //本批仍有未决卡：继续问下一张（与迁移前「拦截器再次挂起」的观察结果一致）
+        }
+    }
+
+    /**
+     * 取下一张待审批的卡（批挂起时可能有多个）
+     *
+     * <p>优先返回首个未决策项：批挂起时逐张提问，避免重复推同一张卡。
+     * 若本批全部已有决策（上一轮写入后续流中断，残留未清），回退到批中第一项，
+     * 让决策按原样三态透传给引擎续流——不能返回 null，否则残留决策永远等不到续流。</p>
+     *
+     * @return 待处理任务；无挂起时返回 null
+     */
+    private HITLTask nextHitlTask(AgentSession session) {
+        List<HITLTask> pending = HITL.getPendingTasks(session);
+
+        for (HITLTask task : pending) {
+            if (HITL.getDecision(session, task) == null) {
+                return task;
             }
         }
 
-        // 按 callUuid 指定目标：避免并行挂起同名工具时误命中其它任务
-        InputOutcome outcome = engine.handle(HarnessInput.of(session, null)
-                .hitl(action, task.getCallUuid())
-                .resume(true)
-                .selectedModel(modelName)
-                .selectedAgent(agentName));
-
-        return outcome.hasRequest() ? outcome : null;
+        return pending.isEmpty() ? null : pending.get(0);
     }
 
     private StringBuilder getTraceInfo(ReActTrace trace) {

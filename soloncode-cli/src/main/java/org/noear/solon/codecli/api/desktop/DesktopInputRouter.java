@@ -19,7 +19,6 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatModel;
@@ -390,41 +389,49 @@ final class DesktopInputRouter {
 
             AgentSession session = engine.getSession(sessionId);
 
-            // 命中任务判定必须在 handle 之前：handle 对无挂起的审批同样返回 HITL（决策写入是空操作），
-            // 若只看 kind，过期审批卡（任务已结束）会继续走 resume，把上一轮问题原样重跑。
-            // 与迁移前「task == null → 报错返回」的行为保持一致。
-            HITLTask pendingTask = Assert.isNotEmpty(callId)
-                    ? HITL.getPendingTaskByCallUuid(session, callId)
-                    : HITL.getPendingTask(session);
-            if (pendingTask == null) {
-                socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
-                return;
-            }
-
-            // 决策应用统一交给引擎（input 唯一入口）：命中任务判定与「批准/拒绝并改写工具返回」都在引擎内完成。
-            // 协议字符串在边界解析为枚举（脏值抛 IllegalArgumentException，落入下方 catch 回错误，不再静默当拒绝）
-            engine.handle(HarnessInput.of(session, null).hitl(HITLAction.of(action), callId).hitlOutput(output));
-
-            // 审批后恢复流执行：续流统一走 input 入口（resume 语义），
-            // 请求主体（session/模型/挂起 trace 回落）由引擎装配。
+            // 一次调用完成「写决策 + 必要时的续流装配」，宿主只 switch kind：
+            //   TASK —— 决策已写入且本批已齐备，直接执行续流；
+            //   HITL —— 未续流：过期审批卡（isHitlApplied()==false，与迁移前「task == null → 报错」同口径）
+            //            或本批尚有未决卡（推下一张卡，保持迁移前逐卡交互的观察结果）。
             String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrDefInstance(modelName);
             String selectedAgentName = (String) session.attrs().get(WsGate.SESSION_ATTR_SELECTED_AGENT);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
             String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
-            InputOutcome resumeOutcome = engine.handle(HarnessInput.of(session, null)
+            // 决策应用与续流判定统一交给引擎（input 唯一入口）；
+            // 协议字符串在边界解析为枚举（脏值抛 IllegalArgumentException，落入下方 catch 回错误，不再静默当拒绝）
+            InputOutcome outcome = engine.handle(HarnessInput.of(session, null)
+                    .hitl(HITLAction.of(action), callId)
+                    .hitlOutput(output)
                     .selectedAgent(selectedAgentName)
                     .selectedModel(modelName)
                     .resume(true));
 
-            if (resumeOutcome.hasRequest() == false) {
-                socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
+            if (outcome.getKind() == InputOutcome.Kind.TASK) {
+                if (outcome.hasRequest() == false) {
+                    socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
+                    return;
+                }
+
+                gate.streamTurn.run(session, outcome.getRequest(), chatModel, sessionId, cwd,
+                        reasoningEffort, socket, true, gate.desktopHitlInterceptor);
                 return;
             }
 
-            gate.streamTurn.run(session, resumeOutcome.getRequest(), chatModel, sessionId, cwd,
-                    reasoningEffort, socket, true, gate.desktopHitlInterceptor);
+            if (outcome.isHitlApplied() == Boolean.FALSE) {
+                // 过期审批卡：任务已结束，前端残留的卡仍可点击。与迁移前同口径报错。
+                socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
+                return;
+            }
+
+            // 本批尚有未决卡：推送下一张（跳过已决策项），等宿主再次点击
+            HITLTask next = DesktopStreamTurn.nextPendingHitlTask(session);
+            if (next != null) {
+                socket.send(DesktopStreamTurn.hitlEvent(sessionId, next).toJson());
+            } else {
+                socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
+            }
         } catch (Exception e) {
             LOG.error("[WS] HITL action failed", e);
             socket.send(new ONode().set("type", "error").set("text", e.getMessage()).toJson());

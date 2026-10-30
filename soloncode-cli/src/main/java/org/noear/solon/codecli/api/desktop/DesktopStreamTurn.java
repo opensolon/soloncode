@@ -35,6 +35,7 @@ import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import reactor.core.Disposable;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -136,24 +137,51 @@ final class DesktopStreamTurn {
         long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : 0;
 
         if (HITL.isHitl(session)) {
-            HITLTask task = HITL.getPendingTask(session);
+            HITLTask task = nextPendingHitlTask(session);
             if (task != null && terminalSent.compareAndSet(false, true)) {
-                String command = "bash".equals(task.getToolName())
-                        ? String.valueOf(task.getArgs().get("command"))
-                        : null;
-                streamHub.emit(finalSessionId, new ONode().set("type", "hitl")
-                        .set("sessionId", finalSessionId)
-                        .set("callId", task.getCallUuid())
-                        .set("toolName", task.getToolName())
-                        .set("command", command)
-                        .set("comment", task.getComment())
-                        .toJson());
+                streamHub.emit(finalSessionId, hitlEvent(finalSessionId, task).toJson());
             }
             return;
         }
 
         sendDoneIfNeeded(terminalSent, finalSessionId,
                 trace.getOptions().getChatModel().getNameOrModel(), totalTokens, elapsed);
+    }
+
+    /**
+     * 取下一张待审批的卡（批挂起时可能有多个）。
+     *
+     * <p>桌面端在挂起/未齐备时只推一张卡，必须跳过已决策项，否则会重复推同一张卡；
+     * 若本批已全部决策（残留未清），回退到批中第一项供续流透传。</p>
+     *
+     * @return 待处理任务；无挂起时返回 null
+     */
+    static HITLTask nextPendingHitlTask(AgentSession session) {
+        List<HITLTask> pending = HITL.getPendingTasks(session);
+
+        for (HITLTask task : pending) {
+            if (HITL.getDecision(session, task) == null) {
+                return task;
+            }
+        }
+
+        return pending.isEmpty() ? null : pending.get(0);
+    }
+
+    /**
+     * hitl 事件载荷（字段与顺序沿用原实现，不变更前端协议）
+     */
+    static ONode hitlEvent(String sessionId, HITLTask task) {
+        String command = "bash".equals(task.getToolName())
+                ? String.valueOf(task.getArgs().get("command"))
+                : null;
+
+        return new ONode().set("type", "hitl")
+                .set("sessionId", sessionId)
+                .set("callId", task.getCallUuid())
+                .set("toolName", task.getToolName())
+                .set("command", command)
+                .set("comment", task.getComment());
     }
 
     private void sendDoneIfNeeded(AtomicBoolean terminalSent, String sessionId,

@@ -1,6 +1,28 @@
 
 ### vNEXT
 
+* HITL「决策 + 续流」合并为**一次** `engine.handle` 调用（三端统一，宿主不再自持批齐备判定）：
+  * **意图**：把「写决策」与「该不该续流」的判定都收敛进引擎，宿主只需 `switch (outcome.getKind())`，杜绝各端各写一份 `allHitlDecided` / 过期卡预检。
+  * **引擎自检**（`HarnessEngine.handle` 的 HITL 分支）：`resume` 实际生效需同时满足三个条件——① 决策真的命中挂起任务（`applyHitlDecision` 改为返回 `boolean`）；② 本批已齐备（新增 `pendingHitlCount`，遍历 `HITL.getPendingTasks` 数未决策项）；③ 宿主显式传 `resume`。任一不满足则返回 `Kind.HITL`，**绝不续流**。
+    * ②的必要性：批挂起时过早 resume 会把未决卡一起带走；①的必要性：无命中时续流会因空提示词回落 `trace.getOriginalPrompt()`，把上一轮问题原样重跑。
+    * 「无挂起」视为「已齐备」，故 `resume(true)` 单独使用（宿主批量写完全部决策后统一恢复）的既有语义不变，`InputHandleTest` / `InputCommandAwareTest` 原断言保持绿色。
+  * **`InputOutcome` 新增两个事实字段**（不改 kind 推导，零兼容风险）：`isHitlInput()`、`isHitlApplied()`（`null` = 非审批输入，`false` = 过期审批卡）、`getPendingHitlCount()`；新增 `task(..., boolean hitlApplied)` 与 `hitl(agent, model, applied, pending)` 两个工厂。`Kind.HITL` 的 javadoc 补全三种进入方式。
+  * **Web**（`WebChatInputHandler`）：HITL 分支由「先记 `hadPending` → 写决策 → 再判 `allHitlDecided` → 二次 handle 续流」压缩为一次 `.hitl(...).resume(true)` + `if (kind == TASK)`；删除私有 `allHitlDecided` 与 `HITL`/`HITLTask`/`HITLDecision` 三处失效 import。
+  * **桌面**（`DesktopInputRouter.handleHitlAction`）：两次 handle 合并为一次，删除 `handle` 之前的 `getPendingTaskByCallUuid` 预检；`Kind.HITL` 分支按 `isHitlApplied()==false` 回 "No pending HITL task"（与迁移前同口径），否则推送下一张卡并等待再次点击。
+  * **CLI**（`CliShell.handleHitlRound`）：改为循环逐卡提问（`nextHitlTask` 优先取首个未决策项），直至本批齐备拿到 `TASK`；与迁移前「拦截器再次挂起后继续问下一张」的观察结果一致。
+  * 本次合并**未破坏**批挂起语义：原地语义是「批挂起时一次只展示一张卡、决策后靠再次挂起推下一张」，合并后由引擎拒绝过早续流、宿主推下一张，三端行为等价。
+  * **审查补修两处**（引擎拒绝过早续流带来的新责任，宿主 `Kind.HITL` 分支必须跟上）：
+    * **桌面重复推卡→死循环**（严重）：`DesktopInputRouter` 与 `DesktopStreamTurn` 推下一张卡时用 `HITL.getPendingTask(session)`（恒为 `tasks.get(0)`，不看是否已决策）。批挂起 [call-1, call-2] 时推 call-1 → 点击后 pending=1 → 再推 call-1（已决策）→ 覆盖决策，call-2 永远问不到。新增 `DesktopStreamTurn.nextPendingHitlTask`（跳过已决策、全已决策时回退首项）与 `hitlEvent(sessionId, task)`（消掉两处重复的 JSON 字段拼装），`DesktopInputRouter` 与 `DesktopStreamTurn.onRunEndEvent` 统一调用
+    * **CLI 残留决策分支变死代码**（回归）：`nextUndecidedHitlTask` 只返回未决策项，导致 `handleHitlRound` 里 `existing != null` 的三态透传分支不可达。当 pending 全部已有决策（上轮写入后续流中断、残留未清）时返回 null → 打印「审批未生效」直接返回，而改造前会走三态透传正常续流。改名 `nextHitlTask`：优先未决策，全已决策时回退首项
+  * **二次审查订正四处**（仅文档与防御性代码，不改行为）：
+    * `HarnessInput.resume` 的 javadoc 原写「返回 `TASK`（单卡同步审批，CLI 即此形态）」，已过时（CLI 现为批挂起循环，且 `resume` 有第三结局）：改为「**尝试**续流，是否真的续流由引擎自检决定，批挂起时宿主应逐张提问直到拿到 `TASK`」，并声明「`resume` 只表达宿主意愿，不保证续流一定发生」
+    * 删除 `InputOutcome.hitl(agentName, modelName)` 两参工厂：合并后全仓唯一调用点是引擎的四参版，留下的两参版会让 `isHitlApplied()` 返回 `null`（而非 `false`），宿主 `== FALSE` 判断直接跳过、过期卡被静默放过
+    * `CliShell.dispatchOutcome` 的 `case HITL` 注释原写「仅当宿主只写决策不续流时出现」，补全为三种情形，并注明「CLI 正常审批路径不经此处（见 `handleHitlRound`），仅残留快照全已决策却拿不到请求时才会到这里」
+    * `CliShell.handleHitlRound` 的审批 `readLine` 补 `EndOfFileException` 捕获与 `null` 判空：原 `.trim()` 直接链在 `readLine` 后，EOF 时 NPE；改造前每轮只调一次，批挂起后调 N 次，暴露面放大（与主循环 `:242` 的 EOF 处理口径一致）
+  * **文档同步（三端合并后旧表述全删）**：`solon-ai-harness/README.md` 共 9 处改写——§2.1 决策步骤（“同一次调用**尝试**续流”）、§2.2 `resume` 开关与说明（补“只表达意愿、不保证续流”）、§2.3 switch 示例与 Kind 表、新增「HITL 态三种情形」表（齐备未传 resume / 尚有未决卡 / 过期卡，各列判据与宿主动作）与三个事实成员、§2.3 第三条、§3.1 最小骨架 HITL 分支（改为打印 `isHitlApplied` 与 `getPendingHitlCount`）、§3.2 `decide` 改为一次调用 + `onHitl` 按事实分流（并补 `HITL`/`HITLTask` 两个示例 import）、§3.5 不变量第一条与第四条（新增“不要用 `HITL.getPendingTasks().isEmpty()` 判齐备——该集合含已决策项，会把已齐备的批永远卡住”）、§13 常见坑第 2 条；`@solon-ai-source/UPDATE_LOG.md` 同条目中过时的“批量审批仍分两次”描述已改写
+  * 验证（订正后重跑）：harness 定向 22 例（`HitlResumeSelfCheckTest` 6 + `InputCommandAwareTest` 6 + `InputHandleTest` 7 + `HitlAgentResolutionTest` 3）全绿；harness 全量 447 例 20F+8E、`soloncode-cli` 全量 1204 例 2 失败，失败类与基线逐项一致
+  * 验证：harness 新增 `HitlResumeSelfCheckTest` 6 例全绿（单卡一次续流 / 批未齐备拒续流并报剩余数 / 过期卡 `applied=false` / 不传 resume 只写决策 / 无挂起仍可 resume / 非审批输入无审批事实）；harness 全量 447 例 20F+8E 与基线一致（`InputCommandAwareTest.hitlDecisionWithResumeReturnsTaskInOneCall` 已补真实挂起任务，因新语义下「无挂起的审批 + resume」不再是 TASK）；`soloncode-cli` 全量 1204 例 2 失败，均为既有基线（`ImageReplyLifecycleTest`、`AgentSettingsControllerTest`）
+
 * `CliShell` 输入链路收敛与三处行为回归修复（对照 `1f8a9b52` 逐条核对）：
   * **队列消费归属收敛（修复回归）**：改造后 `safeChatInput` → `runMessageInput` → `dispatchOutcome` 的 TASK 分支也执行 `drainCliQueue`，而改造前 `safeChatInput → performAgentTask` 不排水。loop 执行器运行在调度线程（`LoopScheduler` 同步回调 `ExecutionBridge.execute`），此时主线程仍阻塞于 `readLine`，会让队列项在调度线程上执行并与主线程争用同一 JLine reader。现 `dispatchOutcome` 增加 `allowDrain`：仅用户手输 / 单次调用为 true，队列项与 loop 注入为 false；主循环回到提示符前统一消费积压（`while` 顶部），主线程被 `terminal.raise(INT)` 唤醒后即排水，积压不会滞留
   * **HITL 审批空结果补可见提示**：`handleHitlRound` 返回 null（无挂起任务 / 续流未生成请求）原为静默 `continue`，随后因无请求直接返回，用户从“等待审批”无交代地回到提示符。现补一行 DIM 提示并显式收尾

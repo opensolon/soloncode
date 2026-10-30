@@ -15,14 +15,10 @@
  */
 package org.noear.solon.codecli.api.web;
 
-import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.agent.react.intercept.HITLDecision;
-import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -155,41 +151,31 @@ class WebChatInputHandler {
             boolean modeProvided = thinkingMode != null;
             org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionThinkingMode(session, thinkingMode, modeProvided);
 
-            // HITL approve/reject handling：决策应用统一交给引擎（含 callId 精确定位与工具返回改写）。
+            // HITL approve/reject handling：决策应用与续流时机判定统一交给引擎（含 callId 精确定位与工具返回改写）。
             //必须放在子代理解析之前：审批请求通常不带文本，mention 解析对它无意义。
             if (Assert.isNotEmpty(hitlAction)) {
                 // callId 通过 session context 透传（前端 POST hitlCallId），避免全链路改签名
                 String hitlCallId = session.getContext().getAs(WebGate.CTX_HITL_CALL_ID);
                 session.getContext().remove(WebGate.CTX_HITL_CALL_ID);
 
-                // 先记录本批挂起数量：决策写入后再判断，无法区分「本来就无挂起」。
-                // 过期审批卡（任务已结束）若也走 resume，会因 prompt 为空而回落 trace.getOriginalPrompt()，
-                // 把上一轮问题原样重跑一遍 —— 必须用「本次确有挂起」作为续流前置条件。
-                List<HITLTask> pendingBefore = HITL.getPendingTasks(session);
-                boolean hadPending = pendingBefore != null && !pendingBefore.isEmpty();
-
-                wsContext.getEngine().handle(
+                // 一次调用完成「写决策 + 必要时的续流装配」，宿主只 switch kind：
+                //   TASK —— 决策已写入且本批已齐备，引擎已装配续流请求，直接执行；
+                //   HITL —— 未续流：过期审批卡（isHitlApplied()==false）或本批尚有未决卡，
+                //           两者都不能续流（前者会把上一轮问题重跑，后者会带走未决任务）。
+                // 续流用的子代理必须取「首轮实际生效值」（WebStreamBuilder 每轮写入 _agent_selected_tmp），
+                // 而不是审批请求自带的 selectedAgent：审批请求通常不带该字段，
+                // 会回落主代理而取不到子代理挂起的 trace（续跑空转）。
+                String effectiveAgent = (String) session.attrs().get(WebStreamBuilder.ATTR_EFFECTIVE_AGENT);
+                InputOutcome hitlOutcome = wsContext.getEngine().handle(
                         HarnessInput.of(session, null)
-                                .selectedAgent(selectedAgent)
-                                .hitl(HITLAction.of(hitlAction), hitlCallId)); // 协议字符串在边界解析，脏值这里报错而非静默当拒绝
+                                .selectedAgent(effectiveAgent)
+                                .selectedModel(selectedModel)
+                                .hitl(HITLAction.of(hitlAction), hitlCallId) // 协议字符串在边界解析，脏值这里报错而非静默当拒绝
+                                .resume(true));
 
-                // 恢复时机：批量场景下前端逐卡点击会发多次决策，
-                // 仅当本批所有挂起任务都已有决策时才恢复流，否则只写决策不 resume。
-                if (hadPending && allHitlDecided(session)) {
-                    // 续流统一走 input 入口（resume 语义）：请求主体由引擎装配。
-                    // 生效子代理必须取「首轮实际生效值」（WebStreamBuilder 每轮写入 _agent_selected_tmp），
-                    // 而不是审批请求自带的 selectedAgent：审批请求通常不带该字段，
-                    // 会回落主代理而取不到子代理挂起的 trace（续跑空转）。
-                    String effectiveAgent = (String) session.attrs().get(WebStreamBuilder.ATTR_EFFECTIVE_AGENT);
-                    InputOutcome resumeOutcome = wsContext.getEngine().handle(
-                            HarnessInput.of(session, null)
-                                    .selectedAgent(effectiveAgent)
-                                    .selectedModel(selectedModel)
-                                    .resume(true));
-                    if (resumeOutcome.hasRequest()) {
-                        gate.getSessionRunner()
-                                .performAgentTaskAsync(wsContext, session, sessionCwd, resumeOutcome);
-                    }
+                if (hitlOutcome.getKind() == InputOutcome.Kind.TASK) {
+                    gate.getSessionRunner()
+                            .performAgentTaskAsync(wsContext, session, sessionCwd, hitlOutcome);
                 }
                 return;
             }
@@ -270,26 +256,6 @@ class WebChatInputHandler {
                 }
             }
         }
-    }
-
-    /**
-     * 判断本批所有 HITL 挂起任务是否均已有决策。
-     *
-     * <p>批量场景下前端逐卡点击会发多次决策 POST，仅当无任何未决策项时
-     * 才应恢复流，避免过早 resume 将未决策任务带走。</p>
-     */
-    private boolean allHitlDecided(AgentSession session) {
-        List<HITLTask> pending = HITL.getPendingTasks(session);
-        if (pending == null || pending.isEmpty()) {
-            return true;
-        }
-        for (HITLTask t : pending) {
-            HITLDecision decision = HITL.getDecision(session, t);
-            if (decision == null) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /**
