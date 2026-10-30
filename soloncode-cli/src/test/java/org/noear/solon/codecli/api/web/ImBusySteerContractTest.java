@@ -53,7 +53,7 @@ class ImBusySteerContractTest {
         String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
 
         int steer = source.indexOf("SteerInterceptor.steer(session, null, null, input");
-        int enqueue = source.indexOf("int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId)");
+        int enqueue = source.indexOf("int position = SessionQueue.enqueue(session, input,", steer);
         assertTrue(steer > 0 && enqueue > steer,
                 "入队必须保留为插话之后的降级路径，保证消息不丢");
     }

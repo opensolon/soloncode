@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.steer.SteerMessage;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -104,7 +105,7 @@ class WebGateRejectedInputTest {
         WebGate gate = recordingGate(events);
         AgentSession session = InMemoryAgentSession.of();
         for (int i = 0; i < SessionQueue.MAX_QUEUE_SIZE; i++) {
-            assertTrue(SessionQueue.enqueue(session, "task " + i, "WEB") > 0);
+            assertTrue(SessionQueue.enqueue(session, "task " + i, InputOrigin.channel("WEB")) > 0);
         }
         Queue<SteerMessage> box = new ConcurrentLinkedQueue<>();
         box.add(new SteerMessage("steer-1", "do not lose me"));

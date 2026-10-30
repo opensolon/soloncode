@@ -57,10 +57,6 @@ public class CliCommandContext implements CommandContext {
         return session;
     }
 
-    public String getSource() {
-        return "CLI";
-    }
-
     @Override
     public String getRawInput() {
         return rawInput;

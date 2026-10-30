@@ -18,6 +18,7 @@ package org.noear.solon.codecli.api.web;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
@@ -165,10 +166,11 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         List<SteerMessage> dropped = new ArrayList<>();
         List<SteerMessage> failed = new ArrayList<>();
         for (SteerMessage message; (message = box.poll()) != null; ) {
-            String source = message.getSource();
-            if (source == null || source.trim().isEmpty()) source = "WEB";
-            int position = SessionQueue.enqueue(session, message.getText(), source,
-                    message.getSourceUserId(), message.getReplyTarget(), message.getMessageId());
+            InputOrigin origin = message.getOrigin();
+            if (origin.getChannel() == null) {
+                origin = origin.withChannel("WEB");
+            }
+            int position = SessionQueue.enqueue(session, message.getText(), origin);
             if (position < 0) failed.add(message);
             else dropped.add(message);
         }

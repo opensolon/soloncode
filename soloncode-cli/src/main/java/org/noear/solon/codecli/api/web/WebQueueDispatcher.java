@@ -157,13 +157,13 @@ class WebQueueDispatcher {
                         if (SessionActivity.isBusy(session) || !SessionQueue.isGenerationActive(session, generation)) {
                             throw new IllegalStateException("session became busy or queue generation changed");
                         }
-                        gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(next.getId(), next.getText(), next.getSource()));
+                        gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(next.getId(), next.getText(), next.getOrigin().getChannel()));
                         session.attrs().put("session.queue.executing", next);
                         session.attrs().put(ATTR_QUEUE_DISPATCH, Thread.currentThread());
                         try {
                             gate.onChatInput(wsContext, sessionId, null, next.getText(), next.getModel(), null, null, null,
-                                    next.getSource(), next.getReasoningEffort(), next.getThinkingMode(), next.getSelectedAgent(),
-                                    next.getSourceUserId(), next.getReplyTarget(), next.getMessageId());
+                                    next.getOrigin().getChannel(), next.getReasoningEffort(), next.getThinkingMode(), next.getSelectedAgent(),
+                                    next.getOrigin().getSenderId(), next.getOrigin().getReplyTarget(), next.getOrigin().getMessageId());
                             if (!SessionActivity.isBusy(session)) finishQueuedTurn(session, true);
                         } finally {
                             session.attrs().remove(ATTR_QUEUE_DISPATCH);

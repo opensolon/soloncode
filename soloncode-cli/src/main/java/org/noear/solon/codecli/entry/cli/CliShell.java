@@ -37,9 +37,9 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
-import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
@@ -78,6 +78,9 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Preview("3.9.4")
 public class CliShell implements Runnable {
+    /** CLI 渠道来源身份（原先由 CliCommandContext.getSource 硬编码，现统一由输入侧声明） */
+    private static final InputOrigin CLI_ORIGIN = InputOrigin.channel("CLI");
+
     private final static Logger LOG = LoggerFactory.getLogger(CliShell.class);
 
     private final static String SESSION_ID_CLI = "cli";
@@ -269,7 +272,8 @@ public class CliShell implements Runnable {
      * 宿主只负责「回执怎么渲染」与「流怎么消费」。
      */
     private void handleInput(AgentSession session, String input) throws Exception {
-        InputOutcome outcome = engine.handle(HarnessInput.of(session, input), cliCommandFactory());
+        InputOutcome outcome = engine.handle(HarnessInput.of(session, input)
+                .origin(CLI_ORIGIN), cliCommandFactory());
 
         switch (outcome.getKind()) {
             case TASK:
@@ -326,7 +330,8 @@ public class CliShell implements Runnable {
     private String runMessageInput(AgentSession session, String text, String model) throws Exception {
         InputOutcome outcome = engine.handle(HarnessInput.of(session, text)
                 .commandAware(false)
-                .model(model), cliCommandFactory());
+                .model(model)
+                .origin(CLI_ORIGIN), cliCommandFactory());
 
         if (outcome.getKind() == InputOutcome.Kind.TASK) {
             return performAgentTask(session, outcome);

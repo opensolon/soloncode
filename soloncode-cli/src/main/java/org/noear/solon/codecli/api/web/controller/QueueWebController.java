@@ -24,6 +24,7 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.LegacyQueueMigrator;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -31,7 +32,6 @@ import org.noear.solon.core.handle.Result;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -198,7 +198,7 @@ public class QueueWebController extends AbstractWebController {
             String selectedAgent = root.get("selectedAgent") == null ? null : safeQueueString(root.get("selectedAgent"), 128);
             boolean hasFiles = root.get("hasFiles") != null && root.get("hasFiles").getBoolean();
             if (hasFiles) return Result.failure(400, "Attachments cannot be queued");
-            int position = SessionQueue.enqueue(session, text, "WEB", null, null, null, id,
+            int position = SessionQueue.enqueue(session, text, InputOrigin.channel("WEB"), id,
                     model, reasoningEffort, thinkingMode, selectedAgent, false);
             if (position < 0) return Result.failure(409, "Queue is full or storage failed");
             runtimePort().drainSessionQueue(currentContext(), session);

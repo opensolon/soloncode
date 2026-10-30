@@ -27,11 +27,10 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.input.AgentMentions;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.HarnessInput;
-import org.noear.solon.ai.harness.input.BufferedCommandContext;
+import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
@@ -327,17 +326,7 @@ final class DesktopInputRouter {
      * 流由主路径根据 outcome 的生效字段统一发起。
      */
     private CommandContextFactory desktopCommandFactory() {
-        return new CommandContextFactory() {
-            @Override
-            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand command) {
-                return new BufferedCommandContext(s, command.getRawInput(), command.getName(), command.getArgs());
-            }
-
-            @Override
-            public boolean isRemote() {
-                return true;
-            }
-        };
+        return new BufferedCommandContextFactory(true);
     }
 
     /**

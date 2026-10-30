@@ -26,13 +26,13 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.util.CmdUtil;
-import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -49,9 +49,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 聊天输入的受理、分发与中断：忙态插话（降级排队）、斜杠命令、HITL 审批、Loop 同步捕获与 interrupt。
@@ -115,7 +113,8 @@ class WebChatInputHandler {
                     if (attachments != null && attachments.length > 0) {
                         throw new IllegalStateException("Attachments cannot be queued while session is busy");
                     }
-                    int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId,
+                    int position = SessionQueue.enqueue(session, input,
+                            InputOrigin.of(source, sourceUserId, replyTarget, messageId),
                             null, selectedModel, reasoningEffort, thinkingMode, selectedAgent, false);
                     if (position < 0) throw new IllegalStateException("session queue is full or unavailable");
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
@@ -134,9 +133,9 @@ class WebChatInputHandler {
                 if (!sideCommand) {
                     if (dispatch && session.attrs().get("session.queue.executing") instanceof SessionQueueItem) {
                         SessionQueueItem queued = (SessionQueueItem) session.attrs().get("session.queue.executing");
-                        setReplyRoute(session, queued.getSource(), queued.getSourceUserId(), queued.getReplyTarget(), queued.getMessageId());
+                        setReplyRoute(session, queued.getOrigin());
                     } else {
-                        setReplyRoute(session, source, sourceUserId, replyTarget, messageId);
+                        setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                     }
                 }
             }
@@ -206,10 +205,10 @@ class WebChatInputHandler {
                             .resume(resumeInput)
                             .agent(selectedAgent)
                             .model(selectedModel)
-                            .route(source, sourceUserId, replyTarget, messageId)
+                            .origin(InputOrigin.of(source, sourceUserId, replyTarget, messageId))
                             .attachments(WebAttachmentStore.toAttachments(
                                     wsContext.getEngine().getWorkspace(), attachments, attachmentTypes)),
-                    webCommandFactory(source, sourceUserId, replyTarget, messageId));
+                    webCommandFactory());
 
             switch (outcome.getKind()) {
                 case TASK:
@@ -391,25 +390,14 @@ class WebChatInputHandler {
     }
 
     /**
-     * Web/IM 命令上下文工厂：只补渠道元数据，其余由引擎统一装配。
+     * Web/IM 命令上下文工厂：渠道能力（远程）由引擎统一读取，无需在此注入元数据。
      * <p>
      * 命令内部触发的任务只记录意图（分发器交给引擎二段装配），
      * 流由 {@link #handleCommandTurn} 在主路径统一发起。
      */
-    private CommandContextFactory webCommandFactory(String source, String sourceUserId,
-                                                   String replyTarget, String messageId) {
-        return new CommandContextFactory() {
-            @Override
-            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand cmd) {
-                return new WebCommandContext(s, source, sourceUserId, replyTarget, messageId,
-                        cmd.getRawInput(), cmd.getName(), cmd.getArgs());
-            }
-
-            @Override
-            public boolean isRemote() {
-                return true;
-            }
-        };
+    private CommandContextFactory webCommandFactory() {
+        // 缓冲式上下文 + 远程渠道能力；来源身份由分发器直接交给命令
+        return new BufferedCommandContextFactory(true);
     }
 
     /**
@@ -457,7 +445,8 @@ class WebChatInputHandler {
                 }
 
                 // 降级：繁忙时进入统一持久化队列，而不是只让调用方重试。
-                int position = SessionQueue.enqueue(session, input, source, sourceUserId, replyTarget, messageId);
+                int position = SessionQueue.enqueue(session, input,
+                        InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                 if (position >= 0) {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
                     // IM 侧感知补齐：web 能看到排队状态，IM 看不到；把位次主动推给来源端。
@@ -524,14 +513,14 @@ class WebChatInputHandler {
         // 前端流门解封由 performAgentTaskSync → beginStreamTurn 统一下发（system.reset），
         // 此处不再重复发送；user_input 先到也会解封，二者不冲突。
         // Loop 发起：清掉上一轮残留的 IM 定向路由（Loop 不是 IM 来源，过程消息不外发）
-        setReplyRoute(session, source, null, null, null);
+        setReplyRoute(session, InputOrigin.channel(source));
         gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
 
         // Loop 的提示词是「已受理的文本」，即使以 / 开头也不应被当命令执行；
         // 命令识别、提及解析、Prompt 构建统一交给引擎（与 CLI/桌面端同一套口径）
         InputOutcome outcome = wsContext.getEngine().handle(HarnessInput.of(session, input)
                 .commandAware(false)
-                .route(source, null, null, null));
+                .origin(InputOrigin.channel(source)));
 
         if (outcome.hasRequest() == false) {
             return null;
@@ -657,28 +646,17 @@ class WebChatInputHandler {
         return null;
     }
 
-    /** 是否为 IM 通道来源（wechat / feishu / dingtalk）。 */
-    private static boolean isImSource(String source) {
-        return source != null && ("wechat".equalsIgnoreCase(source)
-                || "feishu".equalsIgnoreCase(source) || "dingtalk".equalsIgnoreCase(source));
-    }
-
-    private static void setReplyRoute(AgentSession session, String source, String sourceUserId, String replyTarget, String messageId) {
+    private static void setReplyRoute(AgentSession session, InputOrigin origin) {
         if (session == null) return;
         // 新一轮输入受理：重置 IM 终态去重门（final/error/canceled 共用），保证本轮终态仍能落 IM。
         session.attrs().remove(WebStreamBuilder.ATTR_IM_TERMINAL_SENT);
-        if (!isImSource(source)) {
+        if (origin == null || origin.isIm() == false) {
             // WEB/Loop 等来源没有 IM 定向目标：清掉上一轮残留的路由即可。
             // 终态仍会广播到所有绑定该会话的 IM 通道（见 WebStreamBuilder.replyToBoundChannel），
             // 以实现多终端（web/im）内容同步，各通道退回到绑定用户（binding.openId）。
             session.attrs().remove("session.replyRoute");
             return;
         }
-        Map<String, String> route = new HashMap<>();
-        route.put("source", source);
-        route.put("sourceUserId", sourceUserId);
-        route.put("replyTarget", replyTarget);
-        route.put("messageId", messageId);
-        session.attrs().put("session.replyRoute", route);
+        session.attrs().put("session.replyRoute", origin.toMap());
     }
 }
