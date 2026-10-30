@@ -105,7 +105,7 @@ class WebChatInputHandler {
                     List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
                     if (!parts.isEmpty()) {
                         Command command = wsContext.getEngine().getCommandRegistry().find(parts.get(0).toLowerCase());
-                        busyCommand = command != null && !command.cliOnly() && command.runnableWhenBusy();
+                        busyCommand = command != null && !command.terminalOnly() && command.runnableWhenBusy();
                     }
                 }
                 if ((SessionActivity.isBusy(session) || SessionQueue.pendingSize(session) > 0)
@@ -169,7 +169,7 @@ class WebChatInputHandler {
 
                 wsContext.getEngine().handle(
                         HarnessInput.of(session, null)
-                                .agent(selectedAgent)
+                                .selectedAgent(selectedAgent)
                                 .hitl(hitlAction, hitlCallId));
 
                 // 恢复时机：批量场景下前端逐卡点击会发多次决策，
@@ -182,8 +182,8 @@ class WebChatInputHandler {
                     String effectiveAgent = (String) session.attrs().get(WebStreamBuilder.ATTR_EFFECTIVE_AGENT);
                     InputOutcome resumeOutcome = wsContext.getEngine().handle(
                             HarnessInput.of(session, null)
-                                    .agent(effectiveAgent)
-                                    .model(selectedModel)
+                                    .selectedAgent(effectiveAgent)
+                                    .selectedModel(selectedModel)
                                     .resume(true));
                     if (resumeOutcome.hasRequest()) {
                         gate.getSessionRunner()
@@ -203,12 +203,12 @@ class WebChatInputHandler {
             InputOutcome outcome = wsContext.getEngine().handle(
                     HarnessInput.of(session, resumeInput ? null : input)
                             .resume(resumeInput)
-                            .agent(selectedAgent)
-                            .model(selectedModel)
+                            .selectedAgent(selectedAgent)
+                            .selectedModel(selectedModel)
                             .origin(InputOrigin.of(source, sourceUserId, replyTarget, messageId))
                             .attachments(WebAttachmentStore.toAttachments(
-                                    wsContext.getEngine().getWorkspace(), attachments, attachmentTypes)),
-                    webCommandFactory());
+                                    wsContext.getEngine().getWorkspace(), attachments, attachmentTypes))
+                            .commandContextFactory(webCommandFactory()));
 
             switch (outcome.getKind()) {
                 case TASK:
@@ -390,14 +390,14 @@ class WebChatInputHandler {
     }
 
     /**
-     * Web/IM 命令上下文工厂：渠道能力（远程）由引擎统一读取，无需在此注入元数据。
+     * Web/IM 命令上下文工厂：终端能力为桌面/Web 默认值（无终端），
+     * 来源身份与终端能力均由引擎按输入统一读取，无需在此注入。
      * <p>
      * 命令内部触发的任务只记录意图（分发器交给引擎二段装配），
      * 流由 {@link #handleCommandTurn} 在主路径统一发起。
      */
     private CommandContextFactory webCommandFactory() {
-        // 缓冲式上下文 + 远程渠道能力；来源身份由分发器直接交给命令
-        return new BufferedCommandContextFactory(true);
+        return new BufferedCommandContextFactory();
     }
 
     /**
@@ -421,7 +421,7 @@ class WebChatInputHandler {
                     }
                     String cmdName = parts.get(0).toLowerCase();
                     Command command = wsContext.getEngine().getCommandRegistry().find(cmdName);
-                    if (command != null && !command.cliOnly() && command.runnableWhenBusy()) {
+                    if (command != null && !command.terminalOnly() && command.runnableWhenBusy()) {
                         gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
                         onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
                                 null, null, null, sourceUserId, replyTarget, messageId);
@@ -434,7 +434,8 @@ class WebChatInputHandler {
                 // 或输入是斜杠命令时，再降级为统一持久化排队，确保消息不丢。
                 if (input != null && !input.startsWith("/")) {
                     SteerInterceptor.SteerResult steerResult = SteerInterceptor.steer(session, null, null, input,
-                            source, sourceUserId, replyTarget, messageId, () -> SessionActivity.isBusy(session));
+                            InputOrigin.of(source, sourceUserId, replyTarget, messageId),
+                            () -> SessionActivity.isBusy(session));
                     if (steerResult.getStatus() == SteerInterceptor.SteerStatus.STEERED) {
                         // 不回放 ofUserInput：web 端由 steer_applied 就地渲染 steer-note（与 web 发起的插话同一路径），
                         // 提前推 user_input 会与 steer-note 重复上屏。

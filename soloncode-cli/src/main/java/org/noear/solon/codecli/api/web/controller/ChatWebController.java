@@ -264,7 +264,7 @@ public class ChatWebController extends AbstractWebController {
 
     /**
      * 获取可用的命令和子代理列表。
-     * <p>从引擎的命令注册表中获取所有非 CLI-Only 的命令，
+     * <p>从引擎的命令注册表中获取所有非终端专属的命令，
      * 以及所有已注册的子代理（Agent），合并返回给前端用于命令补全和展示。</p>
      *
      * @return 命令/子代理列表，每项包含 name、description、type（command 或 subagent）
@@ -275,7 +275,7 @@ public class ChatWebController extends AbstractWebController {
         List<Map> data = new ArrayList<>();
         HarnessEngine currentEngine = engine();
         for (Command cmd : currentEngine.getCommandRegistry().all()) {
-            if (cmd.cliOnly()) {
+            if (cmd.terminalOnly()) {
                 continue;
             }
             Map<String, String> item = new LinkedHashMap<>();

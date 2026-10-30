@@ -1,6 +1,13 @@
 
 ### vNEXT
 
+* 跟进 `solon-ai-harness` 的 `HarnessInput` 命名收敛（四端同步，仅调用处改名，无行为变更）：
+  * `.model(x)` → `.selectedModel(x)`、`.agent(x)` → `.selectedAgent(x)`、`.mentionAware(b)` → `.agentAware(b)`：涉及 `CliShell`、`PrintMode`、`AcpLink`、`GitService`、`WebChatInputHandler`、`WsGate`、`DesktopInputRouter`
+  * `engine.handle(input, factory)` 两参形式取消，改为 `HarnessInput.commandContextFactory(x)` + `handle(input)`：CLI 的 `cliCommandFactory()`、Web 的 `webCommandFactory()`、桌面的 `desktopCommandFactory()` 三处从第二参搬进链式调用；`WsGate.runGoalRoundAndCapture` 删掉尾部 `, null`
+  * `ExitCommand` / `LoopCommand` 补 `execute(engine, ctx, InputOrigin)` 三参覆写（原先只实现两参，接口瘦身后已无两参抽象，编译期直接暴露）
+  * `WebChatInputHandler` 忙态插话的 `SteerInterceptor.steer(...)` 由四元组改为 `InputOrigin.of(...)`（与 `enqueue` 口径对齐）
+  * 验证：`soloncode-cli` 全量 1204 例仅 2 失败，均为既有基线（`ImageReplyLifecycleTest` 异常文案、`AgentSettingsControllerTest` 返回 400）
+
 * 修复宿主迁移到 `engine.handle` 后的四处回归（审查发现，测试未覆盖）：
   * **ACP 会话丢失（严重）**：`AcpLink.toInput` 曾返回 `HarnessInput.of(null, text)`，而 `handle` 只认 `input.getSession()`，传 null 会让 `ReActRequest.init()` 回落临时 `InMemoryAgentSession` —— ACP 每轮都是新会话，多轮上下文全丢、快照不落盘。现改为先 `getSession(sessionId)` 再构造 input（`toInput` 增 session 参数），`AcpLinkTest.toInput_bindsSession` 断言 `input.getSession()` 非空
   * **Web HITL 续流代理错源（高危）**：续流曾用 `hitlOutcome.getAgentName()`，而审批请求不带 selectedAgent，会回落主代理 → trace 取不到子代理挂起的 tool_calls，续跑空转。现由引擎侧「显式优先 + 会话级 `CTX_AGENT_SELECTED` 兜底」解析，Web 侧改读本轮生效代理（`WebStreamBuilder.ATTR_EFFECTIVE_AGENT`，与 `WebEventMapper` 同源）

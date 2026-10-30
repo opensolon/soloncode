@@ -18,6 +18,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.core.util.RunUtil;
 
 
@@ -49,7 +50,7 @@ public class ExitCommand implements Command {
     }
 
     @Override
-    public boolean cliOnly() {
+    public boolean terminalOnly() {
         return true;
     }
 
@@ -59,7 +60,7 @@ public class ExitCommand implements Command {
     }
 
     @Override
-    public void execute(HarnessEngine engine, CommandContext ctx) {
+    public void execute(HarnessEngine engine, CommandContext ctx, InputOrigin origin) {
         ctx.println(ctx.color(DIM + "Exiting..." + RESET));
 
         Thread exitThread = new Thread(() -> System.exit(0));

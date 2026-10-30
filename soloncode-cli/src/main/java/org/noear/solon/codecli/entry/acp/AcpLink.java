@@ -147,7 +147,7 @@ public class AcpLink implements Runnable {
                     // ACP 客户端文本不构成命令语义，与既有直通行为保持一致
                     InputOutcome outcome = agentRuntime.handle(toInput(request, session, context.getCwd())
                             .commandAware(false)
-                            .mentionAware(false));
+                            .agentAware(false));
                     if (outcome.hasRequest() == false) {
                         return Mono.empty();
                     }

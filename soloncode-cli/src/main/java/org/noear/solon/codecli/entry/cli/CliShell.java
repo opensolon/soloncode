@@ -273,7 +273,9 @@ public class CliShell implements Runnable {
      */
     private void handleInput(AgentSession session, String input) throws Exception {
         InputOutcome outcome = engine.handle(HarnessInput.of(session, input)
-                .origin(CLI_ORIGIN), cliCommandFactory());
+                .origin(CLI_ORIGIN)
+                .terminal(true)
+                .commandContextFactory(cliCommandFactory()));
 
         switch (outcome.getKind()) {
             case TASK:
@@ -312,14 +314,9 @@ public class CliShell implements Runnable {
     private CommandContextFactory cliCommandFactory() {
         return new CommandContextFactory() {
             @Override
-            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand command) {
-                return new CliCommandContext(s, terminal, reader,
-                        command.getRawInput(), command.getName(), command.getArgs());
-            }
-
-            @Override
-            public boolean isRemote() {
-                return false;
+            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand command, boolean terminal) {
+                return new CliCommandContext(s, CliShell.this.terminal, reader,
+                        command.getRawInput(), command.getName(), command.getArgs(), terminal);
             }
         };
     }
@@ -330,8 +327,10 @@ public class CliShell implements Runnable {
     private String runMessageInput(AgentSession session, String text, String model) throws Exception {
         InputOutcome outcome = engine.handle(HarnessInput.of(session, text)
                 .commandAware(false)
-                .model(model)
-                .origin(CLI_ORIGIN), cliCommandFactory());
+                .selectedModel(model)
+                .origin(CLI_ORIGIN)
+                .terminal(true)
+                .commandContextFactory(cliCommandFactory()));
 
         if (outcome.getKind() == InputOutcome.Kind.TASK) {
             return performAgentTask(session, outcome);
@@ -396,8 +395,8 @@ public class CliShell implements Runnable {
                 //续流：不产生新输入，按会话挂起的 tool_calls 继续执行（模型/子代理沿用首轮生效值）
                 request = engine.handle(HarnessInput.of(session, null)
                                 .resume(true)
-                                .model(modelName)
-                                .agent(agentName))
+                                .selectedModel(modelName)
+                                .selectedAgent(agentName))
                         .getRequest();
             }
 

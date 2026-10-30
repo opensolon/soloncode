@@ -814,8 +814,8 @@ public class GitService {
                     + "\n\n--- Diff 内容 ---\n" + combinedDiff;
 
             String summary = engine.handle(HarnessInput.of(null, userMessage)
-                                    .model(selectedModel)
-                                    .agent("git-summary"))
+                                    .selectedModel(selectedModel)
+                                    .selectedAgent("git-summary"))
                     .getRequest()
                     .call()
                     .getContent();

@@ -311,10 +311,9 @@ public class WsGate extends SimpleWebSocketListener {
 
         //goal objective 由程序生成（含“[附件: xxx]”前缀），不当命令、不当子代理提及，原文交给代理自己识别
         InputOutcome outcome = engine.handle(HarnessInput.of(session, input)
-                                .agent(selectedAgent)
+                                .selectedAgent(selectedAgent)
                                 .commandAware(false)
-                                .mentionAware(false),
-                        null);
+                                .agentAware(false));
 
         Prompt prompt = outcome.getPrompt();
         // 无正文的输入（如空 objective）会被引擎归为 IGNORED，此时没有 prompt 可写属性

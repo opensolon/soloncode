@@ -532,11 +532,11 @@ public class PrintMode {
         try {
             disposableRef.set(
                     engine.handle(HarnessInput.of(session, prompt)
-                                    .model(modelSelected)
+                                    .selectedModel(modelSelected)
                                     //headless 一律用主代理：原实现直接取 getMainAgent()，不解析输入里的 @提及
                                     //（子代理选择走 --agent 参数，由调用方自行拼接，不经此处解析）
                                     .commandAware(false)
-                                    .mentionAware(false))
+                                    .agentAware(false))
                             //输入装配统一走 input，宿主只补 CLI 侧选项
                             .getRequest()
                             .options(o -> {

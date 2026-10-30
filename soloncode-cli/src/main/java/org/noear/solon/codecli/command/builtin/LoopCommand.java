@@ -18,7 +18,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.codecli.config.entity.LoopGroupDo;
+import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.loop.LoopTask;
@@ -92,7 +92,7 @@ public class LoopCommand implements Command {
     }
 
     @Override
-    public void execute(HarnessEngine engine, CommandContext ctx) throws Exception {
+    public void execute(HarnessEngine engine, CommandContext ctx, InputOrigin origin) throws Exception {
         String sessionId = ctx.getSession().getSessionId();
         Path sessionsRoot = WorkspaceDataUtil.sessionsPath(engine.getWorkspace());
 

@@ -36,6 +36,12 @@ import java.util.List;
 public class CliCommandContext implements CommandContext {
     private final AgentSession session;
     private final Terminal terminal;
+    /**
+     * 是否具备终端交互能力（由分发器从 HarnessInput.isTerminal() 传入）
+     * <p>
+     * 字段名不用 terminal，是为了与 JLine 的 {@link Terminal} 区分。
+     */
+    private final boolean terminalCapable;
     private final LineReader reader;
     private final String rawInput;
     private final String commandName;
@@ -44,12 +50,24 @@ public class CliCommandContext implements CommandContext {
 
     public CliCommandContext(AgentSession session, Terminal terminal, LineReader reader,
                              String rawInput, String commandName, List<String> args) {
+        this(session, terminal, reader, rawInput, commandName, args, true);
+    }
+
+    public CliCommandContext(AgentSession session, Terminal terminal, LineReader reader,
+                             String rawInput, String commandName, List<String> args,
+                             boolean terminalCapable) {
         this.session = session;
         this.terminal = terminal;
         this.reader = reader;
         this.rawInput = rawInput;
         this.commandName = commandName;
         this.args = args;
+        this.terminalCapable = terminalCapable;
+    }
+
+    @Override
+    public boolean isTerminal() {
+        return terminalCapable;
     }
 
     @Override

@@ -284,9 +284,9 @@ final class DesktopInputRouter {
         InputOutcome outcome = gate.engine.handle(
                 HarnessInput.of(session, currentInput)
                         .explicitAgent(agentName)
-                        .model(modelName)
-                        .attachments(attachResult),
-                desktopCommandFactory());
+                        .selectedModel(modelName)
+                        .attachments(attachResult)
+                        .commandContextFactory(desktopCommandFactory()));
 
         switch (outcome.getKind()) {
             case TASK:
@@ -320,13 +320,14 @@ final class DesktopInputRouter {
     }
 
     /**
-     * 桌面端命令上下文工厂：只保留回执缓冲与渠道元数据。
+     * 桌面端命令上下文工厂：只保留回执缓冲。
      * <p>
+     * 桌面进程虽在本地，但没有命令行终端交互能力，故保持默认 terminal=false。
      * 命令内部触发的任务只记录意图（分发器交给引擎二段装配），
      * 流由主路径根据 outcome 的生效字段统一发起。
      */
     private CommandContextFactory desktopCommandFactory() {
-        return new BufferedCommandContextFactory(true);
+        return new BufferedCommandContextFactory();
     }
 
     /**
@@ -411,8 +412,8 @@ final class DesktopInputRouter {
             String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
             InputOutcome resumeOutcome = engine.handle(HarnessInput.of(session, null)
-                    .agent(selectedAgentName)
-                    .model(modelName)
+                    .selectedAgent(selectedAgentName)
+                    .selectedModel(modelName)
                     .resume(true));
 
             if (resumeOutcome.hasRequest() == false) {
