@@ -17,6 +17,7 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskWrapEvent;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
@@ -1016,10 +1017,16 @@ class ImageReplyLifecycleTest {
 
         ReActAgent agent;
         ReActOptions options;
+        ReActRequest request;
 
         ReActRequest mockRequest() {
+            if (request != null) {
+                // 同一 fixture 内复用：测试体对 request.stream() 的打桩必须作用在
+                // buildStream() 实际使用的同一实例上。
+                return request;
+            }
             agent = mock(ReActAgent.class);
-            ReActRequest request = mock(ReActRequest.class);
+            request = mock(ReActRequest.class);
             WorkspaceMeta meta = new WorkspaceMeta();
             meta.setPath(temp.toString());
             when(context.getMeta()).thenReturn(meta);
@@ -1036,8 +1043,13 @@ class ImageReplyLifecycleTest {
             return request;
         }
 
+        /** 模拟引擎装配结果：request 由 mock 链提供，outcome 只需携带 request/agent 名。 */
+        InputOutcome outcome(ReActRequest request) {
+            return InputOutcome.task(Prompt.of(), "main", null, request);
+        }
+
         Flux<WebEvent<?>> buildStream() {
-            return builder.buildStreamFlux(context, session, agent, null, temp.toString(), Prompt.of());
+            return builder.buildStreamFlux(context, session, outcome(mockRequest()), null, temp.toString());
         }
 
         ImageReplyTurn currentTurnWithImage() throws IOException {

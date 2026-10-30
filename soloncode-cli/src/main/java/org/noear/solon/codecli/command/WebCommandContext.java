@@ -16,130 +16,63 @@
 package org.noear.solon.codecli.command;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.ai.harness.input.BufferedCommandContext;
 
 import java.util.List;
 
 /**
- * CLI 命令执行上下文（实现通用 CommandContext 接口，持有 JLine Terminal/Reader）
+ * Web/IM 命令执行上下文
+ * <p>
+ * 回执缓冲、任务意图记录等通用能力已由 {@link BufferedCommandContext} 提供，
+ * 这里只补充渠道元数据（source / sourceUserId / replyTarget / messageId），
+ * 供 /steer、/queue 等命令透传到排队与回执链路。
  *
  * @author noear
  * @since 2026.4.28
  */
-public class WebCommandContext implements CommandContext {
-    private final AgentSession session;
+public class WebCommandContext extends BufferedCommandContext {
     private final String source;
     private final String sourceUserId;
     private final String replyTarget;
     private final String messageId;
-    private final String rawInput;
-    private final String commandName;
-    private final List<String> args;
-    private final AgentTaskRunner agentTaskRunner;
-
-    private final StringBuilder outputBuffer = new StringBuilder();
-    private boolean isAgentTask = false;
-
-    /**
-     * Agent 任务回调接口
-     */
-    @FunctionalInterface
-    public interface AgentTaskRunner {
-        void run(String prompt, String model);
-    }
 
     public WebCommandContext(AgentSession session,
-                             String rawInput, String commandName, List<String> args,
-                             AgentTaskRunner agentTaskRunner) {
-        this(session, null, null, null, null, rawInput, commandName, args, agentTaskRunner);
+                             String rawInput, String commandName, List<String> args) {
+        this(session, null, null, null, null, rawInput, commandName, args);
     }
 
     public WebCommandContext(AgentSession session, String source,
-                             String rawInput, String commandName, List<String> args,
-                             AgentTaskRunner agentTaskRunner) {
-        this(session, source, null, null, null, rawInput, commandName, args, agentTaskRunner);
+                             String rawInput, String commandName, List<String> args) {
+        this(session, source, null, null, null, rawInput, commandName, args);
     }
 
     public WebCommandContext(AgentSession session, String source, String sourceUserId,
                              String replyTarget, String messageId,
-                             String rawInput, String commandName, List<String> args,
-                             AgentTaskRunner agentTaskRunner) {
-        this.session = session;
+                             String rawInput, String commandName, List<String> args) {
+        super(session, rawInput, commandName, args);
         this.source = source;
         this.sourceUserId = sourceUserId;
         this.replyTarget = replyTarget;
         this.messageId = messageId;
-        this.rawInput = rawInput;
-        this.commandName = commandName;
-        this.args = args;
-        this.agentTaskRunner = agentTaskRunner;
     }
 
     @Override
-    public boolean isRemote() {
-        return true;
-    }
-
-    @Override
-    public AgentSession getSession() {
-        return session;
-    }
-
     public String getSource() {
         return source;
     }
 
+    @Override
     public String getSourceUserId() {
         return sourceUserId;
     }
 
+    @Override
     public String getReplyTarget() {
         return replyTarget;
     }
 
+    @Override
     public String getMessageId() {
         return messageId;
-    }
-
-    @Override
-    public String getRawInput() {
-        return rawInput;
-    }
-
-    @Override
-    public String getCommandName() {
-        return commandName;
-    }
-
-    @Override
-    public List<String> getArgs() {
-        return args;
-    }
-
-    @Override
-    public void println(String text) {
-        outputBuffer.append(text).append("\n");
-    }
-
-    @Override
-    public boolean supportsAnsi() {
-        return false;
-    }
-
-    @Override
-    public void runAgentTask(String input, String model) {
-        if (agentTaskRunner != null) {
-            isAgentTask = true;
-            agentTaskRunner.run(input, model);
-        }
-    }
-
-    public boolean isAgentTask() {
-        return isAgentTask;
-    }
-
-    public StringBuilder getOutputBuffer() {
-        return outputBuffer;
     }
 }

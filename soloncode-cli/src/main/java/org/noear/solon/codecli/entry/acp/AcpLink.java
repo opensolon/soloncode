@@ -16,13 +16,12 @@ import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.talents.cli.TerminalTalent;
-import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
-import org.noear.solon.ai.chat.content.TextBlock;
-import org.noear.solon.ai.chat.message.ChatMessage;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputAttachments;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -141,14 +140,22 @@ public class AcpLink implements Runnable {
                                 "Session not found: " + sessionId));
                     }
 
-                    Prompt userInput = toPrompt(request, context.getCwd());
+                    // 会话必须先解析再构造 input：handle 依赖 input.getSession() 绑定会话，
+                    // 传 null 会让 ReActRequest 回落到临时 InMemoryAgentSession（多轮上下文丢失、快照不落盘）。
                     AgentSession session = agentRuntime.getSession(sessionId);
+
+                    // ACP 客户端文本不构成命令语义，与既有直通行为保持一致
+                    InputOutcome outcome = agentRuntime.handle(toInput(request, session, context.getCwd())
+                            .commandAware(false)
+                            .mentionAware(false));
+                    if (outcome.hasRequest() == false) {
+                        return Mono.empty();
+                    }
 
                     final long startTime = System.currentTimeMillis();
                     final AtomicInteger toolCallCounter = new AtomicInteger(0);
 
-                    return agentRuntime.prompt(userInput)
-                            .session(session)
+                    return outcome.getRequest()
                             .options(o -> {
                                 if (Assert.isNotEmpty(context.getCwd())) {
                                     o.toolContextPut(HarnessEngine.ATTR_CWD, context.getCwd());
@@ -518,12 +525,17 @@ public class AcpLink implements Runnable {
         return sb.toString().replace("\n", " ");
     }
 
-    public Prompt toPrompt(AcpSchema.PromptRequest promptRequest, String cwd) {
-        Prompt prompt = Prompt.of();
-        Contents contents = new Contents();
-
-        // 文本块和 ResourceLink 的 [path] 统一收集到一个 StringBuilder，
-        // 保证 "用户文本 [uri]" 连续输出在同一个 TextBlock 中。
+    /**
+     * 把 ACP PromptRequest 转为引擎输入：文本与媒资分流。
+     *
+     * <p>文本块与 ResourceLink 的 [path] 内联拼入正文本保持既有格式；
+     * 图片（含内嵌 blob）走 {@code InputAttachments.media}；其他内嵌资源
+     * 按原逻辑回退为文本块。</p>
+     *
+     * @param session 会话（必须非空：其为 handle 绑定会话的唯一依据）
+     */
+    public HarnessInput toInput(AcpSchema.PromptRequest promptRequest, AgentSession session, String cwd) {
+        InputAttachments media = InputAttachments.of();
         StringBuilder textBuilder = new StringBuilder();
 
         for (AcpSchema.ContentBlock cp : promptRequest.prompt()) {
@@ -532,13 +544,11 @@ public class AcpLink implements Runnable {
                 if (textBuilder.length() > 0) textBuilder.append(" ");
                 textBuilder.append(text.text());
             } else if (cp instanceof AcpSchema.ImageContent) {
-                // 遇到非文本块时先 flush 已累积的文本
-                flushText(contents, textBuilder);
                 AcpSchema.ImageContent image = (AcpSchema.ImageContent) cp;
                 if (Assert.isEmpty(image.uri())) {
-                    contents.addBlock(ImageBlock.ofBase64(image.data(), image.mimeType()));
+                    media.media(ImageBlock.ofBase64(image.data(), image.mimeType()));
                 } else {
-                    contents.addBlock(ImageBlock.ofUrl(image.uri(), image.mimeType()));
+                    media.media(ImageBlock.ofUrl(image.uri(), image.mimeType()));
                 }
             } else if (cp instanceof AcpSchema.ResourceLink) {
                 // 文件拖拽引用：不读取内容，只将 URI 转为工作区相对路径，
@@ -549,24 +559,12 @@ public class AcpLink implements Runnable {
                     textBuilder.append("[").append(relativePath).append("]");
                 }
             } else if (cp instanceof AcpSchema.Resource) {
-                // 遇到非文本块时先 flush 已累积的文本
-                flushText(contents, textBuilder);
-                handleEmbeddedResource(contents, (AcpSchema.Resource) cp);
+                handleEmbeddedResource(media, textBuilder, (AcpSchema.Resource) cp);
             }
         }
 
-        // flush 剩余文本
-        flushText(contents, textBuilder);
-
-        return prompt.addMessage(ChatMessage.ofUser(contents));
-    }
-
-    /** 将 StringBuilder 中累积的文本作为 TextBlock 加入 contents，然后清空。 */
-    private void flushText(Contents contents, StringBuilder textBuilder) {
-        if (textBuilder.length() > 0) {
-            contents.addBlock(TextBlock.of(textBuilder.toString()));
-            textBuilder.setLength(0);
-        }
+        String text = textBuilder.length() > 0 ? textBuilder.toString() : null;
+        return HarnessInput.of(session, text).attachments(media);
     }
 
     /**
@@ -605,11 +603,11 @@ public class AcpLink implements Runnable {
     /**
      * 处理 Resource：客户端内联嵌入的资源内容。
      * <ul>
-     *   <li>TextResourceContents：text 字段已有内容，直接作为 TextBlock</li>
-     *   <li>BlobResourceContents：base64 编码，图片转 ImageBlock，其余尝试解码为文本</li>
+     *   <li>TextResourceContents：text 字段已有内容，拼入正文（保留 ``` 包裹格式）</li>
+     *   <li>BlobResourceContents：base64 编码，图片转 media，其余尝试解码为文本拼入正文</li>
      * </ul>
      */
-    private void handleEmbeddedResource(Contents contents, AcpSchema.Resource resource) {
+    private void handleEmbeddedResource(InputAttachments media, StringBuilder textBuilder, AcpSchema.Resource resource) {
         AcpSchema.EmbeddedResourceResource res = resource.resource();
         if (res == null) {
             return;
@@ -621,7 +619,7 @@ public class AcpLink implements Runnable {
             if (Assert.isNotEmpty(text)) {
                 String uri = textRes.uri();
                 String label = Assert.isNotEmpty(uri) ? "File: " + uri + "\n" : "";
-                contents.addBlock(TextBlock.of(label + "```\n" + text + "\n```"));
+                appendText(textBuilder, label + "```\n" + text + "\n```");
             }
         } else if (res instanceof AcpSchema.BlobResourceContents) {
             AcpSchema.BlobResourceContents blobRes = (AcpSchema.BlobResourceContents) res;
@@ -632,7 +630,7 @@ public class AcpLink implements Runnable {
             }
 
             if (mimeType != null && mimeType.startsWith("image/")) {
-                contents.addBlock(ImageBlock.ofBase64(blob, mimeType));
+                media.media(ImageBlock.ofBase64(blob, mimeType));
             } else {
                 // 尝试解码为文本
                 try {
@@ -640,16 +638,22 @@ public class AcpLink implements Runnable {
                     String text = new String(decoded, StandardCharsets.UTF_8);
                     String uri = blobRes.uri();
                     String label = Assert.isNotEmpty(uri) ? "File: " + uri + "\n" : "";
-                    contents.addBlock(TextBlock.of(label + "```\n" + text + "\n```"));
+                    appendText(textBuilder, label + "```\n" + text + "\n```");
                 } catch (Exception e) {
                     // 二进制内容无法解码为文本
                     String uri = blobRes.uri();
                     String name = Assert.isNotEmpty(uri) ? uri : "binary resource";
-                    contents.addBlock(TextBlock.of("[Binary resource: " + name + " ("
-                            + (mimeType != null ? mimeType : "unknown") + ")]"));
+                    appendText(textBuilder, "[Binary resource: " + name + " ("
+                            + (mimeType != null ? mimeType : "unknown") + ")]");
                 }
             }
         }
+    }
+
+    /** 追加一段独立文本（带前导空格分隔，与原多块拼接格式一致）。 */
+    private void appendText(StringBuilder textBuilder, String text) {
+        if (textBuilder.length() > 0) textBuilder.append(" ");
+        textBuilder.append(text);
     }
 
     public static class AcpSessionContext {

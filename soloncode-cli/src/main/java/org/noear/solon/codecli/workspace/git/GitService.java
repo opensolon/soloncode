@@ -16,9 +16,8 @@
 package org.noear.solon.codecli.workspace.git;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.ai.talents.mount.Mount;
 import org.noear.solon.ai.talents.mount.MountType;
@@ -769,8 +768,7 @@ public class GitService {
                     HarnessEngine.CTX_MODEL_SELECTED,
                     engine.getMainModel().getNameOrModel()
             );
-            ChatModel chatModel = engine.getModelOrDefInstance(selectedModel);
-            ReActAgent agent = engine.getAgentOrMain("git-summary");
+            // 会话级模型优先，回退主模型名（git-summary 子代理无自带 model 配置）
 
             // 收集 diff 内容（最多 15 个文件）
             List<String> targetFiles = files.size() > 15 ? files.subList(0, 15) : files;
@@ -815,8 +813,10 @@ public class GitService {
                     + "变更统计：" + statInfo
                     + "\n\n--- Diff 内容 ---\n" + combinedDiff;
 
-            String summary = agent.prompt(userMessage)
-                    .options(o -> o.chatModel(chatModel))
+            String summary = engine.handle(HarnessInput.of(null, userMessage)
+                                    .model(selectedModel)
+                                    .agent("git-summary"))
+                    .getRequest()
                     .call()
                     .getContent();
 

@@ -23,25 +23,28 @@ import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.noear.solon.Utils;
+import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
+import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
-import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.ai.harness.input.CommandContextFactory;
+import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
-import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -166,10 +169,7 @@ public class CliShell implements Runnable {
         AgentSession session = prepare(SESSION_ID_CLI);
 
         try {
-            if (!isCommand(session, input)) {
-                performAgentTask(session, input, null);
-                drainCliQueue(session);
-            }
+            handleInput(session, input);
         } catch (Throwable e) {
             terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
         }
@@ -241,10 +241,7 @@ public class CliShell implements Runnable {
                     continue;
                 }
 
-                if (!isCommand(session, input)) {
-                    performAgentTask(session, input, null);
-                    drainCliQueue(session);
-                }
+                handleInput(session, input);
             } catch (Throwable e) {
                 LOG.warn(e.getMessage(), e);
                 terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
@@ -255,7 +252,7 @@ public class CliShell implements Runnable {
     private String safeChatInput(AgentSession session, String prompt) {
         if (reader != null && reader.isReading()) {
             try {
-                return performAgentTask(session, prompt, null);
+                return runMessageInput(session, prompt, null);
             } catch (Exception e) {
                 LOG.error("Loop task execution failed: {}", e.getMessage(), e);
             } finally {
@@ -266,53 +263,83 @@ public class CliShell implements Runnable {
         return null;
     }
 
-    private boolean isCommand(AgentSession session, String input) throws Exception {
-        if (!input.startsWith("/")) {
-            return false;
+    /**
+     * 统一输入处理：命令识别、执行、子代理解析、请求装配全部由引擎完成
+     * <p>
+     * 宿主只负责「回执怎么渲染」与「流怎么消费」。
+     */
+    private void handleInput(AgentSession session, String input) throws Exception {
+        InputOutcome outcome = engine.handle(HarnessInput.of(session, input), cliCommandFactory());
+
+        switch (outcome.getKind()) {
+            case TASK:
+                // 有任务就执行（命令触发与用户手输同一分支）：命令回执已由命令即时写入终端
+                performAgentTask(session, outcome);
+                drainCliQueue(session);
+                return;
+            case REPLY:
+                // 只有回执：命令已执行或在本渠道不可用（CLI 侧不会出现），保持原行为
+                if (outcome.hasReply()) {
+                    terminal.writer().println(outcome.getCommandOutput());
+                    terminal.flush();
+                }
+                // CLI 与 Web/IM 共用 SessionQueue；命令完成后由 CLI 自身消费空闲队列
+                //注意顺序：先 drain 再 printWelcome（与改造前的既有行为一致）
+                drainCliQueue(session);
+                if ("clear".equals(outcome.getCommandName())) {
+                    printWelcome(session);
+                }
+                return;
+            case HITL:
+                // CLI 的 HITL 交互在主循环内（performAgentTask → handleHITL），不经此分支
+                return;
+            case IGNORED:
+            default:
+                return;
+        }
+    }
+
+    /**
+     * 命令行上下文工厂：保留 Terminal/Reader 以支持 /help 交互与 /model 选择器
+     * <p>
+     * 命令内部触发的任务只记录意图（由分发器交给引擎二段装配），
+     * 因此这里不再需要传回调闭包。
+     */
+    private CommandContextFactory cliCommandFactory() {
+        return new CommandContextFactory() {
+            @Override
+            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand command) {
+                return new CliCommandContext(s, terminal, reader,
+                        command.getRawInput(), command.getName(), command.getArgs());
+            }
+
+            @Override
+            public boolean isRemote() {
+                return false;
+            }
+        };
+    }
+
+    /**
+     * 按普通消息处理一段已受理的文本（不识别命令，仍解析 @子代理）
+     */
+    private String runMessageInput(AgentSession session, String text, String model) throws Exception {
+        InputOutcome outcome = engine.handle(HarnessInput.of(session, text)
+                .commandAware(false)
+                .model(model), cliCommandFactory());
+
+        if (outcome.getKind() == InputOutcome.Kind.TASK) {
+            return performAgentTask(session, outcome);
         }
 
-        // 解析命令名和参数
-        List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
-        String cmdName = parts.get(0).toLowerCase();
-        List<String> args = parts.size() > 1
-                ? parts.subList(1, parts.size())
-                : Collections.emptyList();
-
-        // 查找命令
-        Command command = engine.getCommandRegistry().find(cmdName);
-        if (command == null) {
-            return false;
-        }
-
-        // 构建 context（注入 agentTaskRunner 回调）
-        CliCommandContext ctx = new CliCommandContext(session, terminal, reader,
-                input, cmdName, args,
-                (prompt, model) -> {
-                    try {
-                        performAgentTask(session, prompt, model);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-
-        // 执行命令
-        command.execute(engine, ctx);
-        // CLI 与 Web/IM 共用 SessionQueue；命令完成后由 CLI 自身消费空闲队列。
-        drainCliQueue(session);
-
-        // clear 命令后重新打印 welcome
-        if ("clear".equals(cmdName)) {
-            printWelcome(session);
-        }
-
-        return true;
+        return null;
     }
 
     private void drainCliQueue(AgentSession session) {
         if (session == null || cliQueueDraining) return;
         cliQueueDraining = true;
         try {
-            while (SessionQueueDrainer.drainOne(session, item -> performAgentTask(session, item.getText(), item.getModel()))) {
+            while (SessionQueueDrainer.drainOne(session, item -> runMessageInput(session, item.getText(), item.getModel()))) {
                 // 统一由 SessionQueueDrainer 负责 claim/poll/ack/requeue。
             }
         } finally {
@@ -324,40 +351,29 @@ public class CliShell implements Runnable {
         return LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
     }
 
-    private String performAgentTask(AgentSession session, String input, String modelSelected) throws Exception {
+    /**
+     * 执行一轮 Agent 任务（CLI 的 HITL 多轮模型：一次输入可能对应多轮流）
+     * <p>
+     * 首轮直接用引擎装配好的请求；HITL 恢复后的续轮用 {@link InputOutcome} 里的最终生效字段
+     * 继续驱动 —— 不重新解析提及、不重新回退模型。
+     */
+    private String performAgentTask(AgentSession session, InputOutcome outcome) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET + DIM + " " + getTimeNow() + RESET);
 
-        String agentName = null;
-        String currentInput = input;
+        final String agentName = outcome.getAgentName();
+        final String modelName = outcome.getModelName();
+        //首轮已由引擎装配；续轮为 null（HITL 靠挂起的 tool_calls 续跑，不需要正文）
+        Prompt currentPrompt = outcome.getPrompt();
+        ReActRequest currentRequest = outcome.getRequest();
+
         final AtomicBoolean isTaskCompleted = new AtomicBoolean(false);
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
         // ReAct 完成时的权威全文，多轮 HITL 时以最后一轮为准。
         final AtomicReference<String> finalAnswer = new AtomicReference<>();
 
-        if (modelSelected == null) {
-            modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-        }
-
-
-        if (input != null) {
-            if (input.startsWith("@")) {
-                int agentNameIdx = input.indexOf(" ");
-                if (agentNameIdx > 0) {
-                    agentName = input.substring(1, agentNameIdx);
-
-                    if (engine.getAgentManager().hasAgent(agentName)) {
-                        currentInput = currentInput.substring(agentNameIdx + 1);
-                    }
-                }
-            }
-        }
-
-        ChatModel targetModel = engine.getModelOrDefInstance(modelSelected);
-        ReActAgent targetAgent = engine.getAgentOrMain(agentName);
-
         while (true) {
             // 简化状态提示：只在非首次且任务未完成时打印等待符
-            if (currentInput == null && !isTaskCompleted.get()) {
+            if (currentPrompt == null && !isTaskCompleted.get()) {
                 terminal.writer().print("\r" + DIM + "  ... " + RESET);
                 terminal.flush();
             }
@@ -366,13 +382,21 @@ public class CliShell implements Runnable {
             final AtomicBoolean isInterrupted = new AtomicBoolean(false);
             final AtomicBoolean isFirstReasonDeltaChunk = new AtomicBoolean(true);
 
-            Prompt originalPrompt = Prompt.of(currentInput);
+            //首轮用引擎装配好的请求；续轮（HITL 恢复）现场装配，正文为 null
+            final ReActRequest request;
+            if (currentRequest != null) {
+                request = currentRequest;
+                currentRequest = null;
+            } else {
+                //续流：不产生新输入，按会话挂起的 tool_calls 继续执行（模型/子代理沿用首轮生效值）
+                request = engine.handle(HarnessInput.of(session, null)
+                                .resume(true)
+                                .model(modelName)
+                                .agent(agentName))
+                        .getRequest();
+            }
 
-            Disposable disposable = targetAgent.prompt(originalPrompt)
-                    .session(session)
-                    .options(o -> {
-                        o.chatModel(targetModel);
-                    })
+            Disposable disposable = request
                     .stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
@@ -432,7 +456,7 @@ public class CliShell implements Runnable {
             // HITL 处理 (授权交互)
             if (HITL.isHitl(session)) {
                 if (handleHITL(session)) {
-                    currentInput = null;
+                    currentPrompt = null;
                     continue;
                 } else {
                     return finalAnswer.get();
@@ -445,7 +469,7 @@ public class CliShell implements Runnable {
                 return finalAnswer.get();
             }
 
-            currentInput = null;
+            currentPrompt = null;
         }
     }
 
@@ -498,11 +522,12 @@ public class CliShell implements Runnable {
         }
 
         String choice = reader.readLine(BOLD + GREEN + "Approve? (y/n) " + RESET).trim().toLowerCase();
+        // 决策必须落在「当前展示的这个 task」上：按 callUuid 写入，避免并行挂起同名工具时误命中
         if ("y".equals(choice) || "yes".equals(choice)) {
-            HITL.approve(session, task.getToolName());
+            HITL.approve(session, task);
             return true;
         } else {
-            HITL.reject(session, task.getToolName());
+            HITL.reject(session, task);
             terminal.writer().println(DIM + "Action rejected." + RESET);
             return false;
         }

@@ -17,16 +17,16 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
-import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.ai.harness.session.goal.GoalScheduler;
 import org.noear.solon.ai.harness.session.goal.GoalState;
@@ -306,14 +306,24 @@ public class WsGate extends SimpleWebSocketListener {
             Object configuredAgent = session.attrs().get(SESSION_ATTR_SELECTED_AGENT);
             selectedAgent = configuredAgent == null ? null : String.valueOf(configuredAgent);
         }
-        String selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
-        ChatModel chatModel = engine.getModelOrDefInstance(selectedModel);
-        ReActAgent agent = engine.getAgentOrMain(selectedAgent);
         String sessionCwd = String.valueOf(session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, "."));
         String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
-        Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
+        //goal objective 由程序生成（含“[附件: xxx]”前缀），不当命令、不当子代理提及，原文交给代理自己识别
+        InputOutcome outcome = engine.handle(HarnessInput.of(session, input)
+                                .agent(selectedAgent)
+                                .commandAware(false)
+                                .mentionAware(false),
+                        null);
+
+        Prompt prompt = outcome.getPrompt();
+        // 无正文的输入（如空 objective）会被引擎归为 IGNORED，此时没有 prompt 可写属性
+        if (prompt == null || !outcome.hasRequest()) {
+            return null;
+        }
+        prompt.attrPut("start_time", System.currentTimeMillis());
         applyReasoningEffort(prompt, reasoningEffort);
+
         CountDownLatch completed = new CountDownLatch(1);
         AtomicReference<String> finalAnswer = new AtomicReference<>("");
         AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -323,10 +333,8 @@ public class WsGate extends SimpleWebSocketListener {
                 .set("sessionId", sessionId)
                 .toJson());
 
-        Disposable disposable = agent.prompt(prompt)
-                .session(session)
+        Disposable disposable = outcome.getRequest()
                 .options(options -> {
-                    options.chatModel(chatModel);
                     DesktopCollaborationPrompt.applyTo(options);
                     options.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
                     applyReasoningEffort(options, reasoningEffort);
@@ -502,27 +510,6 @@ public class WsGate extends SimpleWebSocketListener {
             offset += Character.charCount(codePoint);
         }
         return true;
-    }
-
-    int firstWhitespaceIndex(String value) {
-        for (int i = 0; i < value.length(); i++) {
-            if (Character.isWhitespace(value.charAt(i))) return i;
-        }
-        return -1;
-    }
-
-    String removeLeadingAgentMention(String input, String agentName) {
-        String mention = "@" + agentName;
-        if (!input.startsWith(mention)) return input;
-        if (input.length() > mention.length() && !Character.isWhitespace(input.charAt(mention.length()))) {
-            return input;
-        }
-
-        int contentStart = mention.length();
-        while (contentStart < input.length() && Character.isWhitespace(input.charAt(contentStart))) {
-            contentStart++;
-        }
-        return input.substring(contentStart);
     }
 
     void applyReasoningEffort(Prompt prompt, String reasoningEffort) {

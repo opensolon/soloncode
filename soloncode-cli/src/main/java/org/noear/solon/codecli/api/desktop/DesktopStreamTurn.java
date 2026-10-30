@@ -17,8 +17,8 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActOptionsAmend;
+import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.intercept.HITL;
@@ -29,7 +29,6 @@ import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
@@ -68,10 +67,13 @@ final class DesktopStreamTurn {
     /**
      * 执行一次流回合并登记 disposable。
      *
+     * <p>请求装配（session/模型/retry/maxTurns）由 {@code engine.handle} 在调用前完成，
+     * 本方法只做桌面端请求级补充：运行模式、HITL 拦截器、cwd、推理强度。</p>
+     *
      * @param hitlResume true 表示 HITL 审批后的续跑（复用既有流状态 subscribe，不再 begin）
      */
-    Disposable run(AgentSession session, ReActAgent agent, ChatModel chatModel,
-                   Prompt prompt, String sessionId, String cwd, String reasoningEffort,
+    Disposable run(AgentSession session, ReActRequest request, ChatModel chatModel,
+                   String sessionId, String cwd, String reasoningEffort,
                    WebSocket socket, boolean hitlResume,
                    HITLInterceptor desktopHitlInterceptor) {
         AtomicBoolean terminalSent = new AtomicBoolean(false);
@@ -80,10 +82,12 @@ final class DesktopStreamTurn {
         } else {
             streamHub.begin(sessionId, socket);
         }
-        Disposable disposable = agent.prompt(prompt)
-                .session(session)
+        Disposable disposable = request
                 .options(o -> {
-                    o.chatModel(chatModel);
+                    // 模型已由 handle 装配；这里仅在宿主显式解析出模型时覆盖（幂等，零差异）
+                    if (chatModel != null) {
+                        o.chatModel(chatModel);
+                    }
                     DesktopCollaborationPrompt.applyTo(o);
                     applyRunMode(o, session, desktopHitlInterceptor);
                     if (Assert.isNotEmpty(cwd)) {

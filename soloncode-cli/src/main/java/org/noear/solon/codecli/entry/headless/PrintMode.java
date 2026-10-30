@@ -17,14 +17,13 @@ package org.noear.solon.codecli.entry.headless;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
 import org.noear.solon.ai.talents.mount.source.FileMountSource;
@@ -530,15 +529,17 @@ public class PrintMode {
             }
         }
 
-        ChatModel chatModel = engine.getModelOrDefInstance(modelSelected);
-        ReActAgent agent = engine.getMainAgent();
-
         try {
             disposableRef.set(
-                    agent.prompt(Prompt.of(prompt))
-                            .session(session)
+                    engine.handle(HarnessInput.of(session, prompt)
+                                    .model(modelSelected)
+                                    //headless 一律用主代理：原实现直接取 getMainAgent()，不解析输入里的 @提及
+                                    //（子代理选择走 --agent 参数，由调用方自行拼接，不经此处解析）
+                                    .commandAware(false)
+                                    .mentionAware(false))
+                            //输入装配统一走 input，宿主只补 CLI 侧选项
+                            .getRequest()
                             .options(o -> {
-                                o.chatModel(chatModel);
                                 if (options.getMaxTurns() != null) {
                                     o.maxTurns(options.getMaxTurns());
                                 }

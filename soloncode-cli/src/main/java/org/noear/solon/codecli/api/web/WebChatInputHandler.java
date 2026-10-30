@@ -22,15 +22,15 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.chat.content.Contents;
-import org.noear.solon.ai.chat.content.ImageBlock;
-import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
-import org.noear.solon.ai.chat.message.UserMessage;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.ai.harness.input.CommandContextFactory;
+import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.command.WebCommandContext;
 import org.noear.solon.codecli.channel.ImMessages;
@@ -49,8 +49,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -157,101 +155,79 @@ class WebChatInputHandler {
             boolean modeProvided = thinkingMode != null;
             org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionThinkingMode(session, thinkingMode, modeProvided);
 
-            String agentName = null;
-            String currentInput = input;
-
-            if (currentInput != null && currentInput.startsWith("@")) {
-                int agentNameIdx = currentInput.indexOf(" ");
-                if (agentNameIdx > 0) {
-                    String explicitAgent = currentInput.substring(1, agentNameIdx);
-                    if (wsContext.getEngine().getAgentManager().hasAgent(explicitAgent)) {
-                        agentName = explicitAgent;
-                        currentInput = currentInput.substring(agentNameIdx + 1);
-                    }
-                }
-            }
-
-            // 输入开头的有效 @子代理 优先；否则使用选择器传入的有效子代理；都没有时使用主 Agent。
-            if (agentName == null && Assert.isNotEmpty(selectedAgent)
-                    && wsContext.getEngine().getAgentManager().hasAgent(selectedAgent)) {
-                agentName = selectedAgent;
-            }
-
-
-            // HITL approve/reject handling（按 callUuid 精确决策，支持批量逐卡审批）
+            // HITL approve/reject handling：决策应用统一交给引擎（含 callId 精确定位与工具返回改写）。
+            //必须放在子代理解析之前：审批请求通常不带文本，mention 解析对它无意义。
             if (Assert.isNotEmpty(hitlAction)) {
                 // callId 通过 session context 透传（前端 POST hitlCallId），避免全链路改签名
                 String hitlCallId = session.getContext().getAs(WebGate.CTX_HITL_CALL_ID);
                 session.getContext().remove(WebGate.CTX_HITL_CALL_ID);
 
-                HITLTask task = Assert.isNotEmpty(hitlCallId)
-                        ? HITL.getPendingTaskByCallUuid(session, hitlCallId)
-                        : HITL.getPendingTask(session); // 无 callId 时回退单任务（兼容旧前端）
+                // 先记录本批挂起数量：决策写入后再判断，无法区分「本来就无挂起」。
+                // 过期审批卡（任务已结束）若也走 resume，会因 prompt 为空而回落 trace.getOriginalPrompt()，
+                // 把上一轮问题原样重跑一遍 —— 必须用「本次确有挂起」作为续流前置条件。
+                List<HITLTask> pendingBefore = HITL.getPendingTasks(session);
+                boolean hadPending = pendingBefore != null && !pendingBefore.isEmpty();
 
-                if (task != null) {
-                    if ("approve".equals(hitlAction)) {
-                        HITL.approve(session, task);
-                    } else {
-                        HITL.reject(session, task);
-                    }
-                }
+                wsContext.getEngine().handle(
+                        HarnessInput.of(session, null)
+                                .agent(selectedAgent)
+                                .hitl(hitlAction, hitlCallId));
 
                 // 恢复时机：批量场景下前端逐卡点击会发多次决策，
                 // 仅当本批所有挂起任务都已有决策时才恢复流，否则只写决策不 resume。
-                if (allHitlDecided(session)) {
-                    gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, null, selectedModel, agentName);
+                if (hadPending && allHitlDecided(session)) {
+                    // 续流统一走 input 入口（resume 语义）：请求主体由引擎装配。
+                    // 生效子代理必须取「首轮实际生效值」（WebStreamBuilder 每轮写入 _agent_selected_tmp），
+                    // 而不是审批请求自带的 selectedAgent：审批请求通常不带该字段，
+                    // 会回落主代理而取不到子代理挂起的 trace（续跑空转）。
+                    String effectiveAgent = (String) session.attrs().get(WebStreamBuilder.ATTR_EFFECTIVE_AGENT);
+                    InputOutcome resumeOutcome = wsContext.getEngine().handle(
+                            HarnessInput.of(session, null)
+                                    .agent(effectiveAgent)
+                                    .model(selectedModel)
+                                    .resume(true));
+                    if (resumeOutcome.hasRequest()) {
+                        gate.getSessionRunner()
+                                .performAgentTaskAsync(wsContext, session, sessionCwd, resumeOutcome);
+                    }
                 }
                 return;
             }
 
-            // Handle file upload
-            List<ImageBlock> imageBlocks = new ArrayList<>();
-            List<String> imageFileNames = new ArrayList<>();
-            List<String> fileAttachments = new ArrayList<>();
+            // @子代理 解析口径与 CLI/桌面端统一（harness AgentMentions）：
+            // 输入开头的有效 @子代理 优先；否则使用选择器传入的有效子代理。
+            // 解析、附件落盘、命令识别、Prompt 构建、请求装配全部下沉到引擎（input 唯一入口）。
+            // Web 只保留：命令回执的信封渲染、请求级上下文写入、流的订阅。
+            // 历史前端兼容：旧版会以文本 "/resume" 触发续流，转为显式 resume 语义
+            // （等价于原 buildStreamFlux 里的 /resume 剥离，语义前移到入口处）。
+            boolean resumeInput = "/resume".equals(input != null ? input.trim() : null);
+            InputOutcome outcome = wsContext.getEngine().handle(
+                    HarnessInput.of(session, resumeInput ? null : input)
+                            .resume(resumeInput)
+                            .agent(selectedAgent)
+                            .model(selectedModel)
+                            .route(source, sourceUserId, replyTarget, messageId)
+                            .attachments(WebAttachmentStore.toAttachments(
+                                    wsContext.getEngine().getWorkspace(), attachments, attachmentTypes)),
+                    webCommandFactory(source, sourceUserId, replyTarget, messageId));
 
-            WebAttachments.saveAttachments(wsContext.getEngine().getWorkspace(), attachments, attachmentTypes,
-                    imageBlocks, imageFileNames, fileAttachments);
-
-            // Build input text with file attachment prefix
-            currentInput = WebAttachments.withFilePrefix(currentInput, fileAttachments);
-
-            if (Assert.isNotEmpty(currentInput) || !imageBlocks.isEmpty()) {
-                if (currentInput == null || currentInput.isEmpty()) {
-                    currentInput = imageBlocks.size() > 1 ? "请描述这些图片" : "请描述这张图片";
-                }
-
-                // 命令分发
-                if (currentInput.startsWith("/") && imageBlocks.isEmpty()) {
-                    if (isCommand(wsContext, session, sessionCwd, currentInput, selectedModel, agentName, source,
-                            sourceUserId, replyTarget, messageId)) {
-                        return;
+            switch (outcome.getKind()) {
+                case TASK:
+                    if (outcome.isCommand()) {
+                        // 命令触发的任务：回执照发、不抢发 done，收尾交给任务流
+                        startCommandTaskTurn(wsContext, session, sessionCwd, outcome);
+                    } else {
+                        // 流式处理：输出通过 WebSocket 推送（模型/子代理一律用引擎生效值）
+                        gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, outcome);
                     }
-                }
-
-                Prompt prompt;
-                if (!imageBlocks.isEmpty()) {
-                    Contents contents = new Contents();
-                    contents.addBlock(TextBlock.of(currentInput));
-                    for (ImageBlock block : imageBlocks) {
-                        contents.addBlock(block);
-                    }
-                    // 构建附件元数据（含图片文件名），供历史消息恢复时前端渲染文件名标签
-                    String attachMeta = WebAttachments.buildAttachmentMeta(imageFileNames);
-                    UserMessage userMsg = new UserMessage(contents).addMetadata("source", source);
-                    if (attachMeta != null) {
-                        userMsg.addMetadata("attachments", attachMeta);
-                    }
-                    WebAttachments.addAgentMeta(userMsg, agentName);
-                    prompt = Prompt.of(userMsg);
-                } else {
-                    // 文件附件已在 currentInput 前缀写入文件名（[附件: xxx]），ndjson 有记录
-                    UserMessage userMsg = ChatMessage.ofUser(currentInput).addMetadata("source", source);
-                    WebAttachments.addAgentMeta(userMsg, agentName);
-                    prompt = Prompt.of(userMsg);
-                }
-
-                // 流式处理：输出通过 WebSocket 推送
-                gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, prompt, selectedModel, agentName);
+                    break;
+                case REPLY:
+                    // 命令已执行，或命令在本渠道不可用：回执自成一轮
+                    startReplyTurn(wsContext, session, outcome, source, sourceUserId, replyTarget, messageId);
+                    break;
+                default:
+                    // HITL / IGNORED：决策已写入或无事可做
+                    break;
             }
         } catch (Exception e) {
             LOG.error("Task fail: {}", e.getMessage(), e);
@@ -317,121 +293,123 @@ class WebChatInputHandler {
     }
 
     /**
-     * 尝试将用户输入解析为斜杠命令并执行。
+     * 命令触发的 Agent 任务：回执照发、不抢发 done，收尾交给随后发起的任务流。
      *
-     * <p>解析输入字符串中的命令名和参数，查找已注册的 {@link Command} 并执行。
-     * 若命令执行后产生非 Agent 任务结果，会通过 WebSocket 推送命令输出；
-     * 若为 rewind 命令，会发送特殊的回退事件通知前端删除历史 DOM。</p>
-     *
-     * @return true 表示输入已被识别为命令并执行，false 表示非命令输入
+     * <p>模型/子代理一律用引擎生效值（命令声明 → 会话选择 → 默认），与普通消息同口径。</p>
      */
-    private boolean isCommand(WorkspaceContext wsContext, AgentSession session, String sessionCwd, String input, String selectedModel, String agentName, String source,
-                              String sourceUserId, String replyTarget, String messageId) throws Exception {
-        if (!input.startsWith("/")) {
-            return false;
+    private void startCommandTaskTurn(WorkspaceContext wsContext, AgentSession session, String sessionCwd,
+                                      InputOutcome outcome) {
+        // 防重入（原先在命令回调里）：会话已有流在跑（含上一轮 doFinally 尚未归位槽位的瞬时窗口）时，
+        // 再开一条流会与在跑流共享同一 ReActTrace —— 旧流把 route 置 END 后新流立即空转结束，
+        // 表现为「点了没反应、马上结束」。此处已不再是输入受理占位持有者（占位在本轮 finally 才释放），
+        // 只能用真实流句柄判断，不能用 isBusy，否则 /continue、/rerun 会被自身拦截。
+        if (SessionActivity.hasActiveStream(session)) {
+            LOG.warn("[WebGate] Session {} agent task via /{} skipped: another task in progress",
+                    session.getSessionId(), outcome.getCommandName());
+            gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand("当前有任务正在执行，本次触发已忽略"));
+            return;
         }
 
-        // 解析命令名和参数
-        List<String> parts = CmdUtil.parseArguments(input.trim().substring(1));
-        if (parts.isEmpty()) {
-            return false;
+        // 开流前后端流门复位必须早于回执：上一轮 done 后前端已置 _streamClosed 并丢弃后续 chunk，
+        // 若先发回执，回执会被前端静默丢掉（命令事件不带 runId，自愈判据用不上）。
+        // 与普通消息同构（performAgentTaskAsync → beginStreamTurn 会再复位一次，幂等无害）。
+        gate.getSessionRunner().beginStreamTurn(wsContext, session);
+
+        // 命令回执先发（命令自己已写入缓冲），任务流由本方法发起、并由那条流负责收尾。
+        // 不能在这里发 done：否则前端提前收尾并丢掉任务流的后续输出。
+        // IM 回执必须按「非终态」发送：终态会封闭 ATTR_IM_TERMINAL_SENT 去重门，
+        // 随后任务流的最终答复会被该门吞掉，IM 端只能看到命令回执、看不到任务结果。
+        if (outcome.hasReply()) {
+            gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand(outcome.getCommandOutput()));
+            gate.getStreamBuilder().replyToBoundChannel(wsContext, session.getSessionId(),
+                    outcome.getCommandOutput(), false);
         }
-        String cmdName = parts.get(0).toLowerCase();
-        List<String> args = parts.size() > 1
-                ? parts.subList(1, parts.size())
-                : Collections.emptyList();
 
-        // 查找命令
-        Command command = wsContext.getEngine().getCommandRegistry().find(cmdName);
-        if (command == null) {
-            return false;
+        gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, outcome);
+    }
+
+    /**
+     * 仅有回执的一轮：命令已执行，或命令在本渠道不可用（未执行）。
+     *
+     * <p>二者宿主动作相同，因此合并为一个分支。</p>
+     */
+    private void startReplyTurn(WorkspaceContext wsContext, AgentSession session, InputOutcome outcome,
+                                String source, String sourceUserId, String replyTarget, String messageId) {
+        // 命令回执自成一轮：只要此刻没有 agent 流在跑，就用完整的「reset ... done」信封包住它 ——
+        // 前端在上一轮 done 之后会置 _streamClosed 并丢弃后续 chunk，而命令事件不带 runId、
+        // 自愈判据用不上，缺了 reset 时远端触发（IM/API）的命令回执在 Web 端会静默消失。
+        // 反之若会话繁忙（流式期间来一条 /status），本轮归那条流：既不解封也不抢发 done，
+        // 否则会让前端提前收尾并丢掉该流后续输出（runId 未变，自愈同样兜不住）。
+        // 输入受理占位不是 agent 流；命令独占时仍须发 reset/done。
+        boolean ownTurn = !SessionActivity.hasActiveStream(session);
+        if (ownTurn) {
+            gate.getSessionRunner().beginStreamTurn(wsContext, session);
         }
 
-        // 构建 context（注入 agentTaskRunner 回调）；命令执行的工作区语境由本网关实例已绑定的 engine 确定。
-        WebCommandContext ctx = new WebCommandContext(session, source, sourceUserId, replyTarget, messageId, input, cmdName, args,
-                (prompt, model) -> {
-                    try {
-                        //防重入：会话已有流在跑（含上一轮 doFinally 尚未归还槽位的瞬时窗口）时，
-                        //再开一条流会与在跑流共享同一 ReActTrace —— 旧流把 route 置 END 后
-                        //新流立即空转结束，表现为「点了没反应、马上结束」。故忙碌时忽略并提示
-                        // 当前输入可能仍持有 input.admitting 占位；这里已经是该输入派生出的 Agent 任务，
-                        // 只能用真实流句柄判断是否有其它任务运行，避免 /continue、/rerun 被自身拦截。
-                        if (SessionActivity.hasActiveStream(session)) {
-                            LOG.warn("[WebGate] Session {} agent task via /{} skipped: another task in progress", session.getSessionId(), cmdName);
-                            gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand("当前有任务正在执行，本次触发已忽略"));
-                            return;
-                        }
-
-                        if (model == null) {
-                            model = selectedModel;
-                        }
-
-                        gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, Prompt.of(prompt), model, agentName);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-
-        // 执行命令
-        command.execute(wsContext.getEngine(), ctx);
-
-
-        if (ctx.isAgentTask() == false) {
-            // 命令回执自成一轮：只要此刻没有 agent 流在跑，就用完整的「reset ... done」信封包住它 ——
-            // 前端在上一轮 done 之后会置 _streamClosed 并丢弃后续 chunk，而命令事件不带 runId、
-            // 自愈判据用不上，缺了 reset 时远端触发（IM/API）的命令回执在 Web 端会静默消失。
-            // 反之若会话繁忙（流式期间来一条 /status），本轮归那条流：既不解封也不抢发 done，
-            // 否则会让前端提前收尾并丢掉该流后续输出（runId 未变，自愈同样兜不住）。
-            // 输入受理占位不是 agent 流；命令独占时仍须发 reset/done。
-            boolean ownTurn = !SessionActivity.hasActiveStream(session);
-            if (ownTurn) {
-                gate.getSessionRunner().beginStreamTurn(wsContext, session);
+        // rewind 命令走特殊通道：发送 rewind 事件让前端同步删除 DOM
+        if ("rewind".equals(outcome.getCommandName())) {
+            ParsedCommand cmd = outcome.getCommand();
+            int rewindCount = 1;
+            if (cmd != null && cmd.argCount() > 0) {
+                try {
+                    rewindCount = Integer.parseInt(cmd.argAt(0));
+                } catch (NumberFormatException ignored) {
+                }
             }
 
-            // rewind 命令走特殊通道：发送 rewind 事件让前端同步删除 DOM
-            if ("rewind".equals(cmdName)) {
-                int rewindCount = 1;
-                if (!args.isEmpty()) {
-                    try {
-                        rewindCount = Integer.parseInt(args.get(0));
-                    } catch (NumberFormatException ignored) {
-                    }
-                }
+            //加一条删掉自己发出的一条
+            /* 被回退的那一轮，其执行过程还留在上下文快照里（__main 的 ReActTrace）。
+             * 不清掉的话，刷新页面时 /messages/last-trace 会把已删掉的思考与工具卡
+             * 原样回放回来 —— 与 /web/chat/rewind 同理。 */
+            TraceUtil.removeCurrentTrace(session);
+            session.updateSnapshot();
 
-                //加一条删掉自己发出的一条
-                /* 被回退的那一轮，其执行过程还留在上下文快照里（__main 的 ReActTrace）。
-                 * 不清掉的话，刷新页面时 /messages/last-trace 会把已删掉的思考与工具卡
-                 * 原样回放回来 —— 与 /web/chat/rewind 同理。 */
-                TraceUtil.removeCurrentTrace(session);
-                session.updateSnapshot();
-
-                gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofRewind(rewindCount + 1));
+            gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofRewind(rewindCount + 1));
+        } else {
+            final String text;
+            if (outcome.hasReply()) {
+                text = outcome.getCommandOutput();
             } else {
-                final String text;
-                if (ctx.getOutputBuffer().length() > 0) {
-                    text = ctx.getOutputBuffer().toString();
-                } else {
-                    text = "命令执行完成";
-                }
-
-                gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand(text));
-
-                // 忙态命令使用自身的回复目标，不消费运行任务的路由。
-                if (ownTurn) gate.getStreamBuilder().replyToBoundChannel(wsContext, session.getSessionId(), text, true);
-                else gate.getStreamBuilder().replyToBoundChannel(wsContext, session.getSessionId(), text, true,
-                        source, sourceUserId, replyTarget, messageId);
+                text = "命令执行完成";
             }
 
-            // done 走统一出口（emitDoneOnce），使「所有 done 都经过去重门」这条不变量不被绕过；
-            // done 门已由上面的 beginStreamTurn 复位，否则会被上一轮的 doneSent 挡掉。
-            if (ownTurn) {
-                gate.getEventPublisher().emitDoneOnce(wsContext, session);
-                // 空闲态命令收尾后尝试 drain：覆盖空闲时执行 /queue 入队后需立即发起的场景。
-                gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
-            }
+            gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand(text));
+
+            // 忙态命令使用自身的回复目标，不消费运行任务的路由。
+            if (ownTurn) gate.getStreamBuilder().replyToBoundChannel(wsContext, session.getSessionId(), text, true);
+            else gate.getStreamBuilder().replyToBoundChannel(wsContext, session.getSessionId(), text, true,
+                    source, sourceUserId, replyTarget, messageId);
         }
 
-        return true;
+        // done 走统一出口（emitDoneOnce），使「所有 done 都经过去重门」这条不变量不被绕过；
+        // done 门已由上面的 beginStreamTurn 复位，否则会被上一轮的 doneSent 挡掉。
+        if (ownTurn) {
+            gate.getEventPublisher().emitDoneOnce(wsContext, session);
+            // 空闲态命令收尾后尝试 drain：覆盖空闲时执行 /queue 入队后需立即发起的场景。
+            gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
+        }
+    }
+
+    /**
+     * Web/IM 命令上下文工厂：只补渠道元数据，其余由引擎统一装配。
+     * <p>
+     * 命令内部触发的任务只记录意图（分发器交给引擎二段装配），
+     * 流由 {@link #handleCommandTurn} 在主路径统一发起。
+     */
+    private CommandContextFactory webCommandFactory(String source, String sourceUserId,
+                                                   String replyTarget, String messageId) {
+        return new CommandContextFactory() {
+            @Override
+            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand cmd) {
+                return new WebCommandContext(s, source, sourceUserId, replyTarget, messageId,
+                        cmd.getRawInput(), cmd.getName(), cmd.getArgs());
+            }
+
+            @Override
+            public boolean isRemote() {
+                return true;
+            }
+        };
     }
 
     /**
@@ -549,20 +527,17 @@ class WebChatInputHandler {
         setReplyRoute(session, source, null, null, null);
         gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
 
-        String agentName = null;
-        String currentInput = input;
-        if (currentInput != null && currentInput.startsWith("@")) {
-            int agentNameIdx = currentInput.indexOf(" ");
-            if (agentNameIdx > 0) {
-                agentName = currentInput.substring(1, agentNameIdx);
-                if (wsContext.getEngine().getAgentManager().hasAgent(agentName)) {
-                    currentInput = currentInput.substring(agentNameIdx + 1);
-                }
-            }
+        // Loop 的提示词是「已受理的文本」，即使以 / 开头也不应被当命令执行；
+        // 命令识别、提及解析、Prompt 构建统一交给引擎（与 CLI/桌面端同一套口径）
+        InputOutcome outcome = wsContext.getEngine().handle(HarnessInput.of(session, input)
+                .commandAware(false)
+                .route(source, null, null, null));
+
+        if (outcome.hasRequest() == false) {
+            return null;
         }
 
-        ChatMessage chatMessage = ChatMessage.ofUser(currentInput).addMetadata("source", source);
-        return gate.getSessionRunner().performAgentTaskSync(wsContext, session, null, Prompt.of(chatMessage), null, agentName);
+        return gate.getSessionRunner().performAgentTaskSync(wsContext, session, null, outcome);
     }
 
     /**

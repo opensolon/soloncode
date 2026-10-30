@@ -18,13 +18,17 @@ package org.noear.solon.codecli.command;
 import org.jline.reader.LineReader;
 import org.jline.terminal.Terminal;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.command.AgentTaskIntent;
 import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.lang.Nullable;
 
 import java.util.List;
 
 /**
  * CLI 命令执行上下文（实现通用 CommandContext 接口，持有 JLine Terminal/Reader）
+ * <p>
+ * 命令内部触发的 Agent 任务只记录意图，由分发器交给引擎装配、由 CLI 主循环消费 ——
+ * 因此这里不再需要宿主回调，命令实现与端实现彻底解耦。
  *
  * @author noear
  * @since 2026.4.28
@@ -36,26 +40,16 @@ public class CliCommandContext implements CommandContext {
     private final String rawInput;
     private final String commandName;
     private final List<String> args;
-    private final AgentTaskRunner agentTaskRunner;
-
-    /**
-     * Agent 任务回调接口
-     */
-    @FunctionalInterface
-    public interface AgentTaskRunner {
-        void run(String prompt, String model);
-    }
+    private volatile AgentTaskIntent agentTaskIntent;
 
     public CliCommandContext(AgentSession session, Terminal terminal, LineReader reader,
-                             String rawInput, String commandName, List<String> args,
-                             AgentTaskRunner agentTaskRunner) {
+                             String rawInput, String commandName, List<String> args) {
         this.session = session;
         this.terminal = terminal;
         this.reader = reader;
         this.rawInput = rawInput;
         this.commandName = commandName;
         this.args = args;
-        this.agentTaskRunner = agentTaskRunner;
     }
 
     @Override
@@ -94,9 +88,12 @@ public class CliCommandContext implements CommandContext {
     }
 
     @Override
-    public void runAgentTask(String input, String model) {
-        if (agentTaskRunner != null) {
-            agentTaskRunner.run(input, model);
-        }
+    public void requestAgentTask(@Nullable String prompt, @Nullable String model) {
+        this.agentTaskIntent = new AgentTaskIntent(prompt, model);
+    }
+
+    @Override
+    public @Nullable AgentTaskIntent getAgentTaskIntent() {
+        return agentTaskIntent;
     }
 }

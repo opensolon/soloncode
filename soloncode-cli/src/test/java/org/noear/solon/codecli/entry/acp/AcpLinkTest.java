@@ -9,6 +9,7 @@ import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionManager;
 
@@ -23,7 +24,7 @@ import static org.mockito.Mockito.*;
  *
  * <p>覆盖范围：</p>
  * <ul>
- *   <li>toPrompt — ACP ContentBlock → Solon Prompt 转换（文本/图片/混合/空）</li>
+ *   <li>toInput — ACP ContentBlock → HarnessInput 转换（文本/图片/混合/空）</li>
  *   <li>AcpSessionContext — 构造、cancelled 标志、createdAt</li>
  *   <li>resolveToolKind — 工具名 → ToolKind 映射</li>
  *   <li>buildToolTitle — 简化/全量模式、start/end 阶段、子代理前缀</li>
@@ -60,69 +61,65 @@ public class AcpLinkTest {
         acpLink = new AcpLink(mockEngine, null, settings);
     }
 
-    // ─────────────────── toPrompt ───────────────────
+    // ─────────────────── toInput ───────────────────
 
     @Test
-    @DisplayName("toPrompt: 纯文本内容转为 TextBlock")
+    @DisplayName("toInput: 纯文本内容转为 TextBlock")
     void toPrompt_textContent() {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(new AcpSchema.TextContent("你好")));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
-
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertTrue(msg.getContent().contains("你好"));
+        assertEquals("你好", input.getText());
+        assertTrue(input.getAttachments().hasAny() == false);
     }
 
     @Test
-    @DisplayName("toPrompt: 多段文本内容 — 拼接为单个 TextBlock")
+    @DisplayName("toInput: 多段文本内容 — 拼接为单个 TextBlock")
     void toPrompt_multipleTextBlocks() {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(
                         new AcpSchema.TextContent("第一段"),
                         new AcpSchema.TextContent("第二段")));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        // 多段 TextContent 拼接为一个 TextBlock，用空格连接
-        assertEquals("第一段 第二段", msg.getContent());
+        // 多段 TextContent 拼接为单段正文，用空格连接
+        assertEquals("第一段 第二段", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: 图片 URI 模式转为 ImageBlock URL")
+    @DisplayName("toInput: 图片 URI 模式转为 ImageBlock URL")
     void toPrompt_imageWithUri() {
         AcpSchema.ImageContent img = new AcpSchema.ImageContent(
                 "image", null, "image/png", "https://example.com/a.png", null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(img));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        // 内容不为空即可（ImageBlock 不会出现在 getContent 文本里，但消息构建成功）
-        assertNotNull(msg);
+        // 图片走 media 通道（URL 形态），正文为空（引擎会补默认描述文本）
+        assertTrue(input.getAttachments().hasMedia());
+        assertEquals(1, input.getAttachments().getMediaBlocks().size());
     }
 
     @Test
-    @DisplayName("toPrompt: 图片 base64 模式转为 ImageBlock base64")
+    @DisplayName("toInput: 图片 base64 模式转为 ImageBlock base64")
     void toPrompt_imageWithBase64() {
         AcpSchema.ImageContent img = new AcpSchema.ImageContent(
                 "image", "iVBORw0KGgo=", "image/png", null, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(img));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
+        assertTrue(input.getAttachments().hasMedia());
+        assertEquals(1, input.getAttachments().getMediaBlocks().size());
     }
 
     @Test
-    @DisplayName("toPrompt: 混合文本 + 图片内容")
+    @DisplayName("toInput: 混合文本 + 图片内容")
     void toPrompt_mixedContent() {
         AcpSchema.TextContent text = new AcpSchema.TextContent("看这张图");
         AcpSchema.ImageContent img = new AcpSchema.ImageContent(
@@ -130,30 +127,44 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, img));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertTrue(msg.getContent().contains("看这张图"));
+        assertTrue(input.getAttachments().hasMedia());
+        assertEquals(1, input.getAttachments().getMediaBlocks().size());
+        assertEquals("看这张图", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: 空 prompt 列表不报错")
+    @DisplayName("toInput: 空 prompt 列表不报错")
     void toPrompt_emptyPrompt() {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.emptyList());
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
+        // 空输入：正文 null、无媒资（handle 时会判 IGNORED）
+        assertNull(input.getText());
+        assertTrue(input.getAttachments().hasAny() == false);
     }
 
-    // ─────────────────── toPrompt: ResourceLink ───────────────────
+    @Test
+    @DisplayName("toInput: 会话必须绑定到输入（否则续轮丢上下文）")
+    void toInput_bindsSession() {
+        AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
+                "sid", Collections.singletonList(new AcpSchema.TextContent("你好")));
+
+        AgentSession session = mock(AgentSession.class);
+        HarnessInput input = acpLink.toInput(req, session, null);
+
+        // 回归护栏：session 必须随 input 进入 handle，
+        // 传 null 会让 ReActRequest 回落临时 InMemoryAgentSession（多轮上下文丢失、快照不落盘）
+        assertSame(session, input.getSession());
+    }
+
+    // ─────────────────── toInput: ResourceLink ───────────────────
 
     @Test
-    @DisplayName("toPrompt: ResourceLink + 文本混合 → [相对路径] 追加到文本后面")
+    @DisplayName("toInput: ResourceLink + 文本混合 → [相对路径] 追加到文本后面")
     void toPrompt_resourceLink_mixedWithText() {
         AcpSchema.TextContent text = new AcpSchema.TextContent("请分析这个文件");
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
@@ -161,85 +172,80 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, link));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("请分析这个文件 [src/main/doc.md]", msg.getContent());
+        assertEquals("请分析这个文件 [src/main/doc.md]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: ResourceLink file:// URI — 去除前缀并转为 cwd 相对路径")
+    @DisplayName("toInput: ResourceLink file:// URI — 去除前缀并转为 cwd 相对路径")
     void toPrompt_resourceLink_fileUri() {
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
                 "resource_link", "Foo.java", "file:///workspace/src/Foo.java", "Foo.java", null, "text/x-java", 100L, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        Prompt prompt = acpLink.toPrompt(req, "/workspace");
+        HarnessInput input = acpLink.toInput(req, null, "/workspace");
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("[src/Foo.java]", msg.getContent());
+        assertEquals("[src/Foo.java]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: ResourceLink 绝对路径在 cwd 下 → 转为相对路径")
+    @DisplayName("toInput: ResourceLink 绝对路径在 cwd 下 → 转为相对路径")
     void toPrompt_resourceLink_absoluteUnderCwd() {
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
                 "resource_link", "App.java", "/workspace/src/App.java", "App.java", null, "text/x-java", 100L, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        Prompt prompt = acpLink.toPrompt(req, "/workspace");
+        HarnessInput input = acpLink.toInput(req, null, "/workspace");
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("[src/App.java]", msg.getContent());
+        assertEquals("[src/App.java]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: ResourceLink 绝对路径不在 cwd 下 → 保持原样")
+    @DisplayName("toInput: ResourceLink 绝对路径不在 cwd 下 → 保持原样")
     void toPrompt_resourceLink_absoluteNotUnderCwd() {
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
                 "resource_link", "config.xml", "/etc/config.xml", "config.xml", null, "text/xml", 100L, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        Prompt prompt = acpLink.toPrompt(req, "/workspace");
+        HarnessInput input = acpLink.toInput(req, null, "/workspace");
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("[/etc/config.xml]", msg.getContent());
+        assertEquals("[/etc/config.xml]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: ResourceLink 相对路径 + cwd=null → 原样输出")
+    @DisplayName("toInput: ResourceLink 相对路径 + cwd=null → 原样输出")
     void toPrompt_resourceLink_relativePathNoCwd() {
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
                 "resource_link", "App.java", "src/App.java", "App.java", null, "text/x-java", 100L, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("[src/App.java]", msg.getContent());
+        assertEquals("[src/App.java]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: ResourceLink 空 URI — 静默跳过")
+    @DisplayName("toInput: ResourceLink 空 URI — 静默跳过")
     void toPrompt_resourceLink_emptyUri() {
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
                 "resource_link", "empty.txt", null, "empty.txt", null, null, null, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        // 空 URI 时不添加任何 block，消息仍构建成功
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
+        // 空 URI 时不添加任何内容（正文 null、无媒资）
+        assertNull(input.getText());
+        assertTrue(input.getAttachments().hasAny() == false);
     }
 
     @Test
-    @DisplayName("toPrompt: 多个 ResourceLink + 文本 → 逐个追加 [path]")
+    @DisplayName("toInput: 多个 ResourceLink + 文本 → 逐个追加 [path]")
     void toPrompt_resourceLink_multipleLinks() {
         AcpSchema.TextContent text = new AcpSchema.TextContent("对比这两个文件");
         AcpSchema.ResourceLink link1 = new AcpSchema.ResourceLink(
@@ -249,28 +255,26 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, link1, link2));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("对比这两个文件 [src/a.txt] [src/b.txt]", msg.getContent());
+        assertEquals("对比这两个文件 [src/a.txt] [src/b.txt]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: 仅 ResourceLink 无文本 → 单独输出 [path]")
+    @DisplayName("toInput: 仅 ResourceLink 无文本 → 单独输出 [path]")
     void toPrompt_resourceLink_noText() {
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
                 "resource_link", "App.java", "src/App.java", "App.java", null, "text/x-java", 100L, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertEquals("[src/App.java]", msg.getContent());
+        assertEquals("[src/App.java]", input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: 文本 + ResourceLink + 图片 → 文本和 [path] 在同一 TextBlock，图片单独 ImageBlock")
+    @DisplayName("toInput: 文本 + ResourceLink + 图片 → 文本和 [path] 在同一 TextBlock，图片单独 ImageBlock")
     void toPrompt_resourceLink_textLinkAndImage() {
         AcpSchema.TextContent text = new AcpSchema.TextContent("看这个文件和图片");
         AcpSchema.ResourceLink link = new AcpSchema.ResourceLink(
@@ -280,19 +284,17 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, link, img));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        // 文本和 [path] 拼接为单个 TextBlock
-        assertEquals("看这个文件和图片 [src/App.java]", msg.getContent());
-        // 消息构建成功（图片作为后续 block）
-        assertNotNull(msg);
+        // 文本和 [path] 拼接为单段正文，图片走 media
+        assertEquals("看这个文件和图片 [src/App.java]", input.getText());
+        assertEquals(1, input.getAttachments().getMediaBlocks().size());
     }
 
-    // ─────────────────── toPrompt: Resource (Embedded) ───────────────────
+    // ─────────────────── toInput: Resource (Embedded) ───────────────────
 
     @Test
-    @DisplayName("toPrompt: Resource TextResourceContents — text 字段直接拼入")
+    @DisplayName("toInput: Resource TextResourceContents — text 字段直接拼入")
     void toPrompt_resource_textContents() {
         AcpSchema.TextResourceContents textRes = new AcpSchema.TextResourceContents(
                 "hello from embedded", "file:///tmp/test.txt", "text/plain");
@@ -300,15 +302,14 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertTrue(msg.getContent().contains("hello from embedded"));
-        assertTrue(msg.getContent().contains("File: file:///tmp/test.txt"));
+        assertTrue(input.getText().contains("hello from embedded"));
+        assertTrue(input.getText().contains("File: file:///tmp/test.txt"));
     }
 
     @Test
-    @DisplayName("toPrompt: Resource BlobResourceContents 图片 — 转为 ImageBlock base64")
+    @DisplayName("toInput: Resource BlobResourceContents 图片 — 转为 ImageBlock base64")
     void toPrompt_resource_blobImage() {
         AcpSchema.BlobResourceContents blobRes = new AcpSchema.BlobResourceContents(
                 "iVBORw0KGgo=", "file:///tmp/img.png", "image/png");
@@ -316,14 +317,14 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
+        assertTrue(input.getAttachments().hasMedia());
+        assertEquals(1, input.getAttachments().getMediaBlocks().size());
     }
 
     @Test
-    @DisplayName("toPrompt: Resource BlobResourceContents 文本 — base64 解码为文本")
+    @DisplayName("toInput: Resource BlobResourceContents 文本 — base64 解码为文本")
     void toPrompt_resource_blobText() {
         // "hello" 的 base64 编码
         String base64 = java.util.Base64.getEncoder().encodeToString("hello".getBytes());
@@ -333,14 +334,13 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        assertTrue(msg.getContent().contains("hello"));
+        assertTrue(input.getText().contains("hello"));
     }
 
     @Test
-    @DisplayName("toPrompt: Resource BlobResourceContents 二进制 — 无法解码时给出提示")
+    @DisplayName("toInput: Resource BlobResourceContents 二进制 — 无法解码时给出提示")
     void toPrompt_resource_blobBinary() {
         // 非文本的二进制 base64
         String base64 = java.util.Base64.getEncoder().encodeToString(new byte[]{(byte)0xFF, (byte)0xFE, (byte)0x00});
@@ -350,29 +350,29 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        ChatMessage msg = prompt.getMessages().get(0);
-        // 二进制内容应给出 Binary resource 提示（注意：0xFF 0xFE 0x00 解码为 UTF-8 时可能成功但内容乱码）
-        // 这里只验证消息构建成功
-        assertNotNull(msg);
+        // 二进制内容应给出 Binary resource 提示（0xFF 0xFE 0x00 解码为 UTF-8 时可能成功但内容乱码）
+        // 这里只验证正文构建成功
+        assertNotNull(input.getText());
     }
 
     @Test
-    @DisplayName("toPrompt: Resource null resource 字段 — 静默跳过")
+    @DisplayName("toInput: Resource null resource 字段 — 静默跳过")
     void toPrompt_resource_nullResource() {
         AcpSchema.Resource resource = new AcpSchema.Resource("resource", null, null, null);
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
+        // null resource：静默跳过，无正文无媒资
+        assertNull(input.getText());
+        assertTrue(input.getAttachments().hasAny() == false);
     }
 
     @Test
-    @DisplayName("toPrompt: Resource TextResourceContents 空 text — 静默跳过")
+    @DisplayName("toInput: Resource TextResourceContents 空 text — 静默跳过")
     void toPrompt_resource_emptyText() {
         AcpSchema.TextResourceContents textRes = new AcpSchema.TextResourceContents(
                 null, "file:///tmp/empty.txt", "text/plain");
@@ -380,10 +380,11 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        Prompt prompt = acpLink.toPrompt(req, null);
+        HarnessInput input = acpLink.toInput(req, null, null);
 
-        assertNotNull(prompt);
-        assertEquals(1, prompt.getMessages().size());
+        // 空 text：静默跳过，无正文无媒资
+        assertNull(input.getText());
+        assertTrue(input.getAttachments().hasAny() == false);
     }
 
     // ─────────────────── AcpSessionContext ───────────────────

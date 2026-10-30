@@ -16,10 +16,9 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
@@ -127,14 +126,12 @@ class WebSessionRunner {
     /**
      * 执行 Agent 流式任务（异步）：注册句柄槽位后将订阅动作调度到 boundedElastic。
      *
-     * <p>通过 {@link WebStreamBuilder} 构建 ReAct Agent 的响应流，
-     * 订阅流数据并通过 {@code emitToClient} 逐条推送至前端。</p>
+     * <p>请求主体（session/模型/retry/maxTurns）已由 {@code engine.handle} 装配完成，
+     * 本方法只负责流生命周期：句柄槽位、订阅调度与失败收尾。</p>
      *
-     * @param prompt       用户输入的 Prompt（为 null 时表示 HITL 恢复等无需新 Prompt 的场景）
-     * @param selectedModel 用户选择的 AI 模型标识
-     * @param agentName    指定 Agent 名称（可为 null，表示使用默认 Agent）
+     * @param outcome 引擎装配结果（含 request 与生效的模型/子代理名）
      */
-    void performAgentTaskAsync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
+    void performAgentTaskAsync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
         //订阅前（调用线程内）先注册 composite：订阅动作被调度到别的线程异步执行，若把注册也放进去，
         //这段窗口内 busy 判定会误判空闲（并发 input 可能在同一会话上开出第二条流），
         //且 interruptSession 取不到 disposable，只会补发一个假 done —— 任务照跑且再也无法取消。
@@ -147,7 +144,7 @@ class WebSessionRunner {
         Runnable subscribeAction = () -> {
             Object logScope = WorkspaceLogRouter.beginScopeByKey(wsLogKey);
             try {
-                doSubscribeAgentTask(wsContext, session, sessionCwd, prompt, selectedModel, agentName, composite);
+                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, composite);
             } catch (Throwable e) {
                 //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾
                 failStreamTurn(wsContext, session, composite, e);
@@ -163,7 +160,7 @@ class WebSessionRunner {
         }
     }
 
-    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName, Disposable.Composite composite) {
+    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, Disposable.Composite composite) {
         String sessionId = session.getSessionId();
 
         //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）。
@@ -175,20 +172,20 @@ class WebSessionRunner {
             return;
         }
 
-        if (selectedModel != null) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
-        } else {
-            selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+        // 会话级模型选择回写：outcome 里是引擎已解析的生效值（命令声明 → 会话选择 → 默认），
+        // 回写保持后续轮次（HITL 恢复、queue 续发）读到同一口径。
+        if (outcome.getModelName() != null) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, outcome.getModelName());
         }
-
-        ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(selectedModel);
-        ReActAgent agent = wsContext.getEngine().getAgentOrMain(agentName);
+        // 展示用模型句柄（trace 事件的 model 标签）：由生效名现取，取不到时用默认实例
+        ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(outcome.getModelName());
 
         // 新开流前重置：后端 done 门 + 前端流门（否则上一轮 done 会让本轮输出被前端丢弃）
         beginStreamTurn(wsContext, session);
 
         AtomicReference<Disposable> selfRef = new AtomicReference<>();
-        Disposable disposable = gate.getStreamBuilder().buildStreamFlux(wsContext, session, agent, chatModel, sessionCwd, prompt)
+        Disposable disposable = gate.getStreamBuilder()
+                .buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
                     gate.emitToClient(wsContext, sessionId, line);
@@ -231,17 +228,14 @@ class WebSessionRunner {
      *
      * @return 捕获到的 finalAnswer 文本（无则返回空串）
      */
-    String performAgentTaskSync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, Prompt prompt, String selectedModel, String agentName) {
+    String performAgentTaskSync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
         String sessionId = session.getSessionId();
 
-        if (selectedModel != null) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
-        } else {
-            selectedModel = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+        // 会话级模型选择回写：与 async 路径同口径（生效值回写，展示句柄现取）
+        if (outcome.getModelName() != null) {
+            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, outcome.getModelName());
         }
-
-        ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(selectedModel);
-        ReActAgent agent = wsContext.getEngine().getAgentOrMain(agentName);
+        ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(outcome.getModelName());
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
 
@@ -268,7 +262,7 @@ class WebSessionRunner {
                 beginStreamTurn(wsContext, session);
 
                 AtomicReference<Disposable> selfRef = new AtomicReference<>();
-                Disposable d = gate.getStreamBuilder().buildStreamFlux(wsContext, session, agent, chatModel, sessionCwd, prompt)
+                Disposable d = gate.getStreamBuilder().buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
                     gate.emitToClient(wsContext, sessionId, line);

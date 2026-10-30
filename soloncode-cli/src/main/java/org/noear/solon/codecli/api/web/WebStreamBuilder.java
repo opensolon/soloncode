@@ -3,7 +3,6 @@ package org.noear.solon.codecli.api.web;
 import lombok.extern.slf4j.Slf4j;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -23,6 +22,7 @@ import org.noear.solon.codecli.api.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.api.web.pipeline.UiRenderFilter;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
 import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
@@ -51,6 +51,12 @@ public class WebStreamBuilder {
     public WebStreamBuilder() {
         this(null);
     }
+
+    /**
+     * 本轮实际生效的子代理名（含 {@code @子代理} 解析结果）。
+     * <p>HITL 续流必须沿用它：trace 按代理名分 key，取错代理会取不到挂起的 tool_calls。</p>
+     */
+    public static final String ATTR_EFFECTIVE_AGENT = "_agent_selected_tmp";
 
     /** IM 非流式终态去重标记：一轮只允许一条终态消息（final/error/canceled）落 IM。 */
     public static final String ATTR_IM_TERMINAL_SENT = ImageReplyTurn.ATTR_IM_TERMINAL_SENT;
@@ -401,17 +407,17 @@ public class WebStreamBuilder {
 
     /**
      * 构建 SAEP 2.0 响应式事件流
+     *
+     * <p>请求主体（agent/session/模型/retry/maxTurns）已由 {@code engine.handle} 装配，
+     * 这里只做 Web 端请求级补充：推理强度、插话/图片拦截器、cwd。</p>
+     *
+     * @param outcome 引擎装配结果（getRequest() 即可订阅的请求）
+     * @param targetModel 展示用模型句柄（trace 事件的 model 标签；能力解析也基于它）
      */
-    public Flux<WebEvent<?>> buildStreamFlux(WorkspaceContext wsContext, AgentSession session, ReActAgent targetAgent, ChatModel targetModel, String sessionCwd, Prompt prompt) {
-        if (prompt == null) {
-            prompt = Prompt.of();
-        }
-
-        if ("/resume".equals(prompt.getUserContent())) {
-            prompt = Prompt.of();
-        }
-
-        session.attrs().put("_agent_selected_tmp", targetAgent.name());
+    public Flux<WebEvent<?>> buildStreamFlux(WorkspaceContext wsContext, AgentSession session, InputOutcome outcome, ChatModel targetModel, String sessionCwd) {
+        // 子代理名回写：WebEventMapper 依此判断 RunEnd 是否本轮源代理，HITL 续流也依此取生效代理
+        session.attrs().put(ATTR_EFFECTIVE_AGENT, outcome.getAgentName() != null
+                ? outcome.getAgentName() : "main");
 
         HarnessEngine engine = wsContext.getEngine();
         GeneralGroupDo general = wsContext.getSettings() == null ? null : wsContext.getSettings().getGeneral();
@@ -456,7 +462,10 @@ public class WebStreamBuilder {
 
         final String effectiveEffort = ReasoningSupportUtil.resolveSessionEffortOrDefault(
                 session, globalEffort, cap);
-        ReasoningSupportUtil.applyToPrompt(prompt, sessionThinkingMode, effectiveEffort);
+        // 推理强度写进 Prompt attrs（request 持同一 Prompt 实例，attrs 生效；Prompt 为空即续流轮，跳过）
+        if (outcome.getPrompt() != null) {
+            ReasoningSupportUtil.applyToPrompt(outcome.getPrompt(), sessionThinkingMode, effectiveEffort);
+        }
 
         ImageReplyTurn imageTurn = new ImageReplyTurn(session, wsContext.getMeta().getPath(), sessionCwd);
         try {
@@ -467,8 +476,8 @@ public class WebStreamBuilder {
             // 运行中插话（steer）拦截器：请求级挂载，LinkedHashMap 插入序保证排在默认拦截器（含上下文压缩）之后
             SteerInterceptor steerInterceptor = new SteerInterceptor(webGate, wsContext);
 
-            final Flux<AgentEvent> stream = targetAgent.prompt(prompt)
-                    .session(session)
+            // 请求主体（agent/session/模型/retry/maxTurns）由 handle 装配，这里只补 Web 端请求级选项
+            final Flux<AgentEvent> stream = outcome.getRequest()
                     .options(o -> {
                         if (targetModel != null) {
                             o.chatModel(targetModel);

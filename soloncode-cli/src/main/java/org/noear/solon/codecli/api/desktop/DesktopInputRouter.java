@@ -18,21 +18,23 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentTrace;
-import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
-import org.noear.solon.ai.chat.content.Contents;
 import org.noear.solon.ai.chat.content.ImageBlock;
-import org.noear.solon.ai.chat.content.TextBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
-import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.codecli.command.WebCommandContext;
+import org.noear.solon.ai.harness.command.CommandContext;
+import org.noear.solon.ai.harness.input.AgentMentions;
+import org.noear.solon.ai.harness.input.InputAttachments;
+import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.BufferedCommandContext;
+import org.noear.solon.ai.harness.input.CommandContextFactory;
+import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.loop.LoopTask;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -43,10 +45,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * 桌面端聊天输入路由：解析 WsMessage、会话与 Agent 归一、模式配置、
@@ -169,6 +169,7 @@ final class DesktopInputRouter {
 
         String requestedAgent = req.getAgent();
         if (Assert.isNotEmpty(requestedAgent) && !"default".equals(requestedAgent)) {
+            // 请求体显式指定：先做格式与可用性校验，无效则直接报错（与迁移前一致）
             requestedAgent = requestedAgent.trim();
             if (!gate.isValidAgentName(requestedAgent) || !engine.getAgentManager().hasAgent(requestedAgent)) {
                 socket.send(new ONode().set("type", "error")
@@ -177,17 +178,22 @@ final class DesktopInputRouter {
                         .toJson());
                 return;
             }
-            agentName = requestedAgent;
-            currentInput = gate.removeLeadingAgentMention(currentInput, agentName);
-        } else if (input.startsWith("@")) {
-            int agentNameIdx = gate.firstWhitespaceIndex(input);
-            if (agentNameIdx > 1) {
-                String mentionedAgent = input.substring(1, agentNameIdx);
-                if (gate.isValidAgentName(mentionedAgent) && engine.getAgentManager().hasAgent(mentionedAgent)) {
-                    agentName = mentionedAgent;
-                    currentInput = input.substring(agentNameIdx).trim();
-                }
-            }
+
+            // @子代理 解析口径与 CLI/Web 统一（harness AgentMentions）
+            AgentMentions.Mention mention = AgentMentions.parse(engine, input,
+                    AgentMentions.Options.builder()
+                            .explicitAgent(requestedAgent)
+                            .nameValidator(gate::isValidAgentName));
+            agentName = mention.getAgentName();
+            currentInput = mention.getText();
+        } else {
+            // 桌面端多一道名字格式校验，并需要去掉首尾空白
+            AgentMentions.Mention mention = AgentMentions.parse(engine, input,
+                    AgentMentions.Options.builder()
+                            .nameValidator(gate::isValidAgentName)
+                            .trimContent(true));
+            agentName = mention.getAgentName();
+            currentInput = mention.getText();
         }
 
         if (Assert.isEmpty(currentInput)) {
@@ -232,30 +238,23 @@ final class DesktopInputRouter {
         }
         // default 模式：write/edit/bash 都在真正执行前进入 HITL 审批。
 
-        final ReActAgent agent = engine.getAgentOrMain(agentName);
         // 与 WebStreamBuilder 保持一致：记录本轮真正的源 Agent，供 HITL 恢复继续使用。
-        session.attrs().put(WsGate.SESSION_ATTR_SELECTED_AGENT, agent.name());
+        final String resolvedAgentName = engine.getAgentOrMain(agentName).name();
+        session.attrs().put(WsGate.SESSION_ATTR_SELECTED_AGENT, resolvedAgentName);
 
         // Goal 是对话持续流，不再交给斜杠命令返回“任务已注册”回执。
         String goalObjective = WsGate.extractGoalObjective(currentInput, mode);
         if (goalObjective != null) {
-            gate.startGoalStream(socket, sessionId, req, goalObjective, cwd, agent.name());
-            return;
-        }
-
-        // 命令处理：以 / 开头的输入走命令分发
-        if (currentInput.startsWith("/")) {
-            handleCommand(socket, session, agent, chatModel, cwd, currentInput, sessionId, reasoningEffort);
+            gate.startGoalStream(socket, sessionId, req, goalObjective, cwd, resolvedAgentName);
             return;
         }
 
         // 流式处理
         final String finalSessionId = sessionId;
 
-        // 处理附件：图片构建 ImageBlock，文件拼入文本前缀
+        // 处理附件：图片构建 ImageBlock，文件作为引用拼入文本前缀
         List<WsMessage.WsAttachment> attachments = req.getAttachments();
-        List<ImageBlock> imageBlocks = new ArrayList<>();
-        List<String> fileNames = new ArrayList<>();
+        InputAttachments attachResult = InputAttachments.of();
 
         if (attachments != null && !attachments.isEmpty()) {
             if (attachments.size() > DesktopAttachmentSupport.MAX_ATTACHMENTS) {
@@ -273,38 +272,112 @@ final class DesktopInputRouter {
                 }
                 String savedName = DesktopAttachmentSupport.save(java.nio.file.Paths.get(cwd), att.getName(), bytes);
                 if (DesktopAttachmentSupport.isMultimodalImage(att)) {
-                    imageBlocks.add(ImageBlock.ofBase64(
-                            Base64.getEncoder().encodeToString(bytes), att.getMimeType()));
+                    attachResult.media(ImageBlock.ofBase64(
+                            Base64.getEncoder().encodeToString(bytes), att.getMimeType()).filePath(savedName));
                 } else {
-                    fileNames.add(savedName);
+                    attachResult.reference(savedName);
                 }
             }
         }
 
-        // 文件附件拼入输入文本前缀
-        if (!fileNames.isEmpty()) {
-            String filePrefix = fileNames.stream()
-                    .map(f -> "[附件: " + f + "]")
-                    .collect(Collectors.joining("\n"));
-            currentInput = filePrefix + "\n" + currentInput;
+        // 命令识别、附件前缀拼装、Prompt 构建统一交给引擎。
+        // agent 已在此前解析（桌面端需先做 Goal 拦截与格式校验），用 explicitAgent 透传避免二次判断。
+        InputOutcome outcome = gate.engine.handle(
+                HarnessInput.of(session, currentInput)
+                        .explicitAgent(agentName)
+                        .model(modelName)
+                        .attachments(attachResult),
+                desktopCommandFactory());
+
+        switch (outcome.getKind()) {
+            case TASK:
+                // 命令触发的任务：不发独立回执（与原实现一致），命令输出由任务流自身携带；
+                // 若在此先发回执，会绕过 DesktopStreamHub 的序号/回放缓冲，且与随后开流的时序耦合
+                break;
+            case REPLY:
+                // 命令已执行，或命令在本渠道不可用：回执后结束本轮
+                handleCommandReceipt(socket, outcome, finalSessionId);
+                sendDone(socket, chatModel, finalSessionId);
+                return;
+            default:
+                // HITL / IGNORED
+                return;
         }
 
-        // 构建 Prompt（含图片时用 Contents）
-        Prompt prompt;
-        if (!imageBlocks.isEmpty()) {
-            Contents contents = new Contents();
-            contents.addBlock(TextBlock.of(currentInput));
-            for (ImageBlock block : imageBlocks) {
-                contents.addBlock(block);
-            }
-            prompt = Prompt.of(new UserMessage(contents)).attrPut("start_time", System.currentTimeMillis());
-        } else {
-            prompt = Prompt.of(currentInput).attrPut("start_time", System.currentTimeMillis());
-        }
-        gate.applyReasoningEffort(prompt, reasoningEffort);
+        // 模型/子代理一律用引擎生效值（命令声明 → 会话选择 → 默认），与普通消息同口径。
+        // 请求主体（session/retry/maxTurns）已由 handle 装配，此处仅解析桌面端展示所需的模型句柄。
+        final ChatModel turnModel = Assert.isEmpty(outcome.getModelName())
+                ? chatModel : gate.engine.getModelOrDefInstance(outcome.getModelName());
 
-        gate.streamTurn.run(session, agent, chatModel, prompt, finalSessionId, cwd,
+        // 续流（如 /continue）：正文为空，靠会话挂起的 trace 继续（不能传空 Prompt，否则会命中空提示分支）
+        Prompt prompt = outcome.getPrompt();
+        if (prompt != null) {
+            prompt.attrPut("start_time", System.currentTimeMillis());
+            gate.applyReasoningEffort(prompt, reasoningEffort);
+        }
+
+        gate.streamTurn.run(session, outcome.getRequest(), turnModel, finalSessionId, cwd,
                 reasoningEffort, socket, false, gate.desktopHitlInterceptor);
+    }
+
+    /**
+     * 桌面端命令上下文工厂：只保留回执缓冲与渠道元数据。
+     * <p>
+     * 命令内部触发的任务只记录意图（分发器交给引擎二段装配），
+     * 流由主路径根据 outcome 的生效字段统一发起。
+     */
+    private CommandContextFactory desktopCommandFactory() {
+        return new CommandContextFactory() {
+            @Override
+            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand command) {
+                return new BufferedCommandContext(s, command.getRawInput(), command.getName(), command.getArgs());
+            }
+
+            @Override
+            public boolean isRemote() {
+                return true;
+            }
+        };
+    }
+
+    /**
+     * 命令回执渲染（含 rewind 特殊通道），<b>不发 done</b>
+     * <p>
+     * 仅用于 {@code REPLY}（命令已执行或本渠道不可用）：命令输出自成一轮。
+     * 命令触发任务（{@code TASK}）不发独立回执，与原实现一致。
+     */
+    private void handleCommandReceipt(WebSocket socket, InputOutcome outcome, String finalSessionId) {
+        if ("rewind".equals(outcome.getCommandName())) {
+            ParsedCommand cmd = outcome.getCommand();
+            int rewindCount = 1;
+            if (cmd != null && cmd.argCount() > 0) {
+                try {
+                    rewindCount = Integer.parseInt(cmd.argAt(0));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            socket.send(new ONode().set("type", "rewind")
+                    .set("sessionId", finalSessionId)
+                    .set("count", rewindCount + 1)
+                    .toJson());
+        } else {
+            String text = outcome.hasReply() ? outcome.getCommandOutput() : "命令执行完成";
+            socket.send(new ONode().set("type", "command")
+                    .set("sessionId", finalSessionId)
+                    .set("text", text)
+                    .toJson());
+        }
+    }
+
+    /**
+     * 本轮收尾
+     */
+    private void sendDone(WebSocket socket, ChatModel chatModel, String finalSessionId) {
+        socket.send(new ONode().set("type", "done")
+                .set("sessionId", finalSessionId)
+                .set("modelName", chatModel.getConfig().getNameOrModel())
+                .set("totalTokens", 0)
+                .set("elapsedMs", 0).toJson());
     }
 
     /**
@@ -325,127 +398,44 @@ final class DesktopInputRouter {
             }
 
             AgentSession session = engine.getSession(sessionId);
-            HITLTask task = Assert.isNotEmpty(callId)
+
+            // 命中任务判定必须在 handle 之前：handle 对无挂起的审批同样返回 HITL（决策写入是空操作），
+            // 若只看 kind，过期审批卡（任务已结束）会继续走 resume，把上一轮问题原样重跑。
+            // 与迁移前「task == null → 报错返回」的行为保持一致。
+            HITLTask pendingTask = Assert.isNotEmpty(callId)
                     ? HITL.getPendingTaskByCallUuid(session, callId)
                     : HITL.getPendingTask(session);
-            if (task == null) {
+            if (pendingTask == null) {
                 socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
                 return;
             }
 
-            if ("approve".equals(action)) {
-                if (Assert.isNotEmpty(output)) {
-                    HITL.approve(session, task, output);
-                } else {
-                    HITL.approve(session, task);
-                }
-            } else {
-                if (Assert.isNotEmpty(output)) {
-                    HITL.reject(session, task, output);
-                } else {
-                    HITL.reject(session, task);
-                }
-            }
+            // 决策应用统一交给引擎（input 唯一入口）：命中任务判定与「批准/拒绝并改写工具返回」都在引擎内完成。
+            engine.handle(HarnessInput.of(session, null).hitl(action, callId).hitlOutput(output));
 
-            // 审批后恢复流执行
+            // 审批后恢复流执行：续流统一走 input 入口（resume 语义），
+            // 请求主体（session/模型/挂起 trace 回落）由引擎装配。
             String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrDefInstance(modelName);
             String selectedAgentName = (String) session.attrs().get(WsGate.SESSION_ATTR_SELECTED_AGENT);
-            ReActAgent selectedAgent = engine.getAgentOrMain(selectedAgentName);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
             String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
-            Prompt hitlPrompt = Prompt.of().attrPut("start_time", System.currentTimeMillis());
-            gate.applyReasoningEffort(hitlPrompt, reasoningEffort);
+            InputOutcome resumeOutcome = engine.handle(HarnessInput.of(session, null)
+                    .agent(selectedAgentName)
+                    .model(modelName)
+                    .resume(true));
 
-            gate.streamTurn.run(session, selectedAgent, chatModel, hitlPrompt, sessionId, cwd,
+            if (resumeOutcome.hasRequest() == false) {
+                socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
+                return;
+            }
+
+            gate.streamTurn.run(session, resumeOutcome.getRequest(), chatModel, sessionId, cwd,
                     reasoningEffort, socket, true, gate.desktopHitlInterceptor);
         } catch (Exception e) {
             LOG.error("[WS] HITL action failed", e);
             socket.send(new ONode().set("type", "error").set("text", e.getMessage()).toJson());
         }
-    }
-
-    /**
-     * 处理命令输入（/ 开头），通过 CommandRegistry 分发执行
-     */
-    private void handleCommand(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
-                               String sessionCwd, String input, String finalSessionId, String reasoningEffort) {
-        try {
-            HarnessEngine engine = gate.engine;
-            // 解析命令名和参数
-            List<String> parts = org.noear.solon.ai.util.CmdUtil.parseArguments(input.trim().substring(1));
-            if (parts.isEmpty()) {
-                return;
-            }
-
-            String cmdName = parts.get(0).toLowerCase();
-            List<String> args = parts.size() > 1 ? parts.subList(1, parts.size()) : new ArrayList<>();
-
-            // 查找命令
-            Command command = engine.getCommandRegistry().find(cmdName);
-            if (command == null) {
-                // 不是有效命令，当作普通输入走流式处理
-                runFallbackPrompt(socket, session, agent, chatModel, sessionCwd, input, finalSessionId, reasoningEffort);
-                return;
-            }
-
-            // 构建 context（注入 agentTaskRunner 回调）
-            WebCommandContext ctx = new WebCommandContext(session, input, cmdName, args,
-                    (prompt, model) -> {
-                        ChatModel selectedModel = model != null ? engine.getModelOrDefInstance(model) : chatModel;
-                        runFallbackPrompt(socket, session, agent, selectedModel, sessionCwd, prompt, finalSessionId, reasoningEffort);
-                    });
-
-            // 执行命令
-            command.execute(engine, ctx);
-
-            if (!ctx.isAgentTask()) {
-                // rewind 命令特殊处理：发送 rewind 事件让前端同步删除 DOM
-                if ("rewind".equals(cmdName)) {
-                    int rewindCount = 1;
-                    if (!args.isEmpty()) {
-                        try {
-                            rewindCount = Integer.parseInt(args.get(0));
-                        } catch (NumberFormatException ignored) {
-                        }
-                    }
-                    socket.send(new ONode().set("type", "rewind")
-                            .set("sessionId", finalSessionId)
-                            .set("count", rewindCount + 1)
-                            .toJson());
-                } else {
-                    String text = ctx.getOutputBuffer().length() > 0
-                            ? ctx.getOutputBuffer().toString()
-                            : "命令执行完成";
-                    socket.send(new ONode().set("type", "command")
-                            .set("sessionId", finalSessionId)
-                            .set("text", text)
-                            .toJson());
-                }
-
-                socket.send(new ONode().set("type", "done")
-                        .set("sessionId", finalSessionId)
-                        .set("modelName", chatModel.getConfig().getNameOrModel())
-                        .set("totalTokens", 0)
-                        .set("elapsedMs", 0).toJson());
-            }
-        } catch (Exception e) {
-            String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-            socket.send(new ONode().set("type", "error")
-                    .set("sessionId", finalSessionId)
-                    .set("text", errorMsg).toJson());
-        }
-    }
-
-    /**
-     * 将输入作为普通 prompt 走流式处理（原 handleFallbackPrompt）
-     */
-    private void runFallbackPrompt(WebSocket socket, AgentSession session, ReActAgent agent, ChatModel chatModel,
-                                   String sessionCwd, String input, String finalSessionId, String reasoningEffort) {
-        Prompt prompt = Prompt.of(input).attrPut("start_time", System.currentTimeMillis());
-        gate.applyReasoningEffort(prompt, reasoningEffort);
-        gate.streamTurn.run(session, agent, chatModel, prompt, finalSessionId, sessionCwd,
-                reasoningEffort, socket, false, gate.desktopHitlInterceptor);
     }
 }
