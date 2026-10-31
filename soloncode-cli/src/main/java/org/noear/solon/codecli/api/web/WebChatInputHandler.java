@@ -151,51 +151,56 @@ class WebChatInputHandler {
             boolean modeProvided = thinkingMode != null;
             org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionThinkingMode(session, thinkingMode, modeProvided);
 
-            // HITL approve/reject handling：决策应用与续流时机判定统一交给引擎（含 callId 精确定位与工具返回改写）。
-            //必须放在子代理解析之前：审批请求通常不带文本，mention 解析对它无意义。
-            if (Assert.isNotEmpty(hitlAction)) {
-                // callId 通过 session context 透传（前端 POST hitlCallId），避免全链路改签名
-                String hitlCallId = session.getContext().getAs(WebGate.CTX_HITL_CALL_ID);
-                session.getContext().remove(WebGate.CTX_HITL_CALL_ID);
-
-                // 一次调用完成「写决策 + 必要时的续流装配」，宿主只 switch kind：
-                //   TASK —— 决策已写入且本批已齐备，引擎已装配续流请求，直接执行；
-                //   HITL —— 未续流：过期审批卡（isHitlApplied()==false）或本批尚有未决卡，
-                //           两者都不能续流（前者会把上一轮问题重跑，后者会带走未决任务）。
-                // 续流用的子代理必须取「首轮实际生效值」（WebStreamBuilder 每轮写入 _agent_selected_tmp），
-                // 而不是审批请求自带的 selectedAgent：审批请求通常不带该字段，
-                // 会回落主代理而取不到子代理挂起的 trace（续跑空转）。
-                String effectiveAgent = (String) session.attrs().get(WebStreamBuilder.ATTR_EFFECTIVE_AGENT);
-                InputOutcome hitlOutcome = wsContext.getEngine().handle(
-                        HarnessInput.of(session, null)
-                                .selectedAgent(effectiveAgent)
-                                .selectedModel(selectedModel)
-                                .hitl(HITLAction.of(hitlAction), hitlCallId) // 协议字符串在边界解析，脏值这里报错而非静默当拒绝
-                                .resume(true));
-
-                if (hitlOutcome.getKind() == InputOutcome.Kind.TASK) {
-                    gate.getSessionRunner()
-                            .performAgentTaskAsync(wsContext, session, sessionCwd, hitlOutcome);
-                }
-                return;
-            }
-
             // @子代理 解析口径与 CLI/桌面端统一（harness AgentMentions）：
             // 输入开头的有效 @子代理 优先；否则使用选择器传入的有效子代理。
             // 解析、附件落盘、命令识别、Prompt 构建、请求装配全部下沉到引擎（input 唯一入口）。
             // Web 只保留：命令回执的信封渲染、请求级上下文写入、流的订阅。
+            //
+            // 两条输入（用户消息 / HITL 审批）共用同一次 handle + 同一个 switch：
+            // 引擎的 HITL 分支优先于空输入判空与命令识别（HarnessEngine#handle 第 1 步），
+            // 因此下面把差异收敛为参数差异（正文、resume、子代理、来源、附件），处置逻辑只有一套。
+            boolean isHitl = Assert.isNotEmpty(hitlAction);
+
+            // callId 通过 session context 透传（前端 POST hitlCallId），避免全链路改签名
+            String hitlCallId = null;
+            if (isHitl) {
+                hitlCallId = session.getContext().getAs(WebGate.CTX_HITL_CALL_ID);
+                session.getContext().remove(WebGate.CTX_HITL_CALL_ID);
+            }
+
             // 历史前端兼容：旧版会以文本 "/resume" 触发续流，转为显式 resume 语义
             // （等价于原 buildStreamFlux 里的 /resume 剥离，语义前移到入口处）。
             boolean resumeInput = "/resume".equals(input != null ? input.trim() : null);
-            InputOutcome outcome = wsContext.getEngine().handle(
-                    HarnessInput.of(session, resumeInput ? null : input)
-                            .resume(resumeInput)
-                            .selectedAgent(selectedAgent)
-                            .selectedModel(selectedModel)
-                            .origin(InputOrigin.of(source, sourceUserId, replyTarget, messageId))
-                            .attachments(WebAttachmentStore.toAttachments(
-                                    wsContext.getEngine().getWorkspace(), attachments, attachmentTypes))
-                            .commandContextFactory(webCommandFactory()));
+
+            // 续流用的子代理必须取「首轮实际生效值」（WebStreamBuilder 每轮写入 _agent_selected_tmp），
+            // 而不是审批请求自带的 selectedAgent：审批请求通常不带该字段，
+            // 会回落主代理而取不到子代理挂起的 trace（续跑空转）。
+            String effectiveAgent = isHitl
+                    ? (String) session.attrs().get(WebStreamBuilder.ATTR_EFFECTIVE_AGENT)
+                    : selectedAgent;
+
+            HarnessInput hin = HarnessInput.of(session, (isHitl || resumeInput) ? null : input)
+                    .resume(isHitl || resumeInput)
+                    .selectedAgent(effectiveAgent)
+                    .selectedModel(selectedModel)
+                    .commandContextFactory(webCommandFactory());
+
+            if (isHitl) {
+                // 协议字符串在边界解析，脏值这里报错而非静默当拒绝
+                hin.hitl(HITLAction.of(hitlAction), hitlCallId);
+            } else {
+                hin.origin(InputOrigin.of(source, sourceUserId, replyTarget, messageId))
+                        .attachments(WebAttachmentStore.toAttachments(
+                                wsContext.getEngine().getWorkspace(), attachments, attachmentTypes));
+            }
+
+            // 一次调用完成「写决策 + 必要时的续流装配」或「命令识别 + 提及解析 + 请求装配」，宿主只 switch kind：
+            //   TASK —— 可执行任务。HITL 决策已写入且本批齐备（isCommand() 恒 false，直接跑任务）；
+            //           命令触发（isCommand() 为 true）先发回执再跑任务；普通消息直接跑任务。
+            //   REPLY —— 只有回执：命令已执行或在本渠道不可用，回执自成一轮。
+            //   HITL  —— 决策已写入但未续流：过期审批卡（isHitlApplied()==false）或本批尚有未决卡。
+            //           Web 首次挂起时已推送全部审批卡，此处不需要再推，静默等待其余卡即可。
+            InputOutcome outcome = wsContext.getEngine().handle(hin);
 
             switch (outcome.getKind()) {
                 case TASK:
@@ -212,7 +217,7 @@ class WebChatInputHandler {
                     startReplyTurn(wsContext, session, outcome, source, sourceUserId, replyTarget, messageId);
                     break;
                 default:
-                    // HITL / IGNORED：决策已写入或无事可做
+                    // HITL / IGNORED：决策已写入但未续流，或无事可做
                     break;
             }
         } catch (Exception e) {

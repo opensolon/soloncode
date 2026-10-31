@@ -18,7 +18,7 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.core.util.Assert;
 
@@ -38,14 +38,14 @@ final class DesktopGoalBroadcaster {
     private static final String TYPE_GOAL_STATUS = "goal_status";
 
     private final HarnessEngine engine;
-    private final GoalEngine goalEngine;
+    private final GoalExtension goal;
     private final DesktopStreamHub streamHub;
     /** 已发送 Goal 终态 done 的会话，防止监听器多次触发重复下发。 */
     private final Set<String> completedGoalStreams = ConcurrentHashMap.newKeySet();
 
-    DesktopGoalBroadcaster(HarnessEngine engine, GoalEngine goalEngine, DesktopStreamHub streamHub) {
+    DesktopGoalBroadcaster(HarnessEngine engine, GoalExtension goal, DesktopStreamHub streamHub) {
         this.engine = engine;
-        this.goalEngine = goalEngine;
+        this.goal = goal;
         this.streamHub = streamHub;
     }
 
@@ -99,8 +99,6 @@ final class DesktopGoalBroadcaster {
     }
 
     private boolean runningOf(String sessionId) {
-        if (goalEngine == null) return false;
-        AgentSession session = goalEngine.sessionOf(sessionId);
-        return goalEngine.isRunning(session);
+        return goal != null && goal.running(sessionId);
     }
 }

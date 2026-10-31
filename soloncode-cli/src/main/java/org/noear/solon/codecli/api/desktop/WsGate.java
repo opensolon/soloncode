@@ -27,8 +27,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
-import org.noear.solon.ai.harness.session.goal.GoalScheduler;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.ai.harness.runtime.ExecutionBridge;
@@ -84,8 +83,7 @@ public class WsGate extends SimpleWebSocketListener {
     final AgentSettings agentSettings;
     /** 执行桥（loop 与 goal 共享；桌面端只在此注册执行器与繁忙检查器，不持有 LoopScheduler）。 */
     final ExecutionBridge executionBridge;
-    final GoalEngine goalEngine;
-    final GoalScheduler goalScheduler;
+    final GoalExtension goal;
     final DesktopStreamHub streamHub = new DesktopStreamHub();
     private final DesktopGoalBroadcaster goalBroadcaster;
     private final DesktopEventConverter eventConverter;
@@ -94,21 +92,20 @@ public class WsGate extends SimpleWebSocketListener {
     private final DesktopInputRouter inputRouter;
 
     public WsGate(HarnessEngine engine, AgentSettings agentSettings, ExecutionBridge executionBridge,
-                  GoalEngine goalEngine, GoalScheduler goalScheduler) {
+                  GoalExtension goal) {
         this.engine = engine;
         this.agentSettings = agentSettings;
         this.executionBridge = executionBridge;
-        this.goalEngine = goalEngine;
-        this.goalScheduler = goalScheduler;
-        this.goalBroadcaster = new DesktopGoalBroadcaster(engine, goalEngine, streamHub);
+        this.goal = goal;
+        this.goalBroadcaster = new DesktopGoalBroadcaster(engine, goal, streamHub);
         this.eventConverter = new DesktopEventConverter(engine);
         this.streamTurn = new DesktopStreamTurn(streamHub, eventConverter);
         this.configHandler = new DesktopConfigHandler(engine);
         this.inputRouter = new DesktopInputRouter(this);
 
-        if (goalEngine != null) {
+        if (goal != null) {
             // 桌面端 Goal 轮次经共享执行桥回推：注册一次，两个引擎共用
-            goalEngine.addListener(goalBroadcaster::onGoalChanged);
+            goal.addListener(goalBroadcaster::onGoalChanged);
             if (executionBridge != null) {
                 executionBridge.addTaskExecutor((sessionId, prompt, agentName) -> {
                     if (!sessionId.matches("[0-9]{1,18}")) {
@@ -200,7 +197,7 @@ public class WsGate extends SimpleWebSocketListener {
 
     void startGoalStream(WebSocket socket, String sessionId, WsMessage req,
                          String objective, String cwd, String agentName) throws IOException {
-        if (goalEngine == null || goalScheduler == null) {
+        if (goal == null || !goal.hasScheduler()) {
             throw new IllegalStateException("Goal service is unavailable");
         }
         if (Assert.isEmpty(sessionId) || !sessionId.matches("[0-9]{1,18}")) {
@@ -226,15 +223,16 @@ public class WsGate extends SimpleWebSocketListener {
         streamHub.begin(sessionId, socket);
 
         // attach 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径
-        GoalState gs = goalEngine.attach(session, effectiveObjective,
+        GoalState gs = goal.attach(session, effectiveObjective,
                 maxTokens != null ? maxTokens : 0L,
                 maxDurationMinutes != null ? Math.multiplyExact(maxDurationMinutes, 60_000L) : 0L,
                 maxIterations != null ? maxIterations : 0);
         if (!displayedObjective.equals(effectiveObjective)) {
             gs.setCondition(displayedObjective);
-            goalEngine.commit(session, gs);
+            goal.commit(session, gs);
         }
-        goalScheduler.schedule(sessionId, false);
+        // 只挂 job 不立即跑（会话流已由 startGoalStream 自己驱动首轮，与 Web 端 createGoal 的 runNow=true 不同）
+        goal.resumeScheduleOnly(sessionId);
     }
 
     private Long normalizeGoalBudget(Long value, long maximum, String label) {

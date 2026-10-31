@@ -5,6 +5,7 @@ import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalScheduler;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.ExecutionBridge;
@@ -38,6 +39,8 @@ public class WorkspaceContext implements Closeable {
     private volatile GoalEngine goalEngine;
     /** Goal 调度器（会话级 job 装配）。 */
     private volatile GoalScheduler goalScheduler;
+    /** Goal 一键装配扩展（goal 域的唯一宿主交互面；运行期操作经其门面中转）。 */
+    private volatile GoalExtension goalExtension;
     /** 执行桥（loop 与 goal 共享；由组合根创建）。 */
     private volatile ExecutionBridge executionBridge;
     private final AutomationManager automationManager;
@@ -134,6 +137,27 @@ public class WorkspaceContext implements Closeable {
         return goalScheduler;
     }
 
+    /**
+     * Goal 域的唯一交互面（装配 + 运行期门面）。
+     *
+     * <p>宿主应优先用它：{@code goal.find(id,taskId)} / {@code goal.pause(...)} /
+     * {@code goal.attachAndSchedule(...)} 等已内含调度配对，不会出现「改了状态忘了挂/摘 job」。
+     * 仅在确需细粒度访问时才回到 {@link #getGoalEngine()}。</p>
+     */
+    public GoalExtension getGoalExtension() {
+        return goalExtension;
+    }
+
+    /** 由 WorkspaceManager 装配时注入（避免构造器签名膨胀）。 */
+    public void attachGoal(GoalExtension goalExtension, ExecutionBridge bridge) {
+        if (goalExtension != null) {
+            this.goalExtension = goalExtension;
+            this.goalEngine = goalExtension.getGoalEngine();
+            this.goalScheduler = goalExtension.getGoalScheduler();
+        }
+        this.executionBridge = bridge;
+    }
+
     /** 由 WorkspaceManager 装配时注入（避免构造器签名膨胀）。 */
     public void attachGoal(GoalEngine goalEngine, GoalScheduler goalScheduler, ExecutionBridge bridge) {
         this.goalEngine = goalEngine;
@@ -205,9 +229,9 @@ public class WorkspaceContext implements Closeable {
         }
         // 停掉本工作区全部 goal job：JobManager 是 JVM 单例，
         // 不注销则 job 会带着已关闭引擎的引用在全局调度器里空转。
-        if (goalScheduler != null) {
+        if (goalExtension != null) {
             try {
-                goalScheduler.stopAll();
+                goalExtension.stopAll();
             } catch (Exception e) {
                 // Ignore
             }

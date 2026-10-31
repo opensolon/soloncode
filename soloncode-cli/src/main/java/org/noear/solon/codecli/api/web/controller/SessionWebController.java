@@ -27,7 +27,7 @@ import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionJanitor;
@@ -649,16 +649,13 @@ public class SessionWebController extends AbstractWebController {
         }
 
         // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
-        GoalEngine goalEngine = currentContext().getGoalEngine();
-        if (goalEngine != null) {
-            AgentSession goalSession = goalEngine.sessionOf(sessionId);
-            GoalState activeGoal =
-                    goalSession == null ? null : goalEngine.state(goalSession);
+        GoalExtension goal = currentContext().getGoalExtension();
+        if (goal != null) {
+            AgentSession goalSession = goal.sessionOf(sessionId);
+            GoalState activeGoal = goalSession == null ? null : goal.state(goalSession);
             if (activeGoal != null && activeGoal.getStatus().isActive()) {
-                goalEngine.pause(goalSession, activeGoal);
-                if (currentContext().getGoalScheduler() != null) {
-                    currentContext().getGoalScheduler().unschedule(sessionId);
-                }
+                // pause 门面内含 unschedule 配对
+                goal.pause(goalSession, activeGoal);
                 LOG.info("[SessionWebController] Goal '{}' paused due to session interrupt", activeGoal.getId());
             }
         }

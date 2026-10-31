@@ -172,7 +172,7 @@ public class CliShell implements Runnable {
         AgentSession session = prepare(SESSION_ID_CLI);
 
         try {
-            handleInput(session, input);
+            handleInput(session, input, null, true);
         } catch (Throwable e) {
             terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
         }
@@ -249,7 +249,7 @@ public class CliShell implements Runnable {
                     continue;
                 }
 
-                handleInput(session, input);
+                handleInput(session, input, null, true);
             } catch (Throwable e) {
                 LOG.warn(e.getMessage(), e);
                 terminal.writer().println("\n" + RED + "! Error: " + RESET + e.getMessage());
@@ -260,7 +260,7 @@ public class CliShell implements Runnable {
     private String safeChatInput(AgentSession session, String prompt) {
         if (reader != null && reader.isReading()) {
             try {
-                return handleMessageInput(session, prompt, null);
+                return handleInput(session, prompt, null, false);
             } catch (Exception e) {
                 LOG.error("Loop task execution failed: {}", e.getMessage(), e);
             } finally {
@@ -272,36 +272,33 @@ public class CliShell implements Runnable {
     }
 
     /**
-     * 用户手输与单次调用：识别命令、具备终端能力、回合结束后消费队列
+     * 输入受理唯一入口：用户手输与已受理文本共用一套装配与处置逻辑。
      * <p>
      * 命令识别、执行、子代理解析、请求装配全部由引擎完成；宿主只负责「回执怎么渲染」
-     * 与「流怎么消费」。
+     * 与「流怎么消费」。两类输入的差异全部收敛为参数：
+     * <ul>
+     *   <li>{@code userTurn=true}（用户手输 / 单次调用）—— 识别命令、具备终端能力、回合结束后消费队列；</li>
+     *   <li>{@code userTurn=false}（队列项 / loop 注入）—— 不识别命令（即使以命令前缀开头）、
+     *       不消费队列（队列消费只归属主线程，避免调度线程排水与 readLine 争用同一 reader）。</li>
+     * </ul>
+     * 注意：{@code commandAware} 与「回合结束后排水」必须同源 —— 两者都严格等于 {@code userTurn}，
+     * 不可拆成两个独立布尔，否则会出现「手输不排水」或「注入回合识别命令」的错配。
+     *
+     * @param model 会话级模型选择（仅已受理文本的队列项携带；手输传 null）
      */
-    private String handleInput(AgentSession session, String input) throws Exception {
-        HarnessInput harnessInput = HarnessInput.of(session, input)
-                .origin(CLI_ORIGIN)
-                .commandAware(true)
-                //只在识别命令时装配：这两项全仓仅 dispatchCommand 读取，不识别命令时传了也是死配置
-                .terminal(true)
-                .commandContextFactory(cliCommandFactory());
-
-        return dispatchOutcome(session, engine.handle(harnessInput), true);
-    }
-
-    /**
-     * 按普通消息处理一段已受理的文本（不识别命令，仍解析 @子代理）
-     * <p>
-     * 队列项与 loop 注入都走这里：文本来源不是用户手输，即使以命令前缀开头也不当作命令。
-     * 也不消费队列 —— 队列消费只归属用户手输回合与主循环，避免调度线程排水与主线程
-     * readLine 争用同一个 reader。
-     */
-    private String handleMessageInput(AgentSession session, String text, String model) throws Exception {
+    private String handleInput(AgentSession session, String text, String model, boolean userTurn) throws Exception {
         HarnessInput harnessInput = HarnessInput.of(session, text)
                 .origin(CLI_ORIGIN)
-                .commandAware(false)
+                .commandAware(userTurn)
                 .selectedModel(model);
 
-        return dispatchOutcome(session, engine.handle(harnessInput), false);
+        if (userTurn) {
+            //只在识别命令时装配：这两项全仓仅 dispatchCommand 读取，不识别命令时传了也是死配置
+            harnessInput.terminal(true)
+                    .commandContextFactory(cliCommandFactory());
+        }
+
+        return dispatchOutcome(session, engine.handle(harnessInput), userTurn);
     }
 
     /**
@@ -365,7 +362,7 @@ public class CliShell implements Runnable {
         if (session == null || cliQueueDraining) return;
         cliQueueDraining = true;
         try {
-            while (SessionQueueDrainer.drainOne(session, item -> handleMessageInput(session, item.getText(), item.getModel()))) {
+            while (SessionQueueDrainer.drainOne(session, item -> handleInput(session, item.getText(), item.getModel(), false))) {
                 // 统一由 SessionQueueDrainer 负责 claim/poll/ack/requeue。
             }
         } finally {

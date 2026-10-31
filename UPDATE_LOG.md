@@ -7,6 +7,27 @@
   * **行为不变性**：`HarnessInput` 装配逐字段等价——`commandAware=true` 时才装配 `terminal(true)` 与 `commandContextFactory`（死配置去重，与合并前一致）；排水策略不变（仅手输排水）；`HITL` 审批不属受理层（发生在 `handleHitlRound` 任务执行中循环内，携带的是决策非新文本），`dispatch` 唯一 handle 调用点维持不动
   * 验证：编译通过；定向 25 例全绿（`HelpModeTest` 19 + `PackageBoundaryTest` 4 + `SessionJanitorTest` 2）；全量 1204 例 **4 失败**，与既有基线完全一致（`ImageReplyLifecycleTest` 异常文案、`AgentSettingsControllerTest` 400、`MountSettingsControllerTest` 安装目标数、`SkillhubMarketTest` 联网类）——本次相比上次记录的 3 失败多出的 `SkillhubMarketTest` 为联网测试、与本次改动无关，属环境波动
 
+* 三端「一次 handle + 按 Kind 二次处理」入口收敛**实际落地**（本次，替代 vNEXT 首条的 `CliInputSpec` / `dispatch(HarnessInput)` 设想）：每端只保留一个受理门面，`engine.handle` 调用点全仓 12 → 9
+  * **Web**（`WebChatInputHandler.onChatInput`）：HITL 审批与普通消息两次 handle 合并为一次 + 一个 `switch (kind)`
+    * 差异全部收敛为参数：正文 `(isHitl || resumeInput) ? null : input`、`resume(isHitl || resumeInput)`、子代理 `isHitl ? ATTR_EFFECTIVE_AGENT : selectedAgent`、`origin`/`attachments` 仅非 HITL 装配、`commandContextFactory` 两者共用（均为 `BufferedCommandContextFactory`）
+    * 等价性依据：`HarnessEngine.handle` 第 1 步即 HITL 分支并返回，不读取 `origin` / `attachments` / `commandContextFactory`；`attachments` 的装配会触发落盘，故仍只在非 HITL 分支调用
+    * `case TASK` 对 HITL 不会误入 `startCommandTaskTurn`（HITL 路径 `commandName` 恒 null）；`case REPLY` 对 HITL 不可达；原 HITL 分支的 `return` 改为 `break` 落在 try 末尾，`finally` 语义不变
+  * **CLI**（`CliShell`）：`handleInput(session, String)` 与 `handleMessageInput(session, text, model)` 合并为 `handleInput(session, text, model, boolean userTurn)`
+    * 关键约束：`commandAware` 与「回合结束后排水」必须同源，都严格等于 `userTurn`（手输才识别命令、手输才排水），不可拆成两个独立布尔，否则会出现「手输不排水」或「注入回合识别命令」的错配
+    * `terminal(true)` 与 `commandContextFactory` 仅在 `userTurn` 时装配（全仓仅 `dispatchCommand` 读取）；4 个调用点同步改传（`call` / 主循环 / loop 注入 / 队列排水）
+  * **桌面**（`DesktopInputRouter`）：不合并前置逻辑，改为「单分发核心 + 两个协议适配器」
+    * 新增 `dispatchTurn(socket, session, sessionId, cwd, HarnessInput, reasoningEffort, fallbackModel, hitlResume)`：一次 handle + 一个 switch + 一处起流；`handleChat` 与 `handleHitlAction` 各自保留原有前置（空输入校验、计划模式改写、Goal 拦截、附件落盘、代理校验与 attrs 覆盖、`SESSION_ATTR_SELECTED_AGENT` 写入）
+    * **不能合并前置的原因**：HITL 文本恒为 null，过空输入校验会每个审批先报错；计划模式改写与 Goal 拦截会污染审批；`SESSION_ATTR_SELECTED_AGENT` 会被审批时空值覆盖，导致子代理续流取不到 trace
+    * 两个必须保留的参数：`fallbackModel`（`REPLY` 分支的 done 报受理时模型名，与迁移前一致，不是 outcome 生效值）、`hitlResume`（决定 `streamHub.begin` 还是 `subscribe`，传错会占屏或漏帧）
+    * `Kind.HITL` 的过期卡报错与「推下一张卡」逻辑并入核心，`nextPendingHitlTask` 调用点不变
+  * **有意保留的 5 个独立入口**（生命周期或进程形态不同，非同一受理门面）：`PrintMode`（headless 单次）、`AcpLink`（ACP 协议）、`GitService`（提交摘要，`session=null` 一次性）、`WsGate`（Goal 定时触发，`CountDownLatch` 同步等 RunEnd 取权威答复）、`WebChatInputHandler.safeChatInputAndCaptureLoop`（Loop 同步捕获全文，与异步推送模型互斥）；另有 `CommandDispatcher` 的命令二段装配属引擎内部
+  * 验证：`soloncode-cli` 编译通过；harness 定向 22 例全绿（`HitlResumeSelfCheckTest` 6 + `InputCommandAwareTest` 6 + `InputHandleTest` 7 + `HitlAgentResolutionTest` 3）；`soloncode-cli` 全量 **1216 例 4 失败**，无一由本次改动引入：
+    * `ImageReplyLifecycleTest.abnormalRunEndDiscardsImagesAndNeverLeaksAnswer`、`AgentSettingsControllerTest.builtinStillReadableAfterOverrideFileExists` —— 既有基线
+    * `MountSettingsControllerTest.listsOneInstallTargetPerDirectoryAndMarksWorkspaceScope` —— **基线漂移**：harness 提交 `33dc53fb2` 把内置 `@harness-agents` 挂载改为 `.visible(false)`（源码注释「内置挂载不在上层展示」），而该用例仍断言其可见（期望 3 个挂载，实得 2）。单独运行同样失败，与本次三个改动文件无任何引用关系
+    * `SkillhubMarketTest.testInstallRealSlug` —— 联网类
+    * 用例数 1204 → 1216 系工作区未跟踪的 `GoalLoopEndpointTest`（12 例全绿）所致，非本次新增
+  * **未做真机联调**：桌面端批量挂起时序仅代码层验证，`hitlResume` 与批挂起逐卡推送建议实际点一次多卡场景确认
+
 * 三端 `engine.handle` 收敛为**单点调用**（按用户「原则上只应有一处调用，其它只是按不同参数构建 `HarnessInput`」的要求）：
   * **问题**：同一个宿主类里存在多个 `engine.handle(...)` 字面调用点。Web 3 处（HITL 审批 / 普通消息 / Loop 注入）、桌面 2 处（普通消息 / HITL）、CLI 3 处（手输 / 队列与 Loop 注入 / HITL 审批）。虽然各分支互斥、每请求仍只调一次，但调用形态分散会让「续流时机由引擎自检」「命令识别统一口径」有被单个分支绕过的空间——本次 HITL 改造前的多份 `allHitlDecided` 预检正是这样长出来的
   * **改法**：每个宿主类新增唯一入口 `dispatch(HarnessInput)`，内部只有一行 `engine.handle(input)`；差异全部下沉到 `HarnessInput` 构建：

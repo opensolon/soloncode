@@ -23,8 +23,7 @@ import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.api.desktop.WsGate;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
-import org.noear.solon.ai.harness.session.goal.GoalScheduler;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.handle.Context;
@@ -43,22 +42,19 @@ import java.util.Map;
  * 移除。目标正文通过 JSON 传输，不经过命令行解析。</p>
  *
  * <p>Goal 属于会话（每会话单槽），状态存于会话快照的 {@code session.goal} 投影，
- * 与 Web/CLI 共用同一个 {@link GoalEngine}，不再经过 loop 定时任务体系。</p>
+ * 与 Web/CLI 共用同一个 {@link GoalExtension}，不再经过 loop 定时任务体系。</p>
  *
  * @author bai
  */
 public class DesktopGoalController extends AbstractDesktopController {
     private final WsGate wsGate;
-    private final GoalEngine goalEngine;
-    private final GoalScheduler goalScheduler;
+    private final GoalExtension goal;
 
     public DesktopGoalController(HarnessEngine engine, WsGate wsGate,
-                                 SessionManager sessionManager, GoalEngine goalEngine,
-                                 GoalScheduler goalScheduler) {
+                                 SessionManager sessionManager, GoalExtension goal) {
         super(engine, sessionManager);
         this.wsGate = wsGate;
-        this.goalEngine = goalEngine;
-        this.goalScheduler = goalScheduler;
+        this.goal = goal;
         // 桌面端 BusyChecker/TaskExecutor 已随 Goal 链在 WsGate 构造时注册到共享执行桥
     }
 
@@ -66,14 +62,14 @@ public class DesktopGoalController extends AbstractDesktopController {
     @Get
     @Mapping("/desktop/chat/goals/list")
     public Result<List<Map>> goalsList(@Param("sessionId") String sessionId) {
-        if (!DesktopSessionIds.isValid(sessionId) || goalEngine == null) {
+        if (!DesktopSessionIds.isValid(sessionId) || goal == null) {
             return Result.failure(400, "Invalid session id");
         }
-        AgentSession session = goalEngine.sessionOf(sessionId);
-        GoalState gs = session == null ? null : goalEngine.state(session);
+        AgentSession session = goal.sessionOf(sessionId);
+        GoalState gs = session == null ? null : goal.state(session);
         List<Map> items = new ArrayList<>();
         if (gs != null) {
-            items.add(goalEngine.toTaskMap(session, gs));
+            items.add(goal.toTaskMap(session, gs));
         }
         return Result.succeed(items);
     }
@@ -82,7 +78,7 @@ public class DesktopGoalController extends AbstractDesktopController {
     @Post
     @Mapping("/desktop/chat/goals/add")
     public Result goalsAdd(Context ctx) throws Exception {
-        if (goalEngine == null || goalScheduler == null) {
+        if (goal == null || !goal.hasScheduler()) {
             return Result.failure(503, "Goal service is unavailable");
         }
         ONode root = ONode.ofJson(ctx.body());
@@ -111,15 +107,14 @@ public class DesktopGoalController extends AbstractDesktopController {
                     root.get("workspace").getString(),
                     root.get("reasoningEffort").getString());
 
-            AgentSession session = goalEngine.sessionOf(sessionId);
+            AgentSession session = goal.sessionOf(sessionId);
             if (session == null) {
                 return Result.failure(404, "Session not found");
             }
-            GoalState gs = goalEngine.attach(session, prompt.trim(),
+            GoalState gs = goal.attachAndSchedule(session, prompt.trim(),
                     maxTokens != null ? maxTokens : 0L,
                     maxDurationMinutes != null ? Math.multiplyExact(maxDurationMinutes, 60_000L) : 0L,
                     maxIterations != null ? maxIterations : 0);
-            goalScheduler.schedule(sessionId, true);
             return Result.succeed(gs.getId());
         } catch (IllegalArgumentException | ArithmeticException error) {
             return Result.failure(400, error.getMessage());
@@ -131,7 +126,7 @@ public class DesktopGoalController extends AbstractDesktopController {
     @Post
     @Mapping("/desktop/chat/goals/update")
     public Result goalsUpdate(Context ctx) throws Exception {
-        if (goalEngine == null) {
+        if (goal == null) {
             return Result.failure(503, "Goal service is unavailable");
         }
         ONode root = ONode.ofJson(ctx.body());
@@ -141,8 +136,8 @@ public class DesktopGoalController extends AbstractDesktopController {
             return Result.failure(400, "Invalid Goal request");
         }
 
-        AgentSession session = goalEngine.sessionOf(sessionId);
-        GoalState gs = session == null ? null : goalEngine.state(session);
+        AgentSession session = goal.sessionOf(sessionId);
+        GoalState gs = session == null ? null : goal.state(session);
         if (gs == null || !taskId.equals(gs.getId())) {
             return Result.failure(404, "Goal not found");
         }
@@ -163,31 +158,22 @@ public class DesktopGoalController extends AbstractDesktopController {
 
         boolean resumeAfterUpdate = gs.getStatus() == GoalState.Status.PURSUING;
         if (resumeAfterUpdate) {
-            goalEngine.pause(session, gs);
-            if (goalScheduler != null) {
-                goalScheduler.unschedule(sessionId);
-            }
+            // pause 门面内含 unschedule 配对
+            goal.pause(session, gs);
             wsGate.interruptGoalSession(sessionId);
             if (gs.getStatus() != GoalState.Status.PAUSED) {
                 return Result.failure(409, "Goal state changed before settings could be applied");
             }
-            for (int attempt = 0; goalEngine.isRunning(session) && attempt < 200; attempt++) {
+            for (int attempt = 0; goal.running(session) && attempt < 200; attempt++) {
                 Thread.sleep(10L);
             }
-            if (goalEngine.isRunning(session)) {
+            if (goal.running(session)) {
                 return Result.failure(409, "Goal is still stopping; please retry");
             }
         }
 
-        goalEngine.update(session, objective,
-                maxTokens != null ? maxTokens : gs.getMaxTokens(),
-                maxIterations != null ? maxIterations : gs.getMaxIterations());
-        if (resumeAfterUpdate) {
-            goalEngine.resume(session, gs);
-            if (goalScheduler != null) {
-                goalScheduler.schedule(sessionId, true);
-            }
-        }
+        // 后半段（update + resume + schedule）由门面一步完成；桌面端不支持改时长
+        goal.updateAndReschedule(session, gs, objective, maxTokens, null, resumeAfterUpdate);
         return Result.succeed();
     }
 
@@ -216,7 +202,7 @@ public class DesktopGoalController extends AbstractDesktopController {
     }
 
     private Result operateGoal(Context ctx, String action) throws Exception {
-        if (goalEngine == null) {
+        if (goal == null) {
             return Result.failure(503, "Goal service is unavailable");
         }
         ONode root = ONode.ofJson(ctx.body());
@@ -225,38 +211,27 @@ public class DesktopGoalController extends AbstractDesktopController {
         if (!DesktopSessionIds.isValid(sessionId) || Assert.isEmpty(taskId) || taskId.length() > 64) {
             return Result.failure(400, "Invalid Goal request");
         }
-        AgentSession session = goalEngine.sessionOf(sessionId);
-        GoalState gs = session == null ? null : goalEngine.state(session);
+        AgentSession session = goal.sessionOf(sessionId);
+        GoalState gs = session == null ? null : goal.state(session);
         if (gs == null || !taskId.equals(gs.getId())) {
             return Result.failure(404, "Goal not found");
         }
         switch (action) {
             case "pause":
-                goalEngine.pause(session, gs);
-                if (goalScheduler != null) {
-                    goalScheduler.unschedule(sessionId);
-                }
+                goal.pause(session, gs);
                 wsGate.interruptGoalSession(sessionId);
                 break;
             case "resume":
-                if (!goalEngine.resume(session, gs)) {
+                if (!goal.resume(session, gs)) {
                     return Result.failure(409, "Goal cannot be resumed in state: " + gs.getStatus());
-                }
-                if (goalScheduler != null) {
-                    goalScheduler.schedule(sessionId, true);
                 }
                 break;
             case "trigger":
-                if (goalScheduler != null) {
-                    goalScheduler.schedule(sessionId, true);
-                }
+                goal.scheduleNow(sessionId);
                 break;
             case "remove":
-                if (goalScheduler != null) {
-                    goalScheduler.unschedule(sessionId);
-                }
                 wsGate.interruptGoalSession(sessionId);
-                goalEngine.clear(session);
+                goal.clear(session);
                 break;
             default:
                 return Result.failure(400, "Invalid Goal action");

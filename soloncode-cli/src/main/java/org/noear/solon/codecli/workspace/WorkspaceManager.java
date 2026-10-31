@@ -5,6 +5,9 @@ import org.noear.snack4.Feature;
 import org.noear.solon.Solon;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.harness.command.builtin.*;
+import org.noear.solon.ai.harness.session.queue.QueueExtension;
+import org.noear.solon.ai.harness.session.steer.SteerExtension;
+import org.noear.solon.ai.harness.session.steer.SteerOutputPort;
 import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -542,7 +545,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
             return;
         }
         // 活跃 goal 仍在调度的工作区不得被 LRU 释放（否则 goal 静默丢失）
-        if (ctx.getGoalScheduler() != null && ctx.getGoalScheduler().hasScheduledJobs()) {
+        if (ctx.getGoalExtension() != null && ctx.getGoalExtension().hasScheduledGoals()) {
             return;
         }
         LOG.info("[Workspace] Releasing idle workspace: {}", id);
@@ -799,9 +802,13 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
-        // /steer、/queue 已下沉 harness：队列状态存于会话上下文，快照即持久化，命令直连领域类
-        engine.getCommandRegistry().register(new SteerCommand());
-        engine.getCommandRegistry().register(new QueueCommand());
+        // /steer、/queue 已下沉 harness：命令注册由各域 Extension 幂等完成（/goal 在上方 GoalExtension 内注册）。
+        // SteerExtension 默认拦截器用 headless 端口（CLI/无 web 场景 drop 仅记日志）；
+        // Web 端 WebStreamBuilder 每请求挂载带当次 wsContext 的实例，拦截器容器按 Class 去重，
+        // 请求级实例覆盖默认实例——通知路由始终拿到正确工作区，不会双重注入。
+        engine.addExtension(new SteerExtension<>(() -> getRuntimePort() instanceof SteerOutputPort
+                ? (SteerOutputPort<Object>) getRuntimePort() : null, null));
+        engine.addExtension(new QueueExtension());
         engine.getCommandRegistry().register(new RerunCommand());
         engine.getCommandRegistry().register(new RewindCommand());
         engine.getCommandRegistry().register(new ModelCommand());
@@ -822,30 +829,26 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json"),
                 WorkspaceDataUtil.sessionsPath(workspacePath));
 
-        // Goal 引擎（会话级能力，与 loop 共享执行桥）
+        // Goal 一键装配（GoalExtension.builder：bridge→GoalEngine→GoalScheduler→/goal 命令→Talent 一次完成）
+        // 执行桥与 loop 共享（组合根资源，归属在扩展之外）；阈值/熔断取工作区配置。
         GoalGroupDo goalCfg = wsSettings.getGoal();
-        GoalEngine goalEngine = new GoalEngine(
-                executionBridge,
-                new BudgetThresholds(
-                        goalCfg.getBudgetWarningPercentOrDefault(),
-                        goalCfg.getBudgetCriticalPercentOrDefault()),
-                goalCfg.getStagnationThresholdOrDefault(),
-                goalCfg.getMaxConsecutiveErrorsOrDefault(),
-                goalCfg.isValidatorEnabledOrDefault(),
-                workspacePath);
-
-        // Goal 调度（会话级 job，与 loop 各自装配；job 名带工作区前缀防跨工作区撞名）
-        GoalScheduler goalScheduler = new GoalScheduler(goalEngine, meta.getId());
-
-        // Goal 模式
+        GoalExtension goalExtension = GoalExtension.builder(meta.getId())
+                .bridge(executionBridge)
+                .budget(goalCfg.getBudgetWarningPercentOrDefault(),
+                        goalCfg.getBudgetCriticalPercentOrDefault())
+                .stagnation(goalCfg.getStagnationThresholdOrDefault())
+                .maxErrors(goalCfg.getMaxConsecutiveErrorsOrDefault())
+                .validatorEnabled(goalCfg.isValidatorEnabledOrDefault())
+                .workspace(workspacePath)
+                .build();
+        
+        // Goal 模式（关掉只影响模型侧工具，不影响 /goal 命令）
         boolean goalsEnabled = wsSettings.getGeneral().isGoalsEnabled();
-        GoalExtension goalExtension = new GoalExtension(goalEngine, engine);
         goalExtension.getGoalTalent().setEnabled(goalsEnabled);
         engine.addExtension(goalExtension);
 
         LoopCommand loopCommand = new LoopCommand(loopScheduler);
         engine.getCommandRegistry().register(loopCommand);
-        engine.getCommandRegistry().register(new GoalCommand(goalEngine, goalScheduler));
 
         engine.addExtension(new LoopExtension(loopScheduler, wsSettings));
         engine.addExtension(new ManagerExtension(engine, wsSettings));
@@ -923,7 +926,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 此处仅拉起 scheduler 的加载（含旧版三路数据迁移）。
         automationManager.restore();
         WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, automationManager, this, wsSettings);
-        context.attachGoal(goalEngine, goalScheduler, executionBridge);
+        context.attachGoal(goalExtension, executionBridge);
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
         // Link.run() 只做一次幂等委托（gateway.startXxx 按连接维度去重），重复调用安全。

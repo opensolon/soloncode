@@ -12,8 +12,7 @@ import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
-import org.noear.solon.ai.harness.session.goal.GoalScheduler;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.codecli.api.web.*;
 import org.noear.solon.codecli.entry.cli.*;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
@@ -82,8 +81,7 @@ public class Configurator {
 
     private LoopScheduler loopScheduler;
     private ExecutionBridge executionBridge;
-    private GoalEngine goalEngine;
-    private GoalScheduler goalScheduler;
+    private GoalExtension goalExtension;
 
     @Inject
     AdminAuditController adminAuditController;
@@ -118,8 +116,7 @@ public class Configurator {
         WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
         this.loopScheduler = defaultCtx.getLoopScheduler();
         this.executionBridge = defaultCtx.getExecutionBridge();
-        this.goalEngine = defaultCtx.getGoalEngine();
-        this.goalScheduler = defaultCtx.getGoalScheduler();
+        this.goalExtension = defaultCtx.getGoalExtension();
         return defaultCtx.getEngine();
     }
 
@@ -234,7 +231,7 @@ public class Configurator {
     private void runDesktopServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell,
                                  SessionManager sessionManager) {
         //serve ws gate
-        WsGate wsGate = new WsGate(agentRuntime, settings, executionBridge, goalEngine, goalScheduler);
+        WsGate wsGate = new WsGate(agentRuntime, settings, executionBridge, goalExtension);
         WebSocketRouter.getInstance().of("/desktop/ws", wsGate);
 
         //serve desktop controllers（原单一 WsController 按领域拆分：版本/模型/会话/Goal）
@@ -250,8 +247,7 @@ public class Configurator {
         // 桌面端 BusyChecker/TaskExecutor 由 WsGate 构造时注册到共享执行桥，
         // Goal 状态与 Web/CLI 同源（会话快照 session.goal）
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
-                new DesktopGoalController(agentRuntime, wsGate, sessionManager,
-                        goalEngine, goalScheduler));
+                new DesktopGoalController(agentRuntime, wsGate, sessionManager, goalExtension));
         Solon.app().router().add(desktopBean);
 
         cliShell.printWelcome("Server port: " + Solon.cfg().serverPort());

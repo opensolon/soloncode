@@ -21,7 +21,7 @@ import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
 import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.ai.harness.session.goal.GoalEngine;
-import org.noear.solon.ai.harness.session.goal.GoalScheduler;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionSnapshots;
@@ -96,9 +96,8 @@ class WebQueueDispatcher {
      * BLOCKED 为熔断态，同理需显式恢复。终态则无需调度。</p>
      */
     private static void recoverSessionGoals(WorkspaceContext wsContext) {
-        GoalEngine engine = wsContext.getGoalEngine();
-        GoalScheduler scheduler = wsContext.getGoalScheduler();
-        if (engine == null || scheduler == null) return;
+        GoalExtension goal = wsContext.getGoalExtension();
+        if (goal == null) return;
 
         Path root = wsContext.getSessionsRoot();
         if (root == null || !Files.isDirectory(root)) return;
@@ -110,9 +109,10 @@ class WebQueueDispatcher {
                 // 内存会话优先（与写侧同源）；未实例化则轻读投影状态，不把会话带进内存
                 AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
                 if (inMemory != null) {
-                    GoalState gs = engine.state(inMemory);
+                    GoalState gs = goal.state(inMemory);
                     if (gs != null && gs.getStatus().isActive()) {
-                        scheduler.schedule(sessionId, false);
+                        // 恢复期只挂 job，不能立即跑一轮（resume() 是 runNow=true）
+                        goal.resumeScheduleOnly(sessionId);
                     }
                     continue;
                 }
@@ -121,7 +121,7 @@ class WebQueueDispatcher {
                 if (status == null || !GoalEngine.isActiveStatus(status)) {
                     continue;
                 }
-                scheduler.schedule(sessionId, false);
+                goal.resumeScheduleOnly(sessionId);
             }
         } catch (IOException e) {
             LOG.warn("[WebGate] recover session goals failed for workspace {}: {}",

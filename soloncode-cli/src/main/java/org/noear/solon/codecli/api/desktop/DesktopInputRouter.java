@@ -87,18 +87,15 @@ final class DesktopInputRouter {
         AgentSession session = engine.getSession(sessionId);
 
         if ("[(sec)interrupt]".equals(req.getInput())) {
-            AgentSession goalSession = gate.goalEngine == null ? null : gate.goalEngine.sessionOf(sessionId);
-            GoalState activeGoal = gate.goalEngine == null
-                    ? null : gate.goalEngine.state(goalSession);
+            AgentSession goalSession = gate.goal == null ? null : gate.goal.sessionOf(sessionId);
+            GoalState activeGoal = goalSession == null ? null : gate.goal.state(goalSession);
             reactor.core.Disposable disposable = (reactor.core.Disposable) session.attrs().remove("disposable");
             if (disposable != null) {
                 disposable.dispose();
             }
             if (activeGoal != null) {
-                if (gate.goalScheduler != null) {
-                    gate.goalScheduler.unschedule(sessionId);
-                }
-                gate.goalEngine.clear(goalSession);
+                // clear 门面内含「先 unschedule 再 clear」
+                gate.goal.clear(goalSession);
                 return;
             }
             AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
@@ -281,42 +278,83 @@ final class DesktopInputRouter {
 
         // 命令识别、附件前缀拼装、Prompt 构建统一交给引擎。
         // agent 已在此前解析（桌面端需先做 Goal 拦截与格式校验），用 explicitAgent 透传避免二次判断。
-        InputOutcome outcome = gate.engine.handle(
+        // 正文路径不传 resume：审批后的续跑走 handleHitlAction（hitlResume=true）。
+        dispatchTurn(socket, session, finalSessionId, cwd,
                 HarnessInput.of(session, currentInput)
                         .explicitAgent(agentName)
                         .selectedModel(modelName)
                         .attachments(attachResult)
-                        .commandContextFactory(desktopCommandFactory()));
+                        .commandContextFactory(desktopCommandFactory()),
+                reasoningEffort, chatModel, false);
+    }
+
+    /**
+     * 桌面端唯一的处置核心：一次 handle，一个 switch，一处起流。
+     * <p>
+     * 协议层（chat 消息 / hitl_action）只负责构造 {@link HarnessInput}：两者的前置逻辑差异很大
+     * （空输入校验、计划模式改写、Goal 拦截、附件落盘、代理校验与 attrs 覆盖），强行合并会让
+     * 审批卡被消息前置污染，因此保留两个适配器，只把「处置」这一段收成单一实现。
+     * <p>
+     * 两个参数不能省：
+     * <ul>
+     *   <li>{@code fallbackModel} —— {@code REPLY} 分支的 done 报的是<b>受理时</b>的模型名
+     *       （与迁移前一致），不是 outcome 里的生效值；</li>
+     *   <li>{@code hitlResume} —— 决定流生命周期：true 走 subscribe 复用既有流状态，
+     *       false 走 begin。传错会导致审批续跑时占屏或漏帧。</li>
+     * </ul>
+     */
+    private void dispatchTurn(WebSocket socket, AgentSession session, String sessionId, String cwd,
+                              HarnessInput hin, String reasoningEffort, ChatModel fallbackModel,
+                              boolean hitlResume) {
+        InputOutcome outcome = gate.engine.handle(hin);
 
         switch (outcome.getKind()) {
             case TASK:
-                // 命令触发的任务：不发独立回执（与原实现一致），命令输出由任务流自身携带；
-                // 若在此先发回执，会绕过 DesktopStreamHub 的序号/回放缓冲，且与随后开流的时序耦合
-                break;
+                if (outcome.hasRequest() == false) {
+                    // 仅续流路径可能出现：无可续的挂起任务
+                    socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
+                    return;
+                }
+                // 模型/子代理一律用引擎生效值（命令声明 → 会话选择 → 默认），与普通消息同口径。
+                // 请求主体（session/retry/maxTurns）已由 handle 装配，此处仅解析桌面端展示所需的模型句柄。
+                ChatModel turnModel = Assert.isEmpty(outcome.getModelName())
+                        ? fallbackModel : gate.engine.getModelOrDefInstance(outcome.getModelName());
+
+                // 续流（如 /continue）：正文为空，靠会话挂起的 trace 继续（不能传空 Prompt，否则会命中空提示分支）
+                Prompt prompt = outcome.getPrompt();
+                if (prompt != null) {
+                    prompt.attrPut("start_time", System.currentTimeMillis());
+                    gate.applyReasoningEffort(prompt, reasoningEffort);
+                }
+
+                // 命令触发的任务不发独立回执（与迁移前一致）：命令输出由任务流自身携带，
+                // 若在此先发回执，会绕过 DesktopStreamHub 的序号/回放缓冲
+                gate.streamTurn.run(session, outcome.getRequest(), turnModel, sessionId, cwd,
+                        reasoningEffort, socket, hitlResume, gate.desktopHitlInterceptor);
+                return;
             case REPLY:
                 // 命令已执行，或命令在本渠道不可用：回执后结束本轮
-                handleCommandReceipt(socket, outcome, finalSessionId);
-                sendDone(socket, chatModel, finalSessionId);
+                handleCommandReceipt(socket, outcome, sessionId);
+                sendDone(socket, fallbackModel, sessionId);
+                return;
+            case HITL:
+                if (outcome.isHitlApplied() == Boolean.FALSE) {
+                    // 过期审批卡：任务已结束，前端残留的卡仍可点击。与迁移前同口径报错。
+                    socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
+                    return;
+                }
+                // 本批尚有未决卡：推送下一张（跳过已决策项），等宿主再次点击
+                HITLTask next = DesktopStreamTurn.nextPendingHitlTask(session);
+                if (next != null) {
+                    socket.send(DesktopStreamTurn.hitlEvent(sessionId, next).toJson());
+                } else {
+                    socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
+                }
                 return;
             default:
-                // HITL / IGNORED
+                // IGNORED
                 return;
         }
-
-        // 模型/子代理一律用引擎生效值（命令声明 → 会话选择 → 默认），与普通消息同口径。
-        // 请求主体（session/retry/maxTurns）已由 handle 装配，此处仅解析桌面端展示所需的模型句柄。
-        final ChatModel turnModel = Assert.isEmpty(outcome.getModelName())
-                ? chatModel : gate.engine.getModelOrDefInstance(outcome.getModelName());
-
-        // 续流（如 /continue）：正文为空，靠会话挂起的 trace 继续（不能传空 Prompt，否则会命中空提示分支）
-        Prompt prompt = outcome.getPrompt();
-        if (prompt != null) {
-            prompt.attrPut("start_time", System.currentTimeMillis());
-            gate.applyReasoningEffort(prompt, reasoningEffort);
-        }
-
-        gate.streamTurn.run(session, outcome.getRequest(), turnModel, finalSessionId, cwd,
-                reasoningEffort, socket, false, gate.desktopHitlInterceptor);
     }
 
     /**
@@ -389,49 +427,26 @@ final class DesktopInputRouter {
 
             AgentSession session = engine.getSession(sessionId);
 
-            // 一次调用完成「写决策 + 必要时的续流装配」，宿主只 switch kind：
-            //   TASK —— 决策已写入且本批已齐备，直接执行续流；
-            //   HITL —— 未续流：过期审批卡（isHitlApplied()==false，与迁移前「task == null → 报错」同口径）
-            //            或本批尚有未决卡（推下一张卡，保持迁移前逐卡交互的观察结果）。
             String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrDefInstance(modelName);
             String selectedAgentName = (String) session.attrs().get(WsGate.SESSION_ATTR_SELECTED_AGENT);
             String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
             String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
+            // 一次调用完成「写决策 + 必要时的续流装配」，处置交给统一的 dispatchTurn：
+            //   TASK —— 决策已写入且本批已齐备，直接执行续流（hitlResume=true 复用既有流状态）；
+            //   HITL —— 未续流：过期审批卡（isHitlApplied()==false，与迁移前「task == null → 报错」同口径）
+            //            或本批尚有未决卡（推下一张卡，保持迁移前逐卡交互的观察结果）。
             // 决策应用与续流判定统一交给引擎（input 唯一入口）；
             // 协议字符串在边界解析为枚举（脏值抛 IllegalArgumentException，落入下方 catch 回错误，不再静默当拒绝）
-            InputOutcome outcome = engine.handle(HarnessInput.of(session, null)
-                    .hitl(HITLAction.of(action), callId)
-                    .hitlOutput(output)
-                    .selectedAgent(selectedAgentName)
-                    .selectedModel(modelName)
-                    .resume(true));
-
-            if (outcome.getKind() == InputOutcome.Kind.TASK) {
-                if (outcome.hasRequest() == false) {
-                    socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
-                    return;
-                }
-
-                gate.streamTurn.run(session, outcome.getRequest(), chatModel, sessionId, cwd,
-                        reasoningEffort, socket, true, gate.desktopHitlInterceptor);
-                return;
-            }
-
-            if (outcome.isHitlApplied() == Boolean.FALSE) {
-                // 过期审批卡：任务已结束，前端残留的卡仍可点击。与迁移前同口径报错。
-                socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
-                return;
-            }
-
-            // 本批尚有未决卡：推送下一张（跳过已决策项），等宿主再次点击
-            HITLTask next = DesktopStreamTurn.nextPendingHitlTask(session);
-            if (next != null) {
-                socket.send(DesktopStreamTurn.hitlEvent(sessionId, next).toJson());
-            } else {
-                socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
-            }
+            dispatchTurn(socket, session, sessionId, cwd,
+                    HarnessInput.of(session, null)
+                            .hitl(HITLAction.of(action), callId)
+                            .hitlOutput(output)
+                            .selectedAgent(selectedAgentName)
+                            .selectedModel(modelName)
+                            .resume(true),
+                    reasoningEffort, chatModel, true);
         } catch (Exception e) {
             LOG.error("[WS] HITL action failed", e);
             socket.send(new ONode().set("type", "error").set("text", e.getMessage()).toJson());
