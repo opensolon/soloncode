@@ -1,6 +1,22 @@
 
 ### vNEXT
 
+* CLI 受理层收敛为**单一受理接口 + 参数对象**（三端统一契约的第一端落地）：
+  * **意图**：每端只有一个接收输入的处理接口，不同输入情况由参数表达，内部一套处理逻辑。CLI 率先落地
+  * **改法**：新增 `CliInputSpec`（包内可见，三字段：`text`/`commandAware`/`allowDrain` + `model`，两个工厂：`typed` 手输 / `injected` 队列项与 loop 注入）；`handleInput(session, CliInputSpec)` 成为 CLI 唯一受理入口，原 `handleInput(session, String)` 与 `handleMessageInput(session, text, model)` 两方法合并（两者差异仅 6 个构建参数 + 排水开关，内部本就共用 `dispatchOutcome`）；4 个调用点全部改传 spec（手输 175 / 主循环 252 / loop 注入 263 / 排水 378）
+  * **行为不变性**：`HarnessInput` 装配逐字段等价——`commandAware=true` 时才装配 `terminal(true)` 与 `commandContextFactory`（死配置去重，与合并前一致）；排水策略不变（仅手输排水）；`HITL` 审批不属受理层（发生在 `handleHitlRound` 任务执行中循环内，携带的是决策非新文本），`dispatch` 唯一 handle 调用点维持不动
+  * 验证：编译通过；定向 25 例全绿（`HelpModeTest` 19 + `PackageBoundaryTest` 4 + `SessionJanitorTest` 2）；全量 1204 例 **4 失败**，与既有基线完全一致（`ImageReplyLifecycleTest` 异常文案、`AgentSettingsControllerTest` 400、`MountSettingsControllerTest` 安装目标数、`SkillhubMarketTest` 联网类）——本次相比上次记录的 3 失败多出的 `SkillhubMarketTest` 为联网测试、与本次改动无关，属环境波动
+
+* 三端 `engine.handle` 收敛为**单点调用**（按用户「原则上只应有一处调用，其它只是按不同参数构建 `HarnessInput`」的要求）：
+  * **问题**：同一个宿主类里存在多个 `engine.handle(...)` 字面调用点。Web 3 处（HITL 审批 / 普通消息 / Loop 注入）、桌面 2 处（普通消息 / HITL）、CLI 3 处（手输 / 队列与 Loop 注入 / HITL 审批）。虽然各分支互斥、每请求仍只调一次，但调用形态分散会让「续流时机由引擎自检」「命令识别统一口径」有被单个分支绕过的空间——本次 HITL 改造前的多份 `allHitlDecided` 预检正是这样长出来的
+  * **改法**：每个宿主类新增唯一入口 `dispatch(HarnessInput)`，内部只有一行 `engine.handle(input)`；差异全部下沉到 `HarnessInput` 构建：
+    * `WebChatInputHandler`：新增 `dispatch(wsContext, input)` + `buildHarnessInput(...)`。HITL 与普通输入的差异（正文 `null` / `resume` / 生效子代理）在 builder 内以 if 分支显式展开，`onChatInput` 主流程恢复为单条 `dispatch(...)` 后接 `switch (kind)`；删除 HITL 分支原有的 `if (kind==TASK) performAgentTaskAsync; return;` 早退，改由统一 `switch` 的 `case TASK` 处理（等价：原早退分支只做这一件事）
+    * `DesktopInputRouter`：新增 `dispatch(input)`，普通消息与 HITL 两处调用改经它
+    * `CliShell`：新增 `dispatch(input)`，`handleInput` / `handleMessageInput` / `handleHitlRound` 三处调用改经它
+  * **行为不变性**：只改调用形态，`HarnessInput` 的参数装配逐字段保持原样（含 HITL 路径不装配附件——附件装配会触发落盘，且引擎第 1 步即返回用不上）；`switch (kind)` 的四个分支处理与改造前逐条对应
+  * **未合并的调用点**（有意保留，非同宿主多入口）：`PrintMode`（headless 单次执行）、`AcpLink`（ACP 协议）、`GitService`（提交摘要一次性调用）、`WsGate`（Goal 定时触发）、`CommandDispatcher`（命令二段装配，引擎内部）。这些是不同生命周期/不同进程形态的独立入口，各自只有一个调用点
+  * 验证：`soloncode-cli` 编译通过；全量 1204 例 **3 失败**（`ImageReplyLifecycleTest` 异常文案、`AgentSettingsControllerTest` 返回 400、`MountSettingsControllerTest` 安装目标数 3≠2）。`MountSettingsControllerTest` 此前未被记录为基线，已用 `git stash` 单独复验：**暂存本次改动后该用例仍失败**，故为既有基线而非本次引入，基线应从「2 失败」更新为「3 失败」
+
 * HITL「决策 + 续流」合并为**一次** `engine.handle` 调用（三端统一，宿主不再自持批齐备判定）：
   * **意图**：把「写决策」与「该不该续流」的判定都收敛进引擎，宿主只需 `switch (outcome.getKind())`，杜绝各端各写一份 `allHitlDecided` / 过期卡预检。
   * **引擎自检**（`HarnessEngine.handle` 的 HITL 分支）：`resume` 实际生效需同时满足三个条件——① 决策真的命中挂起任务（`applyHitlDecision` 改为返回 `boolean`）；② 本批已齐备（新增 `pendingHitlCount`，遍历 `HITL.getPendingTasks` 数未决策项）；③ 宿主显式传 `resume`。任一不满足则返回 `Kind.HITL`，**绝不续流**。
