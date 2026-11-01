@@ -21,7 +21,7 @@ import java.nio.file.Paths;
  */
 public class WebTest {
     public static void main(String[] args) throws Exception {
-        App.main(new String[]{"web", "debug=1", "server.port=1212"});
+        App.main(new String[]{"web", "debug=1", "server.port=1212", "solon.logging.appender.console.enable=true"});
 
         JsonSchema jsonSchema = JsonSchema.builder()
                 .options(Options.of(Feature.Write_PrettyFormat))

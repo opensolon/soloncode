@@ -844,7 +844,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         
         // Goal 模式（关掉只影响模型侧工具，不影响 /goal 命令）
         boolean goalsEnabled = wsSettings.getGeneral().isGoalsEnabled();
-        goalExtension.getGoalTalent().setEnabled(goalsEnabled);
+        goalExtension.setEnabled(goalsEnabled);
         engine.addExtension(goalExtension);
 
         LoopCommand loopCommand = new LoopCommand(loopScheduler);
