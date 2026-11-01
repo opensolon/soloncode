@@ -84,7 +84,7 @@
     }
     function displayTitle(t) {
         // 无任务名称：行内标题直接用提示词（CSS ellipsis 截断 + title 悬停全文，与循环任务列表一致）
-        return t.name && t.name !== '自动任务' ? t.name : (t.prompt || I18n.t('automation.defaultName'));
+        return t.name && t.name !== '自动化任务' ? t.name : (t.prompt || I18n.t('automation.defaultName'));
     }
     function formHtml(t) {
         var cronVal = t.cron || '';

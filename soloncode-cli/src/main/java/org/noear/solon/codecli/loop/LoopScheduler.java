@@ -378,7 +378,7 @@ public class LoopScheduler {
 
     /**
      * 读取统一存储；不存在时触发旧版数据迁移（各会话的 loop-tasks.json）后重读。
-     * 同时清理孤儿记录（会话目录已不存在但 tasks.json 仍有条目）。自动任务（auto- 前缀）
+     * 同时清理孤儿记录（会话目录已不存在但 tasks.json 仍有条目）。自动化任务（auto- 前缀）
      * 除外——其专用会话目录可能被归档但不代表任务失效。
      */
     private Map<String, List<LoopTask>> migrateAndLoad() {

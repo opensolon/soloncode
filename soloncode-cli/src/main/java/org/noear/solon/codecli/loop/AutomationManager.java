@@ -35,7 +35,7 @@ public class AutomationManager {
 
     // ==================== 视图 ====================
 
-    /** 全部任务（自动任务 + 会话循环任务），供自动任务页统一展示。 */
+    /** 全部任务（自动化任务 + 会话循环任务），供自动任务页统一展示。 */
     public synchronized List<Map<String, Object>> list() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map.Entry<String, List<LoopTask>> entry : scheduler.listAll().entrySet()) {
@@ -61,7 +61,7 @@ public class AutomationManager {
     private static String displayName(String name, String prompt) {
         if (name != null && !name.trim().isEmpty()) return name.trim();
         String base = prompt == null ? "" : prompt.trim().split("\r?\n", 2)[0];
-        return base.length() > 20 ? base.substring(0, 20) : (base.isEmpty() ? "自动任务" : base);
+        return base.length() > 20 ? base.substring(0, 20) : (base.isEmpty() ? "自动化任务" : base);
     }
 
     // ==================== CRUD（委托 scheduler + 覆盖层） ====================
