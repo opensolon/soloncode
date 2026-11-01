@@ -144,6 +144,8 @@
 .form-row-2col .form-group { flex: 1; min-width: 0; }
 .form-row-3col { display: flex; gap: 12px; }
 .form-row-3col .form-group { flex: 1; min-width: 0; }
+.form-row-4col { display: flex; gap: 12px; flex-wrap: wrap; }
+.form-row-4col .form-group { flex: 1 1 140px; min-width: 0; }
 .form-group label { display: block; font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom: 4px; font-weight: 500; }
 .form-group .required { color: #ef4444; }
 .form-group input, .form-group select:not(.form-select-custom), .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-primary); font-size: var(--fs-base); outline: none; transition: border-color 0.2s; font-family: inherit; box-sizing: border-box; }

@@ -131,7 +131,7 @@
     function resetLlmForm() {
         llmEditName = null;
         $llmSaveBtn.text(I18n.t('common.save'));
-        $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmDefaultOptions').val('');
+        $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmConcurrency, #llmDefaultOptions').val('');
         $('#llmProvider').val('');
         $('#llmIsDefaultModel').prop('checked', false);
         setScopeValue('llmScope', 'user');
@@ -163,6 +163,8 @@
             }
         }
         if (item.defaultOptions) $('#llmDefaultOptions').val(JSON.stringify(item.defaultOptions, null, 2));
+        // 子代理并发数（0/未设置则不回显，保住“留空 = 跟随通用设置”的语义）
+        $('#llmConcurrency').val(item.concurrency > 0 ? String(item.concurrency) : '');
         // 回显“设为默认模型”勾选状态
         $("#llmIsDefaultModel").prop("checked", !!item.isDefault);
         // 回显 provider（隐藏表单，编辑时保持关联）
@@ -170,8 +172,8 @@
     }
 
     /**
-     * 新建模型时，用「通用 - 模型默认」预填上下文长度与超时（并发数不下发到模型，
-     * 而是作为引擎子代理并行上限，由后端热更新）。拉取失败时静默忽略，不阻断表单。
+     * 新建模型时，用「通用 - 模型默认」预填上下文长度 / 超时 / 子代理并发数。
+     * 拉取失败时静默忽略，不阻断表单。
      */
     function applyModelDefaults() {
         $.get('/web/settings/general', function (resp) {
@@ -190,6 +192,10 @@
             }
             if (d.modelDefaultTimeoutSeconds > 0 && !$('#llmTimeout').val()) {
                 $('#llmTimeout').val(d.modelDefaultTimeoutSeconds + 's');
+            }
+            // 子代理并发数：同上，只在用户尚未输入时预填
+            if (d.modelDefaultConcurrency > 0 && !$('#llmConcurrency').val()) {
+                $('#llmConcurrency').val(String(d.modelDefaultConcurrency));
             }
         });
     }
@@ -213,6 +219,12 @@
             contextLength = matchK ? Math.round(parseFloat(matchK[1]) * 1000) : matchM ? Math.round(parseFloat(matchM[1]) * 1000000) : parseInt(contextLengthRaw, 10);
         }
         if (contextLength) bodyObj.contextLength = contextLength;
+        var concurrencyRaw = $('#llmConcurrency').val().trim();
+        if (concurrencyRaw) {
+            if (!/^\d+$/.test(concurrencyRaw)) { showToast(I18n.t('llm.concurrencyInvalid'), 'error'); return null; }
+            var concurrency = parseInt(concurrencyRaw, 10);
+            if (concurrency > 0) bodyObj.concurrency = concurrency;
+        }
         var optionsText = $('#llmDefaultOptions').val().trim();
         if (optionsText) {
             try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast(I18n.t('llm.defaultOptionsInvalid'), 'error'); return null; }

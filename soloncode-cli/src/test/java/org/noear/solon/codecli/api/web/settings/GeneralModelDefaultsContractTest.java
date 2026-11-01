@@ -38,7 +38,14 @@ public class GeneralModelDefaultsContractTest {
             "general.modelDefaults.timeoutPlaceholder",
             "general.modelDefaults.concurrencyInvalid",
             "general.modelDefaults.timeoutInvalid",
-            "general.modelDefaults.desc"
+            "general.modelDefaults.desc",
+            // 并入「对话策略」的两项（已更名）
+            "general.chatDefaults.thinkingMode",
+            "general.chatDefaults.reasoningEffort",
+            // 模型编辑表单的子代理并发数
+            "llm.concurrency",
+            "llm.concurrencyPlaceholder",
+            "llm.concurrencyInvalid"
     };
 
     @Test
@@ -52,7 +59,7 @@ public class GeneralModelDefaultsContractTest {
     }
 
     @Test
-    @DisplayName("页面：卡片改名「对话默认」，并在其下新增「模型默认」三列")
+    @DisplayName("页面：「对话默认」并入「对话策略」，「模型默认」三列独立成卡")
     void pageHasModelDefaultsCard() throws IOException {
         String html = resourceText("/static/web.html");
 
@@ -61,10 +68,15 @@ public class GeneralModelDefaultsContractTest {
         assertTrue(html.contains("id=\"generalModelDefaultConcurrency\""), "必须有并发数输入框");
         assertTrue(html.contains("id=\"generalModelDefaultTimeout\""), "必须有超时输入框");
 
-        int chatDefaults = html.indexOf("data-i18n=\"general.chatDefaults.title\"");
+        // 「对话默认」不再有独立卡片：默认思考模式/默认推理强度直接落在「对话策略」卡内
+        int conversationCard = html.indexOf("data-i18n=\"general.conversation.title\"");
+        int thinkingMode = html.indexOf("id=\"generalDefaultThinkingMode\"");
         int modelDefaults = html.indexOf("data-i18n=\"general.modelDefaults.title\"");
-        assertTrue(chatDefaults > 0 && modelDefaults > 0, "两张卡片都必须存在");
-        assertTrue(chatDefaults < modelDefaults, "「模型默认」必须排在「对话默认」之后");
+        assertTrue(conversationCard > 0 && thinkingMode > 0 && modelDefaults > 0, "三处都必须存在");
+        assertTrue(conversationCard < thinkingMode, "默认思考模式必须在「对话策略」卡内");
+        assertTrue(thinkingMode < modelDefaults, "「模型默认」必须排在「对话策略」之后");
+        assertFalse(html.contains("data-i18n=\"general.chatDefaults.title\""),
+                "「对话默认」卡已并入「对话策略」，不应再残留卡片标题");
     }
 
     @Test
@@ -77,6 +89,27 @@ public class GeneralModelDefaultsContractTest {
         String manager = javaSource("workspace/WorkspaceManager.java");
         assertTrue(manager.contains(".subagentDefaultConcurrency(wsSettings.getGeneral().getModelDefaultConcurrency())"),
                 "启动构建引擎时必须带上并发数，否则重启后回落到引擎缺省值");
+    }
+
+    @Test
+    @DisplayName("模型默认必须真的被用起来：手工添加、供应商同步、供应商生成三条新建路径")
+    void modelDefaultsAppliedOnCreate() throws IOException {
+        String controller = javaSource("api/web/settings/LlmSettingController.java");
+
+        assertTrue(controller.contains("protected void applyModelDefaults(ModelDo modelDo, boolean overwriteTimeout)"),
+                "必须存在统一的模型默认套用入口");
+
+        // 手工添加模型
+        assertTrue(controller.contains("applyModelDefaults(config, false)"),
+                "手工添加模型必须套用模型默认（超时交给前端预填，后端不覆盖）");
+
+        // 供应商同步 / 生成：服务端刚 new 出来的模型，允许无条件套用默认超时
+        int applyCount = controller.split("applyModelDefaults\\(modelDo, true\\)", -1).length - 1;
+        assertTrue(applyCount >= 2, "供应商 sync-models 与 providersGenerate 都要套用，实际命中: " + applyCount);
+
+        // 编辑模型时不得把新建时套用的并发数抹成 0
+        assertTrue(controller.contains("config.getConcurrency() <= 0 && oldConfig != null && oldConfig.getConcurrency() > 0"),
+                "模型编辑提交未含并发数时，必须继承旧值");
     }
 
     @Test
@@ -101,8 +134,14 @@ public class GeneralModelDefaultsContractTest {
             assertTrue(zh.contains("\"" + key + "\""), "zh-CN 缺少键: " + key);
         }
 
-        assertFalse(zh.contains("\"general.chatDefaults.title\": \"新建对话默认\""),
-                "「对话默认」标题必须改名（原「新建对话默认」不再使用）");
+        assertFalse(zh.contains("\"general.chatDefaults.title\""),
+                "「对话默认」卡已并入「对话策略」，该键不再使用");
+        assertTrue(zh.contains("\"general.chatDefaults.thinkingMode\": \"默认思考模式\""),
+                "「思考模式」必须更名为「默认思考模式」");
+        assertTrue(zh.contains("\"general.chatDefaults.reasoningEffort\": \"默认推理强度\""),
+                "「推理强度」必须更名为「默认推理强度」");
+        assertTrue(zh.contains("\"general.modelDefaults.concurrency\": \"子代理并发数\""),
+                "「并发数」必须更名为「子代理并发数」");
 
         // 共 22 个语言包，新增键必须全覆盖（i18n.js 会回退 zh-CN，但缺键会触发开发期告警）
         java.io.File dir = new java.io.File("src/main/resources/static/i18n");
