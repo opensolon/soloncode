@@ -272,7 +272,15 @@ public class WebSettingsController extends BaseSettingsController {
             engine.setMaxTurns(g.getMaxTurns());
             engine.setHitlEnabled(g.isHitlEnabled());
 
-            // 模型默认-并发数：AiConfig.concurrency 的唯一消费方就是子代理并行调度，故直接热更新引擎
+            // ── 模型默认（上下文长度 / 子代理并发数）──
+            // 两者都是「模型自己没配时生效」的兜底值，因此直接下发到引擎，
+            // 而不是回写到各模型配置（旧实现新建模型时套用，用户改通用默认对已有模型无效）。
+            // 无条件下发：清空输入框（0 = 未设置）时必须回退到缺省 1m，
+            // 否则引擎会保留上一次的值，与重启后的行为不一致
+            engine.setCompressionDefaultContextLength(
+                    WorkspaceManager.resolveCompressionDefaultContextLength(g.getModelDefaultContextLength()));
+
+            // AiConfig.concurrency 的唯一消费方就是子代理并行调度
             //（0 = 未设置，harness 侧会归一到自身缺省值）
             if (g.getModelDefaultConcurrency() >= 0) {
                 engine.setSubagentDefaultConcurrency(g.getModelDefaultConcurrency());
@@ -485,10 +493,9 @@ public class WebSettingsController extends BaseSettingsController {
                 g.setDefaultReasoningEffort(null);
             }
 
-            // 模型默认（上下文长度/并发数/超时）：负数与非数一律归一为 0（=未设置）
+            // 模型默认（上下文长度/并发数）：负数与非数一律归一为 0（=未设置）
             g.setModelDefaultContextLength(Math.max(0L, g.getModelDefaultContextLength()));
             g.setModelDefaultConcurrency(Math.max(0, g.getModelDefaultConcurrency()));
-            g.setModelDefaultTimeoutSeconds(Math.max(0L, g.getModelDefaultTimeoutSeconds()));
         }
 
         // 更新 HTTP 代理配置（热生效）

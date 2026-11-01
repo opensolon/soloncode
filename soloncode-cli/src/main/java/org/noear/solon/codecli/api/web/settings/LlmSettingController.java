@@ -40,47 +40,6 @@ public class LlmSettingController extends BaseSettingsController {
     private static final Pattern CONTEXT_SUFFIX_PATTERN = Pattern.compile("^(\\d+(?:\\.\\d+)?)([km])$", Pattern.CASE_INSENSITIVE);
 
     /**
-     * 把「通用 - 模型默认」套用到新建的模型上。
-     *
-     * <p>三个字段都以 0 表示「未设置」，都只在模型自身没填时兜底：</p>
-     * <ul>
-     *   <li>上下文长度：作为新建模型的初始值</li>
-     *   <li>子代理并发数：作为新建模型的初始值。{@code AiConfig.concurrency} 的消费方
-     *       {@code TaskTalent} 是「模型级优先，否则回退引擎 {@code subagentDefaultConcurrency}」，
-     *       所以模型一旦写入非 0 值就按自己的算；通用页仍会热更新引擎缺省值，
-     *       对未单独设过的模型继续生效</li>
-     *   <li>超时：{@code AiConfig.timeout} 非空且以 120s 为默认值，无法区分「用户没填」
-     *       与「用户就是要 120s」。所以仅在 {@code overwriteTimeout} 为真时（模型是服务端
-     *       刚 new 出来的、用户不可能表达过意图）才无条件套用；用户直接提交表单的路径
-     *       不碰超时，由前端预填承担</li>
-     * </ul>
-     *
-     * <p>两个入口都只用于<b>新建</b>，不触及已存在的模型——避免「点一次保存」把模型上
-     * 单独调过的值静默改写。</p>
-     */
-    protected void applyModelDefaults(ModelDo modelDo, boolean overwriteTimeout) {
-        if (modelDo == null || settings().getGeneral() == null) {
-            return;
-        }
-
-        long defaultContextLength = settings().getGeneral().getModelDefaultContextLength();
-        if (defaultContextLength > 0 && modelDo.getContextLength() <= 0) {
-            modelDo.setContextLength(defaultContextLength);
-        }
-
-        int defaultConcurrency = settings().getGeneral().getModelDefaultConcurrency();
-        if (defaultConcurrency > 0 && modelDo.getConcurrency() <= 0) {
-            // setConcurrency 已做归零处理，不会抛异常
-            modelDo.setConcurrency(defaultConcurrency);
-        }
-
-        long defaultTimeoutSeconds = settings().getGeneral().getModelDefaultTimeoutSeconds();
-        if (overwriteTimeout && defaultTimeoutSeconds > 0) {
-            modelDo.setTimeout(java.time.Duration.ofSeconds(defaultTimeoutSeconds));
-        }
-    }
-
-    /**
      * 构造函数：支持自定义所有依赖。
      */
     public LlmSettingController(WorkspaceManager workspaceManager) {
@@ -208,8 +167,6 @@ public class LlmSettingController extends BaseSettingsController {
         }
         // 模型名带 [1m]/[256k] 后缀时，服务端统一剥离并回填上下文长度
         applyModelContextSuffix(config);
-        // 「通用 - 模型默认」兜底（只填模型没填的项；超时由前端预填，后端不覆盖）
-        applyModelDefaults(config, false);
         ModelApiUrl.normalize(config);
 
         engine().addModel(config);
@@ -267,9 +224,9 @@ public class LlmSettingController extends BaseSettingsController {
             }
         }
 
-        // 编辑表单暂未提供「子代理并发数」输入框，提交时该字段恒为 0（=未设置）。
-        // 若不继承旧值，用户在页面上随便改个超时再保存，就会把新建模型时从
-        // 「模型默认」套用过来的并发数静默抹掉。只在未提交时继承，显式清零仍以提交为准。
+        // 编辑表单未改动「子代理并发数」时（提交恒为 0 = 未设置），继承旧值，
+        // 避免用户改个超时再保存就把模型上单独配过的并发数静默抹掉。
+        // 注：「通用 - 模型默认」不再在新建模型时回写模型配置，这里的旧值只可能来自用户显式设置。
         if (config.getConcurrency() <= 0 && oldConfig != null && oldConfig.getConcurrency() > 0) {
             config.setConcurrency(oldConfig.getConcurrency());
         }
@@ -680,10 +637,6 @@ public class LlmSettingController extends BaseSettingsController {
                     }
                 }
 
-                // 「通用 - 模型默认」兜底：新建的模型是服务端刚 new 出来的，不可能表达过超时意图，
-                // 所以这里允许无条件套用默认超时（与表单路径不同）
-                applyModelDefaults(modelDo, true);
-
                 settings().getModels().put(modelName, modelDo);
                 engine().addModel(modelDo);
                 syncCount++;
@@ -939,9 +892,6 @@ public class LlmSettingController extends BaseSettingsController {
             if (timeout > 0) {
                 modelDo.setTimeout(java.time.Duration.ofSeconds(timeout));
             }
-
-            // 「通用 - 模型默认」兜底（新建模型，允许套用默认超时）
-            applyModelDefaults(modelDo, true);
 
             // 保存模型配置
             settings().getModels().put(modelName, modelDo);

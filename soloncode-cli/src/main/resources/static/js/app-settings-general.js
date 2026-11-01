@@ -43,18 +43,6 @@
         return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '_');
     }
 
-    // 解析超时时长（秒）：支持 120 / 120s / 2m / 1h；非法返回 null
-    function parseTimeoutSeconds(s) {
-        if (!s) return null;
-        var raw = s.trim().toLowerCase();
-        var m = raw.match(/^(\d+(?:\.\d+)?)\s*([smh]?)$/);
-        if (!m) return null;
-        var n = parseFloat(m[1]);
-        var unit = m[2] || 's';
-        var sec = unit === 'h' ? n * 3600 : (unit === 'm' ? n * 60 : n);
-        return Math.round(sec) > 0 ? Math.round(sec) : null;
-    }
-
     /* ===== 字体设置 ===== */
 
     // 预设字族。分两组：界面字体（sans）与代码字体（mono）。
@@ -365,11 +353,10 @@
                 $('#generalDefaultThinkingMode').val(d.defaultThinkingMode || '');
                 $('#generalDefaultReasoningEffort').val(d.defaultReasoningEffort || '');
 
-                // 模型默认（上下文长度 / 并发数 / 超时）
+                // 模型默认（上下文长度 / 并发数）
                 $('#generalModelDefaultContextLength').val(d.modelDefaultContextLength > 0 ? formatNum(d.modelDefaultContextLength) : '');
                 // 并发数是小整数（引擎上界 10），不做 k/m 缩略，否则 5000 会被显示成 5k
                 $('#generalModelDefaultConcurrency').val(d.modelDefaultConcurrency > 0 ? String(d.modelDefaultConcurrency) : '');
-                $('#generalModelDefaultTimeout').val(d.modelDefaultTimeoutSeconds > 0 ? d.modelDefaultTimeoutSeconds + 's' : '');
 
                 // 日志
                 $('#generalLogLevel').val(d.logLevel || '');
@@ -429,12 +416,6 @@
             showToast(I18n.t('general.modelDefaults.concurrencyInvalid'), 'error');
             return;
         }
-        // 模型默认-超时：无法识别的写法直接拦下，避免静默落回 0（=未设置）
-        var toRaw = $('#generalModelDefaultTimeout').val().trim();
-        if (toRaw && parseTimeoutSeconds(toRaw) === null) {
-            showToast(I18n.t('general.modelDefaults.timeoutInvalid'), 'error');
-            return;
-        }
         var bodyObj = {
             sessionWindowSize: parseNumStr($('#generalSessionWindowSize').val().trim()),
             compressionThresholdMessages: parseNumStr($('#generalCompressionMsgs').val().trim()),
@@ -469,8 +450,7 @@
             defaultThinkingMode: $('#generalDefaultThinkingMode').val() || null,
             defaultReasoningEffort: $('#generalDefaultReasoningEffort').val() || null,
             modelDefaultContextLength: parseNumStr($('#generalModelDefaultContextLength').val().trim()) || 0,
-            modelDefaultConcurrency: parseNumStr($('#generalModelDefaultConcurrency').val().trim()) || 0,
-            modelDefaultTimeoutSeconds: parseTimeoutSeconds($('#generalModelDefaultTimeout').val().trim()) || 0
+            modelDefaultConcurrency: parseNumStr($('#generalModelDefaultConcurrency').val().trim()) || 0
         };
 
         $generalSaveBtn.prop('disabled', true);

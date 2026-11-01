@@ -102,6 +102,17 @@ public class WorkspaceManager implements WorkspaceRegistry {
      */
     private static final long IDLE_RELEASE_MS = 30 * 60 * 1000L;
 
+    /** 压缩默认上下文窗口的 CLI 缺省值（1m）；通用页未设置时才用它 */
+    private static final long DEFAULT_COMPRESSION_CONTEXT_LENGTH = 1024_000L;
+
+    /**
+     * 通用页「模型默认-上下文长度」（0 = 未设置）→ 压缩拦截器的默认上下文窗口。
+     * <p>拦截器要求正值（≤ 0 会抛异常），所以未设置时回退 CLI 缺省 1m。</p>
+     */
+    public static long resolveCompressionDefaultContextLength(long modelDefaultContextLength) {
+        return modelDefaultContextLength > 0 ? modelDefaultContextLength : DEFAULT_COMPRESSION_CONTEXT_LENGTH;
+    }
+
     public WorkspaceManager(AgentSettings defaultSettings) {
         this.defaultSettings = defaultSettings;
 
@@ -724,7 +735,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .autoRethink(wsSettings.getGeneral().isAutoRethink())
                 .sessionWindowSize(wsSettings.getGeneral().getSessionWindowSize())
                 .sessionProvider(new SessionManager(workspacePath))
-                .compressionDefaultContextLength(1024_000L) //1024k -> 1m
+                // 压缩默认上下文窗口：通用页「模型默认-上下文长度」优先，未设置时保持 CLI 缺省 1m
+                .compressionDefaultContextLength(resolveCompressionDefaultContextLength(wsSettings.getGeneral().getModelDefaultContextLength()))
                 .compressionThreshold(wsSettings.getGeneral().getCompressionThresholdMessages(), wsSettings.getGeneral().getCompressionThresholdPercent() / 100.0D)
                 .memoryEnabled(wsSettings.getGeneral().isMemoryEnabled())
                 .memoryRelevanceCount(wsSettings.getGeneral().getMemoryRelevanceCount())

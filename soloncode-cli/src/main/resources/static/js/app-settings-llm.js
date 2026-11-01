@@ -171,35 +171,6 @@
         $('#llmProvider').val(item.provider || '');
     }
 
-    /**
-     * 新建模型时，用「通用 - 模型默认」预填上下文长度 / 超时 / 子代理并发数。
-     * 拉取失败时静默忽略，不阻断表单。
-     */
-    function applyModelDefaults() {
-        $.get('/web/settings/general', function (resp) {
-            if (resp.code !== 200 || !resp.data) return;
-            var d = resp.data;
-            // 只在用户尚未输入时预填，避冠竞态覆盖
-            if (d.modelDefaultContextLength > 0 && !$('#llmContextLength').val()) {
-                var cl = d.modelDefaultContextLength;
-                if (cl >= 1000000 && cl % 1000000 === 0) {
-                    $('#llmContextLength').val((cl / 1000000) + 'm');
-                } else if (cl >= 1000) {
-                    $('#llmContextLength').val(cl % 1000 === 0 ? (cl / 1000) + 'k' : (cl / 1000).toFixed(1).replace(/\.0$/, '') + 'k');
-                } else {
-                    $('#llmContextLength').val(cl);
-                }
-            }
-            if (d.modelDefaultTimeoutSeconds > 0 && !$('#llmTimeout').val()) {
-                $('#llmTimeout').val(d.modelDefaultTimeoutSeconds + 's');
-            }
-            // 子代理并发数：同上，只在用户尚未输入时预填
-            if (d.modelDefaultConcurrency > 0 && !$('#llmConcurrency').val()) {
-                $('#llmConcurrency').val(String(d.modelDefaultConcurrency));
-            }
-        });
-    }
-
     function buildLlmBodyObj() {
         var apiUrl = $('#llmApiUrl').val().trim();
         var apiKey = $('#llmApiKey').val().trim();
@@ -286,7 +257,9 @@
     }
 
     // LLM 按钮事件
-    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView(I18n.t('llm.formTitle.add'), false); applyModelDefaults(); });
+    // 新建模型不再预填「通用 - 模型默认」：那三项是引擎级兜底值（未设置时由引擎下发），
+// 回写进模型配置会让「改通用默认」对已有模型不生效，且模型一旦落盘就永久固化。
+    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView(I18n.t('llm.formTitle.add'), false); });
     $('#llmBackBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
 
     $llmSaveBtn.on('click', function () {

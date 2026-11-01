@@ -13,16 +13,16 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 「通用 - 模型默认」三列（上下文长度 / 并发数 / 超时）的前后端契约测试。
+ * 「通用 - 模型默认」两列（上下文长度 / 并发数）的前后端契约测试。
  *
  * <p>背景：{@code AiConfig.concurrency} 的唯一消费方是 harness 的子代理并行调度
  * （{@code TaskTalent}，按当前会话模型取值，未设置才回退
  * {@code subagentDefaultConcurrency}）。因此「并发数」如果只做持久化而不同时热更新引擎，
  * 就是一个看不出问题的摆设 —— 本测试把这条接线钉住。</p>
  *
- * <p>同时锁定三个字段的「0 = 未设置」语义：{@code timeout} 在 {@code AiConfig} 里是有默认值
- * 的非空字段（120s），无法表达「未设置」，所以这里的超时另用 {@code modelDefaultTimeoutSeconds}
- * 以 0 表示未设置，避免拿 120 当哨兵值造成静默改写。</p>
+ * <p>同时锁定两个字段的「0 = 未设置」语义。注意「超时」一列已移除：{@code AiConfig.timeout}
+ * 是有默认值（120s）的非空字段，无法表达「未设置」，做「模型默认超时」只能靠额外哨兵，
+ * 收益不足以承担这份复杂度，故整列撤掉。</p>
  *
  * @author noear
  */
@@ -34,10 +34,7 @@ public class GeneralModelDefaultsContractTest {
             "general.modelDefaults.contextLengthPlaceholder",
             "general.modelDefaults.concurrency",
             "general.modelDefaults.concurrencyPlaceholder",
-            "general.modelDefaults.timeout",
-            "general.modelDefaults.timeoutPlaceholder",
             "general.modelDefaults.concurrencyInvalid",
-            "general.modelDefaults.timeoutInvalid",
             "general.modelDefaults.desc",
             // 并入「对话策略」的两项（已更名）
             "general.chatDefaults.thinkingMode",
@@ -49,24 +46,24 @@ public class GeneralModelDefaultsContractTest {
     };
 
     @Test
-    @DisplayName("实体：三个字段默认 0（= 未设置），不引入第二套哨兵值")
+    @DisplayName("实体：两个字段默认 0（= 未设置），不引入第二套哨兵值")
     void entityDefaultsToZero() {
         GeneralGroupDo g = new GeneralGroupDo();
 
         assertTrue(g.getModelDefaultContextLength() == 0L, "默认上下文长度必须是 0（未设置）");
         assertTrue(g.getModelDefaultConcurrency() == 0, "默认并发数必须是 0（未设置，回退引擎缺省）");
-        assertTrue(g.getModelDefaultTimeoutSeconds() == 0L, "默认超时必须是 0（未设置），不能用 120 当哨兵");
     }
 
     @Test
-    @DisplayName("页面：「对话默认」并入「对话策略」，「模型默认」三列独立成卡")
+    @DisplayName("页面：「对话默认」并入「对话策略」，「模型默认」两列独立成卡")
     void pageHasModelDefaultsCard() throws IOException {
         String html = resourceText("/static/web.html");
 
         assertTrue(html.contains("data-i18n=\"general.modelDefaults.title\""), "必须新增「模型默认」卡片标题");
         assertTrue(html.contains("id=\"generalModelDefaultContextLength\""), "必须有上下文长度输入框");
         assertTrue(html.contains("id=\"generalModelDefaultConcurrency\""), "必须有并发数输入框");
-        assertTrue(html.contains("id=\"generalModelDefaultTimeout\""), "必须有超时输入框");
+        assertFalse(html.contains("generalModelDefaultTimeout"),
+                "「超时」一列已撤掉：AiConfig.timeout 是有默认值的非空字段，无法表达未设置");
 
         // 「对话默认」不再有独立卡片：默认思考模式/默认推理强度直接落在「对话策略」卡内
         int conversationCard = html.indexOf("data-i18n=\"general.conversation.title\"");
@@ -80,50 +77,48 @@ public class GeneralModelDefaultsContractTest {
     }
 
     @Test
-    @DisplayName("并发数必须热更新引擎：保存与启动两条路径都要接上")
-    void concurrencyWiredToEngine() throws IOException {
+    @DisplayName("两项都必须热更新引擎：保存与启动两条路径都要接上")
+    void modelDefaultsWiredToEngine() throws IOException {
         String controller = javaSource("api/web/settings/WebSettingsController.java");
+
+        assertTrue(controller.contains("engine.setCompressionDefaultContextLength("),
+                "保存通用设置时必须把上下文长度推给引擎压缩拦截器");
+        assertTrue(controller.contains("WorkspaceManager.resolveCompressionDefaultContextLength("),
+                "上下文长度 0 = 未设置时必须回退 CLI 缺省值（拦截器要求正值）");
         assertTrue(controller.contains("engine.setSubagentDefaultConcurrency(g.getModelDefaultConcurrency())"),
                 "保存通用设置时必须把并发数推给引擎，否则配置不生效");
+        assertFalse(controller.contains("setModelDefaultTimeoutSeconds"),
+                "默认超时已撤掉：AiConfig.timeout 恒非空，无法表达「未设置」");
 
         String manager = javaSource("workspace/WorkspaceManager.java");
+        assertTrue(manager.contains(".compressionDefaultContextLength(resolveCompressionDefaultContextLength("),
+                "启动构建引擎时必须带上上下文长度，否则重启后回落到硬编码 1m");
         assertTrue(manager.contains(".subagentDefaultConcurrency(wsSettings.getGeneral().getModelDefaultConcurrency())"),
                 "启动构建引擎时必须带上并发数，否则重启后回落到引擎缺省值");
+        assertFalse(manager.contains("modelDefaultTimeoutSeconds"),
+                "默认超时已撤掉，引擎侧不得再有该接线");
     }
 
     @Test
-    @DisplayName("模型默认必须真的被用起来：手工添加、供应商同步、供应商生成三条新建路径")
-    void modelDefaultsAppliedOnCreate() throws IOException {
+    @DisplayName("模型默认不得回写到模型配置：新建模型的三条路径都不再套用")
+    void modelDefaultsNotAppliedOnCreate() throws IOException {
         String controller = javaSource("api/web/settings/LlmSettingController.java");
 
-        assertTrue(controller.contains("protected void applyModelDefaults(ModelDo modelDo, boolean overwriteTimeout)"),
-                "必须存在统一的模型默认套用入口");
+        assertFalse(controller.contains("applyModelDefaults"),
+                "新建模型时同步默认值的做法已取消：默认值改为引擎级兜底，回写会让「改通用默认」对已有模型失效");
 
-        // 手工添加模型
-        assertTrue(controller.contains("applyModelDefaults(config, false)"),
-                "手工添加模型必须套用模型默认（超时交给前端预填，后端不覆盖）");
-
-        // 供应商同步 / 生成：服务端刚 new 出来的模型，允许无条件套用默认超时
-        int applyCount = controller.split("applyModelDefaults\\(modelDo, true\\)", -1).length - 1;
-        assertTrue(applyCount >= 2, "供应商 sync-models 与 providersGenerate 都要套用，实际命中: " + applyCount);
-
-        // 编辑模型时不得把新建时套用的并发数抹成 0
-        assertTrue(controller.contains("config.getConcurrency() <= 0 && oldConfig != null && oldConfig.getConcurrency() > 0"),
-                "模型编辑提交未含并发数时，必须继承旧值");
+        String llm = resourceText("/static/js/app-settings-llm.js");
+        assertFalse(llm.contains("function applyModelDefaults"),
+                "新建模型时不应再用模型默认预填表单，理由同上");
     }
 
     @Test
-    @DisplayName("前端接线：读取回填、保存提交、新建模型预填")
+    @DisplayName("前端接线：读取回填、保存提交")
     void frontendWiring() throws IOException {
         String general = resourceText("/static/js/app-settings-general.js");
         assertTrue(general.contains("modelDefaultContextLength"), "通用设置必须回填/提交上下文长度");
         assertTrue(general.contains("modelDefaultConcurrency"), "通用设置必须回填/提交并发数");
-        assertTrue(general.contains("modelDefaultTimeoutSeconds"), "通用设置必须回填/提交超时秒数");
-        assertTrue(general.contains("function parseTimeoutSeconds"), "超时输入需支持 120 / 120s / 2m / 1h");
-
-        String llm = resourceText("/static/js/app-settings-llm.js");
-        assertTrue(llm.contains("function applyModelDefaults"), "新建模型时必须用模型默认预填");
-        assertTrue(llm.contains("applyModelDefaults()"), "新建模型入口必须调用预填");
+        assertFalse(general.contains("modelDefaultTimeoutSeconds"), "超时一列已撤掉，前端不得再提交该字段");
     }
 
     @Test
@@ -142,6 +137,8 @@ public class GeneralModelDefaultsContractTest {
                 "「推理强度」必须更名为「默认推理强度」");
         assertTrue(zh.contains("\"general.modelDefaults.concurrency\": \"子代理并发数\""),
                 "「并发数」必须更名为「子代理并发数」");
+        assertFalse(zh.contains("general.modelDefaults.timeout"),
+                "超时一列已撤掉，22 个语言包都不得残留 timeout 键");
 
         // 共 22 个语言包，新增键必须全覆盖（i18n.js 会回退 zh-CN，但缺键会触发开发期告警）
         java.io.File dir = new java.io.File("src/main/resources/static/i18n");
