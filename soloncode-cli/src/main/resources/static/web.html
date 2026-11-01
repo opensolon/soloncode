@@ -719,28 +719,6 @@
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.conversation.desc">历史窗口控制新指令时使用几条历史消息；压缩策略控制对话上下文的自动压缩，防止超出模型窗口限制</div>
-                                    <!-- 新建对话的默认档位（思考 / 推理） -->
-                                    <div class="general-field-row settings-gap-top-md">
-                                        <div class="general-field">
-                                            <label class="general-field-label" data-i18n="general.chatDefaults.thinkingMode">默认思考模式</label>
-                                            <select class="general-input form-select-custom" id="generalDefaultThinkingMode">
-                                                <option value="" data-i18n="general.chatDefaults.followModel">自动（跟随模型）</option>
-                                                <option value="on" data-i18n="general.chatDefaults.thinkingOn">开启</option>
-                                                <option value="off" data-i18n="general.chatDefaults.thinkingOff">关闭</option>
-                                            </select>
-                                        </div>
-                                        <div class="general-field">
-                                            <label class="general-field-label" data-i18n="general.chatDefaults.reasoningEffort">默认推理强度</label>
-                                            <select class="general-input form-select-custom" id="generalDefaultReasoningEffort">
-                                                <option value="" data-i18n="general.chatDefaults.followModel">自动（跟随模型）</option>
-                                                <option value="low" data-i18n="history.effortLabelLow">低</option>
-                                                <option value="medium" data-i18n="history.effortLabelMedium">中</option>
-                                                <option value="high" data-i18n="history.effortLabelHigh">高</option>
-                                                <option value="max" data-i18n="history.effortLabelMax">极高</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.chatDefaults.desc">只影响新建对话；已在输入框里手选过的对话保持自己的档位。超出模型支持范围的档位会自动回调到最近一档</div>
                                 </div>
                             </div>
 
@@ -752,7 +730,29 @@
                                     </div>
                                 </div>
                                 <div class="general-card-body">
+                                    <!-- 思考 / 推理档位：新建对话时的默认值 -->
                                     <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.chatDefaults.thinkingMode">思考模式</label>
+                                            <select class="general-input form-select-custom" id="generalDefaultThinkingMode">
+                                                <option value="" data-i18n="general.chatDefaults.followModel">自动（跟随模型）</option>
+                                                <option value="on" data-i18n="general.chatDefaults.thinkingOn">开启</option>
+                                                <option value="off" data-i18n="general.chatDefaults.thinkingOff">关闭</option>
+                                            </select>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.chatDefaults.reasoningEffort">推理强度</label>
+                                            <select class="general-input form-select-custom" id="generalDefaultReasoningEffort">
+                                                <option value="" data-i18n="general.chatDefaults.followModel">自动（跟随模型）</option>
+                                                <option value="low" data-i18n="history.effortLabelLow">低</option>
+                                                <option value="medium" data-i18n="history.effortLabelMedium">中</option>
+                                                <option value="high" data-i18n="history.effortLabelHigh">高</option>
+                                                <option value="max" data-i18n="history.effortLabelMax">极高</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.chatDefaults.desc">只影响新建对话；已在输入框里手选过的对话保持自己的档位。超出模型支持范围的档位会自动回调到最近一档</div>
+                                    <div class="general-field-row settings-gap-top-md">
                                         <div class="general-field">
                                             <label class="general-field-label" data-i18n="general.modelDefaults.contextLength">上下文长度</label>
                                             <input type="text" inputmode="numeric" class="general-input" id="generalModelDefaultContextLength" placeholder="128k（可选）" data-i18n-placeholder="general.modelDefaults.contextLengthPlaceholder" list="generalModelDefaultContextLengthList" autocomplete="off"/>

@@ -349,11 +349,11 @@
                 $('#generalCliPrintSimplified').prop('checked', d.cliPrintSimplified !== false);
                 window.cliPrintSimplified = d.cliPrintSimplified !== false;
 
-                // 新建对话默认（思考模式 / 推理强度）
+                // 思考 / 推理档位（新建对话默认，随「模型默认」块）
                 $('#generalDefaultThinkingMode').val(d.defaultThinkingMode || '');
                 $('#generalDefaultReasoningEffort').val(d.defaultReasoningEffort || '');
 
-                // 模型默认（上下文长度 / 并发数）
+                // 模型默认（上下文长度 / 子代理并发数）
                 $('#generalModelDefaultContextLength').val(d.modelDefaultContextLength > 0 ? formatNum(d.modelDefaultContextLength) : '');
                 // 并发数是小整数（引擎上界 10），不做 k/m 缩略，否则 5000 会被显示成 5k
                 $('#generalModelDefaultConcurrency').val(d.modelDefaultConcurrency > 0 ? String(d.modelDefaultConcurrency) : '');

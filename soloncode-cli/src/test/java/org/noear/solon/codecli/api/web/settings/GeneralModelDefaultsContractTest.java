@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 「通用 - 模型默认」两列（上下文长度 / 并发数）的前后端契约测试。
+ * 「通用 - 模型默认」卡的前后端契约测试：思考模式 / 推理强度两档 + 上下文长度 / 子代理并发数两列。
  *
  * <p>背景：{@code AiConfig.concurrency} 的唯一消费方是 harness 的子代理并行调度
  * （{@code TaskTalent}，按当前会话模型取值，未设置才回退
@@ -36,7 +36,7 @@ public class GeneralModelDefaultsContractTest {
             "general.modelDefaults.concurrencyPlaceholder",
             "general.modelDefaults.concurrencyInvalid",
             "general.modelDefaults.desc",
-            // 并入「对话策略」的两项（已更名）
+            // 迁入「模型默认」的两项（已去掉「默认」二字）
             "general.chatDefaults.thinkingMode",
             "general.chatDefaults.reasoningEffort",
             // 模型编辑表单的子代理并发数
@@ -55,7 +55,7 @@ public class GeneralModelDefaultsContractTest {
     }
 
     @Test
-    @DisplayName("页面：「对话默认」并入「对话策略」，「模型默认」两列独立成卡")
+    @DisplayName("页面：「模型默认」卡内含思考/推理档位与上下文/并发两列")
     void pageHasModelDefaultsCard() throws IOException {
         String html = resourceText("/static/web.html");
 
@@ -65,15 +65,21 @@ public class GeneralModelDefaultsContractTest {
         assertFalse(html.contains("generalModelDefaultTimeout"),
                 "「超时」一列已撤掉：AiConfig.timeout 是有默认值的非空字段，无法表达未设置");
 
-        // 「对话默认」不再有独立卡片：默认思考模式/默认推理强度直接落在「对话策略」卡内
+        // 思考 / 推理档位已迁入「模型默认」卡，且必须排在「上下文长度」的上一行
         int conversationCard = html.indexOf("data-i18n=\"general.conversation.title\"");
-        int thinkingMode = html.indexOf("id=\"generalDefaultThinkingMode\"");
         int modelDefaults = html.indexOf("data-i18n=\"general.modelDefaults.title\"");
-        assertTrue(conversationCard > 0 && thinkingMode > 0 && modelDefaults > 0, "三处都必须存在");
-        assertTrue(conversationCard < thinkingMode, "默认思考模式必须在「对话策略」卡内");
-        assertTrue(thinkingMode < modelDefaults, "「模型默认」必须排在「对话策略」之后");
+        int thinkingMode = html.indexOf("id=\"generalDefaultThinkingMode\"");
+        int reasoningEffort = html.indexOf("id=\"generalDefaultReasoningEffort\"");
+        int contextLength = html.indexOf("id=\"generalModelDefaultContextLength\"");
+        assertTrue(conversationCard > 0 && modelDefaults > 0 && thinkingMode > 0
+                && reasoningEffort > 0 && contextLength > 0, "五处都必须存在");
+        assertTrue(conversationCard < modelDefaults, "「模型默认」必须排在「对话策略」之后");
+        assertTrue(modelDefaults < thinkingMode, "思考模式必须在「模型默认」卡内");
+        assertTrue(thinkingMode < contextLength, "思考模式必须在「上下文长度」的上一行（同一卡内更靠前）");
+        assertTrue(reasoningEffort < contextLength, "推理强度必须在「上下文长度」的上一行");
+        assertTrue(conversationCard < thinkingMode, "思考模式不得残留在「对话策略」卡内");
         assertFalse(html.contains("data-i18n=\"general.chatDefaults.title\""),
-                "「对话默认」卡已并入「对话策略」，不应再残留卡片标题");
+                "「对话默认」卡已并入「模型默认」，不应再残留卡片标题");
     }
 
     @Test
@@ -122,7 +128,7 @@ public class GeneralModelDefaultsContractTest {
     }
 
     @Test
-    @DisplayName("i18n：22 个语言包都要有新增键，且不再残留「新建对话默认」")
+    @DisplayName("i18n：22 个语言包都要有新增键，且不再残留「对话默认」旧文案")
     void i18nComplete() throws IOException {
         String zh = resourceText("/static/i18n/zh-CN.json");
         for (String key : I18N_KEYS) {
@@ -130,15 +136,21 @@ public class GeneralModelDefaultsContractTest {
         }
 
         assertFalse(zh.contains("\"general.chatDefaults.title\""),
-                "「对话默认」卡已并入「对话策略」，该键不再使用");
-        assertTrue(zh.contains("\"general.chatDefaults.thinkingMode\": \"默认思考模式\""),
-                "「思考模式」必须更名为「默认思考模式」");
-        assertTrue(zh.contains("\"general.chatDefaults.reasoningEffort\": \"默认推理强度\""),
-                "「推理强度」必须更名为「默认推理强度」");
+                "「对话默认」卡已并入「模型默认」，该键不再使用");
+        // 已迁入「模型默认」卡：去掉「默认」二字（卡片标题已表达默认语义）
+        assertTrue(zh.contains("\"general.chatDefaults.thinkingMode\": \"思考模式\""),
+                "必须更名为「思考模式」");
+        assertTrue(zh.contains("\"general.chatDefaults.reasoningEffort\": \"推理强度\""),
+                "必须更名为「推理强度」");
+        assertFalse(zh.contains("默认思考模式"), "不得再残留「默认思考模式」");
+        assertFalse(zh.contains("默认推理强度"), "不得再残留「默认推理强度」");
         assertTrue(zh.contains("\"general.modelDefaults.concurrency\": \"子代理并发数\""),
                 "「并发数」必须更名为「子代理并发数」");
         assertFalse(zh.contains("general.modelDefaults.timeout"),
                 "超时一列已撤掉，22 个语言包都不得残留 timeout 键");
+        // 「模型默认」描述已从「两项」改为具体两项（上下文长度 / 子代理并发数）
+        assertTrue(zh.contains("上下文长度和子代理并发数"),
+                "零位描述必须明写是哪两项，不能只写「两项」");
 
         // 共 22 个语言包，新增键必须全覆盖（i18n.js 会回退 zh-CN，但缺键会触发开发期告警）
         java.io.File dir = new java.io.File("src/main/resources/static/i18n");
