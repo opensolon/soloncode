@@ -169,6 +169,31 @@
         $('#llmProvider').val(item.provider || '');
     }
 
+    /**
+     * 新建模型时，用「通用 - 模型默认」预填上下文长度与超时（并发数不下发到模型，
+     * 而是作为引擎子代理并行上限，由后端热更新）。拉取失败时静默忽略，不阻断表单。
+     */
+    function applyModelDefaults() {
+        $.get('/web/settings/general', function (resp) {
+            if (resp.code !== 200 || !resp.data) return;
+            var d = resp.data;
+            // 只在用户尚未输入时预填，避冠竞态覆盖
+            if (d.modelDefaultContextLength > 0 && !$('#llmContextLength').val()) {
+                var cl = d.modelDefaultContextLength;
+                if (cl >= 1000000 && cl % 1000000 === 0) {
+                    $('#llmContextLength').val((cl / 1000000) + 'm');
+                } else if (cl >= 1000) {
+                    $('#llmContextLength').val(cl % 1000 === 0 ? (cl / 1000) + 'k' : (cl / 1000).toFixed(1).replace(/\.0$/, '') + 'k');
+                } else {
+                    $('#llmContextLength').val(cl);
+                }
+            }
+            if (d.modelDefaultTimeoutSeconds > 0 && !$('#llmTimeout').val()) {
+                $('#llmTimeout').val(d.modelDefaultTimeoutSeconds + 's');
+            }
+        });
+    }
+
     function buildLlmBodyObj() {
         var apiUrl = $('#llmApiUrl').val().trim();
         var apiKey = $('#llmApiKey').val().trim();
@@ -249,7 +274,7 @@
     }
 
     // LLM 按钮事件
-    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView(I18n.t('llm.formTitle.add'), false); });
+    $('#llmAddBtn').on('click', function () { llmEditName = null; resetLlmForm(); showLlmFormView(I18n.t('llm.formTitle.add'), false); applyModelDefaults(); });
     $('#llmBackBtn').on('click', function () { showLlmListView(); resetLlmForm(); });
 
     $llmSaveBtn.on('click', function () {

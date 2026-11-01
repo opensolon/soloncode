@@ -736,6 +736,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .sandboxSystemRestrict(wsSettings.getGeneral().isSandboxSystemRestrict())
                 .bashAsyncEnabled(wsSettings.getGeneral().isBashAsyncEnabled())
                 .subagentEnabled(wsSettings.getGeneral().isSubagentEnabled())
+                .subagentDefaultConcurrency(wsSettings.getGeneral().getModelDefaultConcurrency())
                 .hitlEnabled(wsSettings.getGeneral().isHitlEnabled())
                 .apiRetries(wsSettings.getGeneral().getApiRetries())
                 .modelRetries(wsSettings.getGeneral().getModelRetries())

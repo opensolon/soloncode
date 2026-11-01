@@ -272,6 +272,12 @@ public class WebSettingsController extends BaseSettingsController {
             engine.setMaxTurns(g.getMaxTurns());
             engine.setHitlEnabled(g.isHitlEnabled());
 
+            // 模型默认-并发数：AiConfig.concurrency 的唯一消费方就是子代理并行调度，故直接热更新引擎
+            //（0 = 未设置，harness 侧会归一到自身缺省值）
+            if (g.getModelDefaultConcurrency() >= 0) {
+                engine.setSubagentDefaultConcurrency(g.getModelDefaultConcurrency());
+            }
+
             if (engine.getMcpGatewayTalent() != null) {
                 engine.getMcpGatewayTalent().setEnabled(g.isMcpEnabled());
             }
@@ -478,6 +484,11 @@ public class WebSettingsController extends BaseSettingsController {
             if (tmp.hasKey("defaultReasoningEffort") && tmp.get("defaultReasoningEffort").isNull()) {
                 g.setDefaultReasoningEffort(null);
             }
+
+            // 模型默认（上下文长度/并发数/超时）：负数与非数一律归一为 0（=未设置）
+            g.setModelDefaultContextLength(Math.max(0L, g.getModelDefaultContextLength()));
+            g.setModelDefaultConcurrency(Math.max(0, g.getModelDefaultConcurrency()));
+            g.setModelDefaultTimeoutSeconds(Math.max(0L, g.getModelDefaultTimeoutSeconds()));
         }
 
         // 更新 HTTP 代理配置（热生效）

@@ -722,11 +722,11 @@
                                 </div>
                             </div>
 
-                            <!-- 新建对话默认 -->
+                            <!-- 对话默认 -->
                             <div class="general-card">
                                 <div class="general-card-header">
                                     <div class="general-card-text">
-                                        <div class="general-card-title" data-i18n="general.chatDefaults.title">新建对话默认</div>
+                                        <div class="general-card-title" data-i18n="general.chatDefaults.title">对话默认</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
@@ -751,6 +751,38 @@
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.chatDefaults.desc">只影响新建对话；已在输入框里手选过的对话保持自己的档位。超出模型支持范围的档位会自动回调到最近一档</div>
+                                </div>
+                            </div>
+
+                            <!-- 模型默认 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="general.modelDefaults.title">模型默认</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-field-row">
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.modelDefaults.contextLength">上下文长度</label>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalModelDefaultContextLength" placeholder="128k（可选）" data-i18n-placeholder="general.modelDefaults.contextLengthPlaceholder" list="generalModelDefaultContextLengthList" autocomplete="off"/>
+                                            <datalist id="generalModelDefaultContextLengthList">
+                                                <option value="128k"></option>
+                                                <option value="256k"></option>
+                                                <option value="512k"></option>
+                                                <option value="1m"></option>
+                                            </datalist>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.modelDefaults.concurrency">并发数</label>
+                                            <input type="text" inputmode="numeric" class="general-input" id="generalModelDefaultConcurrency" placeholder="5（默认）" data-i18n-placeholder="general.modelDefaults.concurrencyPlaceholder" autocomplete="off"/>
+                                        </div>
+                                        <div class="general-field">
+                                            <label class="general-field-label" data-i18n="general.modelDefaults.timeout">超时时间</label>
+                                            <input type="text" class="general-input" id="generalModelDefaultTimeout" placeholder="120s（默认）" data-i18n-placeholder="general.modelDefaults.timeoutPlaceholder" autocomplete="off"/>
+                                        </div>
+                                    </div>
+                                    <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.modelDefaults.desc">上下文长度与超时作为新建模型时的默认值预填；并发数即时生效，控制子代理（multitask）的并行上限</div>
                                 </div>
                             </div>
 

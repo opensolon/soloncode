@@ -95,6 +95,13 @@ public class GeneralGroupDo implements Serializable {
     //新建对话的默认推理强度（low|medium|high|max；空表示 auto，不干预）
     private String defaultReasoningEffort;
 
+    //模型默认-上下文长度（0 = 未设置；新建模型时作为默认值预填）
+    private long modelDefaultContextLength;
+    //模型默认-并发数（0 = 未设置，回退引擎默认；同时作为子代理并行上限热更新到引擎）
+    private int modelDefaultConcurrency;
+    //模型默认-超时秒数（0 = 未设置；新建模型时作为默认值预填）
+    private long modelDefaultTimeoutSeconds;
+
 
     //===================
 
