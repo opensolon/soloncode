@@ -177,7 +177,7 @@
   "general.modelDefaults.concurrencyPlaceholder": "5（默认）",
   "general.modelDefaults.timeout": "超时时间",
   "general.modelDefaults.timeoutPlaceholder": "120s（默认）",
-  "general.modelDefaults.desc": "三项都是新建模型时的默认值，已有模型不会被改写；子代理并发数控制 multitask 的并行上限（模型未单独设置时以本值为准）",
+  "general.modelDefaults.desc": "三项都是新建模型时的默认值，已有模型不会被改写",
   "general.modelDefaults.concurrencyInvalid": "子代理并发数需为正整数",
   "general.modelDefaults.timeoutInvalid": "超时时间格式无效，支持 120、120s、2m、1h",
   "general.conversation.historyWindowSize": "历史窗口大小",

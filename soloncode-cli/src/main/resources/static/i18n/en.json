@@ -177,7 +177,7 @@
   "general.modelDefaults.concurrencyPlaceholder": "5 (default)",
   "general.modelDefaults.timeout": "Timeout",
   "general.modelDefaults.timeoutPlaceholder": "120s (default)",
-  "general.modelDefaults.desc": "All three prefill new models only; existing models are never rewritten. Sub-agent concurrency caps multitask parallelism and applies to models that have no value of their own.",
+  "general.modelDefaults.desc": "All three are defaults applied only when creating a model; existing models are never rewritten",
   "general.modelDefaults.concurrencyInvalid": "Sub-agent concurrency must be a positive integer",
   "general.modelDefaults.timeoutInvalid": "Invalid timeout format; use 120, 120s, 2m or 1h",
   "general.conversation.historyWindowSize": "History Window Size",
