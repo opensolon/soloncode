@@ -329,8 +329,12 @@ public class WsGate extends SimpleWebSocketListener {
                 .set("sessionId", sessionId)
                 .toJson());
 
-        // 上一轮若还在跑（同一会话上的旧目标轮次），先停掉再开新流；
-        // 不推进取消代数：正要开始的这一流不能被当成“被取消的那一轮”。
+        // 上一轮若还在跑（同一会话上的旧目标轮次），先停掉再开新流。
+        // 这里用 cancelActive 而不推进代数（与 DesktopStreamTurn 不同）：
+        // goal 轮次的流不通过 DesktopStreamTurn 发终态（doOnNext 只记录 finalAnswer，
+        // doFinally 只放闩锁），被顶掉的旧流即使以 complete 收尾也不会产生重复 done 帧。
+        // 对比：下方 InterruptedException 分支用 cancelAll。区别在于「顶流」只是给新轮次腾位，
+        // 而「打断本轮」与 Stop 同义，需要推进代数连带拦住调度窗口内即将到来的流。
         SessionRuns.cancelActive(session);
 
         outcome.getRequest()
@@ -387,6 +391,11 @@ public class WsGate extends SimpleWebSocketListener {
             completed.await();
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
+            // 等待被中断时只 countDown 是不够的：那一轮流会继续在后台跑到底，
+            // 模型与工具照常执行、事件继续写进 streamHub。必须真正停流。
+            // 用 cancelAll 而不是 cancelActive：这是“打断本轮”（与 Stop 同义），
+            // 推进取消代数可连带拦住调度窗口内即将到来的流。
+            SessionRuns.cancelAll(session);
             completed.countDown();
             throw new IllegalStateException("Goal round interrupted", error);
         }

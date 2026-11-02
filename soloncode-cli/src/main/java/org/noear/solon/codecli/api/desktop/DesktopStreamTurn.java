@@ -48,7 +48,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *
  * <p><b>运行句柄不再由本类持有</b>：{@code ReActRequest#stream()} 订阅时自动登记到
  * {@code SessionRuns}，结束时按值注销。本类只负责「新回合开始前停掉上一轮」
- * （{@link SessionRuns#cancelActive}）。</p>
+ * （{@link SessionRuns#cancelAll}）与取消轮次的终态去重。</p>
+ *
+ * <p><b>取消以 complete 收尾</b>：框架把「取消」当作终止而不是失败，因此被顶掉/被中断的
+ * 流仍会走 doOnComplete。本类用取消代数判定自己是否被取消，取消时不再发 done
+ * （中断入口已同步发过）。</p>
  *
  * <p>终态事件结构（done/error/hitl 的字段与 JSON 顺序）与原实现零变化。
  * cwd 为空的容忍性差异：主输入流的 cwd 恒非空（会话默认 "."），统一为
@@ -87,15 +91,24 @@ final class DesktopStreamTurn {
 
         // 同一会话上的上一轮若还在跑（连发输入 / 桌面端重发），先停掉再开新流：
         // 不停会造成两条流的 doOnNext 同时往同一个 streamHub 写，前端两个轮次的输出交错。
-        // 用 cancelActive 而非 cancelAll：停旧轮次不能推进取消代数，否则正要开始的这一流
-        // 会因「调度期内已被取消」而被自己拒绝。
-        SessionRuns.cancelActive(session);
+        //
+        // 用 cancelAll（推进取消代数）而不是 cancelActive：取消现在以 complete 收尾，
+        // 被顶掉的旧流仍会走 doOnComplete。旧流要能据此判定「自己是被取消的」，
+        // 否则它会往刚 begin 的新一轮里发一个 done，前端提前收尾并丢弃后续输出。
+        // 这里不会“自己拒掉自己”：本调用在 request.stream() 之前，新流的代数基准在之后才取。
+        SessionRuns.cancelAll(session);
 
         if (hitlResume) {
             streamHub.subscribe(sessionId, socket);
         } else {
             streamHub.begin(sessionId, socket);
         }
+
+        // 取取消代数基准（须在 stream() 之前）：取消后框架以 complete 收尾，会触发下面的
+        // doOnComplete。但取消路径（DesktopInputRouter 的 interrupt 分支）已经自己发过
+        // reason + done，若这里再发一个 done，前端会收到两个终态帧。
+        final int cancelGen = SessionRuns.cancelCount(session);
+
         request.options(o -> {
                     // 模型已由 handle 装配；这里仅在宿主显式解析出模型时覆盖（幂等，零差异）
                     if (chatModel != null) {
@@ -128,8 +141,14 @@ final class DesktopStreamTurn {
                         streamHub.emit(sessionId, msg);
                     }
                 })
-                .doOnComplete(() -> sendDoneIfNeeded(terminalSent, sessionId,
-                        chatModel.getConfig().getNameOrModel(), 0, 0))
+                .doOnComplete(() -> {
+                    if (SessionRuns.isCancelledSince(session, cancelGen)) {
+                        // 本轮是被取消的：中断入口已同步发过 reason + done，不再重复终态
+                        return;
+                    }
+                    sendDoneIfNeeded(terminalSent, sessionId,
+                            chatModel.getConfig().getNameOrModel(), 0, 0);
+                })
                 .doOnError(err -> sendErrorIfNeeded(terminalSent, sessionId, err))
                 .subscribe();
     }

@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -72,7 +74,7 @@ class DesktopStreamTurnCancelTest {
     }
 
     @Test
-    void newTurnDoesNotAdvanceCancelGeneration() {
+    void newTurnAdvancesCancelGenerationSoPreviousTurnCanTellItWasCanceled() {
         AgentSession session = InMemoryAgentSession.of("desktop-turn-gen");
         SessionRuns.attach(session, handle(new AtomicInteger()));
 
@@ -80,7 +82,33 @@ class DesktopStreamTurnCancelTest {
 
         runTurn(session);
 
-        // 顶旧轮次不能推进代数：否则正要开始的这一流会因「调度期内已被取消」被自己拒绝
-        assertEquals(gen, SessionRuns.cancelCount(session));
+        // 取消现在以 complete 收尾，旧流仍会走 doOnComplete。
+        // 必须推进代数，旧流才能据此判定「自己是被顶掉的」，从而不再向新一轮发 done。
+        assertEquals(gen + 1, SessionRuns.cancelCount(session));
+    }
+
+    @Test
+    void canceledTurnDoesNotEmitSecondDone() {
+        AgentSession session = InMemoryAgentSession.of("desktop-cancel-done");
+        WebSocket socket = mock(WebSocket.class);
+
+        ReActRequest request = mock(ReActRequest.class);
+        doAnswer(inv -> request).when(request).options(any());
+        when(request.stream()).thenAnswer(inv -> {
+            // 模拟「开流后随即被取消」：取消后框架以 complete 收尾，会触发 doOnComplete
+            SessionRuns.cancelAll(session);
+            return Flux.<org.noear.solon.ai.agent.AgentEvent>empty();
+        });
+
+        ChatModel chatModel = mock(ChatModel.class);
+        org.noear.solon.ai.chat.ChatConfig stubConfig = new org.noear.solon.ai.chat.ChatConfig();
+        stubConfig.setName("stub-model");
+        when(chatModel.getConfig()).thenReturn(new org.noear.solon.ai.chat.ChatConfigReadonly(stubConfig));
+
+        new DesktopStreamTurn(new DesktopStreamHub(), new DesktopEventConverter(mock(HarnessEngine.class)))
+                .run(session, request, chatModel, "s1", ".", null, socket, false, null);
+
+        // 中断入口已同步发过 reason + done，本轮 doOnComplete 不得再发一个终态帧
+        verify(socket, never()).send(org.mockito.ArgumentMatchers.contains("\"done\""));
     }
 }
