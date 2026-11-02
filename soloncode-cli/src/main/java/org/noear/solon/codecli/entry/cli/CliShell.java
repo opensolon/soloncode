@@ -49,15 +49,12 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
-import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
 import org.noear.solon.lang.Preview;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.File;
@@ -405,10 +402,9 @@ public class CliShell implements Runnable {
                 return finalAnswer.get();
             }
 
-            // 订阅句柄仅供本方法判断「是否成功开流」；取消目标由 ReActRequest 自行登记到
-            // SessionRuns，本类不再持有、也不再需要回写 session attrs
-            Disposable subscription = request
-                    .stream()
+            // 取消目标由 ReActRequest 自行登记到 SessionRuns，本类不持有句柄；
+            // 订阅失败会走 doOnError，无需另设「是否开流」的判断
+            request.stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
                         if (chunk instanceof ReasonDeltaEvent) {
@@ -437,12 +433,6 @@ public class CliShell implements Runnable {
                     })
                     .doFinally(signal -> latch.countDown())
                     .subscribe();
-
-            // 监听回车中断
-            if (subscription == null || subscription.isDisposed()) {
-                // 处理订阅失败的情况
-                return finalAnswer.get();
-            }
 
             waitForTask(latch, session, isInterrupted);
 
