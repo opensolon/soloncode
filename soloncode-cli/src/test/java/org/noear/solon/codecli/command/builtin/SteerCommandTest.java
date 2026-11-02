@@ -3,7 +3,7 @@ package org.noear.solon.codecli.command.builtin;
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
-import org.noear.solon.ai.harness.command.builtin.SteerCommand;
+import org.noear.solon.ai.harness.session.steer.SteerCommand;
 import org.noear.solon.ai.harness.input.BufferedCommandContext;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.steer.SteerInterceptor;

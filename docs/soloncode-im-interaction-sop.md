@@ -389,7 +389,7 @@ appId 各建一条 WS 连接，飞书服务端**随机路由**消息。落到错
 | 通道抽象                 | `channel/Channel.java`（`sendStatus` 为 default 空实现，新通道不实现也不会编译失败）                                                               |
 | 三端实现                 | `channel/wechat/WeChatLink.java`、`channel/feishu/FeishuLink.java`、`channel/dingtalk/DingTalkLink.java`                                           |
 | 队列                     | `session/queue/SessionQueue.java`（MAX_QUEUE_SIZE=20、enqueue 返回 1-based 长度）、`SessionQueueStore.java`、`SessionQueueDrainer.java`            |
-| 忙态命令                 | `command/builtin/SteerCommand.java`、`InterruptCommand.java`、`QueueCommand.java`                                                                  |
+| 忙态命令                 | `session/steer/SteerCommand.java`、`session/interrupt/InterruptCommand.java`、`session/queue/QueueCommand.java`（harness 域包）                                                             |
 | i18n 资源                | `src/main/resources/i18n/im-messages.properties`、`im-messages_en.properties`                                                                      |
 | 入口端口                 | `api/web/WebGate.java` — `acceptInput`(:136)、`emitSteerApplied`(:157)、`handleDroppedSteers`(:163)                                                |
 | 测试                     | `api/web/WebStreamBuilderReplyRouteTest.java`（信号仅投来源端、心跳、引导节流、i18n）、`channel/wechat/WeChatLinkBindingTest.java`（Link 侧契约）  |
