@@ -89,10 +89,8 @@ final class DesktopInputRouter {
         if ("[(sec)interrupt]".equals(req.getInput())) {
             AgentSession goalSession = gate.goal == null ? null : gate.goal.sessionOf(sessionId);
             GoalState activeGoal = goalSession == null ? null : gate.goal.state(goalSession);
-            reactor.core.Disposable disposable = (reactor.core.Disposable) session.attrs().remove("disposable");
-            if (disposable != null) {
-                disposable.dispose();
-            }
+            // 停流统一走 SessionInterrupt（清队列 + 停运行流 + 幂等补写取消消息与快照）
+            org.noear.solon.ai.harness.session.interrupt.SessionInterrupt.interrupt(session);
             if (activeGoal != null) {
                 // clear 门面内含「先 unschedule 再 clear」
                 gate.goal.clear(goalSession);

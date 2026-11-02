@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.InputOutcome;
@@ -31,8 +32,6 @@ import org.noear.solon.codecli.util.LogDirUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.noear.solon.core.util.RunUtil;
-import reactor.core.Disposable;
-import reactor.core.Disposables;
 import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
@@ -116,7 +115,7 @@ class WebSessionRunner {
      * composite 会长驻 attrs 使 busy 判定永久为真（Stop 也只能发假 done），
      * 且前端收不到任何终态包。</p>
      */
-    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, Disposable.Composite composite, Throwable e) {
+    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
         boolean queued = session.attrs().get("session.queue.executing") instanceof SessionQueueItem;
         if (queued && Thread.currentThread().equals(session.attrs().get(WebQueueDispatcher.ATTR_QUEUE_DISPATCH))) {
@@ -128,11 +127,6 @@ class WebSessionRunner {
         // 失败终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
         gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
 
-        if (composite != null) {
-            //本轮未挂上任何流（self=null）：仅当槽位已无其它活跃流时才清空
-            releaseStreamSlot(session, composite, null);
-        }
-
         gate.getEventPublisher().emitDoneGuarded(wsContext, session);
         // 启动失败的任务已回队首；不要立即重试同一失败任务形成无限循环。
         if (!queued) gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
@@ -142,16 +136,15 @@ class WebSessionRunner {
      * 执行 Agent 流式任务（异步）：注册句柄槽位后将订阅动作调度到 boundedElastic。
      *
      * <p>请求主体（session/模型/retry/maxTurns）已由 {@code engine.handle} 装配完成，
-     * 本方法只负责流生命周期：句柄槽位、订阅调度与失败收尾。</p>
+     * 本方法只负责流生命周期：订阅调度与失败收尾。运行句柄由 {@code ReActRequest} 自行登记，
+     * 宿主不再维护任何句柄容器。</p>
      *
      * @param outcome 引擎装配结果（含 request 与生效的模型/子代理名）
      */
     void performAgentTaskAsync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
-        //订阅前（调用线程内）先注册 composite：订阅动作被调度到别的线程异步执行，若把注册也放进去，
-        //这段窗口内 busy 判定会误判空闲（并发 input 可能在同一会话上开出第二条流），
-        //且 interruptSession 取不到 disposable，只会补发一个假 done —— 任务照跑且再也无法取消。
-        Disposable.Composite composite = (Disposable.Composite) session.attrs()
-                .computeIfAbsent("disposable", k -> Disposables.composite());
+        //订阅前（调用线程内）取取消代数基准：订阅动作被调度到别的线程异步执行，
+        //这段窗口内若发生 interrupt，本流到订阅时应立即放弃，而不是成为一条取消不掉的幽灵流。
+        final int cancelGen = SessionRuns.cancelCount(session);
 
         //agent 执行主体在 boundedElastic 线程上跑，订阅动作包在工作区日志作用域里：
         //同步源的整个管道执行发生在 subscribe() 调用栈内，故管道主体线程携带工作区标记
@@ -159,10 +152,10 @@ class WebSessionRunner {
         Runnable subscribeAction = () -> {
             Object logScope = WorkspaceLogRouter.beginScopeByKey(wsLogKey);
             try {
-                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, composite);
+                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, cancelGen);
             } catch (Throwable e) {
                 //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾
-                failStreamTurn(wsContext, session, composite, e);
+                failStreamTurn(wsContext, session, e);
             } finally {
                 WorkspaceLogRouter.endScope(logScope);
             }
@@ -175,13 +168,13 @@ class WebSessionRunner {
         }
     }
 
-    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, Disposable.Composite composite) {
+    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, int cancelGen) {
         String sessionId = session.getSessionId();
 
         //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）。
         //与 sync 路径对称地补发终态：若 interrupt 已发过 done，会被 emitDoneOnce 的去重门
         //静默吞掉（无害）；若上游异常路径未发过，则前端不至因收不到任何事件而卡在等待态
-        if (composite.isDisposed()) {
+        if (SessionRuns.isCancelledSince(session, cancelGen)) {
             LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
             gate.getEventPublisher().emitDoneOnce(wsContext, session);
             return;
@@ -198,8 +191,8 @@ class WebSessionRunner {
         // 新开流前重置：后端 done 门 + 前端流门（否则上一轮 done 会让本轮输出被前端丢弃）
         beginStreamTurn(wsContext, session);
 
-        AtomicReference<Disposable> selfRef = new AtomicReference<>();
-        Disposable disposable = gate.getStreamBuilder()
+        // 运行句柄由 ReActRequest 自行登记到 SessionRuns，宿主只持有订阅句柄用于本地收尾
+        gate.getStreamBuilder()
                 .buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
@@ -213,7 +206,6 @@ class WebSessionRunner {
                 })
                 .doFinally(s -> {
                     gate.getQueueDispatcher().finishQueuedTurn(session, true);
-                    releaseStreamSlot(session, composite, selfRef.get());  // 只摘自己那条流
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
@@ -226,16 +218,6 @@ class WebSessionRunner {
                     //提前 remove 反而会让同一任务后续日志丢掉工作区归属
                 })
                 .subscribe();
-
-        selfRef.set(disposable);
-        // add 到 composite：若 composite 已被 dispose()（interrupt 先到达），会立即 dispose 该 disposable。
-        // 流可能在 subscribe() 返回前就已结束，此时 doFinally 看到的 self 仍为 null；
-        // 因而补一次 disposed 检查，避免已结束的 disposable 残留在共享 composite 中，
-        // 让后续 continue/rerun 永久误判为“当前有任务正在执行”。
-        composite.add(disposable);
-        if (disposable.isDisposed()) {
-            releaseStreamSlot(session, composite, disposable);
-        }
     }
 
     /**
@@ -254,10 +236,8 @@ class WebSessionRunner {
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
 
-        // 先注册句柄槽位，再开流：注册必须早于 beginStreamTurn。否则在「门已复位、句柄未挂」的窗口里，
-        // interrupt 会误入 no-active-stream 分支并真的发出一个 done，而随后的调度照常订阅 ——
-        // 本轮既不可取消（Loop 会一直跑），输出又因前端已收尾而被丢弃。
-        Disposable.Composite composite = (Disposable.Composite) session.attrs().computeIfAbsent("disposable", k -> Disposables.composite());
+        // 取取消代数基准（早于任何开流动作）：同步等待方（Loop）依赖它判定本轮是否已被取消
+        final int cancelGen = SessionRuns.cancelCount(session);
 
         final String wsLogKey = wsLogKey(wsContext);
         Runnable subscribeAction = () -> {
@@ -265,7 +245,7 @@ class WebSessionRunner {
             try {
                 //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）；
                 //但必须释放闩锁，否则同步等待方（Loop）永久阻塞
-                if (composite.isDisposed()) {
+                if (SessionRuns.isCancelledSince(session, cancelGen)) {
                     LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
                     countDownLatch.countDown();
@@ -276,8 +256,7 @@ class WebSessionRunner {
                 // 避免为一个已取消的轮次解封前端）
                 beginStreamTurn(wsContext, session);
 
-                AtomicReference<Disposable> selfRef = new AtomicReference<>();
-                Disposable d = gate.getStreamBuilder().buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
+                gate.getStreamBuilder().buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
                     gate.emitToClient(wsContext, sessionId, line);
@@ -296,8 +275,6 @@ class WebSessionRunner {
                     gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
-                    releaseStreamSlot(session, composite, selfRef.get());  // 只摘自己那条流
-
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
                     gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
@@ -306,18 +283,10 @@ class WebSessionRunner {
                     //MDC 不在此处清理：Reactor 调度钩子会在任务结束时自动还原线程现场，
                     //提前 remove 反而会让同一任务后续日志丢掉工作区归属
                 }).subscribe();
-                //subscribe 后立即挂上：同步等待线程可能已读到 null，若不在任务内补挂则 Stop/interrupt 无法取消本轮。
-                //订阅可能在 subscribe() 返回前完成，doFinally 此时还拿不到 self；
-                //补做 disposed 清理，避免已结束句柄留在共享 composite 中造成永久忙碌。
-                selfRef.set(d);
-                composite.add(d);
-                if (d.isDisposed()) {
-                    releaseStreamSlot(session, composite, d);
-                }
             } catch (Throwable e) {
                 //调度线程内的异常不会回到调用方；未订阅成功则 doFinally 不会跑，
                 //此处必须补发终态包并释放闩锁，否则同步等待方（Loop）永久阻塞
-                failStreamTurn(wsContext, session, composite, e);
+                failStreamTurn(wsContext, session, e);
                 countDownLatch.countDown();
             } finally {
                 WorkspaceLogRouter.endScope(logScope);
@@ -331,7 +300,7 @@ class WebSessionRunner {
             Schedulers.boundedElastic().schedule(subscribeAction);
         }
 
-        //等待订阅完成（闩锁在 doFinally 释放）；disposable 已在 subscribeAction 内挂入 composite，Stop/interrupt 可随时取消
+        //等待订阅完成（闩锁在 doFinally 释放）；运行句柄由 ReActRequest 自行登记，Stop/interrupt 可随时取消
         RunUtil.runAndTry(() -> {
             try {
                 countDownLatch.await();
@@ -340,25 +309,6 @@ class WebSessionRunner {
             }
         });
         return finalAnswerRef.get();
-    }
-
-    /**
-     * 流结束时归还句柄槽位：只摘自己那条流。
-     *
-     * <p>HITL 审批恢复、命令触发的 agent 任务、连发 input 都会把多条流挂进同一个 composite。
-     * 若在 doFinally 里无条件 {@code remove("disposable")}，第一条流结束就把槽位摘空 ——
-     * 此后 busy 判定转假、Stop 取不到 composite 只能补一个假 done，
-     * 仍在跑的另一条流便再也无法取消。故先从 composite 摘掉自己，仅当已无活跃流时才清空槽位；
-     * 清空按值条件删除，避免误删后续新轮次刚放进去的 composite。</p>
-     */
-    static void releaseStreamSlot(AgentSession session, Disposable.Composite composite, Disposable self) {
-        if (self != null) {
-            composite.remove(self);
-        }
-
-        if (composite.size() == 0) {
-            session.attrs().remove("disposable", composite);
-        }
     }
 
     /** 当前工作区的日志标识（无上下文时为 null，走默认路由）。 */

@@ -16,13 +16,16 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.agent.AgentSession;
-import reactor.core.Disposable;
+import org.noear.solon.ai.agent.session.SessionRuns;
 
 /**
  * 会话运行状态查询。
  *
- * <p>这些状态来自 AgentSession.attrs()，属于会话运行时事实，不属于 Web 网关实现。
+ * <p>这些状态属于会话运行时事实，不属于 Web 网关实现。
  * WebGate 保留兼容委托，但命令、队列和其他入口应优先依赖本类。</p>
+ *
+ * <p>“是否有活跃流”以 {@link SessionRuns} 为准：它是框架（{@code ReActRequest}）自行
+ * 登记运行句柄的唯一实现，宿主不再需要（也不再应该）读写任何 attrs key。</p>
  */
 public final class SessionActivity {
     /** 会话属性：输入已被接纳但 Agent 流尚未完成注册。 */
@@ -33,13 +36,12 @@ public final class SessionActivity {
 
     /**
      * 流未建立（或已失败）时返回 false。
+     *
+     * <p>运行句柄的真相源是 {@link SessionRuns}（由 {@code ReActRequest} 自行登记），
+     * 不再读取 {@code attrs("disposable")} —— 那个字符串 key 已不存在。</p>
      */
     public static boolean hasActiveStream(AgentSession session) {
-        if (session == null) {
-            return false;
-        }
-        Object slot = session.attrs().get("disposable");
-        return slot instanceof Disposable.Composite && !((Disposable.Composite) slot).isDisposed();
+        return SessionRuns.isBusy(session);
     }
 
     /**

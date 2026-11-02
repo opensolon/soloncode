@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
@@ -39,7 +40,6 @@ import org.noear.solon.net.websocket.WebSocket;
 import org.noear.solon.net.websocket.listener.SimpleWebSocketListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.Disposable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -125,8 +125,7 @@ public class WsGate extends SimpleWebSocketListener {
         }
         try {
             AgentSession session = engine.getSession(sessionId);
-            Object value = session.attrs().get("disposable");
-            return (value instanceof Disposable && !((Disposable) value).isDisposed()) || org.noear.solon.ai.agent.react.intercept.HITL.isHitl(session);
+            return SessionRuns.isBusy(session) || org.noear.solon.ai.agent.react.intercept.HITL.isHitl(session);
         } catch (Throwable ignored) {
             return false;
         }
@@ -330,7 +329,11 @@ public class WsGate extends SimpleWebSocketListener {
                 .set("sessionId", sessionId)
                 .toJson());
 
-        Disposable disposable = outcome.getRequest()
+        // 上一轮若还在跑（同一会话上的旧目标轮次），先停掉再开新流；
+        // 不推进取消代数：正要开始的这一流不能被当成“被取消的那一轮”。
+        SessionRuns.cancelActive(session);
+
+        outcome.getRequest()
                 .options(options -> {
                     DesktopCollaborationPrompt.applyTo(options);
                     options.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
@@ -376,21 +379,15 @@ public class WsGate extends SimpleWebSocketListener {
                 })
                 .doOnError(failure::set)
                 .doFinally(signal -> {
-                    session.attrs().remove("disposable");
                     completed.countDown();
                 })
                 .subscribe();
-
-        Disposable previous = (Disposable) session.attrs().put("disposable", disposable);
-        if (previous != null && !previous.isDisposed()) {
-            previous.dispose();
-        }
 
         try {
             completed.await();
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
-            disposable.dispose();
+            completed.countDown();
             throw new IllegalStateException("Goal round interrupted", error);
         }
 
@@ -408,10 +405,7 @@ public class WsGate extends SimpleWebSocketListener {
     public void interruptGoalSession(String sessionId) {
         try {
             AgentSession session = engine.getSession(sessionId);
-            Object running = session.attrs().remove("disposable");
-            if (running instanceof Disposable && !((Disposable) running).isDisposed()) {
-                ((Disposable) running).dispose();
-            }
+            SessionRuns.cancelAll(session);
         } catch (Throwable error) {
             LOG.debug("[Desktop] Goal interrupt skipped for {}: {}", sessionId, error.getMessage());
         }

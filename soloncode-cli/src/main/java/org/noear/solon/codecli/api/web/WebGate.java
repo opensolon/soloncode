@@ -34,7 +34,6 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import reactor.core.Disposable;
 
 /**
  * WebGate - 前端统一 WebSocket 网关（组合根）
@@ -413,11 +412,6 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     // ═══════════════════════════════════════════════════════════════
     //  兼容门面（测试与旧扩展的反射/覆写入口）
     // ═══════════════════════════════════════════════════════════════
-
-    /** 流结束时归还句柄槽位：只摘自己那条流（实现移至 {@link WebSessionRunner}）。 */
-    static void releaseStreamSlot(AgentSession session, Disposable.Composite composite, Disposable self) {
-        WebSessionRunner.releaseStreamSlot(session, composite, self);
-    }
 
     /** 判断指定会话是否处于输入受理或 Agent 流执行状态（实现委托 {@link SessionActivity}）。 */
     private boolean isSessionBusy(AgentSession session) {

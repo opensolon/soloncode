@@ -23,6 +23,7 @@ import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
@@ -35,7 +36,6 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import reactor.core.Disposable;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.PrintStream;
@@ -139,7 +139,7 @@ public class PrintMode {
      * <p>单轮模式下只用于承接 dispose；常驻模式（{@code soloncode stream}）下
      * 由输入泵线程调用 {@link #interruptCurrentTurn()} 取消在跑的轮次。</p>
      */
-    private final AtomicReference<Disposable> currentTurn = new AtomicReference<>();
+    private final AtomicReference<AgentSession> currentTurn = new AtomicReference<>();
 
     /**
      * 保护“轮次已开始但订阅句柄尚未就绪”的短暂窗口
@@ -508,7 +508,7 @@ public class PrintMode {
         result.sessionId = session.getSessionId();
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<Throwable> errorRef = new AtomicReference<>();
-        AtomicReference<Disposable> disposableRef = new AtomicReference<>();
+        
 
         synchronized (turnStateLock) {
             turnInterrupted.set(false);
@@ -530,8 +530,7 @@ public class PrintMode {
         }
 
         try {
-            disposableRef.set(
-                    engine.handle(HarnessInput.of(session, prompt)
+            engine.handle(HarnessInput.of(session, prompt)
                                     .selectedModel(modelSelected)
                                     //headless 一律用主代理：原实现直接取 getMainAgent()，不解析输入里的 @提及
                                     //（子代理选择走 --agent 参数，由调用方自行拼接，不经此处解析）
@@ -560,20 +559,14 @@ public class PrintMode {
                                 }
                                 latch.countDown();
                             })
-                            .subscribe()
-            );
+                            .subscribe();
 
-            // 在同一把锁下发布订阅句柄。若中断帧在句柄就绪前到达，
-            // interruptCurrentTurn() 已返回 success 并留下中断标志，这里补做 dispose。
+            // 在同一把锁下发布会话句柄。若中断帧在句柄就绪前到达，
+            // interruptCurrentTurn() 已返回 success 并留下中断标志，这里补做取消。
             synchronized (turnStateLock) {
-                if (turnRunning) {
-                    currentTurn.set(disposableRef.get());
-                    if (turnInterrupted.get()) {
-                        Disposable pending = currentTurn.getAndSet(null);
-                        if (pending != null) {
-                            pending.dispose();
-                        }
-                    }
+                currentTurn.set(session);
+                if (turnInterrupted.get()) {
+                    SessionInterrupt.interrupt(session);
                 }
             }
 
@@ -616,11 +609,12 @@ public class PrintMode {
             }
 
             turnInterrupted.set(true);
-            Disposable disposable = currentTurn.getAndSet(null);
-            if (disposable != null && !disposable.isDisposed()) {
-                disposable.dispose();
+            AgentSession session = currentTurn.getAndSet(null);
+            if (session != null) {
+                // 停流 + 补写取消消息与快照统一走框架入口（幂等）
+                SessionInterrupt.interrupt(session);
             }
-            // 句柄尚未发布也算成功：runAgent 会在发布后观察中断标志并补做 dispose。
+            // 会话尚未发布也算成功：runAgent 会在发布后观察中断标志并补做取消。
             return true;
         }
     }

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActRequest;
@@ -561,9 +562,8 @@ class ImageReplyLifecycleTest {
         when(request.stream()).thenReturn(Flux.never());
         Flux<WebEvent<?>> stream = f.buildStream();
         ImageReplyTurn old = f.currentTurnWithImage();
-        Disposable.Composite composite = reactor.core.Disposables.composite();
-        composite.add(stream.subscribe());
-        f.attrs.put("disposable", composite);
+        Disposable handle = stream.subscribe();
+        SessionRuns.attach(f.session, handle);
         WebGate gate = new WebGate(null) {
             @Override
             public void emitToClient(WorkspaceContext context, String sessionId, WebEvent<?> event) {
@@ -617,7 +617,7 @@ class ImageReplyLifecycleTest {
             }
             releaseSnapshot.countDown();
             assertTrue(canceled.get(5, TimeUnit.SECONDS));
-            assertTrue(composite.isDisposed());
+            assertFalse(SessionRuns.isBusy(f.session));
             verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
             verify(f.other).sendReply("s1", "用户已取消任务。", true);
             verify(f.origin, never()).sendReply("s1", "用户已取消任务。", true,
@@ -646,7 +646,7 @@ class ImageReplyLifecycleTest {
             releaseSnapshot.countDown();
             workers.shutdownNow();
             assertTrue(workers.awaitTermination(5, TimeUnit.SECONDS));
-            composite.dispose();
+            SessionRuns.cancelAll(f.session);
             old.cleanup();
             if (current != null) current.cleanup();
         }
@@ -664,9 +664,8 @@ class ImageReplyLifecycleTest {
         when(request.stream()).thenReturn(Flux.<AgentEvent>never().doOnCancel(upstreamCanceled::countDown));
         Flux<WebEvent<?>> stream = f.buildStream();
         ImageReplyTurn turn = f.currentTurnWithImage();
-        Disposable.Composite composite = reactor.core.Disposables.composite();
-        composite.add(stream.subscribe());
-        f.attrs.put("disposable", composite);
+        Disposable handle = stream.subscribe();
+        SessionRuns.attach(f.session, handle);
         WebStreamBuilder failingBuilder = new WebStreamBuilder() {
             @Override
             Runnable prepareCanceledReply(WorkspaceContext context, AgentSession session) {
@@ -692,9 +691,9 @@ class ImageReplyLifecycleTest {
         try {
             assertFalse(gate.interruptSession(f.context, "s1"));
             // 必须在测试 finally 主动清理之前断言，避免清理掩盖生产取消失效。
-            assertTrue(composite.isDisposed());
+            assertFalse(SessionRuns.isBusy(f.session));
             assertTrue(upstreamCanceled.await(5, TimeUnit.SECONDS));
-            assertFalse(f.attrs.containsKey("disposable"));
+            assertFalse(f.attrs.keySet().stream().anyMatch(k -> k.contains("disposable")));
             f.assertCleaned();
             assertFalse(turn.isImagesAllowed());
             assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
@@ -704,7 +703,7 @@ class ImageReplyLifecycleTest {
             verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
             verify(f.other).sendReply("s1", "用户已取消任务。", true);
         } finally {
-            composite.dispose();
+            SessionRuns.cancelAll(f.session);
             turn.cleanup();
         }
     }

@@ -23,7 +23,6 @@ import org.jline.terminal.Attributes;
 import org.jline.terminal.Terminal;
 import org.jline.terminal.TerminalBuilder;
 import org.noear.solon.Utils;
-import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActTrace;
@@ -33,9 +32,8 @@ import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.intercept.HITLDecision;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
-import org.noear.solon.ai.chat.message.AssistantMessage;
-import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
@@ -51,7 +49,6 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
@@ -445,19 +442,12 @@ public class CliShell implements Runnable {
                 return finalAnswer.get();
             }
 
-            waitForTask(latch, disposable, session, isInterrupted);
+            waitForTask(latch, session, isInterrupted);
 
             if (isInterrupted.get()) {
                 terminal.writer().println(DIM + "[Task interrupted]" + RESET);
                 terminal.flush();
-                AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
-                ReActTrace trace = TraceUtil.getCurrentTrace(session);
-                if (trace != null) {
-                    cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
-                }
-                session.addMessage(cancelMessage);
-                // 补快照：中断时 agent 收尾被跳过，需将当前 trace 与取消消息一并持久化，避免重载后 trace 丢失
-                session.updateSnapshot();
+                // 取消消息与快照已由 SessionInterrupt 幂等补齐，这里只打印用户可见提示
                 LOG.info("用户已取消任务.");
                 return finalAnswer.get();
             }
@@ -481,7 +471,7 @@ public class CliShell implements Runnable {
         }
     }
 
-    private void waitForTask(CountDownLatch latch, Disposable disposable,
+    private void waitForTask(CountDownLatch latch,
                              AgentSession session, AtomicBoolean isInterrupted) throws Exception {
         Attributes originalAttributes = terminal.getAttributes();
         try {
@@ -491,7 +481,8 @@ public class CliShell implements Runnable {
                 int c = terminal.reader().read(50);
                 if (c > 0) {
                     if (c == 27) { //|| c == '\r' || c == '\n'
-                        disposable.dispose();
+                        // 停流 + 补写取消消息与快照统一走 SessionInterrupt（幂等）
+                        SessionInterrupt.interrupt(session);
                         isInterrupted.set(true);
                         latch.countDown();
                         break;

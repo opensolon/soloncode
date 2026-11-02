@@ -3,12 +3,12 @@ package org.noear.solon.codecli.api.web;
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
-import reactor.core.Disposables;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -39,7 +39,8 @@ class WebGateRejectedInputTest {
         AgentSession session = InMemoryAgentSession.of();
         AtomicBoolean done = new AtomicBoolean(false);
         session.attrs().put("streamDoneSent", done);
-        session.attrs().put("disposable", Disposables.composite());
+        // 模拟一条在跑的流：句柄由框架登记表持有（不再写 attrs 字符串 key）
+        SessionRuns.attach(session, newHandle());
 
         guardedDone(gate, session);
 
@@ -66,29 +67,41 @@ class WebGateRejectedInputTest {
         session.attrs().put(WebGate.ATTR_INPUT_ADMITTING, Boolean.TRUE);
         assertTrue(WebGate.isInputAdmitting(session));
         assertFalse(WebGate.hasActiveStream(session));
-        session.attrs().put("disposable", Disposables.composite());
+
+        SessionRuns.attach(session, newHandle());
         assertTrue(WebGate.hasActiveStream(session));
     }
 
     @Test
-    void disposedStreamHandleIsRemovedFromSharedSlot() throws Exception {
+    void detachedHandleIsNoLongerAnActiveStream() throws Exception {
         AgentSession session = InMemoryAgentSession.of();
-        reactor.core.Disposable.Composite composite = Disposables.composite();
-        reactor.core.Disposable child = Disposables.disposed();
-        composite.add(child);
-        session.attrs().put("disposable", composite);
+        reactor.core.Disposable handle = newHandle();
+        SessionRuns.attach(session, handle);
+        assertTrue(WebGate.hasActiveStream(session));
 
-        child.dispose();
-        Method method = WebGate.class.getDeclaredMethod(
-                "releaseStreamSlot", AgentSession.class, reactor.core.Disposable.Composite.class,
-                reactor.core.Disposable.class);
-        method.setAccessible(true);
-        method.invoke(null, session, composite, child);
+        SessionRuns.detach(session, handle);
 
-        assertNull(session.attrs().get("disposable"));
-        Method busyMethod = WebGate.class.getDeclaredMethod("isSessionBusy", AgentSession.class);
-        busyMethod.setAccessible(true);
-        assertFalse((Boolean) busyMethod.invoke(new WebGate(null), session));
+        assertFalse(WebGate.hasActiveStream(session));
+        assertFalse(SessionRuns.isBusy(session));
+        // 会话 attrs 不再承载任何句柄
+        assertTrue(session.attrs().keySet().stream().noneMatch(k -> k.contains("disposable")));
+    }
+
+    /** 一个可取消且 isDisposed 可信的句柄（与 ReActRequest 内的实现同构）。 */
+    private static reactor.core.Disposable newHandle() {
+        return new reactor.core.Disposable() {
+            private boolean disposed;
+
+            @Override
+            public void dispose() {
+                disposed = true;
+            }
+
+            @Override
+            public boolean isDisposed() {
+                return disposed;
+            }
+        };
     }
 
     private static WebGate recordingGate(List<String> events) {

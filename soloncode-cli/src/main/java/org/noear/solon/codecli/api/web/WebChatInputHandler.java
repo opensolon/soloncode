@@ -16,11 +16,10 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.AgentTrace;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.chat.message.AssistantMessage;
-import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
@@ -507,12 +506,14 @@ class WebChatInputHandler {
     /**
      * 中断指定会话的当前 AI 任务。
      *
-     * <p>仅当会话存在活跃流（disposable 未 dispose）时发出取消语义；
-     * 无活跃流时不写历史、不推送取消 error/trace，仅在尚未发过 done 时兜底
-     * emitDoneOnce，避免双击 Stop 或自然结束后仍刷「用户已取消任务」。</p>
+     * <p>停流与补写取消消息（含快照）统一由 {@link SessionInterrupt} 负责——运行句柄由
+     * {@code ReActRequest} 自行登记到 {@link SessionRuns}，宿主不再自己维护句柄容器，
+     * 也不再手写取消消息与快照（以前抄了 4 端，丢一步就语义漂移）。</p>
      *
-     * <p>有活跃流时同线程保证包序：error → 可选 trace → done → dispose。
-     * dispose 触发的 {@code doFinally} 中 emitDoneOnce 因 CAS 跳过，不会双发 done。</p>
+     * <p>本方法只负责 Web/IM 侧的<b>事件出口</b>：无活跃流时不写历史、不发取消语义，
+     * 仅在尚未发过 done 时兜底 emitDoneOnce；有活跃流时同线程保证包序
+     * error → 可选 trace → done，最后才真正停流（dispose 触发的 doFinally 中
+     * emitDoneOnce 因 CAS 跳过，不会双发 done）。</p>
      */
     boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         try {
@@ -522,10 +523,11 @@ class WebChatInputHandler {
                 LOG.warn("[WebGate] Stop rejected: could not persist queue cancellation for session {}", sessionId);
                 return false;
             }
-            Object slot = session.attrs().remove("disposable");
 
-            // 无活跃流：不发取消语义；若尚未发 done 则兜底，便于前端收尾
-            if (!(slot instanceof reactor.core.Disposable.Composite)) {
+            // 原子认领：判定忙碌与摘下句柄是同一个动作。并发的第二次 Stop 会直接拿到 null
+            // 并走「无活跃流」分支，不会重复落库、重复领取 IM 终态。
+            reactor.core.Disposable claimed = SessionRuns.claim(session);
+            if (claimed == null) {
                 boolean sent = gate.getEventPublisher().emitDoneOnce(wsContext, session);
                 if (sent) {
                     LOG.info("[WebGate] Session {} interrupt ignored (no active stream), emitted fallback done", sessionId);
@@ -535,48 +537,36 @@ class WebChatInputHandler {
                 return true;
             }
 
-            reactor.core.Disposable.Composite composite = (reactor.core.Disposable.Composite) slot;
-            if (composite.isDisposed()) {
-                boolean sent = gate.getEventPublisher().emitDoneOnce(wsContext, session);
-                LOG.info("[WebGate] Session {} interrupt ignored (already disposed), fallback done={}", sessionId, sent);
-                return true;
+            // 在任何停流前领取取消终态，与 RunEnd 使用同一临界区。
+            // 投递延后到停流之后不行：停流会让本轮流终结，前端提前收尾并丢掉后续帧。
+            Runnable replyCanceled = gate.getStreamBuilder().prepareCanceledReply(wsContext, session);
+
+            // 指标必须在停流前取：停流后 trace 可能已被下一轮重置
+            ReActTrace trace = TraceUtil.getCurrentTrace(session);
+            Long totalTokens = (trace != null && trace.getMetrics() != null) ? trace.getMetrics().getTotalTokens() : 0L;
+            long elapsedSeconds = 0L;
+            if (trace != null && trace.getBeginTimeMs() > 0) {
+                elapsedSeconds = (System.currentTimeMillis() - trace.getBeginTimeMs()) / 1000;
             }
 
             try {
-                // 在任何持久化/事件投递前领取取消终态，与 RunEnd 使用同一临界区。
-                // 投递延后到持久化之后，但只能使用此刻捕获的本轮路由。
-                Runnable replyCanceled = gate.getStreamBuilder().prepareCanceledReply(wsContext, session);
-
-                // 1) 取消语义：error + 可选 final/trace（落库消息带上 runId，便于按 runId 锚点删除）
-                AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
-                ReActTrace trace = TraceUtil.getCurrentTrace(session);
-                if (trace != null) {
-                    cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
-                }
-                session.addMessage(cancelMessage);
-                // 中断时 agent 的 call() 收尾被跳过，这里必须补快照：把当前 trace（含已完成的思考/工具调用）
-                // 与取消消息一起持久化，否则进程重启/会话重载后本轮 trace 会丢失。
-                // 参照 rewind 路径（见 isCommand 中 /rewind 处理）的做法。
-                session.updateSnapshot();
-                gate.emitToClient(wsContext, sessionId, WebEvent.ofError("用户已取消任务."));
+                // 先落库（取消消息 + 快照），再提交事件：与合并前的包序一致（取消回执在持久化之后发送）
+                SessionInterrupt.writeCancel(session);
+                gate.emitToClient(wsContext, sessionId, WebEvent.ofError(SessionInterrupt.CANCEL_TEXT));
                 // 取消终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
                 replyCanceled.run();
 
                 if (trace != null) {
-                    Long totalTokens = (trace.getMetrics() != null) ? trace.getMetrics().getTotalTokens() : 0L;
-                    long elapsedSeconds = 0L;
-                    if (trace.getBeginTimeMs() > 0) {
-                        elapsedSeconds = (System.currentTimeMillis() - trace.getBeginTimeMs()) / 1000;
-                    }
-                    gate.emitToClient(wsContext, sessionId, WebEvent.ofTrace(null, totalTokens, elapsedSeconds, "用户已取消任务."));
+                    gate.emitToClient(wsContext, sessionId, WebEvent.ofTrace(null, totalTokens, elapsedSeconds, SessionInterrupt.CANCEL_TEXT));
                 }
 
-                // 2) 正常路径同线程先发 done，再 dispose；doFinally 中 emitDoneOnce 因 CAS 跳过
+                // 正常路径同线程先发 done，再停流；doFinally 中 emitDoneOnce 因 CAS 跳过
                 gate.getEventPublisher().emitDoneOnce(wsContext, session);
             } finally {
-                // 句柄已经移出会话，持久化或回执失败也不能留下无法再次取消的活跃流。
-                composite.dispose();
+                // 回执或落库失败也不能留下无法再次取消的活跃流
+                claimed.dispose();
             }
+
             LOG.info("[WebGate] Session {} interrupted", sessionId);
             return true;
         } catch (Exception e) {

@@ -66,7 +66,10 @@ final class DesktopStreamTurn {
     }
 
     /**
-     * 执行一次流回合并登记 disposable。
+     * 执行一次流回合。
+     *
+     * <p>运行句柄由 {@code ReActRequest} 自行登记到 {@code SessionRuns}，本方法只负责
+     * 订阅、事件转换与终态收尾。</p>
      *
      * <p>请求装配（session/模型/retry/maxTurns）由 {@code engine.handle} 在调用前完成，
      * 本方法只做桌面端请求级补充：运行模式、HITL 拦截器、cwd、推理强度。</p>
@@ -83,7 +86,7 @@ final class DesktopStreamTurn {
         } else {
             streamHub.begin(sessionId, socket);
         }
-        Disposable disposable = request
+        return request
                 .options(o -> {
                     // 模型已由 handle 装配；这里仅在宿主显式解析出模型时覆盖（幂等，零差异）
                     if (chatModel != null) {
@@ -97,7 +100,6 @@ final class DesktopStreamTurn {
                     applyReasoningEffort(o, reasoningEffort);
                 })
                 .stream()
-                .doFinally(signal -> session.attrs().remove("disposable"))
                 .doOnNext(event -> {
                     if (event instanceof RunEndEvent) {
                         onRunEndEvent((RunEndEvent) event, session, sessionId, terminalSent);
@@ -121,12 +123,6 @@ final class DesktopStreamTurn {
                         chatModel.getConfig().getNameOrModel(), 0, 0))
                 .doOnError(err -> sendErrorIfNeeded(terminalSent, sessionId, err))
                 .subscribe();
-
-        Disposable old = (Disposable) session.attrs().put("disposable", disposable);
-        if (old != null && !old.isDisposed()) {
-            old.dispose();
-        }
-        return disposable;
     }
 
     private void onRunEndEvent(RunEndEvent runEndEvent, AgentSession session, String finalSessionId,
