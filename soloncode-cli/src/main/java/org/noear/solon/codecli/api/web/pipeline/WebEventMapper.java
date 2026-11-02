@@ -16,6 +16,8 @@ import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.agent.TaskWrapEvent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
+import org.noear.solon.ai.harness.session.steer.SteerAppliedEvent;
+import org.noear.solon.ai.harness.session.steer.SteerDroppedEvent;
 import org.noear.solon.codecli.api.web.WebStreamBuilder;
 import org.noear.solon.codecli.artifact.ImageReplyTurn;
 import org.noear.solon.codecli.api.web.event.UiPatchEvent;
@@ -131,6 +133,26 @@ public class WebEventMapper {
             WebEvent<?> evt = onToolCallEndEvent((ToolCallEndEvent) event, taskAgentName);
             fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
             result.add(evt);
+        } else if (event instanceof SteerAppliedEvent) {
+            // 插话已注入工作记忆：前端据此清除待生效态并落气泡
+            SteerAppliedEvent applied = (SteerAppliedEvent) event;
+            WebEvent<?> evt = WebEvent.ofSteerAppliedItems(applied.getRunId(), applied.getItems());
+            fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
+            result.add(evt);
+        } else if (event instanceof SteerDroppedEvent) {
+            // 任务结束残留已转排队（持久化已在 harness 内完成，这里只做展示）
+            SteerDroppedEvent droppedEvent = (SteerDroppedEvent) event;
+            if (droppedEvent.getQueued().isEmpty() == false) {
+                WebEvent<?> evt = WebEvent.ofSteerDroppedItems(droppedEvent.getRunId(), droppedEvent.getQueued());
+                fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
+                result.add(evt);
+            }
+            if (droppedEvent.hasFailed()) {
+                // 入队失败项仍留在易失邮箱；必须明确告知用户尚未排队
+                WebEvent<?> evt = WebEvent.ofError("插话尚未排队，已暂存；请清理队列后继续");
+                fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
+                result.add(evt);
+            }
         } else if (event instanceof RunStartEvent) {
             if (taskId != null) {
                 // 子代理 ReAct 启动：发 task.start 让前端先建 task-group 占位。

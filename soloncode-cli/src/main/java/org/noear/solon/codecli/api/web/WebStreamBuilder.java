@@ -21,7 +21,6 @@ import org.noear.solon.ai.talents.lsp.LspCheckState;
 import org.noear.solon.codecli.api.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.api.web.pipeline.UiRenderFilter;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -473,8 +472,6 @@ public class WebStreamBuilder {
             ToolPresentationFilter toolFilter = new ToolPresentationFilter(buildLspState(wsContext));
             UiRenderFilter uiRenderFilter = new UiRenderFilter();
             SessionMetricsRecorder metricsRecorder = new SessionMetricsRecorder(session);
-            // 运行中插话（steer）拦截器：请求级挂载，LinkedHashMap 插入序保证排在默认拦截器（含上下文压缩）之后
-            SteerInterceptor steerInterceptor = new SteerInterceptor(webGate, wsContext);
 
             // 请求主体（agent/session/模型/retry/maxTurns）由 handle 装配，这里只补 Web 端请求级选项
             final Flux<AgentEvent> stream = outcome.getRequest()
@@ -484,7 +481,6 @@ public class WebStreamBuilder {
                         }
 
                         ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
-                        o.interceptorAdd(steerInterceptor);
                         o.interceptorAdd(imageTurn);
 
 

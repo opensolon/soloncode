@@ -1,14 +1,9 @@
 package org.noear.solon.codecli.api.web;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
-import org.noear.solon.ai.harness.input.InputOrigin;
-import org.noear.solon.ai.harness.session.queue.SessionQueue;
-import org.noear.solon.ai.harness.session.steer.SteerMessage;
 import org.noear.solon.codecli.api.web.event.WebEvent;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
@@ -16,9 +11,6 @@ import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
 import reactor.core.Disposables;
 
 import java.lang.reflect.Method;
-import java.nio.file.Path;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -97,31 +89,6 @@ class WebGateRejectedInputTest {
         Method busyMethod = WebGate.class.getDeclaredMethod("isSessionBusy", AgentSession.class);
         busyMethod.setAccessible(true);
         assertFalse((Boolean) busyMethod.invoke(new WebGate(null), session));
-    }
-
-    @Test
-    void failedSteerQueueSaveKeepsMailboxAndDoesNotClaimDropped(@TempDir Path dir) {
-        List<String> events = new ArrayList<>();
-        WebGate gate = recordingGate(events);
-        AgentSession session = InMemoryAgentSession.of();
-        for (int i = 0; i < SessionQueue.MAX_QUEUE_SIZE; i++) {
-            assertTrue(SessionQueue.enqueue(session, "task " + i, InputOrigin.channel("WEB")) > 0);
-        }
-        Queue<SteerMessage> box = new ConcurrentLinkedQueue<>();
-        box.add(new SteerMessage("steer-1", "do not lose me"));
-        gate.handleDroppedSteers(null, session, box, "run-1");
-
-        assertEquals(SessionQueue.MAX_QUEUE_SIZE, SessionQueue.pendingSize(session));
-        assertEquals("steer-1", SteerInterceptor.steerBox(session).peek().getId());
-        assertTrue(events.contains(WebEventNames.SYSTEM_ERROR));
-        assertFalse(events.contains(WebEventNames.SYSTEM_STEER_DROPPED));
-
-        assertTrue(SessionQueue.cancelItem(session, SessionQueue.snapshot(session).get(0).getId()));
-        Queue<SteerMessage> retry = SteerInterceptor.steerBox(session);
-        session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
-        gate.handleDroppedSteers(null, session, retry, "run-1");
-        assertTrue(events.contains(WebEventNames.SYSTEM_STEER_DROPPED));
-        assertEquals("do not lose me", SessionQueue.snapshot(session).get(SessionQueue.pendingSize(session) - 1).getText());
     }
 
     private static WebGate recordingGate(List<String> events) {

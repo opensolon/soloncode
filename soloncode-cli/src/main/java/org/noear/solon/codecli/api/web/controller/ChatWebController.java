@@ -16,7 +16,7 @@
 package org.noear.solon.codecli.api.web.controller;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.agent.AgentTrace;
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
@@ -29,6 +29,7 @@ import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.ai.harness.session.steer.SteerMessage;
 import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.session.steer.SteerResult;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -525,7 +526,7 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(409, "NOT_RUNNING");
         }
 
-        org.noear.solon.ai.agent.AgentSession session = engine().getSession(sessionId);
+        AgentSession session = engine().getSession(sessionId);
         if (session == null) {
             return Result.failure(409, "NOT_RUNNING");
         }
@@ -537,8 +538,7 @@ public class ChatWebController extends AbstractWebController {
         }
 
         // 核心入队逻辑与 IM 端共用（activeRunId 绑定校验 + offer + offer 后按 busy 复查回滚）。
-        // source 传 null：Web 插话被 dropped 时由前端转排队，无需后端兑底。
-        SteerInterceptor.SteerResult result = SteerInterceptor.steer(
+        SteerResult result = SteerInterceptor.steer(
                 session, runId, steerId, text, null,
                 () -> runtimePort().isSessionBusy(engine(), sessionId));
 

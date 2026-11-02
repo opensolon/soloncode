@@ -18,15 +18,9 @@ package org.noear.solon.codecli.api.web;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.input.InputOrigin;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
-import org.noear.solon.ai.harness.session.steer.SteerMessage;
-import org.noear.solon.ai.harness.session.steer.SteerOutputPort;
-import org.noear.solon.ai.harness.session.queue.SessionQueue;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
-import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.codecli.workspace.WorkspaceRegistry;
 import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
@@ -39,8 +33,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Queue;
-import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import reactor.core.Disposable;
 
@@ -58,7 +50,7 @@ import reactor.core.Disposable;
  *
  * @author noear 2026/5/8 created
  */
-public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntimePort, SteerOutputPort<WorkspaceContext> {
+public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntimePort {
     private static final Logger LOG = LoggerFactory.getLogger(WebGate.class);
 
     /** HITL 审批时前端回传的 callUuid（通过 session context 透传） */
@@ -128,7 +120,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  WorkspaceMessageGateway / SteerOutputPort 实现
+    //  WorkspaceRuntimePort 实现
     // ═══════════════════════════════════════════════════════════════
 
     /**
@@ -154,48 +146,6 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         emitToClient(workspaceContext, sessionId, WebEvent.ofError(message));
         emitToClient(workspaceContext, sessionId, WebEvent.ofDone());
     }
-
-    @Override
-    public void emitSteerApplied(WorkspaceContext wsContext, AgentSession session, String runId, List<SteerMessage> items) {
-        emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerAppliedItems(runId, items));
-    }
-
-    /** 未消费插话先落入 session 队列；只有保存成功才通知视图已转为排队。 */
-    @Override
-    public void handleDroppedSteers(WorkspaceContext wsContext, AgentSession session, Queue<SteerMessage> box, String runId) {
-        List<SteerMessage> dropped = new ArrayList<>();
-        List<SteerMessage> failed = new ArrayList<>();
-        for (SteerMessage message; (message = box.poll()) != null; ) {
-            InputOrigin origin = message.getOrigin();
-            if (origin.getChannel() == null) {
-                origin = origin.withChannel("WEB");
-            }
-            int position = SessionQueue.enqueue(session, message.getText(), origin);
-            if (position < 0) failed.add(message);
-            else dropped.add(message);
-        }
-        if (!failed.isEmpty()) {
-            // 保存失败时仍留在易失邮箱，下一次开流可重试；同时明确告知用户尚未排队。
-            synchronized (session.attrs()) {
-                @SuppressWarnings("unchecked")
-                Queue<SteerMessage> pending = (Queue<SteerMessage>) session.attrs().get(SteerInterceptor.ATTR_STEER_BOX);
-                if (pending == null) {
-                    pending = new java.util.concurrent.ConcurrentLinkedQueue<>();
-                    session.attrs().put(org.noear.solon.ai.harness.session.steer.SteerInterceptor.ATTR_STEER_BOX, pending);
-                }
-                pending.addAll(failed);
-            }
-            LOG.warn("[WebGate] {} unconsumed steers could not be queued for session {}", failed.size(), session.getSessionId());
-            emitToClient(wsContext, session.getSessionId(), WebEvent.ofError("插话尚未排队，已暂存；请清理队列后继续"));
-        }
-        if (!dropped.isEmpty()) {
-            emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(runId, dropped));
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  WorkspaceRuntimePort 实现
-    // ═══════════════════════════════════════════════════════════════
 
     /** 工作区上下文完成初始化后恢复 session 队列，包括旧版 Web 队列。 */
     @Override

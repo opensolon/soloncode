@@ -29,6 +29,8 @@ import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
+import org.noear.solon.ai.harness.session.steer.SteerResult;
+import org.noear.solon.ai.harness.session.steer.SteerStatus;
 import org.noear.solon.ai.util.CmdUtil;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
@@ -405,10 +407,10 @@ class WebChatInputHandler {
                 // 由 SteerInterceptor 在下一个采样边界消费。插不进去（任务恰在切换/尚未进入推理边界、邮箱已满等）
                 // 或输入是斜杠命令时，再降级为统一持久化排队，确保消息不丢。
                 if (input != null && !input.startsWith("/")) {
-                    SteerInterceptor.SteerResult steerResult = SteerInterceptor.steer(session, null, null, input,
+                    SteerResult steerResult = SteerInterceptor.steer(session, null, null, input,
                             InputOrigin.of(source, sourceUserId, replyTarget, messageId),
                             () -> SessionActivity.isBusy(session));
-                    if (steerResult.getStatus() == SteerInterceptor.SteerStatus.STEERED) {
+                    if (steerResult.getStatus() == SteerStatus.STEERED) {
                         // 不回放 ofUserInput：web 端由 steer_applied 就地渲染 steer-note（与 web 发起的插话同一路径），
                         // 提前推 user_input 会与 steer-note 重复上屏。
                         gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.STEERED,

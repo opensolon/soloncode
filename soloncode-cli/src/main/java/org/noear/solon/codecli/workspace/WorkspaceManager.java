@@ -7,7 +7,6 @@ import org.noear.solon.Utils;
 import org.noear.solon.ai.harness.command.builtin.*;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
-import org.noear.solon.ai.harness.session.steer.SteerOutputPort;
 import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -816,11 +815,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
         // /steer、/queue 已下沉 harness：命令注册由各域 Extension 幂等完成（/goal 在上方 GoalExtension 内注册）。
-        // SteerExtension 默认拦截器用 headless 端口（CLI/无 web 场景 drop 仅记日志）；
-        // Web 端 WebStreamBuilder 每请求挂载带当次 wsContext 的实例，拦截器容器按 Class 去重，
-        // 请求级实例覆盖默认实例——通知路由始终拿到正确工作区，不会双重注入。
-        engine.addExtension(new SteerExtension<>(() -> getRuntimePort() instanceof SteerOutputPort
-                ? (SteerOutputPort<Object>) getRuntimePort() : null, null));
+        // steer 输出走 AgentEvent（SteerAppliedEvent / SteerDroppedEvent），宿主零装配：
+        // Web 由 WebEventMapper 映射为 system.steer_*，其余宿主不识别即忽略。
+        engine.addExtension(new SteerExtension());
         engine.addExtension(new QueueExtension());
         engine.getCommandRegistry().register(new RerunCommand());
         engine.getCommandRegistry().register(new RewindCommand());

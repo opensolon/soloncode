@@ -35,6 +35,8 @@ import reactor.core.Disposable;
 import reactor.core.Disposables;
 import reactor.core.scheduler.Schedulers;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
@@ -74,7 +76,7 @@ class WebSessionRunner {
             // 新任务开流：清上一轮 runId 与残留插话邮箱。
             // onAgentEnd 不在 finally 中（interrupt/异常路径不触发），若不在此清理，
             // 上一任务未消费的插话会在新任务第二轮被注入，破坏方案 A 的任务级隔离。
-            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律广播 dropped 让前端转排队。
+            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律转排队并告知前端。
             // 与 steer 提交及 onAgentEnd 共用短临界区，保证 runId 与邮箱按同一任务边界切换。
             Queue<SteerMessage> staleBox;
             synchronized (session.attrs()) {
@@ -88,7 +90,20 @@ class WebSessionRunner {
             gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
             if (staleBox != null && staleBox.isEmpty() == false) {
-                gate.handleDroppedSteers(wsContext, session, staleBox, null);
+                // 此处尚未开流（无 trace），无法推事件：直接复用 harness 的转排队实现，
+                // 再由宿主就地广播结果。排队逻辑只有一处，不随宿主重复实现。
+                List<SteerMessage> stale = new ArrayList<>(staleBox);
+                List<SteerMessage> failed = SteerInterceptor.enqueueIntoSessionQueue(session, stale);
+                List<SteerMessage> queued = new ArrayList<>(stale);
+                queued.removeAll(failed);
+
+                if (queued.isEmpty() == false) {
+                    gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(null, queued));
+                }
+                if (failed.isEmpty() == false) {
+                    gate.emitToClient(wsContext, session.getSessionId(),
+                            WebEvent.ofError("插话尚未排队，已暂存；请清理队列后继续"));
+                }
             }
         }
     }
