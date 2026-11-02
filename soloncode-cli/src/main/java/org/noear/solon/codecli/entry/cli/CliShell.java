@@ -405,7 +405,9 @@ public class CliShell implements Runnable {
                 return finalAnswer.get();
             }
 
-            Disposable disposable = request
+            // 订阅句柄仅供本方法判断「是否成功开流」；取消目标由 ReActRequest 自行登记到
+            // SessionRuns，本类不再持有、也不再需要回写 session attrs
+            Disposable subscription = request
                     .stream()
                     .subscribeOn(Schedulers.boundedElastic())
                     .doOnNext(chunk -> {
@@ -437,7 +439,7 @@ public class CliShell implements Runnable {
                     .subscribe();
 
             // 监听回车中断
-            if (disposable == null || disposable.isDisposed()) {
+            if (subscription == null || subscription.isDisposed()) {
                 // 处理订阅失败的情况
                 return finalAnswer.get();
             }

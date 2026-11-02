@@ -17,13 +17,10 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.AgentTrace;
-import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.intercept.HITLTask;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.chat.message.AssistantMessage;
-import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -35,9 +32,8 @@ import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.harness.session.goal.GoalState;
-import org.noear.solon.codecli.loop.LoopTask;
+import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
-import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.slf4j.Logger;
@@ -89,21 +85,20 @@ final class DesktopInputRouter {
         if ("[(sec)interrupt]".equals(req.getInput())) {
             AgentSession goalSession = gate.goal == null ? null : gate.goal.sessionOf(sessionId);
             GoalState activeGoal = goalSession == null ? null : gate.goal.state(goalSession);
-            // 停流统一走 SessionInterrupt（清队列 + 停运行流 + 幂等补写取消消息与快照）
-            org.noear.solon.ai.harness.session.interrupt.SessionInterrupt.interrupt(session);
             if (activeGoal != null) {
+                // goal 轮次：只停流，不落取消消息（历史由 goal.clear 收尾）。
+                // 这里不能用 SessionInterrupt.interrupt：它会补写取消消息，
+                // 而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
+                SessionRuns.cancelAll(session);
                 // clear 门面内含「先 unschedule 再 clear」
                 gate.goal.clear(goalSession);
                 return;
             }
-            AssistantMessage cancelMessage = ChatMessage.ofAssistant("用户已取消任务.");
-            ReActTrace trace = TraceUtil.getCurrentTrace(session);
-            if (trace != null) {
-                cancelMessage.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
-            }
-            session.addMessage(cancelMessage);
-            // 补快照：中断时 agent 收尾被跳过，需将当前 trace 与取消消息一并持久化，避免重载后 trace 丢失
-            session.updateSnapshot();
+
+            // 普通轮次：清队列 + 停流 + 幂等补写取消消息与快照，统一走 SessionInterrupt。
+            // 此处曾再手写一遍取消消息与快照：迁移后 interrupt() 已无条件补写，
+            // 继续手写会让同一条取消消息入库两次。
+            SessionInterrupt.interrupt(session);
             LOG.info("用户已取消任务.");
 
             String interruptModelName = req.getModel();

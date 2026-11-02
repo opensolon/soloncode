@@ -45,6 +45,7 @@ import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Disposable;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -526,7 +527,7 @@ class WebChatInputHandler {
 
             // 原子认领：判定忙碌与摘下句柄是同一个动作。并发的第二次 Stop 会直接拿到 null
             // 并走「无活跃流」分支，不会重复落库、重复领取 IM 终态。
-            reactor.core.Disposable claimed = SessionRuns.claim(session);
+            Disposable claimed = SessionRuns.claim(session);
             if (claimed == null) {
                 boolean sent = gate.getEventPublisher().emitDoneOnce(wsContext, session);
                 if (sent) {

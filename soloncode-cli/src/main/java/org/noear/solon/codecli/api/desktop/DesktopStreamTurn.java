@@ -28,6 +28,7 @@ import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
+import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -42,10 +43,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * 桌面端流回合执行器：把一次 prompt 的订阅、事件转换与终态收尾集中到一处。
  *
  * <p>从原 {@code WsGate} 中拆出主输入流 / HITL 恢复流 / 命令 fallback 流三段
- * 几乎相同的订阅逻辑，保持时序逐字一致：begin/subscribe 建流 → doFinally 归还
- * disposable → doOnNext 事件分发（RunEnd 优先，HITL 挂起时发 hitl 事件）→
- * doOnComplete/doOnError 经 terminalSent CAS 只发一次 done/error → 订阅后写回
- * session 的 disposable 并 dispose 旧流。</p>
+ * 几乎相同的订阅逻辑：停掉本会话上一轮遗留流 → begin/subscribe 建流 →
+ * doOnNext 事件分发（RunEnd 优先，HITL 挂起时发 hitl 事件）→
+ * doOnComplete/doOnError 经 terminalSent CAS 只发一次 done/error。</p>
+ *
+ * <p><b>运行句柄不再由本类持有</b>：{@code ReActRequest#stream()} 订阅时自动登记到
+ * {@code SessionRuns}，结束时按值注销。本类只负责「新回合开始前停掉上一轮」
+ * （{@link SessionRuns#cancelActive}）。</p>
  *
  * <p>终态事件结构（done/error/hitl 的字段与 JSON 顺序）与原实现零变化。
  * cwd 为空的容忍性差异：主输入流的 cwd 恒非空（会话默认 "."），统一为
@@ -81,6 +85,13 @@ final class DesktopStreamTurn {
                    WebSocket socket, boolean hitlResume,
                    HITLInterceptor desktopHitlInterceptor) {
         AtomicBoolean terminalSent = new AtomicBoolean(false);
+
+        // 同一会话上的上一轮若还在跑（连发输入 / 桌面端重发），先停掉再开新流：
+        // 不停会造成两条流的 doOnNext 同时往同一个 streamHub 写，前端两个轮次的输出交错。
+        // 用 cancelActive 而非 cancelAll：停旧轮次不能推进取消代数，否则正要开始的这一流
+        // 会因「调度期内已被取消」而被自己拒绝。
+        SessionRuns.cancelActive(session);
+
         if (hitlResume) {
             streamHub.subscribe(sessionId, socket);
         } else {
