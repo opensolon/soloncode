@@ -229,12 +229,12 @@ public class WorkspaceContext implements Closeable {
         }
         // 停掉本工作区全部 goal job：JobManager 是 JVM 单例，
         // 不注销则 job 会带着已关闭引擎的引用在全局调度器里空转。
-        if (goalExtension != null) {
-            try {
-                goalExtension.stopAll();
-            } catch (Exception e) {
-                // Ignore
-            }
+        // engine.shutdown() 会遍历回调各扩展的 onDetach（GoalExtension.onDetach → stopAll），
+        // 并关闭子代理委派的私有执行器。不再单独取 goalExtension 打补丁。
+        try {
+            engine.shutdown();
+        } catch (Exception e) {
+            // Ignore
         }
         if (fileWatchService != null) {
             try {

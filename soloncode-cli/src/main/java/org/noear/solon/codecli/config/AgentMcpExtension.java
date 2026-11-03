@@ -15,7 +15,7 @@ import java.util.List;
 @Component
 public class AgentMcpExtension implements HarnessExtension {
     @Override
-    public void configure(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
+    public void onAgentBuild(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
         if (AgentDefinition.AGENT_MAIN.equals(agentName)) return;
         AgentDefinition.Metadata metadata = engine.getAgentManager().getAgent(agentName).getMetadata();
         List<String> selected = metadata.getMcpServers();

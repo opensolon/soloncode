@@ -24,7 +24,7 @@ public class LoopExtension implements HarnessExtension {
     }
 
     @Override
-    public void configure(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
+    public void onAgentBuild(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
         if (AgentDefinition.AGENT_MAIN.equals(agentName)) {
             agentBuilder.defaultTalentAdd(loopTalent);
         }

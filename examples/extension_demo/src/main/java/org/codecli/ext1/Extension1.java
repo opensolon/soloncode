@@ -19,7 +19,7 @@ import java.io.IOException;
  */
 public class Extension1 implements HarnessExtension {
     @Override
-    public void configure(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
+    public void onAgentBuild(HarnessEngine engine, String agentName, ReActAgent.Builder agentBuilder) {
         // 在此处对 agentBuilder 进行定制，例如添加 Tool 或 Interceptor
         agentBuilder.defaultInterceptorAdd(new ReActInterceptor() {
             @Override
