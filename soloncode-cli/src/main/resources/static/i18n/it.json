@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Aggiornato con successo",
   "automation.agent": "Agente",
   "automation.agentDefaultDesc": "Lascia vuoto per usare l'agente principale",
-  "automation.agentPlaceholder": "main (agente principale)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Eliminare questa attività? La conversazione sarà conservata nell'archivio.",
   "automation.cronRequired": "Inserisci un'espressione Cron",
   "automation.defaultName": "Attività di automazione",

@@ -80,7 +80,7 @@
   "agents.updateSuccess": "সফলভাবে আপডেট হয়েছে",
   "automation.agent": "এজেন্ট",
   "automation.agentDefaultDesc": "খালি রাখলে প্রাথমিক এজেন্ট ব্যবহার হবে",
-  "automation.agentPlaceholder": "main (প্রাথমিক এজেন্ট)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "এই টাস্কটি মুছবেন? কথোপকথন আর্কাইভে সংরক্ষিত থাকবে।",
   "automation.cronRequired": "অনুগ্রহ করে একটি Cron এক্সপ্রেশন লিখুন",
   "automation.defaultName": "অটোমেশন টাস্ক",

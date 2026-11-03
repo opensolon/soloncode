@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Opdateret",
   "automation.agent": "Agent",
   "automation.agentDefaultDesc": "Tom for at bruge den primære agent",
-  "automation.agentPlaceholder": "main (primær agent)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Slet denne opgave? Samtalen bevares i arkivet.",
   "automation.cronRequired": "Indtast et Cron-udtryk",
   "automation.defaultName": "Automatiseringsopgave",

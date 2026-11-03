@@ -82,7 +82,7 @@
   "automation.empty.desc": "Tạo tác vụ tự động để AI làm việc theo lịch trình.",
   "automation.agent": "Agent",
   "automation.agentDefaultDesc": "Để trống để dùng agent chính",
-  "automation.agentPlaceholder": "main (agent chính)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Xóa nhiệm vụ này? Cuộc hội thoại sẽ được giữ trong kho lưu trữ.",
   "automation.cronRequired": "Vui lòng nhập biểu thức Cron",
   "automation.defaultName": "Nhiệm vụ tự động",

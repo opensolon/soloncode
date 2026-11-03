@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Başarıyla güncellendi",
   "automation.agent": "Ajan",
   "automation.agentDefaultDesc": "Boş bırakılırsa birincil ajan kullanılır",
-  "automation.agentPlaceholder": "main (birincil ajan)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Bu görev silinsin mi? Görüşme arşivde saklanır.",
   "automation.cronRequired": "Lütfen bir Cron ifadesi girin",
   "automation.defaultName": "Otomasyon Görevi",

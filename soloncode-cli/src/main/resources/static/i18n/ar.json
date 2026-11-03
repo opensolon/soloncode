@@ -80,7 +80,7 @@
   "agents.updateSuccess": "تم التحديث بنجاح",
   "automation.agent": "الوكيل",
   "automation.agentDefaultDesc": "اتركه فارغًا لاستخدام الوكيل الرئيسي",
-  "automation.agentPlaceholder": "main (الوكيل الرئيسي)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "هل تريد حذف هذه المهمة؟ سيُحفظ الحوار في الأرشيف.",
   "automation.cronRequired": "يرجى إدخال تعبير Cron",
   "automation.defaultName": "مهمة آلية",

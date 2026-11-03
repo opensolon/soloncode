@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Η ενημέρωση ήταν επιτυχής",
   "automation.agent": "Πράκτορας",
   "automation.agentDefaultDesc": "Αφήστε κενό για χρήση του κύριου πράκτορα",
-  "automation.agentPlaceholder": "main (κύριος πράκτορας)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Διαγραφή αυτής της εργασίας; Η συνομιλία θα διατηρηθεί στο αρχείο.",
   "automation.cronRequired": "Εισαγάγετε μια έκφραση Cron",
   "automation.defaultName": "Εργασία αυτοματοποίησης",

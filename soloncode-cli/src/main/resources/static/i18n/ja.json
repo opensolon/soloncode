@@ -80,7 +80,7 @@
   "agents.updateSuccess": "更新しました",
   "automation.agent": "エージェント",
   "automation.agentDefaultDesc": "空欄の場合はメインエージェントを使用",
-  "automation.agentPlaceholder": "main（メインエージェント）",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "このタスクを削除しますか？会話はアーカイブとして保持されます。",
   "automation.cronRequired": "Cron 式を入力してください",
   "automation.defaultName": "自動化タスク",

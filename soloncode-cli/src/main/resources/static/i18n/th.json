@@ -82,7 +82,7 @@
   "automation.empty.desc": "สร้างงานอัตโนมัติเพื่อให้ AI ทำงานตามกำหนดเวลา",
   "automation.agent": "เอเจนต์",
   "automation.agentDefaultDesc": "เว้นว่างเพื่อใช้เอเจนต์หลัก",
-  "automation.agentPlaceholder": "main (เอเจนต์หลัก)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "ลบงานนี้หรือไม่? บทสนทนาจะถูกเก็บไว้ในคลัง",
   "automation.cronRequired": "กรุณาป้อนนิพจน์ Cron",
   "automation.defaultName": "งานอัตโนมัติ",

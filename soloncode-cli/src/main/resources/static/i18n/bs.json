@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Uspješno ažurirano",
   "automation.agent": "Agent",
   "automation.agentDefaultDesc": "Ostavite prazno za glavnog agenta",
-  "automation.agentPlaceholder": "main (glavni agent)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Obrisati ovaj zadatak? Razgovor će biti sačuvan u arhivi.",
   "automation.cronRequired": "Unesite Cron izraz",
   "automation.defaultName": "Zadatak automatizacije",

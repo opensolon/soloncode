@@ -81,7 +81,7 @@
   "agents.updateSuccess": "更新成功",
   "automation.agent": "智能体",
   "automation.agentDefaultDesc": "留空时使用主代理",
-  "automation.agentPlaceholder": "main（主代理）",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "确定删除这个任务吗？任务对话会保留归档。",
   "automation.cronRequired": "请填写 Cron 表达式",
   "automation.defaultName": "自动化任务",

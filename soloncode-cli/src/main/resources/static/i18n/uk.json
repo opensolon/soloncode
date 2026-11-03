@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Оновлено успішно",
   "automation.agent": "Агент",
   "automation.agentDefaultDesc": "Залиште порожнім, щоб використати основного агента",
-  "automation.agentPlaceholder": "main (основний агент)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Видалити це завдання? Діалог буде збережено в архіві.",
   "automation.cronRequired": "Введіть вираз Cron",
   "automation.defaultName": "Завдання автоматизації",

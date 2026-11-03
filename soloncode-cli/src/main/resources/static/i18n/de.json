@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Erfolgreich aktualisiert",
   "automation.agent": "Agent",
   "automation.agentDefaultDesc": "Leer lassen, um den primären Agent zu verwenden",
-  "automation.agentPlaceholder": "main (primärer Agent)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Diese Aufgabe löschen? Die Unterhaltung bleibt im Archiv erhalten.",
   "automation.cronRequired": "Bitte einen Cron-Ausdruck eingeben",
   "automation.defaultName": "Automatisierungsaufgabe",

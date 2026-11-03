@@ -80,7 +80,7 @@
   "agents.updateSuccess": "Oppdatert",
   "automation.agent": "Agent",
   "automation.agentDefaultDesc": "La stå tom for å bruke hovedagenten",
-  "automation.agentPlaceholder": "main (hovedagent)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Slette denne oppgaven? Samtalen beholdes i arkivet.",
   "automation.cronRequired": "Skriv inn et Cron-uttrykk",
   "automation.defaultName": "Automatiseringsoppgave",

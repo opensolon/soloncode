@@ -81,7 +81,7 @@
   "agents.updateSuccess": "Updated successfully",
   "automation.agent": "Agent",
   "automation.agentDefaultDesc": "Use the primary agent when empty",
-  "automation.agentPlaceholder": "main (primary agent)",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "Delete this task? Its conversation will be kept in archive.",
   "automation.cronRequired": "Please enter a Cron expression",
   "automation.defaultName": "Automation Task",

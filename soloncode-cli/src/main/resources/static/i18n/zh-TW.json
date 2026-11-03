@@ -82,7 +82,7 @@
   "automation.empty.title": "暫無自動任務",
   "automation.agent": "智慧體",
   "automation.agentDefaultDesc": "留空時使用主代理",
-  "automation.agentPlaceholder": "main（主代理）",
+  "automation.agentPlaceholder": "main",
   "automation.confirmDelete": "確定刪除這個任務嗎？任務對話會保留歸檔。",
   "automation.cronRequired": "請填寫 Cron 表達式",
   "automation.defaultName": "自動化任務",
