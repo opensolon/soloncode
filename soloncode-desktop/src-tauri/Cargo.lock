@@ -3786,7 +3786,7 @@ dependencies = [
 
 [[package]]
 name = "soloncode-desktop"
-version = "2026.11.1"
+version = "2026.11.3"
 dependencies = [
  "base64 0.22.1",
  "portable-pty",
