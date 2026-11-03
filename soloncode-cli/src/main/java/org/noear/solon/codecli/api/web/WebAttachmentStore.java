@@ -21,6 +21,7 @@ import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.IoUtil;
 import org.noear.solon.lang.Nullable;
+import org.noear.solon.codecli.workspace.WorkspaceFiles;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -97,7 +98,7 @@ public final class WebAttachmentStore {
                     ? attachmentTypes[i] : null;
 
             try {
-                Path uploadDir = root.resolve(".files/uploads").normalize();
+                Path uploadDir = root.resolve(WorkspaceFiles.UPLOADS_DIR).normalize();
                 Files.createDirectories(uploadDir);
                 Path savePath = uploadDir.resolve(fileName).normalize();
                 if (!savePath.startsWith(root)) {
@@ -107,7 +108,7 @@ public final class WebAttachmentStore {
                 byte[] bytes = IoUtil.transferToBytes(attachment.getContent());
                 Files.write(savePath, bytes);
 
-                String relative = ".files/uploads/" + fileName;
+                String relative = WorkspaceFiles.UPLOADS_DIR + "/" + fileName;
                 if (isImageAttachment(ext, declaredType)) {
                     result.media(ImageBlock.ofBase64(Base64.getEncoder().encodeToString(bytes),
                             extensionToMime(ext)).filePath(relative));

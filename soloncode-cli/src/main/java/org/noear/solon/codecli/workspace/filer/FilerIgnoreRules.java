@@ -1,5 +1,7 @@
 package org.noear.solon.codecli.workspace.filer;
 
+import org.noear.solon.codecli.workspace.WorkspaceFiles;
+
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
@@ -55,7 +57,7 @@ public final class FilerIgnoreRules {
 
     /** 隐藏目录白名单：以点号开头，但需要展示且需要监听（workspace 级文件根，附件落 .files/uploads） */
     private static final String[] DEFAULT_VISIBLE_HIDDEN_DIRS = {
-            ".files"
+            WorkspaceFiles.FILES_ROOT
     };
 
     private static final Set<String> EXCLUDED_DIRS;

@@ -7,6 +7,7 @@
   * **删除 `task_result_read` 工具**：超长结果的召回改交给宿主通用文件工具（CLI/Web 桌面的 read 支持 offset/limit 分页，天然能读 spill 文件）；截断文案从「用 task_result_read 按 task_id 分页读」改为「完整结果已落盘到 <workspace 相对路径>，可用文件读取工具按 offset/limit 分页读取，不要重新委派该任务」（工具无关——harness 不假设宿主有 read；保留防重复委派告诫）。删除 TaskTalent.TOOL_TASK_RESULT_READ 常量与 taskResultRead() 方法（约 50 行），README 工具列表与落盘路径说明同步
   * skin skill（release/skills/soloncode-skin-skill 全套：SKILL.md、references/skin-spec.md、3 个脚本、assets/templates/README.md + 已装副本 ~/.soloncode/skills/）：默认 zip 产出路径与一键安装链接 `file=.uploads/...` 全部改 `.files/uploads/...`（安装端点按任意相对路径解析，无需后端改动）；app-settings-skin.js 注释同步
   * 验证：harness `TaskTalentResultFormatTest` 7 例全绿（含路径穿越防护）；cli 定向 19 例全绿（FilerIgnoreRules 8 + WebAttachmentStore 8 + DesktopAttachmentSupport 3）；全仓 grep 无残留引用（UPDATE_LOG 历史记录、飞书 link.uploads 字段名、solon-ai-core 的 MediaBlock javadoc 示例除外）
+  * **抽取 `WorkspaceFiles` 常量类**（`workspace` 包）：`FILES_ROOT = ".files"`、`UPLOADS_DIR = ".files/uploads"`，取代 Java 主代码中 5 处裸字面量；消费方：`WebAttachmentStore`（落盘+引用路径）、`DesktopAttachmentSupport`（同）、`FilerIgnoreRules`（隐藏白名单入口粒度）；测试与文档中的字面量保留（契约锁值）；harness 侧 TaskTalent 自持 `.files/task` 约定不跨仓抽常量（两仓同步靠 javadoc 互指，见类注释）；定向回归 23 例全绿（原 19 例 + PackageBoundaryTest 4 例，确认 api→workspace 方向不踩包边界）
 
 ### v2026.11.3
 

@@ -26,6 +26,8 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
+import org.noear.solon.codecli.workspace.WorkspaceFiles;
+
 /** Desktop chat attachment validation and workspace storage. */
 final class DesktopAttachmentSupport {
     static final int MAX_ATTACHMENTS = 10;
@@ -75,7 +77,7 @@ final class DesktopAttachmentSupport {
         Path workspaceRoot = workspace.toAbsolutePath().normalize();
         Files.createDirectories(workspaceRoot);
         Path realWorkspace = workspaceRoot.toRealPath();
-        Path uploadDir = realWorkspace.resolve(".files/uploads");
+        Path uploadDir = realWorkspace.resolve(WorkspaceFiles.UPLOADS_DIR);
         if (Files.exists(uploadDir) && Files.isSymbolicLink(uploadDir)) {
             throw new IllegalArgumentException("附件目录不能是符号链接");
         }
@@ -93,7 +95,7 @@ final class DesktopAttachmentSupport {
             throw new IllegalArgumentException("附件目标不能是符号链接");
         }
         Files.write(destination, bytes);
-        return ".files/uploads/" + safeName;
+        return WorkspaceFiles.UPLOADS_DIR + "/" + safeName;
     }
 
     static boolean isMultimodalImage(WsMessage.WsAttachment attachment) {
