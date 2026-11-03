@@ -60,9 +60,9 @@ def default_out_path(skin_root: Path, out: Path | None) -> Path:
         name = str(meta.get("name") or name)
     except Exception:  # noqa: BLE001
         pass
-    # Align with Web attachments dir (.uploads is gitignored).
+    # Align with Web attachments dir (.files/uploads is gitignored).
     # Stamp hour so re-generate does not clobber the previous zip / install link.
-    return Path.cwd() / ".uploads" / default_zip_basename(name)
+    return Path.cwd() / ".files/uploads" / default_zip_basename(name)
 
 
 def should_include(rel: str, path: Path) -> bool:
@@ -113,7 +113,7 @@ def main() -> int:
     parser.add_argument(
         "-o",
         "--output",
-        help="output zip path (default: .uploads/{name}-yyyyMMddHH.zip)",
+        help="output zip path (default: .files/uploads/{name}-yyyyMMddHH.zip)",
     )
     parser.add_argument("--skip-validate", action="store_true", help="skip validation before pack")
     args = parser.parse_args()

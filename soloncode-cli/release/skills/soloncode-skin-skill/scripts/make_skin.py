@@ -43,7 +43,7 @@ def main() -> int:
         "-o",
         "--output",
         default=None,
-        help="output zip path (default: .uploads/{name}-yyyyMMddHH.zip)",
+        help="output zip path (default: .files/uploads/{name}-yyyyMMddHH.zip)",
     )
     parser.add_argument("--work-dir", default=None, help="keep working dir (default: temp)")
     parser.add_argument("--no-preview", action="store_true", help="skip preview.png (default: generate)")
@@ -58,11 +58,11 @@ def main() -> int:
     name = args.name.strip()
     recipe = (args.recipe or "b").strip().lower()
     theme = (args.theme or "aurora").strip().lower()
-    # Default under .uploads/ with hour stamp to avoid clobbering previous builds.
+    # Default under .files/uploads/ with hour stamp to avoid clobbering previous builds.
     out_zip = (
         Path(args.output).expanduser().resolve()
         if args.output
-        else (Path.cwd() / ".uploads" / default_zip_basename(name)).resolve()
+        else (Path.cwd() / ".files/uploads" / default_zip_basename(name)).resolve()
     )
     out_zip.parent.mkdir(parents=True, exist_ok=True)
     if out_zip.exists() and not args.force:

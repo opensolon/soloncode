@@ -4,7 +4,7 @@
 
 ```bash
 # 在目标 workspace 下执行
-# 默认 zip：.uploads/{name}-yyyyMMddHH.zip（如 aurora-2026071715.zip）
+# 默认 zip：.files/uploads/{name}-yyyyMMddHH.zip（如 aurora-2026071715.zip）
 python3 scripts/make_skin.py \
   --name aurora --recipe c --theme aurora \
   --with-assets --force
@@ -15,7 +15,7 @@ python3 scripts/make_skin.py \
 ```bash
 python3 scripts/scaffold_skin.py --name aurora --recipe b --theme ocean --out /tmp/aurora-skin --preview
 python3 scripts/validate_skin.py /tmp/aurora-skin
-# 不传 -o 时默认 .uploads/{name}-yyyyMMddHH.zip
+# 不传 -o 时默认 .files/uploads/{name}-yyyyMMddHH.zip
 python3 scripts/pack_skin.py /tmp/aurora-skin
 ```
 
