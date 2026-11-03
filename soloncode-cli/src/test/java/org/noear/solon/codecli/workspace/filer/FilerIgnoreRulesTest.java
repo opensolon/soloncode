@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>核心不变式：<b>文件树里能展示的节点，必须也在文件监听范围内</b>。
  * 两侧规则一旦分叉，就会出现「树里看得见、但改动永远不推送」的静默不刷新
- * （历史上 venv/vendor 与 .uploads 就是这么漏的）。</p>
+ * （历史上 venv/vendor 与 .files 就是这么漏的）。</p>
  */
 public class FilerIgnoreRulesTest {
 
@@ -58,7 +58,7 @@ public class FilerIgnoreRulesTest {
 
     @Test
     public void testHiddenWhitelistAndNormalNames() {
-        assertFalse(FilerIgnoreRules.isIgnoredName(".uploads"), ".uploads is whitelisted for directories");
+        assertFalse(FilerIgnoreRules.isIgnoredName(".files"), ".files is whitelisted for directories");
         assertTrue(FilerIgnoreRules.isIgnoredName(".env"), "other dot-prefixed entries stay ignored");
 
         assertFalse(FilerIgnoreRules.isIgnoredName("src"));
@@ -67,7 +67,7 @@ public class FilerIgnoreRulesTest {
         assertFalse(FilerIgnoreRules.isIgnoredName(null), "null name should not be ignored");
 
         // 白名单只对目录生效：同名普通文件仍按隐藏文件处理
-        assertTrue(FilerIgnoreRules.isIgnoredName(".uploads", false));
+        assertTrue(FilerIgnoreRules.isIgnoredName(".files", false));
     }
 
     @Test
@@ -77,8 +77,8 @@ public class FilerIgnoreRulesTest {
         assertTrue(FilerIgnoreRules.isIgnoredPath(Paths.get("web/vendor/jquery.js")));
 
         assertFalse(FilerIgnoreRules.isIgnoredPath(Paths.get("src/main/java/App.java")));
-        assertFalse(FilerIgnoreRules.isIgnoredPath(Paths.get(".uploads/photo.png")),
-                ".uploads is shown in the tree, so it must be watched as well");
+        assertFalse(FilerIgnoreRules.isIgnoredPath(Paths.get(".files/uploads/photo.png")),
+                ".files is shown in the tree, so it must be watched as well");
         assertFalse(FilerIgnoreRules.isIgnoredPath(null));
     }
 
@@ -92,7 +92,7 @@ public class FilerIgnoreRulesTest {
                 .getDeclaredMethod("isSkippedName", File.class);
         isSkippedName.setAccessible(true);
 
-        String[] dirs = {"venv", "vendor", "node_modules", "target", ".git", ".uploads", "src"};
+        String[] dirs = {"venv", "vendor", "node_modules", "target", ".git", ".files", "src"};
         for (String name : dirs) {
             Path dir = tempRoot.resolve(name);
             Files.createDirectories(dir);
@@ -137,7 +137,7 @@ public class FilerIgnoreRulesTest {
         Set<String> visibleHidden = FilerIgnoreRules.resolveVisibleHidden(allow, excluded);
 
         assertTrue(visibleHidden.contains(".venv"), ".venv must be whitelisted to be actually visible");
-        assertTrue(visibleHidden.contains(".uploads"), "default whitelist entries are kept");
+        assertTrue(visibleHidden.contains(".files"), "default whitelist entries are kept");
     }
 
     /**
@@ -145,14 +145,14 @@ public class FilerIgnoreRulesTest {
      */
     @Test
     public void testExtraExcludesAndWinsOverAllow() {
-        Set<String> allow = FilerIgnoreRules.parseNames(".uploads,venv");
-        Set<String> extra = FilerIgnoreRules.parseNames("dist,.uploads");
+        Set<String> allow = FilerIgnoreRules.parseNames(".files,venv");
+        Set<String> extra = FilerIgnoreRules.parseNames("dist,.files");
         Set<String> excluded = FilerIgnoreRules.resolveExcluded(allow, extra);
         Set<String> visibleHidden = FilerIgnoreRules.resolveVisibleHidden(allow, excluded);
 
         assertTrue(excluded.contains("dist"), "extra should be excluded");
-        assertTrue(excluded.contains(".uploads"), "extra wins over allow");
-        assertFalse(visibleHidden.contains(".uploads"), "excluded dirs must never stay in the visible whitelist");
+        assertTrue(excluded.contains(".files"), "extra wins over allow");
+        assertFalse(visibleHidden.contains(".files"), "excluded dirs must never stay in the visible whitelist");
         assertFalse(excluded.contains("venv"));
     }
 

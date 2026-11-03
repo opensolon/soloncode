@@ -13,7 +13,7 @@ import java.util.Set;
  * 两份不一致会造成确定性的「树里看得见、但改动永远不推送」：</p>
  * <ul>
  *   <li>{@code venv}/{@code vendor}：展示侧不排除，监听侧排除</li>
- *   <li>{@code .uploads}：展示侧白名单放行，监听侧按「点号开头」一律跳过</li>
+ *   <li>{@code .files}：展示侧白名单放行，监听侧按「点号开头」一律跳过</li>
  * </ul>
  *
  * <p>因此两侧统一收口到本类：排除表取并集（依赖目录一律不展示也不监听），
@@ -53,9 +53,9 @@ public final class FilerIgnoreRules {
             "target", "build"
     };
 
-    /** 隐藏目录白名单：以点号开头，但需要展示且需要监听 */
+    /** 隐藏目录白名单：以点号开头，但需要展示且需要监听（workspace 级文件根，附件落 .files/uploads） */
     private static final String[] DEFAULT_VISIBLE_HIDDEN_DIRS = {
-            ".uploads"
+            ".files"
     };
 
     private static final Set<String> EXCLUDED_DIRS;
@@ -132,7 +132,7 @@ public final class FilerIgnoreRules {
      * 相对路径是否忽略：任一路径段命中忽略规则即忽略
      *
      * <p>中间段必然是目录，末段类型未知（删除后无法 stat），按目录规则判断，
-     * 使 {@code .uploads} 这类白名单目录自身的创建/删除事件也能通过。</p>
+     * 使 {@code .files} 这类白名单目录自身的创建/删除事件也能通过。</p>
      *
      * @param relative 相对于根的路径
      */

@@ -249,7 +249,7 @@
 
     /**
      * 从工作区相对路径一键安装（聊天链接 / 技能输出协议）。
-     * @param {string} relativeFile 相对 workspace 的 zip 路径，推荐 .uploads/aurora.zip
+     * @param {string} relativeFile 相对 workspace 的 zip 路径，推荐 .files/uploads/aurora.zip
      */
     function installSkinFromPath(relativeFile) {
         if (!relativeFile) return;

@@ -25,7 +25,7 @@ class DesktopAttachmentSupportTest {
         byte[] bytes = DesktopAttachmentSupport.decode(attachment);
         String relativePath = DesktopAttachmentSupport.save(workspace, attachment.getName(), bytes);
 
-        assertEquals(".uploads/notes.txt", relativePath);
+        assertEquals(".files/uploads/notes.txt", relativePath);
         assertArrayEquals("hello".getBytes(StandardCharsets.UTF_8),
                 Files.readAllBytes(workspace.resolve(relativePath)));
     }

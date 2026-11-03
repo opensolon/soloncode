@@ -75,7 +75,7 @@ final class DesktopAttachmentSupport {
         Path workspaceRoot = workspace.toAbsolutePath().normalize();
         Files.createDirectories(workspaceRoot);
         Path realWorkspace = workspaceRoot.toRealPath();
-        Path uploadDir = realWorkspace.resolve(".uploads");
+        Path uploadDir = realWorkspace.resolve(".files/uploads");
         if (Files.exists(uploadDir) && Files.isSymbolicLink(uploadDir)) {
             throw new IllegalArgumentException("附件目录不能是符号链接");
         }
@@ -93,7 +93,7 @@ final class DesktopAttachmentSupport {
             throw new IllegalArgumentException("附件目标不能是符号链接");
         }
         Files.write(destination, bytes);
-        return ".uploads/" + safeName;
+        return ".files/uploads/" + safeName;
     }
 
     static boolean isMultimodalImage(WsMessage.WsAttachment attachment) {

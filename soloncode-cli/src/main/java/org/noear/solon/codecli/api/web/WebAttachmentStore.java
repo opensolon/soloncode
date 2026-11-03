@@ -31,7 +31,7 @@ import java.util.Set;
 /**
  * Web 端附件落盘与装配。
  *
- * <p>把上传附件保存到工作区 {@code .uploads} 目录（含路径穿越校验），
+ * <p>把上传附件保存到工作区 {@code .files/uploads} 目录（含路径穿越校验），
  * 图片转 {@link ImageBlock} 作为多模态输入，其余作为文件引用交给 Agent 自行读取。</p>
  *
  * <p>落盘职责在宿主侧：各端校验规则不同（桌面端另有符号链接与总量上限），
@@ -55,7 +55,7 @@ public final class WebAttachmentStore {
      * <p>声明类型为 image 且扩展名属于图片集合时转内容块（二者缺一即按文件处理，与既有口径一致）；
      * 其余按文件引用处理，以 {@code [附件: path]} 前缀告知模型。</p>
      *
-     * @param workspaceRoot   工作区根目录（{@code .uploads} 的父目录）
+     * @param workspaceRoot   工作区根目录（附件落其 {@code .files/uploads} 子目录）
      * @param attachments     上传的文件数组（可为 null）
      * @param attachmentTypes 附件类型数组，与 attachments 一一对应（可为 null）
      */
@@ -97,7 +97,7 @@ public final class WebAttachmentStore {
                     ? attachmentTypes[i] : null;
 
             try {
-                Path uploadDir = root.resolve(".uploads").normalize();
+                Path uploadDir = root.resolve(".files/uploads").normalize();
                 Files.createDirectories(uploadDir);
                 Path savePath = uploadDir.resolve(fileName).normalize();
                 if (!savePath.startsWith(root)) {
@@ -107,7 +107,7 @@ public final class WebAttachmentStore {
                 byte[] bytes = IoUtil.transferToBytes(attachment.getContent());
                 Files.write(savePath, bytes);
 
-                String relative = ".uploads/" + fileName;
+                String relative = ".files/uploads/" + fileName;
                 if (isImageAttachment(ext, declaredType)) {
                     result.media(ImageBlock.ofBase64(Base64.getEncoder().encodeToString(bytes),
                             extensionToMime(ext)).filePath(relative));

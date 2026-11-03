@@ -47,9 +47,9 @@ class WebAttachmentStoreTest {
 
         assertFalse(result.hasMedia());
         assertEquals(1, result.getReferences().size());
-        assertEquals(".uploads/notes.txt", result.getReferences().get(0));
-        assertTrue(Files.exists(workspace.resolve(".uploads/notes.txt")));
-        assertEquals("[附件: .uploads/notes.txt]\n看下这个", result.withFilePrefix("看下这个"));
+        assertEquals(".files/uploads/notes.txt", result.getReferences().get(0));
+        assertTrue(Files.exists(workspace.resolve(".files/uploads/notes.txt")));
+        assertEquals("[附件: .files/uploads/notes.txt]\n看下这个", result.withFilePrefix("看下这个"));
     }
 
     @Test
@@ -61,7 +61,7 @@ class WebAttachmentStoreTest {
         assertTrue(result.getMediaBlocks().get(0) instanceof ImageBlock);
         assertEquals("image/png", result.getMediaBlocks().get(0).getMimeType());
         //已落盘：带上工作区相对路径供历史标签使用
-        assertEquals(".uploads/pic.png", result.getMediaBlocks().get(0).getFilePath());
+        assertEquals(".files/uploads/pic.png", result.getMediaBlocks().get(0).getFilePath());
         assertTrue(result.getReferences().isEmpty());
         assertTrue(result.isAllImages());
         //图片不进文本前缀
@@ -86,7 +86,7 @@ class WebAttachmentStoreTest {
 
         assertFalse(result.hasMedia());
         assertEquals(1, result.getReferences().size());
-        assertEquals(".uploads/voice.mp3", result.getReferences().get(0));
+        assertEquals(".files/uploads/voice.mp3", result.getReferences().get(0));
     }
 
     @Test
@@ -95,7 +95,7 @@ class WebAttachmentStoreTest {
                 files(upload("p.jpg", "x")), types("image"));
 
         assertEquals("image/jpeg", jpg.getMediaBlocks().get(0).getMimeType());
-        assertEquals(".uploads/p.jpg", jpg.getMediaBlocks().get(0).getFilePath());
+        assertEquals(".files/uploads/p.jpg", jpg.getMediaBlocks().get(0).getFilePath());
     }
 
     @Test
@@ -105,7 +105,7 @@ class WebAttachmentStoreTest {
                 types(null, null, null));
 
         assertEquals(1, result.getReferences().size());
-        assertEquals(".uploads/ok.txt", result.getReferences().get(0));
+        assertEquals(".files/uploads/ok.txt", result.getReferences().get(0));
         assertFalse(Files.exists(workspace.getParent().resolve("evil.txt")));
     }
 
