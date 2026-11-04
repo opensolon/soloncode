@@ -404,7 +404,7 @@ class WebChatInputHandler {
                 }
 
                 // 普通消息忙态默认「插话」（与 web 前端流式中 Enter 的默认一致）：把补充注入正在运行的任务，
-                // 由 SteerInterceptor 在下一个采样边界消费。插不进去（任务恰在切换/尚未进入推理边界、邮箱已满等）
+                // 由插话拦截器（SteerInterceptor）在下一个采样边界消费。插不进去（任务恰在切换/尚未进入推理边界、邮箱已满等）
                 // 或输入是斜杠命令时，再降级为统一持久化排队，确保消息不丢。
                 if (input != null && !input.startsWith("/")) {
                     SteerResult steerResult = steer(wsContext).steer(session, null, null, input,

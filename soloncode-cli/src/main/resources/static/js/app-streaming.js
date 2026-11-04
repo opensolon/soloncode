@@ -343,7 +343,7 @@ function sendQueuedItem(sess, item) {
 /* ===== 运行中插话（steer） =====
  * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering）。
  * 请求发出即进入 submitting，确保 Stop/清空不会漏掉尚未返回的请求；后端接受后转 pending，
- * 注入真正发生在下一个推理回合（SteerInterceptor.onReasonStart）。 */
+ * 注入真正发生在下一个推理回合（插话拦截器 onReasonStart）。 */
 function steerMessage(sess, text) {
     if (!sess || !text) return;
     if (!isChatInputWithinLimit(text, true)) return;

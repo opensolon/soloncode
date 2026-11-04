@@ -6,7 +6,7 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.harness.session.steer.SteerCommand;
 import org.noear.solon.ai.harness.input.BufferedCommandContext;
 import org.noear.solon.ai.harness.input.InputOrigin;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.session.steer.SteerHelper;
 
 import java.util.Collections;
 
@@ -32,14 +32,14 @@ class SteerCommandTest {
     @Test
     void steeredAgainstActiveRunDeliversToBox() {
         AgentSession session = InMemoryAgentSession.of();
-        session.attrs().put(SteerInterceptor.ATTR_ACTIVE_RUN_ID, "run-1");
+        session.attrs().put(SteerHelper.ATTR_ACTIVE_RUN_ID, "run-1");
 
         BufferedCommandContext ctx = context(session);
         command.execute(null, ctx, IM_ORIGIN);
 
         assertNull(ctx.getAgentTaskIntent(), "插话是投递，不是新一轮任务");
-        assertEquals(1, SteerInterceptor.steerBox(session).size());
-        assertEquals("补充要求", SteerInterceptor.steerBox(session).peek().getText());
+        assertEquals(1, SteerHelper.steerBox(session).size());
+        assertEquals("补充要求", SteerHelper.steerBox(session).peek().getText());
         assertTrue(ctx.getCommandOutput().contains("已插话"));
     }
 
@@ -51,7 +51,7 @@ class SteerCommandTest {
         command.execute(null, ctx, IM_ORIGIN);
 
         assertNull(ctx.getAgentTaskIntent(), "空闲态不代为启动任务");
-        assertNull(SteerInterceptor.steerBox(session), "空闲态不代为排队");
+        assertNull(SteerHelper.steerBox(session), "空闲态不代为排队");
         assertTrue(ctx.getCommandOutput().contains("当前无正在执行的任务可插话"));
     }
 
@@ -64,23 +64,23 @@ class SteerCommandTest {
         command.execute(null, ctx, IM_ORIGIN);
 
         assertNull(ctx.getAgentTaskIntent());
-        assertNull(SteerInterceptor.steerBox(session));
+        assertNull(SteerHelper.steerBox(session));
         assertTrue(ctx.getCommandOutput().contains("当前无正在执行的任务可插话"));
     }
 
     @Test
     void fullBoxReportsLimitWithoutQueueing() {
         AgentSession session = InMemoryAgentSession.of();
-        session.attrs().put(SteerInterceptor.ATTR_ACTIVE_RUN_ID, "run-1");
-        for (int i = 0; i < SteerInterceptor.MAX_BOX_SIZE; i++) {
-            assertTrue(SteerInterceptor.steer(session, "run-1", "seed-" + i, "种子" + i, InputOrigin.channel("Feishu"), null).isSteered());
+        session.attrs().put(SteerHelper.ATTR_ACTIVE_RUN_ID, "run-1");
+        for (int i = 0; i < SteerHelper.MAX_BOX_SIZE; i++) {
+            assertTrue(SteerHelper.steer(session, "run-1", "seed-" + i, "种子" + i, InputOrigin.channel("Feishu"), null).isSteered());
         }
 
         BufferedCommandContext ctx = context(session);
         command.execute(null, ctx, IM_ORIGIN);
 
         assertNull(ctx.getAgentTaskIntent());
-        assertEquals(SteerInterceptor.MAX_BOX_SIZE, SteerInterceptor.steerBox(session).size());
+        assertEquals(SteerHelper.MAX_BOX_SIZE, SteerHelper.steerBox(session).size());
         assertTrue(ctx.getCommandOutput().contains("插话邮箱已满（上限 5 条），可用 /queue 排队"));
     }
 }

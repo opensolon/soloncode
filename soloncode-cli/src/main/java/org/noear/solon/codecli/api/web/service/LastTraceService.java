@@ -64,7 +64,7 @@ import java.util.Map;
  * 但<b>思考仍需回放</b>（历史只存正文投影，思考会丢）。</p>
  *
  * <h3>插话（steer）</h3>
- * <p>运行中插话是零持久化的（{@link SteerInterceptor} 不写 ndjson），它唯一的留存处就是
+ * <p>运行中插话是零持久化的（{@link SteerHelper} 不写 ndjson），它唯一的留存处就是
  * WorkingMemory 里那条带 {@code source=steer} 的 UserMessage。若不回放，刷新后用户会看到
  * 「AI 忽然改了方向」却找不到自己那句纠偏。</p>
  *

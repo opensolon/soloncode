@@ -486,7 +486,7 @@ public class ChatWebController extends AbstractWebController {
     /**
      * 运行中插话（steer）：向正在运行的会话任务插入一条用户消息。
      *
-     * <p>消息存入会话级邮箱（transient，不落快照），由 SteerInterceptor 在下一个推理回合
+ * <p>消息存入会话级邮箱（transient，不落快照），由 SteerHelper 在下一个推理回合
      * 开始时（onReasonStart 采样边界）注入工作记忆，不打断进行中的模型流与工具调用。
      * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering 三件套）。</p>
      *
