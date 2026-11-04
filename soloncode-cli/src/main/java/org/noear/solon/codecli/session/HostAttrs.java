@@ -50,4 +50,23 @@ public final class HostAttrs {
      * 都要读写它。</p>
      */
     public static final String ATTR_IM_TERMINAL_SENT = "im.terminal.sent";
+
+    /**
+     * 本轮 Web 流是否已向客户端发送过 {@code done}（防 interrupt + doFinally 双发）。
+     *
+     * <p>此前为裸键 {@code "streamDoneSent"}：既无前缀（与所有约定键风格不一致），
+     * 也没登记，宿主换一处实现就会再造一个同义键。</p>
+     *
+     * @since 4.2.2
+     */
+    public static final String ATTR_STREAM_DONE_SENT = "web.streamDoneSent";
+
+    /**
+     * 桌面端本轮运行模式（{@code default} / {@code plan}）。
+     *
+     * <p>此前为裸键 {@code "_desktop_run_mode"}，语义本就合法（桌面私有），此处只做登记与规范命名。</p>
+     *
+     * @since 4.2.2
+     */
+    public static final String ATTR_DESKTOP_RUN_MODE = "desktop.runMode";
 }

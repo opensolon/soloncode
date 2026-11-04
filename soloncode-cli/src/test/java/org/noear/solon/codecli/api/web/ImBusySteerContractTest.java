@@ -88,6 +88,92 @@ class ImBusySteerContractTest {
                 "插话回执必须经统一出口 signalOriginChannel 只投来源端");
     }
 
+    /** HITL 挂起时拒新输入：该判定必须早于忙态分派，否则普通输入会被插话/入队而不是提示先审批。 */
+    @Test
+    void pendingHitlRejectsBeforeBusyDispatch() throws IOException {
+        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
+        String safeInput = source.substring(source.indexOf("boolean safeChatInput(WorkspaceContext"));
+
+        int hitl = safeInput.indexOf("SessionActivity.hasPendingHitl(session)");
+        int busy = safeInput.indexOf("if (SessionActivity.isBusy(session))");
+        assertTrue(hitl > 0 && busy > hitl,
+                "HITL 挂起判定必须排在忙态分支之前，否则新输入会被插话/排队而非提示先处理审批");
+        assertTrue(safeInput.contains("ImStatus.HITL_PENDING"),
+                "拒收必须给来源端一个可区分的回执（HITL_PENDING ≠ 队列满）");
+    }
+
+    /**
+     * 审批决策、队列派发、/resume、忙态旁路命令四类不得被 HITL 拦截（否则审批本身都无法提交）。
+     *
+     * <p>两个入口必须共用同一份豁免判定：此前 onChatInput 写了四项、safeChatInput 只写了一项，
+     * IM 侧发 /resume 或点审批会被当成「请先处理审批」拒掉——而这两者恰恰是处理审批的手段。</p>
+     */
+    @Test
+    void hitlGateExemptsDecisionDispatchAndBypassCommands() throws IOException {
+        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
+
+        int methodStart = source.indexOf("private static boolean isHitlExempt(");
+        assertTrue(methodStart > 0, "豁免口径必须收敛为一个共用方法（isHitlExempt）");
+        String method = source.substring(methodStart);
+        method = method.substring(0, method.indexOf("\n    }"));
+
+        assertTrue(method.contains("Assert.isNotEmpty(hitlAction)"),
+                "审批决策本身必须豁免，否则审批永远提不了");
+        assertTrue(method.contains("/resume"), "显式续流必须豁免，它就是处理审批的手段");
+        assertTrue(method.contains("isQueueDispatch"),
+                "队列派发的一轮已过 isNotOccupied 闸门，不能二次拦截");
+        assertTrue(method.contains("isBusyBypassCommand"),
+                "忙态旁路命令由命令自描述决定，闸门不得否定它");
+
+        // 两个入口都必须调用它，不能各写一份口径
+        assertTrue(source.indexOf("isHitlExempt(", methodStart + method.length()) > 0,
+                "onChatInput 必须调用共用的豁免判定");
+        int callCount = source.split("isHitlExempt\\(", -1).length - 1;
+        assertTrue(callCount >= 3, "两个入口都应调用 isHitlExempt（定义 1 处 + 调用至少 2 处），实际 " + callCount);
+    }
+
+    /**
+     * 回归：HITL 拒收分支必须补发终态包。
+     *
+     * <p>前端在 POST 之前就把 {@code isStreaming} 置真，只有 {@code system.done} 会复位；
+     * {@code system.error} 只追加气泡不复位。该分支未占位（ticket 为 NONE），
+     * finally 的兜底不会触发。漏发 done 会让输入面板永久停在流式态：停止按钮常亮、
+     * 占位符不消失，后续所有输入被当作 steer 插话，用户只能刷新页面。</p>
+     */
+    @Test
+    void hitlRejectBranchEmitsTerminalPacket() throws IOException {
+        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
+        // 拒收分支在 onChatInput（有 WS 事件出口的那个），不是 IM 用的 safeChatInput
+        String onInput = source.substring(source.indexOf("void onChatInput(WorkspaceContext"));
+        onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
+
+        int hitl = onInput.indexOf("SessionActivity.hasPendingHitl(session)");
+        int errorEmit = onInput.indexOf("hitl_pending", hitl);
+        int doneEmit = onInput.indexOf("emitDoneGuarded", errorEmit);
+        int busyDispatch = onInput.indexOf("SessionActivity.isBusy(session) ||", hitl);
+
+        assertTrue(errorEmit > hitl, "HITL 拒收必须先给出可读错误");
+        assertTrue(doneEmit > errorEmit,
+                "拒收分支必须在 return 前发终态包（emitDoneGuarded），否则前端 isStreaming 永久为真");
+        assertTrue(doneEmit < busyDispatch,
+                "终态包必须落在拒收分支内，不能落到后面的忙态分支里");
+    }
+
+    /** 新增的 im.hitlPending 必须补齐全部语言包与 FALLBACK，避免局部回退成中文。 */
+    @Test
+    void hitlPendingKeyExistsInEveryLocaleBundle() throws IOException {
+        assertTrue(resourceText("/i18n/im-messages.properties").contains("im.hitlPending="),
+                "默认语言包缺少 im.hitlPending");
+        for (String locale : LOCALES) {
+            String text = resourceText("/i18n/im-messages_" + locale + ".properties");
+            assertNotNull(text);
+            assertTrue(text.contains("im.hitlPending="),
+                    "语言包 im-messages_" + locale + ".properties 缺少 im.hitlPending");
+        }
+        assertNotNull(ImMessages.HITL_PENDING());
+        assertEquals(ImMessages.HITL_PENDING(), ImMessages.textOf(ImStatus.HITL_PENDING, null));
+    }
+
     /** 新增的 im.steered 必须补齐全部已存在的前端语言包，避免单语言回退成默认中文。 */
     @Test
     void steeredKeyExistsInEveryLocaleBundle() throws IOException {

@@ -1396,5 +1396,6 @@
   "sidebar.wsPickFolder": "Browse local folder",
   "sidebar.wsPickHeadless": "No desktop environment available; please type the path manually",
   "sidebar.wsPickBusy": "A folder picker is already open; finish or cancel it first",
-  "sidebar.wsPickTimeout": "Directory selection timed out or failed; please retry"
+  "sidebar.wsPickTimeout": "Directory selection timed out or failed; please retry",
+  "streaming.queuePausedHitl": "Awaiting approval — queue paused"
 }

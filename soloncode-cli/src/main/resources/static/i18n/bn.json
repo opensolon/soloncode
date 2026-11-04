@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "{count}টি আনপিন করা কথোপকথন খালি করবেন? চলমান কথোপকথন থেকে যাবে। এই কাজ অগ্রাহ্য করা যাবে না।",
   "history.clearFailed": "কথোপকথন খালি করতে ব্যর্থ, আবার চেষ্টা করুন",
   "history.clearSuccess": "{count}টি কথোপকথন খালি করা হয়েছে",
-  "history.clearTitle": "আনপিন করা কথোপকথন খালি করুন"
+  "history.clearTitle": "আনপিন করা কথোপকথন খালি করুন",
+  "streaming.queuePausedHitl": "অনুমোদনের অপেক্ষায় — সারি বিরত"
 }

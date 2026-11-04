@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "고정되지 않은 {count}개의 대화를 지우시겠습니까? 실행 중인 대화는 유지됩니다. 이 작업은 되돌릴 수 없습니다.",
   "history.clearFailed": "대화 지우기 실패, 다시 시도하세요",
   "history.clearSuccess": "{count}개의 대화를 지웠습니다",
-  "history.clearTitle": "고정되지 않은 대화 지우기"
+  "history.clearTitle": "고정되지 않은 대화 지우기",
+  "streaming.queuePausedHitl": "승인 대기 중 — 대기열 일시정지"
 }

@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "確定清空 {count} 個未置頂對話嗎？正在運行的對話會保留，此操作不可恢復。",
   "history.clearFailed": "清空對話失敗，請重試",
   "history.clearSuccess": "已清空 {count} 個對話",
-  "history.clearTitle": "清空未置頂對話"
+  "history.clearTitle": "清空未置頂對話",
+  "streaming.queuePausedHitl": "待審批中，佇列已暫停"
 }

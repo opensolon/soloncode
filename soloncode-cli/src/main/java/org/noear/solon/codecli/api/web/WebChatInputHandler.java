@@ -24,6 +24,7 @@ import org.noear.solon.ai.harness.session.InputGate;
 import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
@@ -35,7 +36,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
-import org.noear.solon.ai.harness.session.queue.QueueClaim;
+import org.noear.solon.ai.harness.session.queue.QueueDispatch;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
@@ -98,6 +99,25 @@ class WebChatInputHandler {
             synchronized (session.attrs()) {
                 boolean dispatch = WebQueueDispatcher.isQueueDispatch(session);
                 boolean busyCommand = wsContext.getEngine().isBusyBypassCommand(input);
+
+                // HITL 挂起时拒新输入：审批未决策前开新回合会与挂起 trace 并存，
+                // 用户点「同意」时续流被运行态认领拒绝（“点了没反应”），或两条流交叉写快照。
+                if (SessionActivity.hasPendingHitl(session) && !isHitlExempt(wsContext, session, input, hitlAction)) {
+                    HitlCard next = HitlCard.next(session);
+                    String toolName = next == null ? null : next.getToolName();
+                    gate.emitToClient(wsContext, sessionId, WebEvent.ofError("hitl_pending",
+                            toolName == null ? "请先处理待审批操作" : "请先处理待审批操作：" + toolName));
+                    // 来源端（IM）也要知道本轮未受理，否则只能盲等。
+                    gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.HITL_PENDING,
+                            null, source, sourceUserId, replyTarget, messageId);
+                    // 必须有终态包：前端在 POST 之前就把 isStreaming 置真，只有 system.done 会复位，
+                    // system.error 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态
+                    // （停止按钮常亮、占位符不消失），后续输入全部被当成 steer 插话，只能刷新页面。
+                    // 此处未占位（ticket 为 NONE），finally 的兜底不会触发，故必须显式补发。
+                    gate.getEventPublisher().emitDoneGuarded(wsContext, session);
+                    return;
+                }
+
                 if ((SessionActivity.isBusy(session) || queue(wsContext).pendingSize(session) > 0)
                         && !dispatch && !busyCommand) {
                     if (attachments != null && attachments.length > 0) {
@@ -123,9 +143,9 @@ class WebChatInputHandler {
                     ticket = InputGate.tryAcquire(session);
                 }
                 if (!sideCommand) {
-                    QueueClaim claim = dispatch ? WebQueueDispatcher.currentClaim(session) : null;
-                    if (claim != null && claim.getItem() != null) {
-                        setReplyRoute(session, claim.getItem().getOrigin());
+                    QueueDispatch turn = dispatch ? QueueDispatch.current(session) : null;
+                    if (turn != null && turn.getItem() != null) {
+                        setReplyRoute(session, turn.getOrigin());
                     } else {
                         setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                     }
@@ -355,6 +375,30 @@ class WebChatInputHandler {
     }
 
     /**
+     * HITL 挂起闸门的豁免判定（两个入口共用）。
+     *
+     * <p><b>为何必须收敛成一个方法</b>：onChatInput（Web）与 safeChatInput（IM）
+     * 对同一道闸门必须给出同一套口径。此前两边各写一遍，IM 侧漏了「审批决策」与「/resume」
+     * 两项——用户在 IM 里点同意或用 /resume 续流都会被当成「请先处理审批」拒掉，而这两者
+     * 恰恰是处理审批的手段。</p>
+     *
+     * <p>四类豁免：</p>
+     * <ul>
+     *   <li>审批决策本身（{@code hitlAction} 非空）——它就是闸门要引导用户做的事；</li>
+     *   <li>{@code /resume}——显式要求把挂起的任务继续跑；</li>
+     *   <li>队列派发的一轮——已在派发前通过 {@code isNotOccupied} 闸门，不能二次拦截；</li>
+     *   <li>忙态旁路命令——由命令自描述 {@code runnableWhenBusy} 决定。</li>
+     * </ul>
+     */
+    private static boolean isHitlExempt(WorkspaceContext wsContext, AgentSession session,
+                                        String input, String hitlAction) {
+        if (Assert.isNotEmpty(hitlAction)) return true;
+        if (input != null && "/resume".equals(input.trim())) return true;
+        if (WebQueueDispatcher.isQueueDispatch(session)) return true;
+        return wsContext.getEngine().isBusyBypassCommand(input);
+    }
+
+    /**
      * Web/IM 命令上下文工厂：终端能力为桌面/Web 默认值（无终端），
      * 来源身份与终端能力均由引擎按输入统一读取，无需在此注入。
      * <p>
@@ -375,6 +419,19 @@ class WebChatInputHandler {
                           Runnable acceptedHook, String sourceUserId, String replyTarget, String messageId) {
         try {
             AgentSession session = wsContext.getEngine().getSession(sessionId);
+
+            // HITL 挂起时拒新输入（未决策前开新回合会与挂起 trace 冲突）。
+            // 这里提前拦截并返回 false：调用方（IM 通道）据此告知用户未受理，
+            // 而不是等到 onChatInput 才由内部推一条错误事件。
+            // 豁免口径必须与 onChatInput 一致（共用 isHitlExempt），否则 IM 侧的
+            // 审批决策 / /resume 会在这一层就被拦死。
+            if (input != null && SessionActivity.hasPendingHitl(session)
+                    && !isHitlExempt(wsContext, session, input, null)) {
+                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.HITL_PENDING,
+                        null, source, sourceUserId, replyTarget, messageId);
+                return false;
+            }
+
             if (SessionActivity.isBusy(session)) {
                 // 裸斜杠（如 "/"）无命令名：跳过并告警，不进入穿透判定也不排队（与收敛前口径一致）
                 if (input != null && input.trim().startsWith("/") && input.trim().length() == 1) {

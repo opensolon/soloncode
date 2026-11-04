@@ -48,5 +48,9 @@ public enum ImStatus {
     /**
      * 入队失败（队列已满等），本轮未被接收
      */
-    REJECTED
+    REJECTED,
+    /**
+     * 有待审批的操作未处理，本轮未被接收（先处理审批再发）
+     */
+    HITL_PENDING
 }

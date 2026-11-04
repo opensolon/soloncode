@@ -645,7 +645,7 @@ public class CliShell implements Runnable {
         Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
         // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
         if (totalTokens != null) {
-            session.attrs().put("_loop_last_total_tokens", totalTokens);
+            ExecutionBridge.reportRoundTokens(session, totalTokens);
         }
 
         if (reasonEndEvent.hasMeta(TaskTalent.TOOL_MULTITASK)) {
@@ -675,7 +675,7 @@ public class CliShell implements Runnable {
         Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
         // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
         if (totalTokens != null) {
-            session.attrs().put("_loop_last_total_tokens", totalTokens);
+            ExecutionBridge.reportRoundTokens(session, totalTokens);
         }
 
         // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。

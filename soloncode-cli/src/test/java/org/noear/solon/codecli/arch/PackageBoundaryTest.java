@@ -242,6 +242,71 @@ class PackageBoundaryTest {
         assertTrue(violations.isEmpty(), "artifact 不得依赖 web 层：" + violations);
     }
 
+    /**
+     * 宿主不得自行维护「队列派发」状态（本轮封装改造的最终一步）。
+     *
+     * <p>异步队列任务必须回答两件事：本轮是否队列派发、该用哪个 claim 收口。
+     * {@code QueueDispatch} 落地前，宿主只能自建内部类 + 宿主私有键 + 两处 synchronized
+     * 来重新记一份，换一端就要重写。现在统一由 harness 持有：</p>
+     * <ul>
+     *   <li>{@code QueueDispatch#current(session)} 读（静态入口，与是否有扩展实例无关）；</li>
+     *   <li>{@code QueueDispatch#settle(boolean)} / {@code QueueExtension#settleDispatch} 收口。</li>
+     * </ul>
+     */
+    @Test
+    void hostMustNotOwnQueueDispatchState() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+
+            if (content.contains("cli.queue")) {
+                violations.add(name + " 自建队列派发键（应用 QueueDispatch）");
+            }
+            if (content.contains("class QueuedTurn")) {
+                violations.add(name + " 自建派发事务类（应用 QueueDispatch）");
+            }
+            // 队列派发路径不应再碰会话锁：能不能接的判定已与领取原子化
+            if (name.equals("WebQueueDispatcher.java") && content.contains("synchronized (session.attrs())")) {
+                violations.add(name + " 仍在队列路径上用会话锁（应把谓词下推到 claimNext）");
+            }
+        }
+        assertTrue(violations.isEmpty(), "队列派发状态必须由 harness 持有：" + violations);
+    }
+
+    /**
+     * 宿主写会话属性必须用登记过的常量，不得现写裸字面量键。
+     *
+     * <p>裸键的三个已证实后果（均已修）：引擎改键名时宿主静默失效（{@code _loop_last_*} 预算恒为零）、
+     * 无前缀键占用共享平面（{@code streamDoneSent}）、写进去没人读的死键（{@code _plan_mode}）。</p>
+     *
+     * <p>豁免：镜像 / 快照类文件不读写会话属性，自然不命中；{@code HostAttrs} 自身定义常量。</p>
+     */
+    @Test
+    void hostAttrWritesMustUseRegisteredConstants() throws IOException {
+        List<String> violations = new ArrayList<>();
+        java.util.regex.Pattern write = java.util.regex.Pattern.compile(
+                "attrs\\(\\)\\.(put|putIfAbsent|remove|get|getOrDefault|computeIfAbsent)\\(\\s*\"");
+
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            if (name.equals("HostAttrs.java")) {
+                continue;
+            }
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                if (write.matcher(trimmed).find()) {
+                    violations.add(name + ": " + trimmed);
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "宿主会话属性键必须来自 HostAttrs（裸字面量键会与 harness 契约脱钩）：" + violations);
+    }
+
     private static List<Path> javaFiles(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) {
             return new ArrayList<>();

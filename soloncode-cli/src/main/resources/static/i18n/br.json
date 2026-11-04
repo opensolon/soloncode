@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Limpar {count} conversas não fixadas? As conversas em execução serão mantidas. Esta ação não pode ser desfeita.",
   "history.clearFailed": "Falha ao limpar conversas, tente novamente",
   "history.clearSuccess": "{count} conversas limpas",
-  "history.clearTitle": "Limpar conversas não fixadas"
+  "history.clearTitle": "Limpar conversas não fixadas",
+  "streaming.queuePausedHitl": "O c'hort war-davet — arsavet eo ar steudad"
 }

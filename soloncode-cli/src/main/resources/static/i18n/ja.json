@@ -1396,5 +1396,6 @@
   "permission.tool.mcp": "MCP サーバーのツールを呼び出す",
   "users.auth.conversationIsolation": "ユーザー対話の分離",
   "users.auth.conversationIsolationDesc": "有効にすると、異なるログインユーザーは自分の対話のみ表示・利用できます",
-  "users.auth.enabled": "ユーザー認証を有効化"
+  "users.auth.enabled": "ユーザー認証を有効化",
+  "streaming.queuePausedHitl": "承認待ちのためキューは一時停止中"
 }

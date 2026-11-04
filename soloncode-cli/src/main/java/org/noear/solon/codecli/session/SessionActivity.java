@@ -52,7 +52,31 @@ public final class SessionActivity {
     }
 
     /**
-     * 当前会话是否处于输入受理或 Agent 流执行状态。
+     * 是否「占着会话」：有活跃流、有输入正在受理，或有待审批的挂起卡。
+     *
+     * <p><b>受理判定必须用它，不要用 {@link #isBusy}。</b>二者的差别正是 HITL：
+     * 审批挂起时引擎里没有运行流（{@code isBusy} 为 false），但此时开新回合会顶掉挂起任务——
+     * 新的运行流与旧的未决 trace 并存，用户点「同意」时续流会被运行态认领拒绝（表现为
+     * 「审批点了没反应」），或造成两条流交叉写快照。</p>
+     */
+    public static boolean isOccupied(AgentSession session) {
+        return SessionStatus.of(session).isOccupied();
+    }
+
+    /**
+     * 是否有待审批的挂起卡。
+     *
+     * <p>用于把「占用」进一步细分：忙（可排队/可插话）与审批挂起（应拒绝并提示）
+     * 的期望行为不同，不能混为一谈。</p>
+     */
+    public static boolean hasPendingHitl(AgentSession session) {
+        return SessionStatus.of(session).hasPendingHitl();
+    }
+
+    /**
+     * 当前会话是否处于输入受理或 Agent 流执行状态（<b>不含</b> HITL 挂起）。
+     *
+     * <p>用于「是否已有流在跑」这类流生命周期判定；判断能否接新输入请用 {@link #isOccupied}。</p>
      */
     public static boolean isBusy(AgentSession session) {
         return SessionStatus.of(session).isBusy() || isInputAdmitting(session);

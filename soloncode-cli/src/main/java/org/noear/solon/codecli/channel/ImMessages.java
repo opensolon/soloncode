@@ -66,6 +66,10 @@ public final class ImMessages {
      */
     private static final String KEY_REJECTED = "im.rejected";
     /**
+     * 有待审批操作时拒绝新输入（HITL 挂起）
+     */
+    private static final String KEY_HITL_PENDING = "im.hitlPending";
+    /**
      * 未绑定用户引导
      */
     private static final String KEY_HINT_UNBOUND = "im.hint.unbound";
@@ -114,6 +118,7 @@ public final class ImMessages {
         FALLBACK.put(KEY_ACCEPTED, "收到，马上开始处理");
         FALLBACK.put(KEY_LONG_RUNNING, "还在处理中，请再稍等一下");
         FALLBACK.put(KEY_REJECTED, "这条消息没排上队，我还没收到，稍后请重发一次。想先中断当前任务，可发送 /interrupt");
+        FALLBACK.put(KEY_HITL_PENDING, "当前有等待确认的操作，请先处理后再发送新消息");
         FALLBACK.put(KEY_HINT_UNBOUND, "还没有绑定对话，请先在 Web 端扫码绑定，然后我就能陪你聊了。");
         FALLBACK.put(KEY_HINT_BOT_TAKEN, "这个机器人已经绑定到别的对话了。想接到当前对话，请先在 Web 端解绑，再重新扫码绑定。");
         FALLBACK.put(KEY_HINT_NON_TEXT, "我暂时只看得懂文字，换文字发给我吧。");
@@ -178,6 +183,16 @@ public final class ImMessages {
      */
     public static String REJECTED() {
         return msg(KEY_REJECTED);
+    }
+
+    /**
+     * HITL 挂起时拒绝新输入：告知用户先处理待确认的操作。
+     *
+     * <p>与 {@link #REJECTED()} 分开：那个是「队列满、稍后重发」，这里是「有东西等着你操作」，
+     * 用户该做的事完全不同，不能共用一条文案。</p>
+     */
+    public static String HITL_PENDING() {
+        return msg(KEY_HITL_PENDING);
     }
 
     /**
@@ -287,6 +302,8 @@ public final class ImMessages {
                 return LONG_RUNNING();
             case REJECTED:
                 return REJECTED();
+            case HITL_PENDING:
+                return HITL_PENDING();
             default:
                 // QUEUED 需要位次，必须由调用方提供 detail
                 return null;

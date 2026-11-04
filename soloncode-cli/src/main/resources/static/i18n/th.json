@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "ล้าง {count} การสนทนาที่ไม่ได้ปักหมุด? การสนทนาที่กำลังทำงานจะถูกเก็บไว้ ไม่สามารถย้อนกลับได้",
   "history.clearFailed": "ล้างการสนทนาไม่สำเร็จ โปรดลองอีกครั้ง",
   "history.clearSuccess": "ล้างแล้ว {count} การสนทนา",
-  "history.clearTitle": "ล้างการสนทนาที่ไม่ได้ปักหมุด"
+  "history.clearTitle": "ล้างการสนทนาที่ไม่ได้ปักหมุด",
+  "streaming.queuePausedHitl": "รอการอนุมัติ — หยุดคิวชั่วคราว"
 }

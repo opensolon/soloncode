@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "{count} sabitlenmemiş konuşma temizlensin mi? Çalışan konuşmalar korunur. Bu işlem geri alınamaz.",
   "history.clearFailed": "Konuşmalar temizlenemedi, lütfen tekrar deneyin",
   "history.clearSuccess": "{count} konuşma temizlendi",
-  "history.clearTitle": "Sabitlenmemiş konuşmaları temizle"
+  "history.clearTitle": "Sabitlenmemiş konuşmaları temizle",
+  "streaming.queuePausedHitl": "Onay bekleniyor — kuyruk duraklatıldı"
 }

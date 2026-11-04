@@ -44,6 +44,32 @@ public class TaskQueueDockWebContractTest {
                 "展开状态不能由所有会话共享");
     }
 
+    /**
+     * 审批挂起时后端受理层（isOccupied）会拦住队列派发，队列任务一条也发不出去。
+     * 队列坞必须显式说明「暂停」，否则用户只看到「N 条排队」却永远不动。
+     */
+    @Test
+    public void queueDockExplainsHitlPause() throws IOException {
+        String streaming = resourceText("/static/js/app-streaming.js");
+
+        int hint = streaming.indexOf("var hintEl = document.getElementById('chatQueueHint')");
+        int hitl = streaming.indexOf("sess.pendingHitlCount > 0", hint);
+        int streamingBranch = streaming.indexOf("if (sess.isStreaming) {", hint);
+        assertTrue(hitl > hint && hitl < streamingBranch,
+                "待审批提示必须排在 isStreaming 分支之前（审批挂起时 isStreaming 为 false，会被后面的排队分支覆盖）");
+        assertTrue(streaming.contains("I18n.t('streaming.queuePausedHitl')"),
+                "必须使用专用文案，不能复用 queueWaiting 误导成「等待发送」");
+
+        // 24 个前端语言包必须齐备，否则单语言回退成中文
+        // 以 static/i18n 目录实际存在的语言包为准（与前端 I18n.load 的可用集一致）
+        String[] locales = {"ar", "bn", "br", "bs", "da", "de", "en", "es", "fr", "gr", "it", "ja",
+                "ko", "no", "pl", "ru", "th", "tr", "uk", "vi", "zh-CN", "zh-TW"};
+        for (String locale : locales) {
+            assertTrue(resourceText("/static/i18n/" + locale + ".json").contains("streaming.queuePausedHitl"),
+                    "语言包 " + locale + ".json 缺少 streaming.queuePausedHitl");
+        }
+    }
+
     @Test
     public void queueDockIsMutuallyExclusiveAndMobileFriendly() throws IOException {
         String history = resourceText("/static/js/app-history.js");

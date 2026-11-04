@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Очистити {count} незакріплених діалогів? Діалоги, що виконуються, буде збережено. Цю дію не можна скасувати.",
   "history.clearFailed": "Не вдалося очистити діалоги, спробуйте ще раз",
   "history.clearSuccess": "Очищено {count} діалогів",
-  "history.clearTitle": "Очистити незакріплені діалоги"
+  "history.clearTitle": "Очистити незакріплені діалоги",
+  "streaming.queuePausedHitl": "Очікування підтвердження — чергу призупинено"
 }

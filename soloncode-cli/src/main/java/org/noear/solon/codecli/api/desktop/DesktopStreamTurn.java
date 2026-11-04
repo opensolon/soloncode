@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.ai.agent.react.ReActOptionsAmend;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActTrace;
@@ -61,7 +62,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @since 3.9.1
  */
 final class DesktopStreamTurn {
-    static final String SESSION_ATTR_RUN_MODE = "_desktop_run_mode";
+    static final String SESSION_ATTR_RUN_MODE = HostAttrs.ATTR_DESKTOP_RUN_MODE;
 
     private final HarnessEngine engine;
     private final DesktopStreamHub streamHub;

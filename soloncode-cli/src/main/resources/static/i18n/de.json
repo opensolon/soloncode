@@ -1396,5 +1396,6 @@
   "permission.tool.mcp": "MCP-Server-Tools aufrufen",
   "users.auth.conversationIsolation": "Benutzer-Dialogisolierung",
   "users.auth.conversationIsolationDesc": "Wenn aktiviert, können verschiedene angemeldete Benutzer nur ihre eigenen Dialoge sehen und verwenden",
-  "users.auth.enabled": "Benutzerauthentifizierung aktivieren"
+  "users.auth.enabled": "Benutzerauthentifizierung aktivieren",
+  "streaming.queuePausedHitl": "Warten auf Freigabe – Warteschlange pausiert"
 }

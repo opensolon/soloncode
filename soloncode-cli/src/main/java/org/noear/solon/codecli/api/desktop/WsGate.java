@@ -71,7 +71,6 @@ import java.util.concurrent.atomic.AtomicReference;
 public class WsGate extends SimpleWebSocketListener {
     private static final Logger LOG = LoggerFactory.getLogger(WsGate.class);
     private static final String SESSION_ID_DESKTOP = "desktop";
-    static final String SESSION_ATTR_SELECTED_AGENT = "_agent_selected_tmp";
 
     /** 桌面请求级审批器：按当前模式决定文件修改和命令是否在执行前暂停。 */
     final HITLInterceptor desktopHitlInterceptor = new HITLInterceptor()
@@ -150,9 +149,9 @@ public class WsGate extends SimpleWebSocketListener {
             if (!isValidAgentName(normalizedAgent) || !engine.getAgentManager().hasAgent(normalizedAgent)) {
                 throw new IllegalArgumentException("Goal Agent is unavailable");
             }
-            session.attrs().put(SESSION_ATTR_SELECTED_AGENT, normalizedAgent);
+            session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, normalizedAgent);
         } else {
-            session.attrs().remove(SESSION_ATTR_SELECTED_AGENT);
+            session.getContext().remove(HarnessEngine.CTX_AGENT_SELECTED);
         }
 
         if (Assert.isNotEmpty(workspace)) {
@@ -165,7 +164,7 @@ public class WsGate extends SimpleWebSocketListener {
                 if (!Files.isDirectory(root)) {
                     throw new IllegalArgumentException("Goal workspace not found");
                 }
-                session.attrs().put(HarnessEngine.ATTR_CWD, root.toString());
+                engine.setSessionCwd(session, root.toString());
             } catch (IOException error) {
                 throw new IllegalArgumentException("Goal workspace is invalid", error);
             }
@@ -176,7 +175,7 @@ public class WsGate extends SimpleWebSocketListener {
             throw new IllegalArgumentException("Invalid reasoning effort");
         }
         ReasoningSupportUtil.putSessionEffort(session, reasoningEffort, true);
-        session.attrs().remove("_plan_mode");
+        
         session.attrs().remove(DesktopStreamTurn.SESSION_ATTR_RUN_MODE);
     }
 
@@ -300,10 +299,9 @@ public class WsGate extends SimpleWebSocketListener {
 
         String selectedAgent = agentName;
         if (Assert.isEmpty(selectedAgent)) {
-            Object configuredAgent = session.attrs().get(SESSION_ATTR_SELECTED_AGENT);
-            selectedAgent = configuredAgent == null ? null : String.valueOf(configuredAgent);
+            selectedAgent = (String) session.getContext().get(HarnessEngine.CTX_AGENT_SELECTED);
         }
-        String sessionCwd = String.valueOf(session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, "."));
+        String sessionCwd = engine.getSessionCwd(session);
         String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
         //goal objective 由程序生成（含“[附件: xxx]”前缀），不当命令、不当子代理提及，原文交给代理自己识别
@@ -323,7 +321,7 @@ public class WsGate extends SimpleWebSocketListener {
         CountDownLatch completed = new CountDownLatch(1);
         AtomicReference<String> finalAnswer = new AtomicReference<>("");
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        session.attrs().put("_loop_last_has_tool_calls", false);
+        ExecutionBridge.resetRoundToolEvidence(session);
 
         streamHub.emit(sessionId, new ONode().set("type", "goal_round")
                 .set("sessionId", sessionId)
@@ -352,7 +350,7 @@ public class WsGate extends SimpleWebSocketListener {
                         }
                         org.noear.solon.ai.agent.react.ReActTrace trace = runEndEvent.getTrace();
                         if (trace != null && trace.getMetrics() != null) {
-                            session.attrs().put("_loop_last_total_tokens", trace.getMetrics().getTotalTokens());
+                            ExecutionBridge.reportRoundTokens(session, trace.getMetrics().getTotalTokens());
                         }
                         return;
                     }
@@ -367,13 +365,13 @@ public class WsGate extends SimpleWebSocketListener {
                         if (toolCallEndEvent.getError() == null
                                 && Assert.isNotEmpty(toolCallEndEvent.getToolName())
                                 && !GoalTalent.isGoalTool(toolCallEndEvent.getToolName())) {
-                            session.attrs().put("_loop_last_has_tool_calls", true);
+                            ExecutionBridge.reportRoundMetrics(session, null, Boolean.TRUE);
                         }
                         message = eventConverter.onToolCallEndEvent(toolCallEndEvent, sessionId);
                     } else if (chunk instanceof ReasonEndEvent) {
                         org.noear.solon.ai.agent.react.ReActTrace trace = ((ReasonEndEvent) chunk).getTrace();
                         if (trace != null && trace.getMetrics() != null) {
-                            session.attrs().put("_loop_last_total_tokens", trace.getMetrics().getTotalTokens());
+                            ExecutionBridge.reportRoundTokens(session, trace.getMetrics().getTotalTokens());
                         }
                         message = eventConverter.onReasonEndEvent((ReasonEndEvent) chunk, sessionId);
                     }
@@ -441,7 +439,7 @@ public class WsGate extends SimpleWebSocketListener {
             }
 
             AgentSession session = engine.getSession(sessionId);
-            session.attrs().putIfAbsent(HarnessEngine.ATTR_CWD, sessionCwd);
+            engine.setSessionCwdIfAbsent(session, sessionCwd);
         }
 
         if ("1".equals(socket.param("resume"))) {

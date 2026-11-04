@@ -1396,5 +1396,6 @@
   "permission.tool.mcp": "Appeler les outils du serveur MCP",
   "users.auth.conversationIsolation": "Isolation des conversations par utilisateur",
   "users.auth.conversationIsolationDesc": "Une fois activée, chaque utilisateur connecté ne peut voir et utiliser que ses propres conversations",
-  "users.auth.enabled": "Activer l'authentification utilisateur"
+  "users.auth.enabled": "Activer l'authentification utilisateur",
+  "streaming.queuePausedHitl": "En attente d'approbation – file suspendue"
 }

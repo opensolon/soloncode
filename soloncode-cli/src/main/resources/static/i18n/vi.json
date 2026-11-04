@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Xóa sạch {count} hội thoại chưa ghim? Hội thoại đang chạy sẽ được giữ lại. Không thể hoàn tác hành động này.",
   "history.clearFailed": "Xóa hội thoại thất bại, vui lòng thử lại",
   "history.clearSuccess": "Đã xóa {count} hội thoại",
-  "history.clearTitle": "Xóa hội thoại chưa ghim"
+  "history.clearTitle": "Xóa hội thoại chưa ghim",
+  "streaming.queuePausedHitl": "Đang chờ phê duyệt — hàng đợi tạm dừng"
 }

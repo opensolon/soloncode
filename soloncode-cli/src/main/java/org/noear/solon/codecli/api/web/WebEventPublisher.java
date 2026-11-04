@@ -16,6 +16,7 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -36,7 +37,7 @@ class WebEventPublisher {
     private static final Logger LOG = LoggerFactory.getLogger(WebEventPublisher.class);
 
     /** 会话属性：本轮 agent 流是否已向客户端发送过 done（防 interrupt + doFinally 双发） */
-    static final String ATTR_STREAM_DONE_SENT = "streamDoneSent";
+    static final String ATTR_STREAM_DONE_SENT = HostAttrs.ATTR_STREAM_DONE_SENT;
 
     private final WebGate gate;
 

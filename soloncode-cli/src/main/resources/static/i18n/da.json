@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Ryd {count} ikke-fastgjorte samtaler? Igangværende samtaler bevares. Dette kan ikke fortrydes.",
   "history.clearFailed": "Kunne ikke rydde samtaler, prøv igen",
   "history.clearSuccess": "Ryddede {count} samtaler",
-  "history.clearTitle": "Ryd ikke-fastgjorte samtaler"
+  "history.clearTitle": "Ryd ikke-fastgjorte samtaler",
+  "streaming.queuePausedHitl": "Afventer godkendelse — køen er sat på pause"
 }

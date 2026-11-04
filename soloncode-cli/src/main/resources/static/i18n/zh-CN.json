@@ -1396,5 +1396,6 @@
   "sidebar.wsPickFolder": "浏览本地目录",
   "sidebar.wsPickHeadless": "当前运行环境无桌面，无法弹出目录选择框，请手动输入路径",
   "sidebar.wsPickBusy": "目录选择框已打开，请先完成当前选择",
-  "sidebar.wsPickTimeout": "目录选择超时或失败，请重试"
+  "sidebar.wsPickTimeout": "目录选择超时或失败，请重试",
+  "streaming.queuePausedHitl": "待审批中，队列已暂停"
 }

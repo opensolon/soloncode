@@ -758,7 +758,11 @@ function renderQueueDock() {
 
     var hintEl = document.getElementById('chatQueueHint');
     if (hintEl) {
-        if (sess.isStreaming) {
+        // 待审批时后端受理层会拦住队列派发（queue 用 isOccupied，不只看 isBusy），
+        // 队列里的任务一条也发不出去。必须显式告知，否则用户看到「N 条排队」却永远不动。
+        if (sess.pendingHitlCount > 0) {
+            hintEl.textContent = I18n.t('streaming.queuePausedHitl');
+        } else if (sess.isStreaming) {
             hintEl.textContent = I18n.t('workspace.queueAutoSendHint');
         } else if (q.length) {
             hintEl.textContent = I18n.t('streaming.queueWaiting', {n: q.length});

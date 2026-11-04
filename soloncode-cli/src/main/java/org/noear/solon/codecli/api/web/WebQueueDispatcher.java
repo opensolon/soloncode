@@ -16,7 +16,7 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.queue.QueueClaim;
+import org.noear.solon.ai.harness.session.queue.QueueDispatch;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.ai.harness.session.queue.QueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -50,40 +50,6 @@ import java.nio.file.Path;
  */
 class WebQueueDispatcher {
     private static final Logger LOG = LoggerFactory.getLogger(WebQueueDispatcher.class);
-
-    /**
-     * 会话属性：当前队列领取事务（宿主私有键，cli. 前缀；值为 {@link QueuedTurn}）。
-     *
-     * <p>一条 {@link QueuedTurn} 同时回答两件事：「本轮由队列派发而来」与「该用哪个 claim 收口」。
-     * 此前这两个事实分别存在两个键里（claim + 派发线程），要么同步写入遗漏、要么读侧忘了判线程；
-     * 合为一个值后不可能只读到一半。</p>
-     */
-    static final String ATTR_QUEUE_TURN = "cli.queue.turn";
-
-    /**
-     * 一次队列派发事务：领取句柄 + 派发线程。
-     *
-     * <p>线程之所以必须一起存：异步任务会在别的线程结束，只有派发线程上的那次回调
-     * 才能把「启动完成、可以收口」与「任务已在跑、等流结束再收口」区分开。</p>
-     */
-    static final class QueuedTurn {
-        private final QueueClaim claim;
-        private final Thread dispatchThread;
-
-        QueuedTurn(QueueClaim claim) {
-            this.claim = claim;
-            this.dispatchThread = Thread.currentThread();
-        }
-
-        QueueClaim getClaim() {
-            return claim;
-        }
-
-        /** 当前线程是否就是派发该任务的那条线程（即「正处在队列派发调用栈里」）。 */
-        boolean isOnDispatchThread() {
-            return Thread.currentThread() == dispatchThread;
-        }
-    }
 
     private final WebGate gate;
 
@@ -175,7 +141,7 @@ class WebQueueDispatcher {
      * boundedElastic，否则同步执行。</p>
      */
     void drainSessionQueue(WorkspaceContext wsContext, AgentSession session) {
-        if (session == null || isBusy(session)) return;
+        if (session == null || !isNotOccupied(session)) return;
         final QueueExtension queue = queueOf(wsContext);
         if (queue == null) return;
         final String sessionId = session.getSessionId();
@@ -183,31 +149,17 @@ class WebQueueDispatcher {
         Runnable action = () -> {
             Object logScope = (wsLogKey != null) ? WorkspaceLogRouter.beginScopeByKey(wsLogKey) : null;
             try {
-                // 续发循环与终止条件（含 START_FAILED 不得立即重试）由 harness 的 drainLoop 负责，
-                // 宿主只回答一个问题：现在能不能接单。
-                queue.drainLoop(session, WebQueueDispatcher::isNotBusy, claim -> {
-                    synchronized (session.attrs()) {
-                        if (isBusy(session) || !claim.isValid()) {
-                            throw new IllegalStateException("session became busy or queue generation changed");
-                        }
-                        QueueItem item = claim.getItem();
-                        gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(item.getId(), item.getText(), item.getOrigin().getChannel()));
-                        session.attrs().put(ATTR_QUEUE_TURN, new QueuedTurn(claim));
-                        try {
-                            gate.onChatInput(wsContext, sessionId, null, item.getText(), item.getModel(), null, null, null,
-                                    item.getOrigin().getChannel(), item.getReasoningEffort(), item.getThinkingMode(), item.getSelectedAgent(),
-                                    item.getOrigin().getSenderId(), item.getOrigin().getReplyTarget(), item.getOrigin().getMessageId());
-                            // 同步完成的命令（如 /status）在回调返回时就没有活跃流：当场收口，不留悬挂 claim。
-                            // 异步任务此时必然忙，claim 由流终态的 finishQueuedTurn 收口。
-                            if (!isBusy(session)) finishQueuedTurn(wsContext, session, true);
-                        } finally {
-                            // 只清「本轮还没收口」的登记，避免把流终态已收口的记录重新拉回
-                            Object turn = session.attrs().get(ATTR_QUEUE_TURN);
-                            if (turn instanceof QueuedTurn && ((QueuedTurn) turn).getClaim() == claim) {
-                                session.attrs().remove(ATTR_QUEUE_TURN);
-                            }
-                        }
-                    }
+                // 续发循环、终止条件（含 START_FAILED 不得立即重试）与「能不能接」的原子判定
+                // 全部归 harness；宿主的回调只表达「把这条任务交给输入处理」。
+                queue.drainLoop(session, WebQueueDispatcher::isNotOccupied, claim -> {
+                    QueueItem item = claim.getItem();
+                    gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(item.getId(), item.getText(), item.getOrigin().getChannel()));
+                    gate.onChatInput(wsContext, sessionId, null, item.getText(), item.getModel(), null, null, null,
+                            item.getOrigin().getChannel(), item.getReasoningEffort(), item.getThinkingMode(), item.getSelectedAgent(),
+                            item.getOrigin().getSenderId(), item.getOrigin().getReplyTarget(), item.getOrigin().getMessageId());
+                    // 同步完成的命令（如 /status）在回调返回时就没有活跃流：当场收口，不留悬挂 claim。
+                    // 异步任务此时必然忙，claim 由流终态的 finishQueuedTurn 收口。
+                    if (!isBusy(session)) queue.settleDispatch(session, true);
                 });
             } catch (Throwable e) {
                 LOG.warn("[WebGate] drain session queue failed for session {}: {}", sessionId, e.toString());
@@ -220,47 +172,50 @@ class WebQueueDispatcher {
         catch (Throwable e) { LOG.warn("[WebGate] schedule session queue drain failed: {}", e.toString()); }
     }
 
-    private static boolean isNotBusy(AgentSession session) {
-        return !isBusy(session);
+    /**
+     * 队列能否接单：用「占用」而不是「忙」。
+     *
+     * <p>HITL 挂起时没有活跃流（{@code isBusy} 为 false），但此时派发会把排队任务变成新回合，
+     * 与未决 trace 并存——正是受理层要拒的那种情况。队列必须用同一口径，
+     * 否则从队列这条路绕过了提交路径上的闸门。</p>
+     */
+    private static boolean isNotOccupied(AgentSession session) {
+        return !SessionActivity.isOccupied(session);
     }
 
     /**
      * 仅确认本次队列领取；启动失败则恢复到队首，不按消息来源分支。
      *
-     * <p>身份校验与代际判定均由 {@link QueueClaim} 内部完成：成功走 {@code acknowledge()}，
-     * 失败走 {@code rollback()}（带回领取瞬间的代际快照，Stop 之后必然被拒）。</p>
+     * <p>派发事务的登记与注销、身份校验、代际判定全部由 harness 的 {@code QueueDispatch}
+     * 负责：成功走 {@code acknowledge()}，失败走 {@code rollback()}（带回领取瞬间的代际快照，
+     * Stop 之后必然被拒）。无未收口派发时为空操作。</p>
      */
     void finishQueuedTurn(WorkspaceContext wsContext, AgentSession session, boolean started) {
-        synchronized (session.attrs()) {
-            Object value = session.attrs().remove(ATTR_QUEUE_TURN);
-            if (!(value instanceof QueuedTurn)) return;
-            QueueClaim claim = ((QueuedTurn) value).getClaim();
-            boolean saved = started ? claim.acknowledge() : claim.rollback();
-            if (!saved && !claim.isSettled()) {
-                LOG.warn("[WebGate] could not persist queued task completion for session {}", session.getSessionId());
-            } else if (!saved) {
-                LOG.debug("[WebGate] queued task settlement skipped for session {} (already settled or canceled)",
-                        session.getSessionId());
-            }
-        }
+        QueueExtension queue = queueOf(wsContext);
+        if (queue == null) return;
+        queue.settleDispatch(session, started);
     }
 
     /**
      * 本轮输入是否由队列派发而来（且就在当前线程）。
      *
-     * <p>取代原来的「读 attrs 取 QueueItem 再 instanceof」：宿主只看有没有派发事务，不看队列内部结构。</p>
+     * <p>只在输入入口使用：判断「这是一轮队列派发，不要再占受理位」。
+     * 流终态请用 {@link #hasQueuedDispatch}（跨线程）。</p>
      */
     static boolean isQueueDispatch(AgentSession session) {
-        if (session == null) return false;
-        Object value = session.attrs().get(ATTR_QUEUE_TURN);
-        return value instanceof QueuedTurn && ((QueuedTurn) value).isOnDispatchThread();
+        QueueDispatch dispatch = QueueDispatch.current(session);
+        return dispatch != null && dispatch.isOnDispatchThread();
     }
 
-    /** 当前队列派发事务的领取句柄（非队列派发时为 null）。 */
-    static QueueClaim currentClaim(AgentSession session) {
-        if (session == null) return null;
-        Object value = session.attrs().get(ATTR_QUEUE_TURN);
-        return value instanceof QueuedTurn ? ((QueuedTurn) value).getClaim() : null;
+    /**
+     * 会话是否有未收口的队列派发事务（跨线程可判）。
+     *
+     * <p>取代此前的线程判定：异步订阅失败发生在 {@code boundedElastic} 上，用
+     * {@link #isQueueDispatch} 必然得到 false，于是「回滚到队首 → 立即续发 → 又领到同一条
+     * → 再失败」形成死循环。</p>
+     */
+    static boolean hasQueuedDispatch(AgentSession session) {
+        return QueueDispatch.current(session) != null;
     }
 
     /** 取队列门面（扩展未装配时为 null，调用方需容错） */

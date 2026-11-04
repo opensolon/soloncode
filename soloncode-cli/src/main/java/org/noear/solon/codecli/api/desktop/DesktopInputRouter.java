@@ -32,6 +32,7 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
+import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.slf4j.Logger;
@@ -125,7 +126,7 @@ final class DesktopInputRouter {
 
 
         if (Assert.isEmpty(req.getCwd())) {
-            cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
+            cwd = engine.getSessionCwd(session);
         }
 
 
@@ -144,10 +145,26 @@ final class DesktopInputRouter {
                 return;
             }
             // 桌面端切换项目或继续已有会话时，以本次请求的 cwd 覆盖旧会话工作区。
-            session.attrs().put(HarnessEngine.ATTR_CWD, cwd);
+            engine.setSessionCwd(session, cwd);
         }
 
         if (Assert.isEmpty(input)) {
+            return;
+        }
+
+        // HITL 挂起时拒新输入（未决策前开新回合会与挂起 trace 并存；
+        // 用户点「同意」时续流会被运行态认领拒绝，或两条流交叉写快照）。
+        // 忙态旁路命令除外（它们是旁路操作，不改写运行任务的回复目标）。
+        if (!engine.isBusyBypassCommand(input) && SessionActivity.hasPendingHitl(session)) {
+            HitlCard pending = HitlCard.next(session);
+            String toolName = pending == null ? null : pending.getToolName();
+            socket.send(new ONode().set("type", "error")
+                    .set("sessionId", sessionId)
+                    .set("code", "hitl_pending")
+                    .set("text", toolName == null
+                            ? "请先处理待审批操作"
+                            : "请先处理待审批操作：" + toolName)
+                    .toJson());
             return;
         }
 
@@ -216,18 +233,15 @@ final class DesktopInputRouter {
         session.attrs().put(DesktopStreamTurn.SESSION_ATTR_RUN_MODE, mode);
         if ("plan".equals(mode)) {
             // 规划模式：只读分析，不执行文件/命令操作
-            session.attrs().put("_plan_mode", true);
             if (!currentInput.contains("不要执行") && !currentInput.contains("只分析")) {
                 currentInput = "[规划模式 - 仅分析不执行任何操作] " + currentInput;
             }
-        } else {
-            session.attrs().remove("_plan_mode");
         }
         // default 模式：write/edit/bash 都在真正执行前进入 HITL 审批。
 
         // 与 WebStreamBuilder 保持一致：记录本轮真正的源 Agent，供 HITL 恢复继续使用。
         final String resolvedAgentName = engine.getAgentOrMain(agentName).name();
-        session.attrs().put(WsGate.SESSION_ATTR_SELECTED_AGENT, resolvedAgentName);
+        session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, resolvedAgentName);
 
         // Goal 是对话持续流，不再交给斜杠命令返回“任务已注册”回执。
         String goalObjective = WsGate.extractGoalObjective(currentInput, mode);
@@ -421,8 +435,8 @@ final class DesktopInputRouter {
 
             String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
             ChatModel chatModel = engine.getModelOrDefInstance(modelName);
-            String selectedAgentName = (String) session.attrs().get(WsGate.SESSION_ATTR_SELECTED_AGENT);
-            String cwd = session.attrs().getOrDefault(HarnessEngine.ATTR_CWD, ".").toString();
+            String selectedAgentName = (String) session.getContext().get(HarnessEngine.CTX_AGENT_SELECTED);
+            String cwd = engine.getSessionCwd(session);
             String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
             // 一次调用完成「写决策 + 必要时的续流装配」，处置交给统一的 dispatchTurn：

@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "هل تريد تفريغ {count} محادثة غير مثبتة؟ سيتم الاحتفاظ بالمحادثات قيد التشغيل. لا يمكن التراجع عن هذا الإجراء.",
   "history.clearFailed": "فشل تفريغ المحادثات، حاول مرة أخرى",
   "history.clearSuccess": "تم تفريغ {count} محادثة",
-  "history.clearTitle": "تفريغ المحادثات غير المثبتة"
+  "history.clearTitle": "تفريغ المحادثات غير المثبتة",
+  "streaming.queuePausedHitl": "بانتظار الموافقة — تم إيقاف قائمة الانتظار مؤقتًا"
 }

@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Isprazniti {count} neokačenih razgovora? Razgovori u tijeku bit će zadržani. Ova radnja se ne može opozvati.",
   "history.clearFailed": "Neuspješno pražnjenje razgovora, pokušajte ponovo",
   "history.clearSuccess": "Ispražnjeno {count} razgovora",
-  "history.clearTitle": "Isprazni neokačene razgovore"
+  "history.clearTitle": "Isprazni neokačene razgovore",
+  "streaming.queuePausedHitl": "Čeka se odobrenje — red pauziran"
 }

@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Wyczyścić {count} nieprzypiętych rozmów? Rozmowy w trakcie zostaną zachowane. Tej operacji nie można cofnąć.",
   "history.clearFailed": "Nie udało się wyczyścić rozmów, spróbuj ponownie",
   "history.clearSuccess": "Wyczyszczono {count} rozmów",
-  "history.clearTitle": "Wyczyść nieprzypięte rozmowy"
+  "history.clearTitle": "Wyczyść nieprzypięte rozmowy",
+  "streaming.queuePausedHitl": "Oczekiwanie na zatwierdzenie — kolejka wstrzymana"
 }

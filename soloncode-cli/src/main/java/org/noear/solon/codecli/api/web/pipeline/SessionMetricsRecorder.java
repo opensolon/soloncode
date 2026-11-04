@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.api.web.pipeline;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
@@ -26,7 +27,7 @@ public class SessionMetricsRecorder {
         if (WebEventNames.SYSTEM_TRACE.equals(event.getEvent()) && event.getPayload() instanceof SystemTracePayload) {
             SystemTracePayload payload = (SystemTracePayload) event.getPayload();
             if (payload.getTotalTokens() != null) {
-                session.attrs().put("_loop_last_total_tokens", payload.getTotalTokens());
+                ExecutionBridge.reportRoundTokens(session, payload.getTotalTokens());
             }
         }
     }

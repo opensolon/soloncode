@@ -1,5 +1,62 @@
 
 ### vNEXT
+* 队列派发事务收尾（第二轮审查的四项修正）：
+  * **修掉一个会让队列静默失效的残留（真实缺陷）**：`QueueDispatch.settle` 的 javadoc 声称注销是尽力而为，但实现里「注销」只挂在 `claim.acknowledge/rollback` **成功**分支上。用户 Stop（`cancelPending`）之后 in-flight 已被清、`acknowledge()` 必然失败，登记就永远留着——会话此后恒被视为「有未收口派发」，`failStreamTurn` 的跨线程 `hasQueuedDispatch` 据此误认为「这是队列派发」而**静默跳过续发**，队列从此瞎一轮（不报错、不打日志）。修法放在 `QueueHelper.cancelPending` 里注销：Stop 的语义就是「正在跑的这一轮作废」，代际已递增、所有在途 claim 均已失效，不必再看某个具体 claim。新增 `QueueDispatchTest.settleSuccessAfterCancelPendingUnregistersDispatch` 锁定，并做反向验证（撤掉修复后该用例准确报出残留）
+  * **两个入口的 HITL 豁免口径收敛**：`onChatInput`（Web）写了四项豁免，`safeChatInput`（IM）只写了一项——IM 侧发 `/resume`、或点审批决策，会被当成「请先处理审批」拒掉，而这两者恰恰是处理审批的手段。抽 `isHitlExempt(wsContext, session, input, hitlAction)` 供两处共用，契约测试 `hitlGateExemptsDecisionDispatchAndBypassCommands` 从断言旧字面量改为断言「方法存在 + 四项豁免齐全 + 两个入口都调用」
+  * **终态收口改用捕获的派发事务**：`doFinally` 原先无条件收口「会话当前」的派发。真实时序下它与「这一条流自己的」总是同一条（busy 期间 `isNotOccupied` 挡住任何新派发），但那份安全性来自外部不变量而非 API 保证。改为在订阅前（派发调用栈内）捕获 `QueueDispatch.current(session)`，终态用它收口；`failStreamTurn` 与 `performAgentTaskSync` 同步传递该参数，两条路径同构
+  * **覆盖式登记补告警**：`registerDispatch` 若发现旧登记未收口就覆盖，旧 claim 会永久 OPEN 且此前无任何痕迹。加一条 `LOG.warn`（按设计不可能发生，但要能发现）
+  * 验证：harness 定向 `*Queue*` **78 例全绿**（`QueueDispatchTest` 10 → 11）；cli `clean test` 全量 **1241 例，3 失败**，stash 对照确认三个失败（`AgentSettingsControllerTest.builtinStillReadableAfterOverrideFileExists`、`GeneralModelDefaultsContractTest.entityDefaultsToZero`、`MountSettingsControllerTest.listsOneInstallTargetPerDirectoryAndMarksWorkspaceScope`）与改动前**逐项一致**，属既有基线；本轮 cli 定向 19 例（`ImBusySteerContractTest` 9 + `SessionActivityTest` 5 + `WebGateRejectedInputTest` 5）全绿
+  * README §5.2 补「用户 Stop 本身就意味着本轮作废」一节，说明为何注销不能依赖「收口成功」
+* 审查回归修复 + 门面瘦身（上一轮 HITL 受理改造的收尾）：
+  * **P0 真回归：HITL 拒收分支漏发终态包，Web 输入面板卡死**（本轮审查发现，上一轮引入）：
+    * **症状**：审批挂起时发一条消息 → 错误气泡出现，但 `isStreaming` 仍为 `true`：停止按钮常亮、占位符不消失，**后续所有输入被当成 steer 插话**，用户永远回不到正常发送，只能刷新页面
+    * **根因**：前端 `sendWithFormDataGrouped` 在 POST **之前**就把 `sess.isStreaming = true`，只有 `system.done` 走 `finishStream` 复位；`system.error` 只 `appendErrorChunk` **不复位**。而该分支未占位（`ticket` 为 `NONE`），`finally` 的 `if (ticket.isAcquired())` 兜底不会触发
+    * **为何是回归不是既有问题**：改动前该输入会开新流（有并发隐患但界面可用）；加了拒绝闸门却没补终态包，等于把「不可见的并发缺陷」换成「可见的卡死」
+    * **修复**：`return` 前补 `gate.getEventPublisher().emitDoneGuarded(wsContext, session)`
+    * **桌面端不受影响**：桌面的 `error` 本身就是终止帧（`ChatView.tsx` 收到即 `finishSession`），与 Web 的「只有 done 复位」语义不同，无需改
+  * **队列坞补「待审批中，队列已暂停」提示**：审批挂起时后端 `canAccept = !isOccupied` 会拦住队列派发（这是不绕过闸门的必然代价），队列里的任务一条也发不出去，而前端只显示「N 条排队」——用户看不到任何停摆线索。`renderQueueDock` 的 hint 分支把 `pendingHitlCount > 0` 排在 `isStreaming` **之前**（审批挂起时 `isStreaming` 为 false，会被后面的排队分支覆盖），新增 `streaming.queuePausedHitl` 文案，22 个前端语言包全部补齐
+  * **queued 判定的指向修正**：宿主 `WebQueueDispatcher.isQueueDispatch` / `hasQueuedDispatch` 保留（语义清晰、各只有一个调用点），但 README 与 `PackageBoundaryTest` 的指向从 `QueueExtension#currentDispatch` 改为 `QueueDispatch#current(session)` 静态入口——扩展实例在部分宿主路径上拿不到，静态入口才是「任意线程可读」的正确形态
+  * **`drainOne(runner, boolean)` 删除**（harness 内核 + 门面同时收口）：它是上一轮已从门面移除的旧异步路径，但内核还留着、且是那个竞态的「合法用法」（宿主在终态现取代际 → `cancelPending` 已递代 → 恒真 → 被 Stop 的任务复活）。`SessionQueueTest.asyncDrainKeepsItemUntilTerminalAcknowledgement` 随之改写为 `claimNext` + `claim.acknowledge()` 形态，断言从「RUNNING 状态」升级为「派发登记跨线程可见 → 收口后必须注销」
+  * **修掉一个真实 API 缺陷（由上面的测试改写暴露）**：`claim.acknowledge()` / `claim.rollback()` **不注销派发登记**，只有 `QueueDispatch.settle()` 会。而 README 的终态示例就是直接确认 claim——该路径会留下永久登记，会话此后恒被视为「有未收口派发」，队列续发被自己的残留挡死。修法：注销**跟着 claim 的状态迁移走，不跟着调用入口走**——`QueueClaim` 两处状态迁移后调 `QueueHelper.unregisterDispatchOf(session, this)`；`QueueDispatch.settle` 去重（改为只委托 claim）。回滚被拒且代际仍有效（队列满）时不注销，任务保持 in-flight 有主
+  * 验证：cli `clean test` 全量 **1241 例，3 失败**（settings/挂载域，与基线一致）；新增契约测试 2 例——`ImBusySteerContractTest.hitlRejectBranchEmitsTerminalPacket`（拒收分支必须有 `emitDoneGuarded` 且落在 reject 分支内，防「有 error 无 done」）、`TaskQueueDockWebContractTest.queueDockExplainsHitlPause`（待审批提示须早于 isStreaming 分支 + 22 语言包齐备）。harness 定向 77 例全绿（`QueueDispatchTest` 8 → 10：新增直接 acknowledge / 直接 rollback 都必须注销登记）
+  * **测试定位踩坑记录**：`hitl_pending` 字面量在 `onChatInput`（有 WS 事件出口的那个方法），不在 `safeChatInput`（IM 用的那个）；契约测试的代码切片起点必须选对方法，否则断言恒假并与真实实现「看起来矛盾」
+
+
+* HITL 挂起期受理缺口修复（Web + 桌面同源判定）：
+  * **问题（用户要求落地）**：审批挂起时 `pendingHitl > 0`，但引擎里没有运行流，`isBusy()` 返回 false。Web 的受理判定是 `isBusy() || pendingSize > 0`、`safeChatInput()` 只看 `isBusy()`、桌面端同样如此——三处全部漏判 HITL。后果是 `handle()` 在 `pendingHitl > 0` 时不走续流分支，把新输入当成**全新普通回合**：新的运行流与旧的未决 trace 并存，用户随后点「同意」时 `resume(true)` 若被运行态认领拒绝，表现为「审批点了没反应」；若没被拒绝，则是**一个会话两条并发流**、快照互相覆盖。两种都无法诊断
+  * **定性**：不是「允许插话」的产品设计，是漏判。入队是更差的选择（审批可能永不处理，输入堆在审批之后，恢复时一次性执行一批过期指令）
+  * **建议语义（已落地）**：默认**拒绝并显式提示**，危险工具不会执行，是安全侧默认；「丢弃审批并发送」仍是客户端独立动作，走既有拒绝/中断路径，安全语义可审计
+  * 三个判定分开，不混用（`SessionStatus` 早已提供，本轮只是宿主没走对口径）：
+    | 判定 | 含义 | 用在哪 |
+    |---|---|---|
+    | `isBusy()` | 有活跃流 | 流生命周期、事件编排 |
+    | `isOccupied()` | 不应开新回合（含 HITL 挂起、受理窗口） | **受理判定** |
+    | `hasPendingHitl()` | 有待决策的工具调用 | 提示文案、前端状态 |
+  * **Web**：`WebChatInputHandler` 受理块内新增 HITL 闸门，排在忙态分派**之前**（否则普通输入会被插话/入队而非提示先审批）；豁免三类——审批决策本身（`hitlAction` 非空）、`/resume` 续流、`isBusyBypassCommand` 旁路命令（缺一个就会把审批本身也拒掉）；`safeChatInput()` 同步加拦截，IM 通道据此返回 `false` 并投递回执
+  * **桌面**：`DesktopInputRouter` 加同一判定，回 `{"type":"error","code":"hitl_pending"}`（桌面无 IM 通道，不发 `ImStatus`）；闸门放在 cwd/模型落值之前——被拒的输入不应改写会话状态
+  * **队列续发同口径**（修掉方案自身的漏洞）：`WebQueueDispatcher` 的 `canAccept` 原为 `!isBusy`，而 `isBusy` 不含 HITL——审批挂起时队列会把排队任务派发成新回合，**从队列这条路绕过提交路径上的闸门**。改为 `!isOccupied`，两条路径共用同一判据
+  * **新回执状态 `ImStatus.HITL_PENDING` + `ImMessages.HITL_PENDING()`**：与 `REJECTED`（队列满、稍后重发）分开——用户该做的事完全不同，不能共用文案；24 个语言包 + `FALLBACK` 全部补齐
+  * **`SessionActivity` 补回 `isOccupied()`**（上一轮因「宿主 0 使用」删除，本轮成为受理判定的唯一正确口径，重新引入并补 javadoc 说明它与 `isBusy()` 的差别正是 HITL）、新增 `hasPendingHitl()`
+  * 验证：cli `clean test` 全量 1239 例，3 失败经核对与改动前基线完全一致（settings/挂载域）；定向 `SessionActivityTest` 5 例（新增 HITL 占用判定 + attrs 并发写不丢更新）、`ImBusySteerContractTest` 8 例（新增 3 例：HITL 闸门须早于忙态分派 / 三类豁免口径显式写出 / `im.hitlPending` 24 语言包与 FALLBACK 齐备）、`WebGateRejectedInputTest` 5、`PackageBoundaryTest` 9、`ImageReplyLifecycleTest` 32、`ImageReplyTurnTest` 15、`WebStreamBuilderReplyRouteTest` 14 全绿
+  * 文档：harness README §3.6 新增「② HITL 挂起时不要开新回合」（推荐写法 + 三类豁免表 + 三个判定口径对照表），原忙态放行顺延为 ③
+  * **未动**：桌面端写 attrs 未加 `synchronized (session.attrs())`——核实 `attrs()` 早已是 `ConcurrentHashMap`（`ChatSession` 实现侧，非本轮引入），单键读写天然安全，复合操作（`InputGate` 占位、`claimNext` 领取、`settle` 收口）都在 harness 内部且已加锁；因此**不补锁**（补的类型学约束必然被后来者遗忘），仅补并发护栏测试锁住「并发写不丢更新」
+
+* queue 域全封装收尾：`QueueDispatch` 派发事务 + 谓词原子化，宿主对队列的 attrs 操作**归零**：
+  * **问题（用户提出）**：`WebQueueDispatcher` 仍用 `session.attrs().remove(ATTR_QUEUE_TURN)` 之类直接操作队列状态。定性修正：`cli.queue.turn` 是合规的宿主私有键（非 harness 内部键），但它承载的 `QueuedTurn{QueueClaim, Thread}` 回答的两个问题——「本轮是否队列派发」「该用哪个 claim 收口」——**harness 全都知道**（claim 由 `claimNext` 自己 new，派发线程就是执行它的线程）。harness 在 `claimNext` 的 `finally` 里就把 `QUEUE_CLAIM` 清了（只覆盖调用栈），覆盖不了异步流，于是同一次领取有了两个表示，宿主被迫自管一份。**这不是宿主想自己管，是 harness 中途把状态交还宿主却没给正式接口**
+  * **对照已做对的 steer**：`SteerExtension.handover` / `activeRunId` / `InputGate.Ticket` 都把「运行期事务结果」做成返回值对象，宿主零 attrs。queue 缺的正是同形的第三个：**派发事务凭据**
+  * harness 新增 **`QueueDispatch`**：`getItem()` / `getOrigin()` / `isOnDispatchThread()`（派发调用栈内）/ `isCurrent()`（跨线程）/ `settle(boolean)`（收口+注销，幂等），登记键 `HarnessAttrs.QUEUE_DISPATCH = "session.queue.dispatch"`（与 `QUEUE_CLAIM` 的差别：后者调用栈内存活，本键活到流终态）
+  * harness 新增 **`claimNext(session, canAccept, handler)`**：`canAccept` 在**领取权的同一把会话锁内**求值（false 时不消耗队列项、不占领取权），`drainLoop` 透传。此前宿主必须在 `WebQueueDispatcher` 里再写一层 `synchronized (session.attrs())` + 忙态复核 + `!claim.isValid()` 去堵「判忙与领取之间的窗口」——原子化后这三样全部删除
+  * **修掉一个既有缺陷（由线程判定引起）**：`WebSessionRunner.failStreamTurn` 用 `isQueueDispatch`（线程判定）决定启动失败后是否续发，但该方法由 `subscribeAction` 在 `boundedElastic` 上调用，当前线程不是派发线程 → `queued` 恒 false → 回滚后立即 drain → 又领到同一条 → **无限循环**（同步抛出的失败不受影响，`claimNext` 已返回 `START_FAILED`）。改用跨线程的 `hasQueuedDispatch`（= `currentDispatch(session) != null`）后误判消失
+  * 宿主改造：删除 `QueuedTurn` 内部类（18 行）、`ATTR_QUEUE_TURN` 常量、2 处 `synchronized (session.attrs())`、5 处 attrs 读写；`finishQueuedTurn` 收缩为 `queue.settleDispatch(...)` 一行；`drainSessionQueue` 回调里不再有任何队列内部知识
+  * **非 queue 域同类问题一并收口**（三类「不是命名空间问题、但同样会静默失效」的裸键）：
+    * `ExecutionBridge` 轮次指标：宿主重抄 `"_loop_last_total_tokens"` / `"_loop_last_has_tool_calls"` 共 7 处，而常量与读取方都在 harness → 新增 `reportRoundMetrics` / `reportRoundTokens` / `resetRoundToolEvidence` 写入口
+    * `HarnessEngine.ATTR_CWD`：宿主当私有状态用且硬编码默认值 `"."`（与 workspace 默认不一致）→ 新增 `getSessionCwd` / `setSessionCwd` / `setSessionCwdIfAbsent`
+    * 桌面端 `_agent_selected_tmp` 与引擎 `CTX_AGENT_SELECTED` 同概念两键（桌面选择因此不入引擎会话记忆）→ 桌面改用引擎键，删除私有键
+    * `"streamDoneSent"` 无前缀 → `web.streamDoneSent`；`"_desktop_run_mode"` → `desktop.runMode`（均登记 `HostAttrs`）；`"_plan_mode"` 3 处写、0 处读的死键直接删除
+  * 架构护栏 +2（`PackageBoundaryTest` 7 → 9 例）：`hostMustNotOwnQueueDispatchState`（禁止自建 `cli.queue*` 键、`QueuedTurn` 类、队列路径上的会话锁）、`hostAttrWritesMustUseRegisteredConstants`（正则扫 `attrs().put/get/remove("` 裸字面量）
+  * 验证：harness 定向 119 例全绿（新增 `QueueDispatchTest` 8 例：派发登记跨线程可见 / 线程判定与跨线程判定分离 / settle 幂等 / Stop 后不复活 / 启动失败清理登记 / 谓词 false 不消耗不占位 / 6 线程并发 drainLoop 每条只领一次；`HarnessEngineAccessorTest` 新增 cwd 门面 1 例并登记进 setter 巡检清单）；cli 定向 89 例全绿；cli 全量 1234 例 3 失败，`git stash` 对照确认为既有基线（settings/挂载域）
+  * 残留扫描：`cli.queue` / `QueuedTurn` / `_loop_last_*` / `_plan_mode` / `_agent_selected_tmp` / `"streamDoneSent"` / `_desktop_run_mode` / 裸字面量 attrs 键，宿主全部 **0 处**
+  * 文档：README §5.2 新增「派发事务 `QueueDispatch`」小节（含两个线程判定的混用后果）、`claimNext(canAccept)` 与门面表补 3 项、attrs 契约表补 `session.queue.dispatch`、命名空间规约补三类裸键反例
 
 * 门面瘦身：删除宿主零使用的 API（双轨残留清理）：
   * **判据**：`grep` 全仓确认宿主实际调用次数为 0 才删；调用过的一律保留。因此删的是「同一能力的第二条路」，不是「没人敢用的新能力」——留着两条路，后来者一定会挑错那条

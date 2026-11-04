@@ -23,8 +23,8 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
-import org.noear.solon.ai.harness.session.queue.QueueClaim;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
+import org.noear.solon.ai.harness.session.queue.QueueDispatch;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.LogDirUtil;
@@ -96,6 +96,21 @@ class WebSessionRunner {
     }
 
     /**
+     * 收口本轮所属的队列派发事务（幂等，非队列输入时为空操作）。
+     *
+     * <p>优先用捕获到的 {@code turn}：它是「这一条流自己的」派发事务，收口有身份保证。
+     * 早期路径（同步捕获、取消前抛弃）可能拿不到 turn，此时退回“收口会话当前的派发”——
+     * 与改造前行为一致，不存在回退风险。</p>
+     */
+    private void settleTurn(WorkspaceContext wsContext, AgentSession session, QueueDispatch turn, boolean started) {
+        if (turn != null) {
+            turn.settle(started);
+        } else {
+            gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, started);
+        }
+    }
+
+    /**
      * 一轮流启动失败的收尾：发 error、归还句柄槽位、确保前端能收到 done。
      *
      * <p>订阅动作被调度到 boundedElastic 后，开流前的异常（如模型未配置、agent 不存在、
@@ -103,12 +118,16 @@ class WebSessionRunner {
      * composite 会长驻 attrs 使 busy 判定永久为真（Stop 也只能发假 done），
      * 且前端收不到任何终态包。</p>
      */
-    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, Throwable e) {
+    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, QueueDispatch turn, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
         // 队列派发的启动失败：交给队列派发侧收口（claim 回滚），
         // 「不重试」由 drainLoop 的 START_FAILED 语义保证，宿主不再自己维护标记。
-        boolean queued = WebQueueDispatcher.isQueueDispatch(session);
-        gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, false);
+        //
+        // 这里必须用【跨线程】的 hasQueuedDispatch，不能用 isQueueDispatch：
+        // 本方法由 subscribeAction 在 boundedElastic 上调用，当前线程不是派发线程，
+        // 线程判定恒为 false → 回滚后立即续发 → 又领到同一条 → 无限循环。
+        boolean queued = WebQueueDispatcher.hasQueuedDispatch(session);
+        settleTurn(wsContext, session, turn, false);
 
         gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));
         // 失败终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
@@ -132,6 +151,11 @@ class WebSessionRunner {
         //订阅前（调用线程内）取取消代数基准：订阅动作被调度到别的线程异步执行，
         //这段窗口内若发生 interrupt，本流到订阅时应立即放弃，而不是成为一条取消不掉的幽灵流。
         final int cancelGen = SessionRuns.cancelCount(session);
+        // 同样在订阅前（派发调用栈内）捕获本轮所属的派发事务：终态收口必须收「这一条流自己的」
+        // 那个事务，而不是「会话当前」的那个。二者在真实时序里总是同一条（busy 期间
+        // isNotOccupied 挡住任何新派发），但那份安全性来自外部不变量而非 API 保证——
+        // 捕获后即便发生了意外的并发派发，也不会把别人的 claim 收掉。
+        final QueueDispatch turn = QueueDispatch.current(session);
 
         //agent 执行主体在 boundedElastic 线程上跑，订阅动作包在工作区日志作用域里：
         //同步源的整个管道执行发生在 subscribe() 调用栈内，故管道主体线程携带工作区标记
@@ -139,10 +163,10 @@ class WebSessionRunner {
         Runnable subscribeAction = () -> {
             Object logScope = WorkspaceLogRouter.beginScopeByKey(wsLogKey);
             try {
-                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, cancelGen);
+                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, cancelGen, turn);
             } catch (Throwable e) {
                 //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾
-                failStreamTurn(wsContext, session, e);
+                failStreamTurn(wsContext, session, turn, e);
             } finally {
                 WorkspaceLogRouter.endScope(logScope);
             }
@@ -155,7 +179,7 @@ class WebSessionRunner {
         }
     }
 
-    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, int cancelGen) {
+    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, int cancelGen, QueueDispatch turn) {
         String sessionId = session.getSessionId();
 
         //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）。
@@ -192,7 +216,7 @@ class WebSessionRunner {
                     gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
-                    gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, true);
+                    settleTurn(wsContext, session, turn, true);
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
@@ -225,6 +249,9 @@ class WebSessionRunner {
 
         // 取取消代数基准（早于任何开流动作）：同步等待方（Loop）依赖它判定本轮是否已被取消
         final int cancelGen = SessionRuns.cancelCount(session);
+        // 同步路径（Loop 等）不经过队列派发，此值通常为 null；仍统一捕获以保持两条路径同构，
+        // 收口时 null 落到「无未收口派发 → 空操作」。
+        final QueueDispatch turn = QueueDispatch.current(session);
 
         final String wsLogKey = wsLogKey(wsContext);
         Runnable subscribeAction = () -> {
@@ -273,7 +300,7 @@ class WebSessionRunner {
             } catch (Throwable e) {
                 //调度线程内的异常不会回到调用方；未订阅成功则 doFinally 不会跑，
                 //此处必须补发终态包并释放闩锁，否则同步等待方（Loop）永久阻塞
-                failStreamTurn(wsContext, session, e);
+                failStreamTurn(wsContext, session, turn, e);
                 countDownLatch.countDown();
             } finally {
                 WorkspaceLogRouter.endScope(logScope);

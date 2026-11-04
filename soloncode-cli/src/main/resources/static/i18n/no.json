@@ -1396,5 +1396,6 @@
   "history.clearConfirmMessage": "Tøm {count} ufestede samtaler? Samtaler som kjører vil bli beholdt. Dette kan ikke angres.",
   "history.clearFailed": "Kunne ikke tømme samtaler, prøv igjen",
   "history.clearSuccess": "Tømte {count} samtaler",
-  "history.clearTitle": "Tøm ufestede samtaler"
+  "history.clearTitle": "Tøm ufestede samtaler",
+  "streaming.queuePausedHitl": "Venter på godkjenning — køen er satt på pause"
 }
