@@ -73,6 +73,11 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
         </button>
     </div>
+    <div class="sidebar-search">
+        <input type="text" id="historySearchInput" placeholder="搜索聊天记录..." autocomplete="off"/>
+        <button class="sidebar-search-clear" id="historySearchClear" title="清除">×</button>
+    </div>
+    <div class="sidebar-search-results" id="historySearchResults"></div>
     <div class="sidebar-list" id="historyList"></div>
     <div class="sidebar-footer">
         <div class="sidebar-footer-actions">
