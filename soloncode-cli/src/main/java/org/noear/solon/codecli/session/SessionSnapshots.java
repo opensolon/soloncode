@@ -4,8 +4,10 @@
  */
 package org.noear.solon.codecli.session;
 
-import org.noear.solon.ai.harness.session.queue.QueueHelper;
+import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalProjection;
+import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,12 +43,12 @@ public final class SessionSnapshots {
      * 会话目录下的快照是否携带排队任务。
      *
      * <p>只读探测专用：解析快照 JSON 为 {@link FlowContext} 后经
-     * {@link QueueHelper#hasPersistedItems(FlowContext)} 判定。
+     * {@link QueueExtension#isPersisted(FlowContext)} 判定。
      * 会话已在内存时应直接用 {@code getSessionIfPresent} + {@code QueueExtension#hasItems}。</p>
      */
     public static boolean hasQueue(Path sessionDir, String sessionId) {
         FlowContext context = readSnapshot(sessionDir, sessionId);
-        return context != null && QueueHelper.hasPersistedItems(context);
+        return context != null && QueueExtension.isPersisted(context);
     }
 
     /**
@@ -61,19 +63,13 @@ public final class SessionSnapshots {
     }
 
     /**
-     * 轻读快照中 goal 投影的状态名（PURSUING/PAUSED/...）。
+     * 轻读快照中 goal 投影的状态。
      *
-     * <p>只读探测专用（启动恢复）：无 goal 投影、投影无 status 字段或解析失败
-     * 返回 null；非法状态字串原样返回，交由调用方
-     * （GoalEngine#isActiveStatus / #isTerminalStatus）自行判定。</p>
+     * <p>只读探测专用（启动恢复）：字段名解析完全由 harness 的 {@link GoalProjection} 负责，
+     * 宿主不硬编码任何投影键名；无有效投影返回 null。</p>
      */
-    public static String readGoalStatus(Path sessionDir, String sessionId) {
-        FlowContext context = readSnapshot(sessionDir, sessionId);
-        if (context == null) return null;
-        Object value = context.data().get(GoalEngine.KEY_GOAL);
-        if (!(value instanceof Map)) return null;
-        Object status = ((Map<?, ?>) value).get("status");
-        return status != null ? String.valueOf(status) : null;
+    public static GoalState.Status readGoalStatus(Path sessionDir, String sessionId) {
+        return GoalProjection.statusOf(readSnapshot(sessionDir, sessionId));
     }
 
     /** 只读解析会话目录下的快照为 FlowContext；无快照或解析失败返回 null。 */

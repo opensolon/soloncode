@@ -16,7 +16,7 @@
 package org.noear.solon.codecli.goal;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.session.goal.GoalProjection;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -147,11 +147,11 @@ public final class GoalDataMigrator {
             return false;
         }
 
-        Map<String, Object> projection = toProjection(item);
+        GoalProjection projection = toProjection(item);
         if (projection == null) {
             return false;
         }
-        context.data().put(GoalEngine.KEY_GOAL, projection);
+        projection.writeTo(context);
 
         atomicWrite(snapshot, context.toJson());
         return true;
@@ -163,43 +163,42 @@ public final class GoalDataMigrator {
      * <p>持久字段全部保留；运行时计数器（stagnation / consecutiveErrors /
      * lastFingerprint）迁移时重置——它们描述的是上一进程内的执行连续性，
      * 跨重启保留只会造成误判。</p>
+     *
+     * <p>字段集合与键名由 harness 的 {@link GoalProjection.Builder} 定义，
+     * 本方法只负责 ONode → 值的映射，不再拼装投影 Map（此前宿主复刻了一份
+     * {@code GoalState.toMap()}，harness 改字段即静默失效）。</p>
      */
-    private static Map<String, Object> toProjection(ONode item) {
+    private static GoalProjection toProjection(ONode item) {
         ONode gsNode = item.getOrNull("goalState");
         if (gsNode == null) {
             return null;
         }
 
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("goalId", strOrNull(gsNode, "id"));
-        String condition = strOrNull(gsNode, "condition");
-        map.put("condition", condition);
-        map.put("objective", condition);
-        map.put("status", strOrNull(gsNode, "status"));
-        map.put("consumedTokens", longOf(gsNode, "consumedTokens"));
+        GoalProjection.Builder builder = GoalProjection.builder()
+                .goalId(strOrNull(gsNode, "id"))
+                .condition(strOrNull(gsNode, "condition"))
+                .statusName(strOrNull(gsNode, "status"))
+                .consumedTokens(longOf(gsNode, "consumedTokens"))
+                .maxIterations((int) longOf(gsNode, "maxIterations"))
+                .startEpochMs(longOf(gsNode, "startEpochMs"))
+                .currentIteration((int) longOf(gsNode, "currentIteration"))
+                .lastResult(strOrNull(gsNode, "lastResult"))
+                .lastExecutedAt(longOf(gsNode, "lastExecutedAt"));
+
         // maxTokens 历史上双写（GoalState + LoopTask 顶层），GoalState 为准、顶层兜底
         long maxTokens = longOf(gsNode, "maxTokens");
         if (maxTokens == 0 && item.getOrNull("maxTokens") != null) {
             maxTokens = item.get("maxTokens").getLong();
         }
-        map.put("maxTokens", maxTokens);
-        map.put("maxIterations", (int) longOf(gsNode, "maxIterations"));
-        map.put("startEpochMs", longOf(gsNode, "startEpochMs"));
+        builder.maxTokens(maxTokens);
+
         long maxDurationMs = longOf(gsNode, "maxDurationMs");
         if (maxDurationMs == 0 && item.getOrNull("maxDurationMs") != null) {
             maxDurationMs = item.get("maxDurationMs").getLong();
         }
-        map.put("maxDurationMs", maxDurationMs);
-        map.put("currentIteration", (int) longOf(gsNode, "currentIteration"));
-        String lastResult = strOrNull(gsNode, "lastResult");
-        if (lastResult != null) {
-            map.put("lastResult", lastResult);
-        }
-        long lastExecutedAt = longOf(gsNode, "lastExecutedAt");
-        if (lastExecutedAt > 0) {
-            map.put("lastExecutedAt", lastExecutedAt);
-        }
-        return map;
+        builder.maxDurationMs(maxDurationMs);
+
+        return builder.build();
     }
 
     private static String strOrNull(ONode node, String name) {

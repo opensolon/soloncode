@@ -154,6 +154,94 @@ class PackageBoundaryTest {
                 "goal 必须先于定时任务被加入列表（前端不做排序，顺序即后端顺序）");
     }
 
+    /**
+     * 宿主不得再直接使用 harness 的 queue / goal <b>内部</b>类型与持久化格式。
+     *
+     * <p>本轮封装改造后的契约（已在代码中落地，此处锁定不被回退）：</p>
+     * <ul>
+     *   <li>禁止 {@code import QueueHelper}（内核静态类，仅门面与测试使用）；</li>
+     *   <li>禁止从会话 attrs 里取 {@code QueueItem} 再强转（领取应由 {@code QueueClaim} 携带）；</li>
+     *   <li>禁止硬编码 {@code GoalEngine.KEY_GOAL} 或投影字段名（读写走 {@code GoalProjection}）；</li>
+     *   <li>禁止把 {@code QueueItem.toMap()}（持久化投影）当对外 API（应用 {@code QueueItemView}）。</li>
+     * </ul>
+     */
+    @Test
+    void hostMustNotUseQueueAndGoalInternals() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+
+            if (content.contains("import org.noear.solon.ai.harness.session.queue.QueueHelper")) {
+                violations.add(name + " 直接依赖内核 QueueHelper（应经 QueueExtension 门面）");
+            }
+            if (content.contains("instanceof QueueItem") || content.contains("(QueueItem)")) {
+                violations.add(name + " 从 attrs 强转 QueueItem（应由 QueueClaim 携带领域对象）");
+            }
+            if (content.contains("GoalEngine.KEY_GOAL")) {
+                violations.add(name + " 硬编码 goal 投影键（应使用 GoalProjection）");
+            }
+            // 队列展示必须走视图对象；GoalDataMigrator 处理的是历史 ONode，不在此列
+            if (!name.equals("GoalDataMigrator.java")
+                    && content.contains("QueueItem item")
+                    && content.contains(".toMap()")) {
+                violations.add(name + " 把持久化投影当对外 API（应使用 QueueItemView）");
+            }
+        }
+        assertTrue(violations.isEmpty(), "宿主不得触碰 harness 内部实现细节：" + violations);
+    }
+
+    /**
+     * 宿主私有会话键不得占用引擎命名空间（{@code session.*}）。
+     *
+     * <p>命名空间规约见 harness 的 {@code HarnessAttrs}：{@code session.*} 归引擎契约，
+     * 宿主自有键必须用 {@code cli.*} / {@code im.*} / {@code _} 前缀。此前
+     * {@code session.replyRoute}、{@code session.queue.executing}、{@code session.input.admitting}
+     * 均因占错命名空间而被逐个改正，此处防止再犯。</p>
+     */
+    @Test
+    void hostMustNotClaimEngineAttrNamespace() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                if (trimmed.contains("\"session.")) {
+                    violations.add(name + ": " + trimmed);
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "宿主私有键必须用 cli./im. 前缀，不得占用引擎的 session.* 命名空间：" + violations);
+    }
+
+    /**
+     * {@code artifact} 包不得反向依赖 {@code api.web}。
+     *
+     * <p>共享的宿主会话键（{@code cli.replyRoute}、{@code im.terminal.sent} 等）
+     * 已下沉到中立的 {@code codecli.session.HostAttrs}：{@code artifact} 与
+     * {@code api.web} 双向都只依赖 {@code session}。此前为了用 {@code WebAttrs}
+     * 中的一个常量，曾新增 {@code artifact -> api.web} 反向依赖——用架构问题换掉
+     * 一个字符串字面量，得不偿失。</p>
+     */
+    @Test
+    void artifactMustNotDependOnApiWeb() throws IOException {
+        List<Path> files = javaFiles(SRC.resolve("artifact"));
+        assumeTrue(!files.isEmpty(), "artifact 包源码不存在");
+
+        List<String> violations = new ArrayList<>();
+        for (Path file : files) {
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+            if (content.contains("import org.noear.solon.codecli.api.web.")) {
+                violations.add(file.getFileName() + " 反向依赖 api.web（共享键应用 codecli.session.HostAttrs）");
+            }
+        }
+        assertTrue(violations.isEmpty(), "artifact 不得依赖 web 层：" + violations);
+    }
+
     private static List<Path> javaFiles(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) {
             return new ArrayList<>();

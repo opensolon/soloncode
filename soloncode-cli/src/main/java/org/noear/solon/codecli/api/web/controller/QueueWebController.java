@@ -26,7 +26,7 @@ import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.LegacyQueueMigrator;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
-import org.noear.solon.ai.harness.session.queue.QueueItem;
+import org.noear.solon.ai.harness.session.queue.QueueItemView;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 import org.slf4j.Logger;
@@ -247,10 +247,8 @@ public class QueueWebController extends AbstractWebController {
         }
         Map<String, Object> data = new LinkedHashMap<>();
         List<Map> rows = new ArrayList<>();
-        for (QueueItem item : queue().view(session)) {
-            Map<String, Object> row = new LinkedHashMap<>(item.toMap());
-            row.put("displayText", item.getText());
-            rows.add(row);
+        for (QueueItemView item : queue().viewRows(session)) {
+            rows.add(item.toMap());
         }
         data.put("exists", !rows.isEmpty());
         data.put("items", rows);

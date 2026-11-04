@@ -1,11 +1,14 @@
 package org.noear.solon.codecli.api.web;
 
+import org.noear.solon.ai.harness.session.HarnessAttrs;
+
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
+import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
@@ -54,7 +57,7 @@ class WebGateRejectedInputTest {
         WebGate gate = recordingGate(events);
         AgentSession session = InMemoryAgentSession.of();
         session.attrs().put("streamDoneSent", new AtomicBoolean(true));
-        session.attrs().put("session.input.admitting", Boolean.TRUE);
+        session.attrs().put(HarnessAttrs.INPUT_ADMITTING, Boolean.TRUE);
 
         guardedDone(gate, session);
 

@@ -16,19 +16,22 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.session.InputGate;
 import org.noear.solon.ai.harness.session.SessionStatus;
 
 /**
- * 会话运行状态查询。
+ * 会话运行状态查询（宿主侧唯一口径）。
  *
- * <p>运行流与待审批这两项事实统一读 {@link SessionStatus}（harness 门面，一次读全）；
- * 本类只额外叠加宿主自己的 {@link #ATTR_INPUT_ADMITTING} 标志——
- * 那是「输入已受理、流尚未注册」的窗口态，harness 无从得知，故只能留在宿主侧。</p>
+ * <p>三项事实（运行流、待审批卡、输入受理窗口）全部由 harness 提供：
+ * {@link SessionStatus} 一次读全，{@link InputGate} 把「已受理、流尚未登记」的窗口态
+ * 也纳入占用判定。宿主不再自己维护任何运行态 attrs 键——此前那份私有标记
+ * 既不跨端通用，也漏进了 {@link SessionStatus} 的视野，不占位的端就判定不到。</p>
+ *
+ * <p>本类保留为宿主内部的语义命名（{@code busy} / {@code activeStream} 在 Web 各处高频使用），
+ * 实现全部委托给 harness。判断「能不能接新输入」请直接用
+ * {@code engine.status(session).isOccupied()}（含 HITL 挂起，桌面端即如此）。</p>
  */
 public final class SessionActivity {
-    /** 会话属性：输入已被接纳但 Agent 流尚未完成注册。 */
-    public static final String ATTR_INPUT_ADMITTING = "session.input.admitting";
-
     private SessionActivity() {
     }
 
@@ -40,35 +43,18 @@ public final class SessionActivity {
     }
 
     /**
-     * 判断输入是否已占用本会话的启动闩。
+     * 输入是否已被受理、但 Agent 流尚未完成注册。
      *
-     * <p>该状态只表示输入正在从受理阶段进入任务/命令处理阶段，不代表已有 Agent 流。</p>
+     * @see InputGate
      */
     public static boolean isInputAdmitting(AgentSession session) {
-        return session != null && Boolean.TRUE.equals(session.attrs().get(ATTR_INPUT_ADMITTING));
+        return InputGate.isAdmitting(session);
     }
 
     /**
      * 当前会话是否处于输入受理或 Agent 流执行状态。
      */
     public static boolean isBusy(AgentSession session) {
-        return isInputAdmitting(session) || hasActiveStream(session);
-    }
-
-    /**
-     * 会话是否「占着」：忙碌、待审批，或输入正在受理。
-     *
-     * <p>与 {@link #isBusy(AgentSession)} 的差别是包含待审批：HITL 挂起时引擎里没有运行流，
-     * 但显然不能被新输入顶掉，故「能不能接新输入」要用本方法判断。</p>
-     *
-     * @since 4.2.0
-     */
-    public static boolean isOccupied(AgentSession session) {
-        if (isInputAdmitting(session)) {
-            return true;
-        }
-
-        SessionStatus status = SessionStatus.of(session);
-        return status.isOccupied();
+        return SessionStatus.of(session).isBusy() || isInputAdmitting(session);
     }
 }

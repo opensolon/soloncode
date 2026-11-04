@@ -23,7 +23,7 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
-import org.noear.solon.ai.harness.session.queue.QueueItem;
+import org.noear.solon.ai.harness.session.queue.QueueClaim;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
@@ -105,10 +105,9 @@ class WebSessionRunner {
      */
     void failStreamTurn(WorkspaceContext wsContext, AgentSession session, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
-        boolean queued = session.attrs().get("session.queue.executing") instanceof QueueItem;
-        if (queued && Thread.currentThread().equals(session.attrs().get(WebQueueDispatcher.ATTR_QUEUE_DISPATCH))) {
-            session.attrs().put("session.queue.startFailed", Boolean.TRUE);
-        }
+        // 队列派发的启动失败：交给队列派发侧收口（claim 回滚），
+        // 「不重试」由 drainLoop 的 START_FAILED 语义保证，宿主不再自己维护标记。
+        boolean queued = WebQueueDispatcher.isQueueDispatch(session);
         gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, false);
 
         gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));

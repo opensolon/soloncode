@@ -1,5 +1,7 @@
 package org.noear.solon.codecli.session;
 
+import org.noear.solon.ai.harness.session.HarnessAttrs;
+
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
@@ -13,7 +15,7 @@ class SessionActivityTest {
     @Test
     void admittingInputIsNotAnActiveStream() {
         AgentSession session = InMemoryAgentSession.of();
-        session.attrs().put(SessionActivity.ATTR_INPUT_ADMITTING, Boolean.TRUE);
+        session.attrs().put(HarnessAttrs.INPUT_ADMITTING, Boolean.TRUE);
 
         assertTrue(SessionActivity.isInputAdmitting(session));
         assertFalse(SessionActivity.hasActiveStream(session));

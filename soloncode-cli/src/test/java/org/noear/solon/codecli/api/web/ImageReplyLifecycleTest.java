@@ -20,6 +20,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskWrapEvent;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
 import org.noear.solon.codecli.artifact.ImageReplyTurn;
@@ -286,7 +287,7 @@ class ImageReplyLifecycleTest {
         createImage();
         // 值相等但身份不同，防止 remove(key, value) 误删新路由。
         Map<String, String> newRoute = new HashMap<>(f.route);
-        f.attrs.put("session.replyRoute", newRoute);
+        f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, newRoute);
         ImageReplyTurn current = f.newTurn();
         f.bind(current, "new");
         Path newImage = createImage();
@@ -295,7 +296,7 @@ class ImageReplyLifecycleTest {
         f.builder.replyRunEnd(f.context, f.session, old, "old", withImage("旧答复"), false);
         assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
         assertTrue(current.isImagesAllowed());
-        assertSame(newRoute, f.attrs.get("session.replyRoute"));
+        assertSame(newRoute, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         verifyNoInteractions(f.origin, f.other, f.unbound);
 
@@ -319,7 +320,7 @@ class ImageReplyLifecycleTest {
         f.bind(turn, "run");
         f.builder.replyRunEnd(f.context, f.session, turn, "other", withImage("错误身份"), false);
         verifyNoInteractions(f.origin, f.other, f.unbound);
-        assertSame(f.route, f.attrs.get("session.replyRoute"));
+        assertSame(f.route, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         assertEquals(0, f.prepareCalls, "身份预检失败不得进入 Markdown 解析与图片读取");
         f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("正确"), false);
@@ -351,13 +352,13 @@ class ImageReplyLifecycleTest {
         f.route.clear();
         f.route.put("source", "other");
         Map<String, String> replacement = new HashMap<>(f.route);
-        f.attrs.put("session.replyRoute", replacement);
+        f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
         assertThrows(UnsupportedOperationException.class, () -> turn.getRoute().clear());
         f.builder.replyRunEnd(f.context, f.session, turn, "run", withImage("完成"), false);
         f.captureStructured();
-        assertSame(replacement, f.attrs.get("session.replyRoute"));
+        assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
         turn.cleanup();
-        assertSame(replacement, f.attrs.get("session.replyRoute"));
+        assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
     }
 
     @Test
@@ -607,7 +608,7 @@ class ImageReplyLifecycleTest {
             replacement.put("replyTarget", "new-target");
             replacement.put("messageId", "new-message");
             f.route.clear();
-            f.attrs.put("session.replyRoute", replacement);
+            f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
             Path newImage = null;
             if (replaceTurn) {
                 current = f.newTurn();
@@ -625,7 +626,7 @@ class ImageReplyLifecycleTest {
             f.assertNoStructured();
             old.cleanup();
             mapper.mapEvent(runEnd(f.session, "run", withImage("迟到成功")));
-            assertSame(replacement, f.attrs.get("session.replyRoute"));
+            assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
             if (replaceTurn) {
                 assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
                 assertTrue(current.isImagesAllowed());
@@ -714,12 +715,12 @@ class ImageReplyLifecycleTest {
         Runnable delivery = f.builder.prepareCanceledReply(f.context, f.session);
         Map<String, String> replacement = new HashMap<>(f.route);
         f.route.clear();
-        f.attrs.put("session.replyRoute", replacement);
+        f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
         delivery.run();
         delivery.run();
         verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
         verify(f.other).sendReply("s1", "用户已取消任务。", true);
-        assertSame(replacement, f.attrs.get("session.replyRoute"));
+        assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
     }
 
     @Test
@@ -730,14 +731,14 @@ class ImageReplyLifecycleTest {
         Flux<WebEvent<?>> oldStream = f.buildStream();
         ImageReplyTurn old = f.currentTurnWithImage();
         Map<String, String> replacement = new HashMap<>(f.route);
-        f.attrs.put("session.replyRoute", replacement);
+        f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
         ImageReplyTurn current = f.newTurn();
         f.bind(current, "new");
         Path image = createImage();
         assertEquals(1, oldStream.collectList().block(Duration.ofSeconds(5)).size());
         verifyNoInteractions(f.origin, f.other, f.unbound);
         assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
-        assertSame(replacement, f.attrs.get("session.replyRoute"));
+        assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
         assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         assertFalse(old.isImagesAllowed());
         f.builder.replyRunEnd(f.context, f.session, current, "new", withImage("新答复"), false);
@@ -769,13 +770,13 @@ class ImageReplyLifecycleTest {
             workers.submit(() -> f.builder.replyCanceledToBoundChannels(f.context, f.session))
                     .get(5, TimeUnit.SECONDS);
             Map<String, String> replacement = new HashMap<>(f.route);
-            f.attrs.put("session.replyRoute", replacement);
+            f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
             current = f.newTurn();
             f.bind(current, "new");
             release.countDown();
             ended.get(5, TimeUnit.SECONDS);
             assertSnapshot(image, f.captureStructured());
-            assertSame(replacement, f.attrs.get("session.replyRoute"));
+            assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
             assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
             assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
             assertTrue(((ImageReplyTurn) f.attrs.get(ImageReplyTurn.ATTR)).isImagesAllowed());
@@ -833,7 +834,7 @@ class ImageReplyLifecycleTest {
                     new WebEventMapper(f.builder, f.context, f.session, null, old).mapEvent(pending("old"));
                 } else {
                     Map<String, String> replacement = new HashMap<>(f.route);
-                    f.attrs.put("session.replyRoute", replacement);
+                    f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
                     ImageReplyTurn replacementTurn = f.newTurn();
                     f.bind(replacementTurn, "new");
                 }
@@ -866,9 +867,9 @@ class ImageReplyLifecycleTest {
                 f.assertNoStructured();
                 verify(f.origin, never()).sendReply(anyString(), anyString(), anyBoolean(), any(), any(), any());
                 verify(f.other, never()).sendReply(anyString(), anyString(), anyBoolean());
-                Object replacement = f.attrs.get("session.replyRoute");
+                Object replacement = f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE);
                 old.cleanup();
-                assertSame(replacement, f.attrs.get("session.replyRoute"));
+                assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
                 assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
                 assertTrue(current.canClaim("new"));
                 assertTrue(current.isImagesAllowed());
@@ -987,10 +988,15 @@ class ImageReplyLifecycleTest {
             ChannelHub hub = mock(ChannelHub.class);
             when(context.getEngine()).thenReturn(engine);
             // 队列/插话已收口到扩展门面（门面内部转静态实现，无需 attach 即可用）
-            doReturn(new org.noear.solon.ai.harness.session.queue.QueueExtension())
+            doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.session.queue.QueueExtension()))
                     .when(engine).getExtension(org.noear.solon.ai.harness.session.queue.QueueExtension.class);
-            doReturn(new org.noear.solon.ai.harness.session.steer.SteerExtension())
+            doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.session.steer.SteerExtension()))
                     .when(engine).getExtension(org.noear.solon.ai.harness.session.steer.SteerExtension.class);
+            // 两段式中断走引擎真实实现（与 CLI/Web 生产路径一致）：mock 引擎默认返回 null 会让
+            // interruptSession 走「无活跃流」兜底分支，测不到真实中断语义
+            doAnswer(inv -> org.noear.solon.ai.harness.session.interrupt.InterruptHelper
+                    .prepareInterrupt(inv.getArgument(0)))
+                    .when(engine).prepareInterrupt(any());
             when(engine.getSession("s1")).thenReturn(session);
             when(session.getSessionId()).thenReturn("s1");
             when(session.attrs()).thenReturn(attrs);
@@ -1005,7 +1011,7 @@ class ImageReplyLifecycleTest {
             route.put("sourceUserId", "user");
             route.put("replyTarget", "target");
             route.put("messageId", "message");
-            attrs.put("session.replyRoute", route);
+            attrs.put(HostAttrs.ATTR_REPLY_ROUTE, route);
         }
 
         private Channel channelWithoutSessionLock(Class<? extends Channel> type) {
@@ -1098,7 +1104,7 @@ class ImageReplyLifecycleTest {
         void assertCleaned() {
             assertFalse(attrs.containsKey(ImageReplyTurn.ATTR));
             
-            assertFalse(attrs.containsKey("session.replyRoute"));
+            assertFalse(attrs.containsKey(HostAttrs.ATTR_REPLY_ROUTE));
         }
     }
 }

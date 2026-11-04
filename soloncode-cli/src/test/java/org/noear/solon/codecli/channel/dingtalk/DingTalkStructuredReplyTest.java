@@ -3,6 +3,7 @@ package org.noear.solon.codecli.channel.dingtalk;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
@@ -426,7 +427,7 @@ class DingTalkStructuredReplyTest {
         route.put("sourceUserId", "source");
         route.put("replyTarget", "target");
         route.put("messageId", "message");
-        session.attrs().put("session.replyRoute", route);
+        session.attrs().put(HostAttrs.ATTR_REPLY_ROUTE, route);
         ImageReplyTurn turn = new ImageReplyTurn(session, root.toString(), root.toString());
         try {
             ReActTrace trace = mock(ReActTrace.class);

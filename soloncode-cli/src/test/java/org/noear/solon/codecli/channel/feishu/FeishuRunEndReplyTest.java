@@ -2,6 +2,7 @@ package org.noear.solon.codecli.channel.feishu;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.codecli.api.web.WebStreamBuilder;
@@ -56,7 +57,7 @@ class FeishuRunEndReplyTest {
         assertFalse(Files.exists(f.image));
         assertTrue(f.link.events.isEmpty());
         assertEquals(1, f.link.tasks.size());
-        assertFalse(f.attrs.containsKey("session.replyRoute"));
+        assertFalse(f.attrs.containsKey(HostAttrs.ATTR_REPLY_ROUTE));
         f.link.binding.appSecret = "changed";
         f.link.binding.openId = "changed";
         turn.cleanup();
@@ -144,7 +145,7 @@ class FeishuRunEndReplyTest {
             route.put("source", "feishu");
             route.put("sourceUserId", "source");
             route.put("replyTarget", "target");
-            attrs.put("session.replyRoute", route);
+            attrs.put(HostAttrs.ATTR_REPLY_ROUTE, route);
         }
 
         ImageReplyTurn turn(String runId) {

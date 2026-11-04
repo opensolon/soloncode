@@ -1,5 +1,7 @@
 package org.noear.solon.codecli.command.builtin;
 
+import org.noear.solon.ai.harness.session.HarnessAttrs;
+
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
@@ -7,6 +9,7 @@ import org.noear.solon.ai.harness.session.steer.SteerCommand;
 import org.noear.solon.ai.harness.input.BufferedCommandContext;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.steer.SteerHelper;
+import org.noear.solon.codecli.session.SessionActivity;
 
 import java.util.Collections;
 
@@ -58,7 +61,7 @@ class SteerCommandTest {
     @Test
     void admittingSessionDoesNotStartTaskOrQueue() {
         AgentSession session = InMemoryAgentSession.of();
-        session.attrs().put("session.input.admitting", Boolean.TRUE);
+        session.attrs().put(HarnessAttrs.INPUT_ADMITTING, Boolean.TRUE);
 
         BufferedCommandContext ctx = context(session);
         command.execute(null, ctx, IM_ORIGIN);

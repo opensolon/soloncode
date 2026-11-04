@@ -18,6 +18,7 @@ package org.noear.solon.codecli.api.web;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.session.HarnessAttrs;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -58,9 +59,14 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     /** 会话属性：本轮 agent 流是否已向客户端发送过 done（防 interrupt + doFinally 双发） */
     private static final String ATTR_STREAM_DONE_SENT = WebEventPublisher.ATTR_STREAM_DONE_SENT;
 
-    /** 会话属性：输入已被接纳但 Agent 流尚未完成注册，用于防止并发启动竞态。 */
+    /**
+     * 会话属性：输入已被接纳但 Agent 流尚未完成注册，用于防止并发启动竞态。
+     *
+     * @deprecated 运行态标记已收归 harness 的 {@code InputGate}，宿主不应再读写该键；
+     *             本常量仅保留给尚未迁移的测试。
+     */
     @Deprecated
-    public static final String ATTR_INPUT_ADMITTING = SessionActivity.ATTR_INPUT_ADMITTING;
+    public static final String ATTR_INPUT_ADMITTING = HarnessAttrs.INPUT_ADMITTING;
 
     private final WorkspaceRegistry workspaceRegistry;
 
@@ -205,11 +211,6 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         WorkspaceContext wsContext = workspaceRegistry.getContextsCached(workspaceId);
         return inputHandler.safeChatInputAndCaptureLoop(wsContext, sessionId, input, source);
     }
-
-    // ═══════════════════════ ATTR_QUEUE_DISPATCH 派发线程标记兼容 ═══════════════════════
-
-    /** 会话属性：队列派发线程标记（由 WebQueueDispatcher 维护）。 */
-    static final String ATTR_QUEUE_DISPATCH = WebQueueDispatcher.ATTR_QUEUE_DISPATCH;
 
     // ═══════════════════════════════════════════════════════════════
     //  WebSocket 生命周期管理

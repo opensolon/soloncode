@@ -2,6 +2,7 @@ package org.noear.solon.codecli.api.web.pipeline;
 
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.RunStartEvent;
@@ -349,7 +350,7 @@ public class WebEventMapper {
             if (event.isToolCalls()) {
                 streamBuilder.replyToBoundChannel(wsContext, sessionId, resultContent, false);
             } else {
-                String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
+                String agentSelectedTmp = (String) session.attrs().get(HarnessEngine.ATTR_AGENT_EFFECTIVE);
                 String eventAgentName = event.getTrace() == null ? null : event.getTrace().getAgentName();
 
                 if (eventAgentName == null || !eventAgentName.equals(agentSelectedTmp)) {
@@ -418,7 +419,7 @@ public class WebEventMapper {
             finalAnswer = event.getText();
         }
 
-        String agentSelectedTmp = (String) session.attrs().get("_agent_selected_tmp");
+        String agentSelectedTmp = (String) session.attrs().get(HarnessEngine.ATTR_AGENT_EFFECTIVE);
         String eventAgentName = event.getTrace() == null ? null : event.getTrace().getAgentName();
 
         // 如果是主代理侧补发最后答案

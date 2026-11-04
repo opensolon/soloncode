@@ -14,6 +14,7 @@ import org.noear.solon.codecli.channel.feishu.FeishuLink;
 import org.noear.solon.codecli.channel.dingtalk.DingTalkLink;
 
 import org.noear.solon.codecli.artifact.ImageReplyTurn;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.pipeline.SessionMetricsRecorder;
@@ -53,18 +54,19 @@ public class WebStreamBuilder {
 
     /**
      * 本轮实际生效的子代理名（含 {@code @子代理} 解析结果）。
-     * <p>HITL 续流必须沿用它：trace 按代理名分 key，取错代理会取不到挂起的 tool_calls。</p>
+     * <p>已上收到引擎：{@code HarnessEngine.ATTR_AGENT_EFFECTIVE}（session.agent.effective，
+     * handle 返回 TASK 时自动写入）。本常量保留为兼容别名，语义同源；新代码请用引擎契约键。</p>
      */
-    public static final String ATTR_EFFECTIVE_AGENT = "_agent_selected_tmp";
+    public static final String ATTR_EFFECTIVE_AGENT = HarnessEngine.ATTR_AGENT_EFFECTIVE;
 
     /** IM 非流式终态去重标记：一轮只允许一条终态消息（final/error/canceled）落 IM。 */
     public static final String ATTR_IM_TERMINAL_SENT = ImageReplyTurn.ATTR_IM_TERMINAL_SENT;
 
     /** 长任务心跳定时器句柄（终态时取消）。 */
-    private static final String ATTR_IM_HEARTBEAT = "session.im.heartbeat";
+    private static final String ATTR_IM_HEARTBEAT = HostAttrs.ATTR_IM_HEARTBEAT;
 
     /** 本轮忙态命令引导是否已提示过：同一轮只教学一次，避免连发多条时重复刷屏。 */
-    private static final String ATTR_IM_CMD_HINT_SHOWN = "session.im.cmdHint.shown";
+    private static final String ATTR_IM_CMD_HINT_SHOWN = HostAttrs.ATTR_IM_CMD_HINT_SHOWN;
 
     /** 受理后多久仍无终态，就向来源端补一条「仍在处理」。 */
     private static final long LONG_RUNNING_DELAY_MS = 60_000L;
@@ -101,7 +103,7 @@ public class WebStreamBuilder {
         synchronized (session.attrs()) {
             if (expected != null && !expected.isCurrent()) return () -> { };
             ImageReplyTurn turn = (ImageReplyTurn) session.attrs().get(ImageReplyTurn.ATTR);
-            Object originalRoute = session.attrs().get("session.replyRoute");
+            Object originalRoute = session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE);
             Map<String, String> route = turn != null ? turn.getRoute()
                     : originalRoute instanceof Map ? java.util.Collections.unmodifiableMap(
                             new java.util.HashMap<>((Map<String, String>) originalRoute))
@@ -131,8 +133,8 @@ public class WebStreamBuilder {
             } finally {
                 synchronized (session.attrs()) {
                     if (turn != null) turn.clearRoute();
-                    else if (session.attrs().get("session.replyRoute") == originalRoute) {
-                        session.attrs().remove("session.replyRoute");
+                    else if (session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE) == originalRoute) {
+                        session.attrs().remove(HostAttrs.ATTR_REPLY_ROUTE);
                     }
                 }
             }
@@ -148,8 +150,10 @@ public class WebStreamBuilder {
         }
         // 能力查询、Markdown 解析、路径验证、读取和解码均不得持有 attrs 锁。
         // 纯 Web、未绑定或仅绑定文本 IM 时，只生成安全占位，不准备本地图片。
+        // 异常终态一律用安全文案：模型半成品答案（可能带图片标记或不完整结论）不得发到渠道，
+        // 具体错误详情由 Web/IM 的错误事件路径发送。
         ChannelReply prepared = abnormal
-                ? ChannelReply.fromMarkdown(Assert.isEmpty(text) ? "任务执行异常结束。" : text, true, runId, null, null, false)
+                ? ChannelReply.fromMarkdown("任务执行异常结束。", true, runId, null, null, false)
                 : hasBoundImageChannel(context, session.getSessionId())
                     ? prepareRunEndReply(turn, stripAnsi(text), runId)
                     : ChannelReply.fromMarkdown(stripAnsi(text), true, runId, null, null, false);
@@ -212,7 +216,7 @@ public class WebStreamBuilder {
         AgentSession session = wsContext.getEngine().getSession(sessionId);
         @SuppressWarnings("unchecked")
         Map<String, String> route = session == null ? null
-                : (Map<String, String>) session.attrs().get("session.replyRoute");
+                : (Map<String, String>) session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE);
         if (route == null) {
             return;
         }
@@ -414,9 +418,11 @@ public class WebStreamBuilder {
      * @param targetModel 展示用模型句柄（trace 事件的 model 标签；能力解析也基于它）
      */
     public Flux<WebEvent<?>> buildStreamFlux(WorkspaceContext wsContext, AgentSession session, InputOutcome outcome, ChatModel targetModel, String sessionCwd) {
-        // 子代理名回写：WebEventMapper 依此判断 RunEnd 是否本轮源代理，HITL 续流也依此取生效代理
-        session.attrs().put(ATTR_EFFECTIVE_AGENT, outcome.getAgentName() != null
-                ? outcome.getAgentName() : "main");
+        // 生效代理已由引擎在 handle 返回 TASK 时写入（ATTR_AGENT_EFFECTIVE，主代理归一 "main"）；
+        // 这里仅同步存量会话（升级窗口内 attrs 可能还是旧值）并保持 WebEventMapper 读取口径不变。
+        if (outcome.getAgentName() != null) {
+            session.attrs().put(ATTR_EFFECTIVE_AGENT, outcome.getAgentName());
+        }
 
         HarnessEngine engine = wsContext.getEngine();
         GeneralGroupDo general = wsContext.getSettings() == null ? null : wsContext.getSettings().getGeneral();

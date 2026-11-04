@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.codecli.channel.Channel;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
@@ -72,7 +73,7 @@ class WebStreamBuilderReplyRouteTest {
         route.put("source", "WeChat");
         route.put("sourceUserId", "user-a");
         route.put("replyTarget", "token-a");
-        attrs.put("session.replyRoute", route);
+        attrs.put(HostAttrs.ATTR_REPLY_ROUTE, route);
         when(context.getEngine()).thenReturn(engine);
         when(engine.getSession("s1")).thenReturn(session);
         when(session.attrs()).thenReturn(attrs);
@@ -86,7 +87,7 @@ class WebStreamBuilderReplyRouteTest {
         verify(wechat).sendReply("s1", "answer", true, "user-a", "token-a", null);
         // 非来源端走无定向参数广播（多终端同步），退回到绑定用户
         verify(feishu).sendReply("s1", "answer", true);
-        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey("session.replyRoute"));
+        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey(HostAttrs.ATTR_REPLY_ROUTE));
     }
 
     @Test
@@ -122,7 +123,7 @@ class WebStreamBuilderReplyRouteTest {
         route.put("sourceUserId", "user");
         route.put("replyTarget", "target");
         route.put("messageId", "message");
-        attrs.put("session.replyRoute", route);
+        attrs.put(HostAttrs.ATTR_REPLY_ROUTE, route);
         when(context.getEngine()).thenReturn(engine);
         when(engine.getSession("s1")).thenReturn(session);
         when(session.attrs()).thenReturn(attrs);
@@ -147,7 +148,7 @@ class WebStreamBuilderReplyRouteTest {
         org.junit.jupiter.api.Assertions.assertDoesNotThrow(
                 () -> builder.replyToBoundChannel(context, "s1", "answer", true));
         verify(healthy).sendReply("s1", "answer", true);
-        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey("session.replyRoute"));
+        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey(HostAttrs.ATTR_REPLY_ROUTE));
         org.junit.jupiter.api.Assertions.assertEquals(Boolean.TRUE, attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
         // 已成功的渠道不能因为其它渠道失败而在重复终态时重投。
         builder.replyToBoundChannel(context, "s1", "duplicate", true);
@@ -225,10 +226,10 @@ class WebStreamBuilderReplyRouteTest {
 
         WebStreamBuilder builder = new WebStreamBuilder();
         builder.signalOriginChannel(context, "s1", ImStatus.ACCEPTED, null, "Feishu", "u1", null, "m1");
-        org.junit.jupiter.api.Assertions.assertTrue(attrs.containsKey("session.im.heartbeat"));
+        org.junit.jupiter.api.Assertions.assertTrue(attrs.containsKey(HostAttrs.ATTR_IM_HEARTBEAT));
 
         builder.replyToBoundChannel(context, "s1", "done", true);
-        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey("session.im.heartbeat"));
+        org.junit.jupiter.api.Assertions.assertFalse(attrs.containsKey(HostAttrs.ATTR_IM_HEARTBEAT));
     }
 
     @Test

@@ -1,6 +1,45 @@
 
 ### vNEXT
 
+* 门面瘦身：删除宿主零使用的 API（双轨残留清理）：
+  * **判据**：`grep` 全仓确认宿主实际调用次数为 0 才删；调用过的一律保留。因此删的是「同一能力的第二条路」，不是「没人敢用的新能力」——留着两条路，后来者一定会挑错那条
+  * **删 `QueueExtension` 一组旧异步门面**（`drainOne(runner, false)` / `ack(itemId)` / `generation()` / `isGenerationActive()` / `requeueFront()`）：它们是 `QueueClaim` 落地前的旧写法，要求宿主在终态**现取**代际——正是那个「Stop 后被取消任务复活」竞态的源头。保留等于把已知错误的路径继续摆在门面上。`drainOne(runner)` 同步语义保留（CLI 交互循环在用），javadoc 明确「回调返回时任务必须真的跑完，异步请用 `claimNext`」
+  * **删 `QueueExtension` 展示/探测冗余**：`size()`（含 in-flight 计数，宿主改用 `viewRows().size()`）、`view()`（返回领域对象 `QueueItem`，会诱导宿主直读，展示统一走 `viewRows()`）、实例方法 `hasPersistedItems()`（被静态 `isPersisted()` 完全取代）
+  * **`QueueItem` 封装收紧**：删 3 个 `String source` 平铺构造器（宿主从 `new QueueItem` 入队属绕过 `enqueue` 的校验与去重）、构造器与 `setStatus`/`setClaimedAt`/`toMap`/`fromMap`/`toView` 全部降为**包内可见**（宿主经 `enqueue` 入队、经 `viewRows` 取视图、经 `claim.getItem()` 读任务，不需要构造或改写内部状态）；原 `SessionValueObjectsTest` 中 9 个队列项用例迁为同包的 `QueueItemTest`（10 例，新增 `toViewIsTheDisplayContract`）
+  * **删 `QueueClaim.getGeneration()` 的 public**（降包内）：宿主 0 使用，代际由内核在领取瞬间绑定；`QueueClaim.close()` 一并删除——它语义是「未收口即回滚」，而宿主是跨线程长期持有 claim，「好像会兜底」反而掩盖忘记收口的 bug（实测零调用）
+  * **删 `SessionActivity.isOccupied()`**：宿主 0 使用（桌面端直接用 `engine.status(session).isOccupied()`），保留会造成「宿主侧有两套口径」的错觉
+  * README 同步：`drainOne(runner,false)` 异步路径整段重写为「已移除 + 为什么移除」；回调收尾表格拆分为 `claimNext/drainLoop`（`DrainStatus` 三态）与 `drainOne`（`boolean`）两张；门面一览表去掉 5 个已删项；11 处文中引用（`/queue` 误配表、受控/不受控表、探测建议、坑列表第 12 条等）全部改指新入口
+  * 验证：harness 定向 93 例全绿（`QueueItemTest` 10 + `QueueClaimTest` 10 + `QueueExtensionTest` 8 + `SessionQueueTest` 18 + `SessionQueueSteerTest` 16 + `InputGateTest` 9 + `InterruptPlanTest` 9 + `GoalProjectionTest` 8 + `EffectiveAgentMemoryTest` 5）；harness `clean install` BUILD SUCCESS；cli `clean test-compile` 通过、定向 80 例全绿（`PackageBoundaryTest` / `ImageReplyLifecycleTest` 32 / `ImageReplyTurnTest` 15 / `WebStreamBuilderReplyRouteTest` / `WebGateRejectedInputTest` / `SessionActivityTest` 3 / `SteerCommandTest` 4）
+  * 残留扫描：宿主对 `hasPersistedItems` / `.view(` / `queue.size(` / `queue.ack(` / `requeueFront` / `isGenerationActive` / `.generation(` / `SessionActivity.isOccupied` 全部 **0 处**
+
+* harness 封装收口三连：`QueueClaim` 一次领取、`GoalProjection` 投影门面、`toMap()` 退回持久化位：
+  * **问题（成因）**：宿主侧大量直操作 queue 内部——用会话 attrs 存 `QueueItem` 再 `instanceof` 强转取回、直接 `import QueueHelper` 调内核静态方法、拿 `QueueItem.toMap()`（持久化投影）当 HTTP 响应体；goal 侧更隐蔽，宿主按 `"status"` 字面量读投影、甚至 `GoalDataMigrator` 手拼十余字段再 `put(KEY_GOAL)` 回写。根因不是宿主偷懒，是 harness 缺三个一等概念：「一次领取」「投影级读写门面」「领域对象的视图投影」
+  * **已诱发真实竞态（不是风格问题）**：`WebQueueDispatcher.finishQueuedTurn` 在任务终态**现取** `queue.generation(session)`，而 `cancelPending` 会递增代际 → `isGenerationActive` 恒真 → 代际防线完全失效。可达时序：派发领取 → 启动抛异常 → 用户点 Stop（清空队列、递代）→ 回滚通过 → **被取消的任务重新入队并继续执行**，Stop 语义被破坏
+  * harness 新增：`QueueClaim`（领取瞬间绑定 item + 代际快照，`acknowledge()`/`rollback()` 收口，`rollback()` 被拒时区分「代际已变→丢弃并清 in-flight」与「代际未变但队列满→保持 in-flight 任务不丢」）、`QueueClaimHandler`、`DrainStatus`（STARTED/NO_TASK/START_FAILED，取代宿主布尔拼装）、`QueueExtension.claimNext()`（命名不可叫 `drainOne` 重载，否则与 `drainOne(QueueTaskRunner)` 单参 lambda 歧义，编译期硬约束）、`QueueItemView` + `viewRows()`（对外展示契约）、`QueueExtension.isPersisted()`（取代宿主直连内核 `QueueHelper`）、`GoalProjection`（goal 投影字段名唯一出处，`GoalState.toMap/fromMap` 改委托它）
+  * 宿主改造：三个 `cli.queue.*` 私有键收敛为「存 `QueueClaim` + 派发线程标记」，`instanceof QueueItem` 全仓 0 处；`SessionSnapshots.readGoalStatus` 返回 `GoalState.Status` 枚举而非字符串，`GoalDataMigrator` 改填 `GoalProjection.Builder`；`QueueWebController` 改用 `viewRows`
+  * 命名空间漏网清理：`session.input.admitting` → `cli.input.admitting`，`session.im.terminal.sent` → `im.terminal.sent`
+  * **架构护栏测试当场抓出 2 处自己漏掉的残留**（`ImageReplyTurn`、`QueueWebController`），新增两条 `PackageBoundaryTest`：禁止触碰 harness 内部实现、禁止占用 `session.*` 命名空间
+  * 验证：harness 72 例全绿（`QueueClaimTest` 11 + `GoalProjectionTest` 8 + 既有 53）；cli 定向 109 例全绿；cli 全量 1231 例 3 失败，`git stash` 对照确认为既有基线（settings/挂载域，与本次无关）
+  * **未做**：`QueueItem` 的 5 个构造器未清理、`setStatus/setClaimedAt` 未降为包内可见（现有 `SessionQueueTest`/`QueueExtensionTest` 直接依赖，收敛需同批改测试）；`drainOne(runner,false)` 旧异步路径保留兼容，README 已标注新代码用 `claimNext`
+
+* 中断、生效代理、命名空间三项门面化：
+  * **两段式中断 `engine.prepareInterrupt(session)` → `InterruptPlan`**：`interrupt()` 的顺序是「停流→补取消消息」，而 Web 要求「写取消消息→发 error 帧→IM 终态→trace→done→**最后才停流**」（停流提前会让本轮流终结，前端提前收尾并丢掉后续帧）。这是**结构性冲突而非宿主偷懒**。`InterruptPlan` 把第一段（清队列+原子认领+推进取消代数）与第二段（补取消消息+停流）拆开，中间是宿主编排窗口；`writeCancelEarly()` 支持窗口内提前落库，与 `commit()` 共用一把原子闩保证**一次中断只落盘一次**；`close()` 兜底防孤儿流。`engine.interrupt` 保留为 `prepare+commit` 合并便捷方法，CLI/Headless 零迁移。Web `interruptSession` 从 5 步手工编排（混用 `SessionRuns`/`InterruptHelper` 两个内部类）收敛为 prepare → 事件编排 → commit
+  * **生效代理会话记忆**：契约键 `session.agent.effective`（`HarnessAttrs.AGENT_EFFECTIVE`），`handle` 返回 TASK 时自动写入（主代理归一 `main`），三条路径均写（HITL 真正续流 / 普通 resume / 普通输入），HITL 未续流与空输入不写不覆盖；`resume(true)` 未指定代理时自动回填，解决无状态宿主（Web 跨请求审批）不带 `selectedAgent` 时回落主代理导致「续跑空转」。cli 侧删除私有键 `_agent_selected_tmp` 的 effective-agent 语义
+  * **`HarnessAttrs` 命名规约**（harness）/ `HostAttrs` 集中登记（cli）：`session.*` 归引擎，宿主私有键必须用 `cli./im./web./desktop.` 前缀
+  * **`InterruptPlan.CANCEL_TEXT`**：取消文案提升为门面契约常量，Web 侧删除最后一个 `InterruptHelper` import
+  * **`artifact` 包反向依赖修复（本轮自引入，已修）**：为用 `WebAttrs` 一个常量而新增 `artifact → api.web` 依赖——用一个架构问题换掉一个命名问题。改为把跨包共用键下沉到中立的 `codecli.session.HostAttrs`（`WebAttrs` 随之删除），并新增 `PackageBoundaryTest#artifactMustNotDependOnApiWeb` 锁定
+  * **`QueueClaim` API 面收敛**：删除 `isRolledBack()`（与 `DrainStatus.START_FAILED` 是同一事实的两个出口）、去掉 `AutoCloseable` 继承（宿主跨线程长期持有，继承会诱导 try-with-resources 误用导致回调返回即回滚）
+  * 验证：harness 89 例全绿（`InterruptPlanTest` 9 + 含并发认领原子性/commit 幂等/落盘恰一次）；cli 定向 104 例全绿（`PackageBoundaryTest` 7 + `ImageReplyLifecycleTest` 32 + `ImageReplyTurnTest` 15 + `WebStreamBuilderReplyRouteTest` 14 + 钉钉 25 + 飞书 3 + `WebGateRejectedInputTest` 5 + `SessionActivityTest` 3）
+
+* 受理层四项引擎化（宿主不再重复实现运行期判定）：
+  * **问题**：四个现象——忙态命令穿透判定（parse→find→terminalOnly/runnableWhenBusy）在 Web 侧重复两处、队列续发循环由宿主递归实现、受理窗口（判定空闲+占位）归宿主手写 synchronized、队列派发用两个 attrs 键承载一个事务。前两个**错了不报错**，只表现为命令没反应或队列漏发/死循环
+  * **`engine.isBusyBypassCommand(input)` / `resolveCommand(input)`**：命令前缀、大小写、参数切分、启用状态由引擎裁决，宿主只拿布尔。宿主 `WebAdmission` 删除（-44 行）
+  * **`QueueExtension.drainLoop(session, canDrain, handler)`**：续发循环 + 终止条件（含 START_FAILED 不重试）归 harness，宿主只回答「现在能不能接单」
+  * **`InputGate.tryAcquire(session)` → `Ticket`**：把「判定空闲 + 占位」做成不可分割动作，`close()` 幂等且 `NONE` 空操作，可无条件放进 try-with-resources；`SessionStatus` 增加 `isAdmitting()` 纳入占用判定
+    * 刻意口径：**`tryAcquire` 不把 HITL 待审批算作占用**——审批挂起时引擎里没有运行流，是否接受旁路输入是受理策略，由宿主用 `SessionStatus.isOccupied()` 自判。`InputGate` 只保证「两条输入不会同时开流」；`InputGateTest` 用 16 线程并发 `tryAcquire` 锁住「只有 1 个赢家」这个靠 review 看不出来的不变量
+  * **队列派发两键合一**：`cli.queue.claim` + `cli.queue.dispatch` → `cli.queue.turn`（值 `QueuedTurn`），两个事实合成一个值后不可能只读到其中一个
+  * 验证：harness 89 例全绿（`InputGateTest` 9 + `QueueClaimTest` 11 + 既有 69）；harness 全量 864 例 33F+5E 经 `git stash` 对照与改动前完全一致；cli 定向 60 例全绿
+
 * workspace 文件根统一为 `.files`（附件 + 引擎落盘产物同根，旧目录不迁移——项目未发布）：
   * `.uploads` → `.files/uploads`：`WebAttachmentStore`（web 附件落盘与引用路径）、`DesktopAttachmentSupport`（桌面附件）、`FilerIgnoreRules` 隐藏白名单（`.uploads`→`.files`，入口粒度更粗故 uploads/task 子目录都免配置）、根 `.gitignore`（`.uploads`→`.files`）；三套测试同步（FilerIgnoreRulesTest / WebAttachmentStoreTest / DesktopAttachmentSupportTest）
   * task spill 目录 `workspace/<harnessHome>/task-spill` → `workspace/.files/task/<taskId>/result.txt`（与 harnessHome 脱钩，直接 workspace 根下）：solon-ai-harness `TaskTalent.SPILL_DIR`，不再要求 harnessHome 非空（spillFile 只检查 workspace）

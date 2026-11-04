@@ -3,6 +3,7 @@ package org.noear.solon.codecli.artifact;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.codecli.channel.ChannelReply;
@@ -203,31 +204,31 @@ class ImageReplyTurnTest {
         AgentSession session = InMemoryAgentSession.of("session");
         Map<String, String> original = new HashMap<>();
         original.put("channel", "feishu");
-        session.attrs().put("session.replyRoute", original);
+        session.attrs().put(HostAttrs.ATTR_REPLY_ROUTE, original);
         ImageReplyTurn turn = turn(session, "run");
         original.put("channel", "changed");
         assertEquals("feishu", turn.getRoute().get("channel"));
         assertThrows(UnsupportedOperationException.class, () -> turn.getRoute().put("x", "y"));
         Map<String, String> replacement = new HashMap<>(original);
-        session.attrs().put("session.replyRoute", replacement);
+        session.attrs().put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
         turn.clearRoute();
-        assertSame(replacement, session.attrs().get("session.replyRoute"));
+        assertSame(replacement, session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE));
         turn.cleanup();
-        assertSame(replacement, session.attrs().get("session.replyRoute"));
+        assertSame(replacement, session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE));
     }
 
     @Test
     void oldCleanupDoesNotClearRouteReusedByCurrentTurn() {
         AgentSession session = InMemoryAgentSession.of("session");
         Map<String, String> route = new HashMap<>();
-        session.attrs().put("session.replyRoute", route);
+        session.attrs().put(HostAttrs.ATTR_REPLY_ROUTE, route);
         ImageReplyTurn old = turn(session, "old");
         ImageReplyTurn current = turn(session, "new");
         old.clearRoute();
         old.cleanup();
-        assertSame(route, session.attrs().get("session.replyRoute"));
+        assertSame(route, session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE));
         current.clearRoute();
-        assertNull(session.attrs().get("session.replyRoute"));
+        assertNull(session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE));
         assertTrue(current.getRoute().isEmpty());
         current.cleanup();
     }

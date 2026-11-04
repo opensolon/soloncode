@@ -3,6 +3,7 @@ package org.noear.solon.codecli.api.web.pipeline;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
@@ -26,7 +27,7 @@ class WebEventMapperChannelReplyTest {
         WorkspaceContext wsContext = mock(WorkspaceContext.class);
         AgentSession session = mock(AgentSession.class);
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("_agent_selected_tmp", "main");
+        attrs.put(HarnessEngine.ATTR_AGENT_EFFECTIVE, "main");
         when(session.getSessionId()).thenReturn("s1");
         when(session.attrs()).thenReturn(attrs);
 
@@ -61,7 +62,7 @@ class WebEventMapperChannelReplyTest {
         WorkspaceContext wsContext = mock(WorkspaceContext.class);
         AgentSession session = mock(AgentSession.class);
         Map<String, Object> attrs = new HashMap<>();
-        attrs.put("_agent_selected_tmp", "main");
+        attrs.put(HarnessEngine.ATTR_AGENT_EFFECTIVE, "main");
         when(session.getSessionId()).thenReturn("s1");
         when(session.attrs()).thenReturn(attrs);
 

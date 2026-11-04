@@ -3,6 +3,7 @@ package org.noear.solon.codecli.artifact;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActInterceptor;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.channel.ChannelReply;
 
 import java.util.Collections;
@@ -12,7 +13,7 @@ import java.util.Map;
 /** 请求级图片许可与路由快照；解析 Markdown 和读取图片不占用会话锁。 */
 public final class ImageReplyTurn implements ReActInterceptor {
     public static final String ATTR = ImageReplyTurn.class.getName();
-    public static final String ATTR_IM_TERMINAL_SENT = "session.im.terminal.sent";
+    public static final String ATTR_IM_TERMINAL_SENT = HostAttrs.ATTR_IM_TERMINAL_SENT;
     private final AgentSession session;
     private final String root;
     private final String cwd;
@@ -29,7 +30,7 @@ public final class ImageReplyTurn implements ReActInterceptor {
         this.root = root;
         this.cwd = cwd;
         synchronized (session.attrs()) {
-            originalRoute = session.attrs().get("session.replyRoute");
+            originalRoute = session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE);
             route = originalRoute instanceof Map
                     ? Collections.unmodifiableMap(new HashMap<>((Map<String, String>) originalRoute))
                     : Collections.emptyMap();
@@ -110,8 +111,8 @@ public final class ImageReplyTurn implements ReActInterceptor {
 
     public void clearRoute() {
         synchronized (session.attrs()) {
-            if (isCurrent() && session.attrs().get("session.replyRoute") == originalRoute) {
-                session.attrs().remove("session.replyRoute");
+            if (isCurrent() && session.attrs().get(HostAttrs.ATTR_REPLY_ROUTE) == originalRoute) {
+                session.attrs().remove(HostAttrs.ATTR_REPLY_ROUTE);
             }
         }
     }
