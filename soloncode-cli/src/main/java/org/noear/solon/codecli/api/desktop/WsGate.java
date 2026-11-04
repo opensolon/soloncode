@@ -31,7 +31,7 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
-import org.noear.solon.ai.harness.runtime.ExecutionBridge;
+import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -80,8 +80,6 @@ public class WsGate extends SimpleWebSocketListener {
 
     final HarnessEngine engine;
     final AgentSettings agentSettings;
-    /** 执行桥（loop 与 goal 共享；桌面端只在此注册执行器与繁忙检查器，不持有 LoopScheduler）。 */
-    final ExecutionBridge executionBridge;
     final GoalExtension goal;
     final DesktopStreamHub streamHub = new DesktopStreamHub();
     private final DesktopGoalBroadcaster goalBroadcaster;
@@ -90,11 +88,10 @@ public class WsGate extends SimpleWebSocketListener {
     private final DesktopConfigHandler configHandler;
     private final DesktopInputRouter inputRouter;
 
-    public WsGate(HarnessEngine engine, AgentSettings agentSettings, ExecutionBridge executionBridge,
+    public WsGate(HarnessEngine engine, AgentSettings agentSettings,
                   GoalExtension goal) {
         this.engine = engine;
         this.agentSettings = agentSettings;
-        this.executionBridge = executionBridge;
         this.goal = goal;
         this.goalBroadcaster = new DesktopGoalBroadcaster(engine, goal, streamHub);
         this.eventConverter = new DesktopEventConverter(engine);
@@ -103,17 +100,16 @@ public class WsGate extends SimpleWebSocketListener {
         this.inputRouter = new DesktopInputRouter(this);
 
         if (goal != null) {
-            // 桌面端 Goal 轮次经共享执行桥回推：注册一次，两个引擎共用
             goal.addListener(goalBroadcaster::onGoalChanged);
-            if (executionBridge != null) {
-                executionBridge.addTaskExecutor((sessionId, prompt, agentName) -> {
+            // 桌面端 Goal 轮次经 GoalEngine 自己的执行通道回推（不再有跨域共享桥）；
+            // 忙判定由会话快照派生（SessionStatus.isOccupied），无需宿主注入谓词。
+            if (goal.getGoalEngine() != null) {
+                goal.getGoalEngine().addTaskExecutor((sessionId, prompt) -> {
                     if (!sessionId.matches("[0-9]{1,18}")) {
                         return null;
                     }
-                    return runGoalRoundAndCapture(sessionId, prompt, agentName);
+                    return runGoalRoundAndCapture(sessionId, prompt);
                 });
-                executionBridge.addBusyChecker(sessionId ->
-                        sessionId.matches("[0-9]{1,18}") && isSessionBusy(sessionId));
             }
         }
     }
@@ -284,8 +280,13 @@ public class WsGate extends SimpleWebSocketListener {
         return input.append(objective).toString();
     }
 
-    /** 共享执行桥的桌面 Goal 执行入口：同步等待一轮结束并返回权威最终答复。 */
-    public String runGoalRoundAndCapture(String sessionId, String input, String agentName) {
+    /**
+     * 桌面 Goal 执行入口：同步等待一轮结束并返回本轮客观事实。
+     *
+     * <p>token 与工具证据直接随返回值上交，不再写会话 attrs 让引擎回读——
+     * 旁路方案下只有桌面端写、CLI/Web 不写，导致完成校验在两端静默失效。</p>
+     */
+    public RoundResult runGoalRoundAndCapture(String sessionId, String input) {
         AgentSession session;
         try {
             session = engine.getSession(sessionId);
@@ -297,10 +298,8 @@ public class WsGate extends SimpleWebSocketListener {
             return null;
         }
 
-        String selectedAgent = agentName;
-        if (Assert.isEmpty(selectedAgent)) {
-            selectedAgent = (String) session.getContext().get(HarnessEngine.CTX_AGENT_SELECTED);
-        }
+        // 子代理归属一律取会话属性（goal 轮次不再有 agentName 参数：引擎内两处调用恒传 null）
+        String selectedAgent = (String) session.getContext().get(HarnessEngine.CTX_AGENT_SELECTED);
         String sessionCwd = engine.getSessionCwd(session);
         String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
@@ -321,7 +320,10 @@ public class WsGate extends SimpleWebSocketListener {
         CountDownLatch completed = new CountDownLatch(1);
         AtomicReference<String> finalAnswer = new AtomicReference<>("");
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        ExecutionBridge.resetRoundToolEvidence(session);
+        // 本轮客观事实：在流回调里就地累加，随返回值上交
+        AtomicReference<Long> tokensUsed = new AtomicReference<>(0L);
+        java.util.concurrent.atomic.AtomicBoolean hasToolCalls =
+                new java.util.concurrent.atomic.AtomicBoolean(false);
 
         streamHub.emit(sessionId, new ONode().set("type", "goal_round")
                 .set("sessionId", sessionId)
@@ -350,7 +352,7 @@ public class WsGate extends SimpleWebSocketListener {
                         }
                         org.noear.solon.ai.agent.react.ReActTrace trace = runEndEvent.getTrace();
                         if (trace != null && trace.getMetrics() != null) {
-                            ExecutionBridge.reportRoundTokens(session, trace.getMetrics().getTotalTokens());
+                            tokensUsed.set(trace.getMetrics().getTotalTokens());
                         }
                         return;
                     }
@@ -365,13 +367,13 @@ public class WsGate extends SimpleWebSocketListener {
                         if (toolCallEndEvent.getError() == null
                                 && Assert.isNotEmpty(toolCallEndEvent.getToolName())
                                 && !GoalTalent.isGoalTool(toolCallEndEvent.getToolName())) {
-                            ExecutionBridge.reportRoundMetrics(session, null, Boolean.TRUE);
+                            hasToolCalls.set(true);
                         }
                         message = eventConverter.onToolCallEndEvent(toolCallEndEvent, sessionId);
                     } else if (chunk instanceof ReasonEndEvent) {
                         org.noear.solon.ai.agent.react.ReActTrace trace = ((ReasonEndEvent) chunk).getTrace();
                         if (trace != null && trace.getMetrics() != null) {
-                            ExecutionBridge.reportRoundTokens(session, trace.getMetrics().getTotalTokens());
+                            tokensUsed.set(trace.getMetrics().getTotalTokens());
                         }
                         message = eventConverter.onReasonEndEvent((ReasonEndEvent) chunk, sessionId);
                     }
@@ -406,7 +408,7 @@ public class WsGate extends SimpleWebSocketListener {
         if (Assert.isEmpty(finalAnswer.get())) {
             throw new IllegalStateException("Goal round returned no final answer");
         }
-        return finalAnswer.get();
+        return RoundResult.of(hasToolCalls.get(), tokensUsed.get(), finalAnswer.get());
     }
 
     public void interruptGoalSession(String sessionId) {

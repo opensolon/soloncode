@@ -28,6 +28,7 @@ import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
+import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.ai.harness.session.steer.SteerResult;
 import org.noear.solon.ai.harness.session.steer.SteerStatus;
 import org.noear.solon.codecli.channel.ImMessages;
@@ -515,6 +516,19 @@ class WebChatInputHandler {
      * @return 捕获到的 AI 文本；会话繁忙或无文本时返回 null
      */
     String safeChatInputAndCaptureLoop(WorkspaceContext wsContext, String sessionId, String input, String source) {
+        RoundResult result = safeChatInputAndCaptureRound(wsContext, sessionId, input, source);
+        return result == null ? null : result.getFinalResult();
+    }
+
+    /**
+     * 注入回合专用入口（loop / goal 共用同一段执行，仅返回值不同）：无限等待并捕获本轮客观事实。
+     *
+     * <p>与 {@link #safeChatInputAndCaptureLoop} 的差异仅在返回值：goal 需要 token 与工具证据做完成判定。
+     * 两者都是「已受理的文本」——不识别命令、不排水，过程事件照常推给前端（边跑边输出）。</p>
+     *
+     * @return 本轮结果；会话繁忙或无正文时返回 null
+     */
+    RoundResult safeChatInputAndCaptureRound(WorkspaceContext wsContext, String sessionId, String input, String source) {
         AgentSession session;
         try {
             // 使用用户隔离的会话管理器：由 Loop 调度器调用，
@@ -545,7 +559,7 @@ class WebChatInputHandler {
             return null;
         }
 
-        return gate.getSessionRunner().performAgentTaskSync(wsContext, session, null, outcome);
+        return gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome);
     }
 
     /**

@@ -55,7 +55,8 @@ public class DesktopGoalController extends AbstractDesktopController {
         super(engine, sessionManager);
         this.wsGate = wsGate;
         this.goal = goal;
-        // 桌面端 BusyChecker/TaskExecutor 已随 Goal 链在 WsGate 构造时注册到共享执行桥
+        // 桌面端 TaskExecutor 已由 WsGate 构造时注册到 GoalEngine 自己的执行通道；
+        // 忙判定由会话快照（SessionStatus）统一派生，桌面端不再单独注册
     }
 
     /** 当前桌面会话的 Goal 列表（单槽语义下至多一条）。 */

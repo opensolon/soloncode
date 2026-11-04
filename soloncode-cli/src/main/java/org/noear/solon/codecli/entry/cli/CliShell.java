@@ -41,10 +41,11 @@ import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.command.CliCommandContext;
+import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
-import org.noear.solon.ai.harness.runtime.ExecutionBridge;
+import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.core.util.Assert;
@@ -81,8 +82,6 @@ public class CliShell implements Runnable {
     private final HarnessEngine engine;
     private final AgentSettings agentProps;
     private final LoopScheduler loopScheduler;
-    /** 执行桥（loop 与 goal 共享；CLI 在此注册主线程执行器与繁忙检查器）。 */
-    private final ExecutionBridge executionBridge;
     private boolean cliQueueDraining;
 
     // ANSI 颜色常量
@@ -98,12 +97,10 @@ public class CliShell implements Runnable {
             RESET = "\033[0m";     // 重置所有样式和颜色（恢复终端默认）
 
 
-    public CliShell(HarnessEngine engine, AgentSettings agentProps, LoopScheduler loopScheduler,
-                    ExecutionBridge executionBridge) {
+    public CliShell(HarnessEngine engine, AgentSettings agentProps, LoopScheduler loopScheduler) {
         this.engine = engine;
         this.agentProps = agentProps;
         this.loopScheduler = loopScheduler;
-        this.executionBridge = executionBridge;
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -182,34 +179,40 @@ public class CliShell implements Runnable {
             loopScheduler.restore(session.getSessionId());
         }
 
-        // 执行桥注册：loop 定时任务与 goal 轮次共用同一桥（与 loopScheduler 是否存在无关）
-        if (executionBridge != null) {
-            // 会话繁忙守卫：CLI 为单线程模型，仅当主线程在等待用户输入（reader.isReading）时才空闲。
-            // 若不在等待输入，说明 agent 任务正在执行，触发应跳过本次。
-            executionBridge.addBusyChecker(sessionId -> {
-                if (SESSION_ID_CLI.equals(sessionId) == false) {
-                    return false;
-                }
-                return reader == null || !reader.isReading();
-            });
+        // loop 执行通道：只在 LoopScheduler 自己的通道上注册（与 goal 无共享）
+        if (loopScheduler != null) {
+            // 注入屏障：终端所有权（不是会话状态）。
+            // 放行条件 = 主线程正阻塞于 readLine（主线程空闲、只等着输入）。
+            // 反之主线程在跑 /help、/model 选择器等非流命令时会话不忙，但终端正被占用，
+            // 此时注入会与主线程并发写同一个 terminal，因此不放行。
+            // 注：这与改造前 busyChecker 的 reader==null || !reader.isReading() 完全等价，
+            // 属于既有行为的搬迁，不是新增屏障。
+            loopScheduler.setInjectionGate(() -> reader == null || reader.isReading());
 
-            // 注入任务执行器：loop 定时任务触发时，在调度线程执行 agent 回合
+            // 任务执行器：在调度线程执行 agent 回合
             // 注意：它并非运行在主线程 —— 此刻主线程通常仍阻塞于 readLine，两者共用同一 reader，
             // 因此这里不消费队列（队列消费只归属主循环）
-            executionBridge.addTaskExecutor((sessionId, prompt, agentName) -> {
+            // 子代理归属是会话属性（AutomationManager 已写入 CTX_AGENT_SELECTED），无需在此拼接 @ 前缀
+            loopScheduler.addExecutor((sessionId, prompt) -> {
                 if (SESSION_ID_CLI.equals(sessionId) == false) {
                     return null;
                 }
 
-                // P0-fix: 如果指定了 agentName，将 prompt 拼接为 @agentName prompt 格式
-                // performAgentTask 内部通过 input.startsWith("@") 识别并路由到对应 agent
-                String effectiveInput = prompt;
-                if (agentName != null && !agentName.isEmpty()) {
-                    effectiveInput = "@" + agentName + " " + prompt;
-                }
+                // 直接返回 ReAct 完成时的权威全文，由 loop 记录 lastResult
+                return safeChatInput(session, prompt);
+            });
+        }
 
-                // 直接返回 ReAct 完成时的权威全文，由 goal_update(complete) 标记完成。
-                return safeChatInput(session, effectiveInput);
+        // goal 执行通道：只在 GoalEngine 自己的通道上注册（与 loop 无共享）。
+        // 与 loop 同口径（主线程阻塞于 readLine 时在调度线程代跑一轮、结束后 raise(INT) 让提示符重现），
+        // 区别是必须返回 RoundResult：null 表示「本入口不认领」，失败必须显式携带文本。
+        GoalExtension goal = engine.getExtension(GoalExtension.class).orElse(null);
+        if (goal != null && goal.getGoalEngine() != null) {
+            goal.getGoalEngine().addTaskExecutor((sessionId, prompt) -> {
+                if (SESSION_ID_CLI.equals(sessionId) == false) {
+                    return null;
+                }
+                return runInjectedRound(session, prompt);
             });
         }
 
@@ -251,7 +254,8 @@ public class CliShell implements Runnable {
     private String safeChatInput(AgentSession session, String prompt) {
         if (reader != null && reader.isReading()) {
             try {
-                return handleInput(session, prompt, null, false);
+                RoundResult result = handleInput(session, prompt, null, false);
+                return result == null ? null : result.getFinalResult();
             } catch (Exception e) {
                 LOG.error("Loop task execution failed: {}", e.getMessage(), e);
             } finally {
@@ -260,6 +264,32 @@ public class CliShell implements Runnable {
             }
         }
         return null;
+    }
+
+    /**
+     * 在调度线程代跑一轮注入回合（goal 用），返回本轮客观事实。
+     *
+     * <p>前置条件是主线程阻塞于 {@code readLine}（终端空闲）。不满足时不认领（返回 null），
+     * 让 GoalEngine 按「无执行者认领」处理——绝不伪造成功轮。</p>
+     */
+    private RoundResult runInjectedRound(AgentSession session, String prompt) {
+        if (reader == null || reader.isReading() == false) {
+            return null;
+        }
+
+        try {
+            RoundResult result = handleInput(session, prompt, null, false);
+            // 无任务可执行（未装配出请求）时返回 null，绝不伪造一个「文本为空但已完成」的轮次：
+            // 那会被上层记成 ok（目标在跑、实际什么都没做），并清零熔断计数。
+            return result;
+        } catch (Throwable e) {
+            LOG.error("Goal round execution failed: {}", e.getMessage(), e);
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            return RoundResult.ofText("error: " + message);
+        } finally {
+            // 后台注入轮结束后打断 readLine，让提示符重新出现
+            terminal.raise(Terminal.Signal.INT);
+        }
     }
 
     /**
@@ -277,7 +307,7 @@ public class CliShell implements Runnable {
      *
      * @param model 会话级模型选择（仅已受理文本的队列项携带；手输传 null）
      */
-    private String handleInput(AgentSession session, String text, String model, boolean userTurn) throws Exception {
+    private RoundResult handleInput(AgentSession session, String text, String model, boolean userTurn) throws Exception {
         HarnessInput harnessInput = HarnessInput.of(session, text)
                 .origin(CLI_ORIGIN)
                 .commandAware(userTurn)
@@ -293,20 +323,20 @@ public class CliShell implements Runnable {
     }
 
     /**
-     * 消费一次处置结果（手输、队列项、loop 注入共用）
+     * 消费一次处置结果（手输、队列项、注入回合共用）
      *
-     * @return 任务执行时的最终答复（无任务时为 null）
+     * @return 任务执行时的本轮客观事实；无任务时为 null
      */
-    private String dispatchOutcome(AgentSession session, InputOutcome outcome, boolean allowDrain) throws Exception {
+    private RoundResult dispatchOutcome(AgentSession session, InputOutcome outcome, boolean allowDrain) throws Exception {
         switch (outcome.getKind()) {
             case TASK:
                 // 有任务就执行（命令触发与用户手输同一分支）：命令回执已由命令即时写入终端
-                String answer = performAgentTask(session, outcome);
+                RoundResult result = performAgentTask(session, outcome);
                 //只有用户手输回合消费队列（与改造前的既有行为一致）
                 if (allowDrain) {
                     drainCliQueue(session);
                 }
-                return answer;
+                return result;
             case REPLY:
                 // 只有回执：命令已执行或在本渠道不可用（CLI 侧不会出现），保持原行为
                 if (outcome.hasReply()) {
@@ -376,7 +406,7 @@ public class CliShell implements Runnable {
      * 首轮直接用引擎装配好的请求；HITL 恢复后的续轮用 {@link InputOutcome} 里的最终生效字段
      * 继续驱动 —— 不重新解析提及、不重新回退模型。
      */
-    private String performAgentTask(AgentSession session, InputOutcome outcome) throws Exception {
+    private RoundResult performAgentTask(AgentSession session, InputOutcome outcome) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET + DIM + " " + getTimeNow() + RESET);
 
         final String agentName = outcome.getAgentName();
@@ -385,6 +415,9 @@ public class CliShell implements Runnable {
         final AtomicBoolean isFirstConversation = new AtomicBoolean(true);
         // ReAct 完成时的权威全文，多轮 HITL 时以最后一轮为准。
         final AtomicReference<String> finalAnswer = new AtomicReference<>();
+        // 本轮客观事实：在流回调里就地累加，随返回值上交（不再写会话 attrs）
+        final AtomicReference<Long> tokensUsed = new AtomicReference<>(0L);
+        final AtomicBoolean hasToolCalls = new AtomicBoolean(false);
 
         //待执行结果：首轮由引擎装配；后续每轮由 HITL 决策（决策 + 续流合一次调用）产生
         InputOutcome pendingOutcome = outcome;
@@ -401,7 +434,7 @@ public class CliShell implements Runnable {
                 pendingOutcome = null;
             } else {
                 //无可执行请求：仅当决策已被外部写入而任务未继续时出现，安全收尾
-                return finalAnswer.get();
+                return buildRoundResult(hasToolCalls, tokensUsed, finalAnswer);
             }
 
             // 取消目标由 ReActRequest 自行登记到 SessionRuns，本类不持有句柄；
@@ -417,10 +450,23 @@ public class CliShell implements Runnable {
                             onReasonEndEvent(session, (ReasonEndEvent) chunk);
                         } else if (chunk instanceof ToolCallEndEvent) {
                             //ObservationChunk 为全量，一次工具调用产生一个 ObservationChunk
-                            onToolCallEndEvent((ToolCallEndEvent) chunk, isFirstReasonDeltaChunk);
+                            ToolCallEndEvent toolEnd = (ToolCallEndEvent) chunk;
+                            if (toolEnd.getError() == null
+                                    && Assert.isNotEmpty(toolEnd.getToolName())
+                                    && GoalTalent.isGoalTool(toolEnd.getToolName()) == false
+                                    && MemoryTalent.isMemoryTool(toolEnd.getToolName()) == false
+                                    && TaskTalent.TOOL_MULTITASK.equals(toolEnd.getToolName()) == false
+                                    && TaskTalent.TOOL_TASK.equals(toolEnd.getToolName()) == false) {
+                                hasToolCalls.set(true);
+                            }
+                            onToolCallEndEvent(toolEnd, isFirstReasonDeltaChunk);
                         } else if (chunk instanceof RunEndEvent) {
                             // ReActChunk 为全量，ReAct 完成任务时的最后答复
-                            String answer = onRunEndEvent(session, (RunEndEvent) chunk);
+                            RunEndEvent runEnd = (RunEndEvent) chunk;
+                            if (runEnd.getTrace() != null && runEnd.getTrace().getMetrics() != null) {
+                                tokensUsed.set(runEnd.getTrace().getMetrics().getTotalTokens());
+                            }
+                            String answer = onRunEndEvent(session, runEnd);
                             if (Assert.isNotEmpty(answer)) {
                                 finalAnswer.set(answer);
                             }
@@ -443,7 +489,7 @@ public class CliShell implements Runnable {
                 terminal.flush();
                 // 取消消息与快照已由 engine.interrupt 幂等补齐，这里只打印用户可见提示
                 LOG.info("用户已取消任务.");
-                return finalAnswer.get();
+                return buildRoundResult(hasToolCalls, tokensUsed, finalAnswer);
             }
 
             // HITL 处理 (授权交互)：决策写入与续流装配统一走引擎入口
@@ -455,7 +501,7 @@ public class CliShell implements Runnable {
                     //审批未能转化为续流：给出可见说明，不让用户无交代地回到提示符
                     terminal.writer().println(DIM + "[审批未生效：无挂起任务或续流未生成请求]" + RESET);
                     terminal.flush();
-                    return finalAnswer.get();
+                    return buildRoundResult(hasToolCalls, tokensUsed, finalAnswer);
                 }
                 continue;
             }
@@ -463,8 +509,18 @@ public class CliShell implements Runnable {
             //既未中断、也无挂起审批：本轮流已终结，收尾
             terminal.writer().println();
             terminal.flush();
-            return finalAnswer.get();
+            return buildRoundResult(hasToolCalls, tokensUsed, finalAnswer);
         }
+    }
+
+    /** 把一轮的客观事实冻结成返回值（无正文时返回 null，表示本入口未产出结果）。 */
+    private RoundResult buildRoundResult(AtomicBoolean hasToolCalls, AtomicReference<Long> tokensUsed,
+                                         AtomicReference<String> finalAnswer) {
+        String text = finalAnswer.get();
+        if (Assert.isEmpty(text)) {
+            return null;
+        }
+        return RoundResult.of(hasToolCalls.get(), tokensUsed.get(), text);
     }
 
     private void waitForTask(CountDownLatch latch,
@@ -642,12 +698,8 @@ public class CliShell implements Runnable {
     private void onReasonEndEvent(AgentSession session, ReasonEndEvent reasonEndEvent) {
         ReActTrace trace = reasonEndEvent.getTrace();
 
-        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
-        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
-        if (totalTokens != null) {
-            ExecutionBridge.reportRoundTokens(session, totalTokens);
-        }
-
+        // token 不再写会话 attrs：CLI 的 loop 回合只需最终文本，
+        // goal 回合则由执行器把 RoundResult 随返回值上交（不再有跨模块旁路键）。
         if (reasonEndEvent.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = reasonEndEvent.getText();
@@ -672,13 +724,9 @@ public class CliShell implements Runnable {
             terminal.writer().println(DIM + traceInfo + RESET);
         }
 
-        Long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : null;
-        // ★ 捕获真实 token 消耗，供 LoopScheduler 预算控制使用
-        if (totalTokens != null) {
-            ExecutionBridge.reportRoundTokens(session, totalTokens);
-        }
+        // token 不在此记录：见 onReasonEndEvent 注释
 
-        // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop goal 判定。
+        // 返回 ReAct 完成时的权威全量答复，由调用方用于 loop 判定。
         return clearThink(runEndEvent.getText());
     }
 

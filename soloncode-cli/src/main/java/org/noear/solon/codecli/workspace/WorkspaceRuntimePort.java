@@ -2,6 +2,7 @@ package org.noear.solon.codecli.workspace;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.core.handle.UploadedFile;
 
 /**
@@ -58,4 +59,13 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
      * 执行 Loop 专用输入并等待本轮文本结果。
      */
     String runLoop(String workspaceId, String sessionId, String input, String source);
+
+    /**
+     * 执行注入回合（goal）并等待本轮客观事实。
+     *
+     * <p>与 {@link #runLoop} 是同一段执行（同样推流），差别只在返回值：
+     * goal 需要 token 与工具证据做完成判定。两者分开而不合并成一个带额外字段的宽接口，
+     * 是因为各自只需要自己那份返回值。</p>
+     */
+    RoundResult runGoalRound(String workspaceId, String sessionId, String input, String source);
 }

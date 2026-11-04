@@ -15,8 +15,7 @@
  */
 package org.noear.solon.codecli.loop;
 import org.noear.solon.ai.harness.runtime.ErrorClassifier;
-import org.noear.solon.ai.harness.runtime.ExecutionBridge;
-import org.noear.solon.ai.harness.runtime.RoundResult;
+import org.noear.solon.ai.harness.session.SessionStatus;
 
 import org.noear.java_cron.CronUtils;
 import org.noear.snack4.Feature;
@@ -84,18 +83,82 @@ public class LoopScheduler {
     private volatile boolean loaded = false;
 
     /**
-     * 执行桥（由组合根创建并注入，与 GoalEngine 共享同一实例）。
+     * 本调度器自有的执行器（与 goal 无任何共享）。
      *
-     * <p>本类只是桥的使用者，不是拥有者：桥同时服务 loop 定时任务与 goal 轮次，
-     * 归属在两个引擎之外，因此不能在此 new 出来（否则 goal 的构造期会依赖本类存活）。</p>
+     * <p>loop 是宿主调度能力（cli 域），执行通道必须内联在这里：谁拥有线程、连接、终端，
+     * 谁定义执行通道。曾与 goal 共用的 {@code ExecutionBridge} 已删除——
+     * 让 harness 定义一个同时服务两者的通道，等于让 harness 拥有 cli 的调度语义。</p>
      */
-    private final ExecutionBridge bridge;
+    private final List<LoopExecutor> executors = new CopyOnWriteArrayList<>();
 
-    public LoopScheduler(HarnessEngine engine, AgentSettings agentSettings, ExecutionBridge bridge) {
+    /**
+     * 本轮的执行器：执行一轮 prompt，返回最终文本（null = 本入口不认领）。
+     *
+     * <p>loop 只需最终文本（轮次计数与 lastResult），不需要 token / 工具证据，
+     * 因此不与 goal 共用签名：强求统一会逼迫 loop 去填它用不到的字段，
+     * 而那正是旧设计把指标落进会话 attrs 旁路的起因。</p>
+     *
+     * <p><b>没有 agentName 参数</b>：子代理归属是<b>会话属性</b>（{@code CTX_AGENT_SELECTED}，
+     * 由 {@code AutomationManager.applySelections} 在创建任务时写入会话上下文），执行器
+     * 从 session 读即可。旧签名带该参数，但唯一调用点恒传 null——三个宿主里
+     * 「拼 {@code @agentName} 前缀」的分支从未执行，是彻底的死代码。</p>
+     */
+    @FunctionalInterface
+    public interface LoopExecutor {
+        String handle(String sessionId, String prompt);
+    }
+
+    public LoopScheduler(HarnessEngine engine, AgentSettings agentSettings) {
         this.engine = engine;
-        this.jobManager = JobManager.getInstance();
+        this.jobManager = resolveJobManager();
         this.loop = agentSettings.getLoop();
-        this.bridge = bridge;
+    }
+
+    /**
+     * 取进程级调度器；无 Solon 容器（纯 JUnit）时为 null，调度能力随之失效。
+     *
+     * <p>与 {@code GoalExtension.Builder.scheduler(null)} 同一意图：执行通道与调度装配是两件事，
+     * 测试应当能单独验证前者。</p>
+     */
+    private static IJobManager resolveJobManager() {
+        try {
+            return JobManager.getInstance();
+        } catch (Throwable e) {
+            return null;
+        }
+    }
+
+    /** 注册执行器（按注册顺序取首个认领者）。 */
+    public void addExecutor(LoopExecutor executor) {
+        if (executor != null) {
+            this.executors.add(executor);
+        }
+    }
+
+    /** 是否已有执行器（供宿主启动断言；无执行器的调度器属配置错误）。 */
+    public boolean hasExecutor() {
+        return !executors.isEmpty();
+    }
+
+    /**
+     * 注入型回合的额外屏隢（唯一一个会话状态表达不了的事实：终端所有权）。
+     *
+     * <p>CLI 注入回合在调度线程执行、直写 {@code terminal}，与主线程的 {@code readLine}
+     * 输出并发。这与「会话忙不忙」是两回事：主线程跑 {@code /help}、{@code /model} 选择器时
+     * 会话不忙，但终端正被占用。因此保留单一宿主谓词，缺省恒 true（非 CLI 宿主不用关心）。</p>
+     */
+    @FunctionalInterface
+    public interface InjectionGate {
+        /** @return true 表示可以注入本轮 */
+        boolean canInject();
+    }
+
+    private volatile InjectionGate injectionGate = () -> true;
+
+    public void setInjectionGate(InjectionGate gate) {
+        if (gate != null) {
+            this.injectionGate = gate;
+        }
     }
 
     // ==================== 任务注册 ====================
@@ -134,8 +197,8 @@ public class LoopScheduler {
 
         task.cancel();
         String jobName = task.getJobName();
-        if (jobManager.jobExists(jobName)) {
-            jobManager.jobRemove(jobName);
+        if (jobExists(jobName)) {
+            jobRemove(jobName);
         }
 
         List<LoopTask> tasks = sessionTasks.get(sessionId);
@@ -158,8 +221,8 @@ public class LoopScheduler {
                     registerJob(sessionId, t);
                 } else {
                     String jobName = t.getJobName();
-                    if (jobManager.jobExists(jobName)) {
-                        jobManager.jobRemove(jobName);
+                    if (jobExists(jobName)) {
+                        jobRemove(jobName);
                     }
                 }
 
@@ -177,8 +240,8 @@ public class LoopScheduler {
             LoopTask t = tasks.get(i);
             if (t.getId().equals(taskId)) {
                 String jobName = t.getJobName();
-                if (jobManager.jobExists(jobName)) {
-                    jobManager.jobRemove(jobName);
+                if (jobExists(jobName)) {
+                    jobRemove(jobName);
                 }
 
                 tasks.set(i, newTask);
@@ -268,8 +331,8 @@ public class LoopScheduler {
             tasks.forEach(t -> {
                 t.cancel();
                 String jobName = t.getJobName();
-                if (jobManager.jobExists(jobName)) {
-                    jobManager.jobRemove(jobName);
+                if (jobExists(jobName)) {
+                    jobRemove(jobName);
                 }
             });
         }
@@ -285,8 +348,8 @@ public class LoopScheduler {
         if (tasks != null) {
             tasks.forEach(t -> {
                 String jobName = t.getJobName();
-                if (jobManager.jobExists(jobName)) {
-                    jobManager.jobRemove(jobName);
+                if (jobExists(jobName)) {
+                    jobRemove(jobName);
                 }
             });
         }
@@ -518,12 +581,27 @@ public class LoopScheduler {
                     .initialDelay(initialDelay);
         }
 
+        if (jobManager == null) {
+            LOG.debug("LoopScheduler has no job manager; task '{}' kept as metadata only", task.getId());
+            return;
+        }
         jobManager.jobAdd(jobName, scheduled, ctx -> {
             if (!task.isEnabled()) {
                 return;
             }
             onTrigger(sessionId, task, true);
         });
+    }
+
+    /** 调度器无容器时为空：守卫在唯一的调用处，避免把 null 判断分散到 7 处。 */
+    private boolean jobExists(String jobName) {
+        return jobManager != null && jobManager.jobExists(jobName);
+    }
+
+    private void jobRemove(String jobName) {
+        if (jobManager != null) {
+            jobManager.jobRemove(jobName);
+        }
     }
 
     /**
@@ -569,7 +647,8 @@ public class LoopScheduler {
         }
     }
 
-    private void doTrigger(String sessionId, LoopTask task, boolean fromSchedule) {
+    /** 包内可见：供测试直接驱动一轮（不经并行调度，避免测试依赖时序）。 */
+    void doTrigger(String sessionId, LoopTask task, boolean fromSchedule) {
         // ① 前置守卫（禁用/过期/取消 → 繁忙）
         if (!checkGuardConditions(sessionId, task)) {
             return;
@@ -583,13 +662,17 @@ public class LoopScheduler {
         try {
             // ③ 执行一轮
             String effectivePrompt = task.getPrompt();
-            RoundResult executionResult = bridge.execute(sessionId, effectivePrompt, null);
-            String finalResult = executionResult != null ? executionResult.getFinalResult() : null;
-            task.updateLastExecution(finalResult != null ? finalResult : "ok");
-            if (executionResult != null && executionResult.isCompleted()) {
+            String finalResult = execute(sessionId, effectivePrompt);
+            if (finalResult != null) {
+                task.updateLastExecution(finalResult);
                 task.incrementIteration();
+                persistAll();
+            } else {
+                // 无执行器认领 = 配置错误（日志已在 execute 内留痕）。
+                // 绝不能记 "ok"：那会让定时任务看起来一直在跑、实际什么也没做，
+                // 且不计迭代、不报错、不打日志，属于最难发现的故障形态。
+                LOG.warn("Loop task '{}' skipped: no executor claimed session '{}'", task.getId(), sessionId);
             }
-            persistAll();
         } catch (Exception e) {
             handleExecutionError(sessionId, task, e);
         } finally {
@@ -620,15 +703,21 @@ public class LoopScheduler {
         // 已禁用/已取消则移除
         if (!task.isEnabled() || task.isCancelled()) {
             String jobName = task.getJobName();
-            if (jobManager.jobExists(jobName)) {
-                jobManager.jobRemove(jobName);
+            if (jobExists(jobName)) {
+                jobRemove(jobName);
             }
             return false;
         }
 
-        // 会话繁忙时跳过
-        if (bridge.isBusy(sessionId)) {
-            LOG.info("Loop task '{}' skipped: session '{}' is busy", task.getId(), sessionId);
+        // 会话占用/积压时跳过
+        if (shouldSkipSession(sessionId)) {
+            LOG.info("Loop task '{}' skipped: session '{}' occupied or backlogged", task.getId(), sessionId);
+            return false;
+        }
+
+        // 终端所有权（仅 CLI 注入；非 CLI 宿主缺省恒 true）
+        if (!injectionGate.canInject()) {
+            LOG.info("Loop task '{}' skipped: injection gate closed", task.getId());
             return false;
         }
 
@@ -657,8 +746,8 @@ public class LoopScheduler {
             LOG.warn("Loop task '{}' stopped after {} consecutive errors", task.getId(), errors);
             task.setEnabled(false);
             String jobName = task.getJobName();
-            if (jobManager.jobExists(jobName)) {
-                jobManager.jobRemove(jobName);
+            if (jobExists(jobName)) {
+                jobRemove(jobName);
             }
             persistAll();
             consecutiveErrors = 0;
@@ -677,14 +766,59 @@ public class LoopScheduler {
 
     // ==================== 执行 ====================
 
+    /**
+     * 执行一轮：按注册顺序取首个认领者。
+     *
+     * <p><b>无不认领兜底</b>：loop 会话必然来自本进程的某个入口（CLI 主会话 / {@code web-*} /
+     * {@code auto-*}），无任何执行器认领即属配置错误，必须留痕而不是假装执行成功——
+     * 旧实现落到别的域的缺省 handler 并返回 {@code "ok"}，定时任务看起来一直在跑，
+     * 实际什么也没做且无日志。</p>
+     *
+     * @return 最终文本；无认领时返回 null
+     */
+    String execute(String sessionId, String prompt) {
+        for (LoopExecutor executor : executors) {
+            String result = executor.handle(sessionId, prompt);
+            if (result != null) {
+                return result;
+            }
+        }
+        LOG.warn("[Loop] no executor claimed session '{}', round skipped", sessionId);
+        return null;
+    }
+
+    /**
+     * 会话是否应跳过本轮注入。
+     *
+     * <p>口径为「占用或有积压」：HITL 挂起时没有活跃流但注入会顶掉未决审批，
+     * 必须算占用；队列压着任务时注入等于插队，也一并跳过。</p>
+     *
+     * <p><b>与 goal 的差异（故意的）</b>：会话不存在时这里返回 false（不跳过），
+     * 而 goal 返回 true。原因是 loop 的 {@code auto-*} 任务可能对应尚未实例化的会话，
+     * 若跳过就会永不执行；goal 只跑已有会话，会话不存在即配置错误。</p>
+     */
+    private boolean shouldSkipSession(String sessionId) {
+        try {
+            AgentSession session = engine.getSession(sessionId);
+            if (session == null) {
+                return false;
+            }
+            SessionStatus status = engine.status(session);
+            return status != null && (status.isOccupied() || status.getQueuedCount() > 0);
+        } catch (Throwable e) {
+            LOG.debug("[Loop] status check failed for session '{}': {}", sessionId, e.getMessage());
+            return false;
+        }
+    }
+
     // ==================== 清理过期任务 ====================
 
     private void cleanExpired(String sessionId, List<LoopTask> tasks) {
         boolean changed = tasks.removeIf(t -> {
             if (t.isCancelled()) {
                 String jobName = t.getJobName();
-                if (jobManager.jobExists(jobName)) {
-                    jobManager.jobRemove(jobName);
+                if (jobExists(jobName)) {
+                    jobRemove(jobName);
                 }
                 return true;
             }

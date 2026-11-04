@@ -9,7 +9,6 @@ import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalScheduler;
 import org.noear.solon.codecli.loop.LoopScheduler;
-import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionManager;
@@ -43,8 +42,6 @@ public class WorkspaceContext implements Closeable {
     private volatile GoalScheduler goalScheduler;
     /** Goal 一键装配扩展（goal 域的唯一宿主交互面；运行期操作经其门面中转）。 */
     private volatile GoalExtension goalExtension;
-    /** 执行桥（loop 与 goal 共享；由组合根创建）。 */
-    private volatile ExecutionBridge executionBridge;
     private final AutomationManager automationManager;
     private final WorkspaceManager manager;
     private volatile WorkspaceMessageGateway messageGateway;
@@ -155,30 +152,18 @@ public class WorkspaceContext implements Closeable {
     }
 
     /** 由 WorkspaceManager 装配时注入（避免构造器签名膨胀）。 */
-    public void attachGoal(GoalExtension goalExtension, ExecutionBridge bridge) {
+    public void attachGoal(GoalExtension goalExtension) {
         if (goalExtension != null) {
             this.goalExtension = goalExtension;
             this.goalEngine = goalExtension.getGoalEngine();
             this.goalScheduler = goalExtension.getGoalScheduler();
         }
-        this.executionBridge = bridge;
     }
 
     /** 由 WorkspaceManager 装配时注入（避免构造器签名膨胀）。 */
-    public void attachGoal(GoalEngine goalEngine, GoalScheduler goalScheduler, ExecutionBridge bridge) {
+    public void attachGoal(GoalEngine goalEngine, GoalScheduler goalScheduler) {
         this.goalEngine = goalEngine;
         this.goalScheduler = goalScheduler;
-        this.executionBridge = bridge;
-    }
-
-    /**
-     * 获取本工作区的执行桥（loop 与 goal 共用的执行通道）。
-     *
-     * <p>供入口层（CLI / Desktop）注册任务执行器与繁忙检查器使用，
-     * 避免为拿到桥而反向持有 LoopScheduler。</p>
-     */
-    public ExecutionBridge getExecutionBridge() {
-        return executionBridge;
     }
 
     public LoopScheduler getLoopScheduler() {

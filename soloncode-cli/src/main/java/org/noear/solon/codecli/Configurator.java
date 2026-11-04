@@ -9,7 +9,6 @@ import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
 import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.loop.LoopScheduler;
-import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
@@ -80,7 +79,6 @@ public class Configurator {
     SessionManager sessionManager;
 
     private LoopScheduler loopScheduler;
-    private ExecutionBridge executionBridge;
     private GoalExtension goalExtension;
 
     @Inject
@@ -115,7 +113,6 @@ public class Configurator {
         workspaceManager.initDefaultWorkspace();
         WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
         this.loopScheduler = defaultCtx.getLoopScheduler();
-        this.executionBridge = defaultCtx.getExecutionBridge();
         this.goalExtension = defaultCtx.getGoalExtension();
         return defaultCtx.getEngine();
     }
@@ -130,7 +127,7 @@ public class Configurator {
         // 容器扩展订阅已由 WorkspaceManager.createWorkspaceContext 统一完成
         //（agentRuntime 即默认工作区 engine），此处禁止重复订阅，否则同一扩展被注册两遍
 
-        CliShell cliShell = new CliShell(agentRuntime, agentSettings, loopScheduler, executionBridge);
+        CliShell cliShell = new CliShell(agentRuntime, agentSettings, loopScheduler);
         String flag = Solon.cfg().argx().flagAt(0);
 
         // help 优先于其它一切分支：不做更新检查，保证帮助输出可被工具链解析
@@ -231,7 +228,7 @@ public class Configurator {
     private void runDesktopServe(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell,
                                  SessionManager sessionManager) {
         //serve ws gate
-        WsGate wsGate = new WsGate(agentRuntime, settings, executionBridge, goalExtension);
+        WsGate wsGate = new WsGate(agentRuntime, settings, goalExtension);
         WebSocketRouter.getInstance().of("/desktop/ws", wsGate);
 
         //serve desktop controllers（原单一 WsController 按领域拆分：版本/模型/会话/Goal）
@@ -244,7 +241,7 @@ public class Configurator {
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
                 new DesktopSessionController(agentRuntime, wsGate, sessionManager));
         Solon.app().router().add(desktopBean);
-        // 桌面端 BusyChecker/TaskExecutor 由 WsGate 构造时注册到共享执行桥，
+        // 桌面端 Goal 执行器由 WsGate 构造时注册到 GoalEngine 自己的执行通道，
         // Goal 状态与 Web/CLI 同源（会话快照 session.goal）
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
                 new DesktopGoalController(agentRuntime, wsGate, sessionManager, goalExtension));

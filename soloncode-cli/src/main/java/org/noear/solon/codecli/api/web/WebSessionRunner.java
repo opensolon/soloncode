@@ -20,9 +20,11 @@ import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
+import org.noear.solon.codecli.api.web.pipeline.ToolViewUtil;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.harness.session.queue.QueueDispatch;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -237,6 +239,20 @@ class WebSessionRunner {
      * @return 捕获到的 finalAnswer 文本（无则返回空串）
      */
     String performAgentTaskSync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
+        RoundResult result = performAgentTaskSyncRound(wsContext, session, sessionCwd, outcome);
+        return result == null ? "" : result.getFinalResult();
+    }
+
+    /**
+     * 执行 Agent 流式任务（同步等待）并取回本轮客观事实（goal 使用）。
+     *
+     * <p>与 {@link #performAgentTaskSync} 是同一段执行，差别只在返回值：
+     * goal 需要 token 与工具证据做完成判定，loop 只需最终文本。
+     * 因此事实在流回调里就地累加、随返回值上交，不写会话 attrs。</p>
+     *
+     * @return 本轮结果；无正文时返回 null（不得伪造「有结果的轮」）
+     */
+    RoundResult performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
         String sessionId = session.getSessionId();
 
         // 会话级模型选择回写：与 async 路径同口径（生效值回写，展示句柄现取）
@@ -246,6 +262,9 @@ class WebSessionRunner {
         ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(outcome.getModelName());
         CountDownLatch countDownLatch = new CountDownLatch(1);
         AtomicReference<String> finalAnswerRef = new AtomicReference<>("");
+        // 本轮客观事实：token 取自 system.trace，工具证据在 tool.end 上就地判定
+        java.util.concurrent.atomic.AtomicLong tokensRef = new java.util.concurrent.atomic.AtomicLong(0L);
+        java.util.concurrent.atomic.AtomicBoolean hasToolCallsRef = new java.util.concurrent.atomic.AtomicBoolean(false);
 
         // 取取消代数基准（早于任何开流动作）：同步等待方（Loop）依赖它判定本轮是否已被取消
         final int cancelGen = SessionRuns.cancelCount(session);
@@ -279,6 +298,17 @@ class WebSessionRunner {
                         SystemTracePayload tracePayload = (SystemTracePayload) line.getPayload();
                         if (org.noear.solon.core.util.Assert.isNotEmpty(tracePayload.getFinalAnswer())) {
                             finalAnswerRef.set(tracePayload.getFinalAnswer());
+                        }
+                        if (tracePayload.getTotalTokens() != null) {
+                            tokensRef.set(tracePayload.getTotalTokens());
+                        }
+                    } else if (WebEventNames.TOOL_END.equals(line.getEvent())
+                            && line.getPayload() instanceof org.noear.solon.codecli.api.web.event.payload.ToolEndPayload) {
+                        // 与桌面/CLI 同口径：内部工具（task/multitask/memory/goal）不算行动证据
+                        org.noear.solon.codecli.api.web.event.payload.ToolEndPayload toolEnd =
+                                (org.noear.solon.codecli.api.web.event.payload.ToolEndPayload) line.getPayload();
+                        if (toolEnd.isError() == false && ToolViewUtil.isInternalTool(toolEnd.getName()) == false) {
+                            hasToolCallsRef.set(true);
                         }
                     }
                 })
@@ -322,7 +352,11 @@ class WebSessionRunner {
                 Thread.currentThread().interrupt();
             }
         });
-        return finalAnswerRef.get();
+        String text = finalAnswerRef.get();
+        if (org.noear.solon.core.util.Assert.isEmpty(text)) {
+            return null;
+        }
+        return RoundResult.of(hasToolCallsRef.get(), tokensRef.get(), text);
     }
 
     /** 当前工作区的日志标识（无上下文时为 null，走默认路由）。 */

@@ -17,7 +17,6 @@ import org.noear.solon.codecli.artifact.ImageReplyTurn;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.api.web.event.WebEvent;
-import org.noear.solon.codecli.api.web.pipeline.SessionMetricsRecorder;
 import org.noear.solon.ai.talents.lsp.LspCheckState;
 import org.noear.solon.codecli.api.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.api.web.pipeline.UiRenderFilter;
@@ -477,7 +476,6 @@ public class WebStreamBuilder {
             WebEventMapper mapper = new WebEventMapper(this, wsContext, session, targetModel, imageTurn);
             ToolPresentationFilter toolFilter = new ToolPresentationFilter(buildLspState(wsContext));
             UiRenderFilter uiRenderFilter = new UiRenderFilter();
-            SessionMetricsRecorder metricsRecorder = new SessionMetricsRecorder(session);
 
             // 请求主体（agent/session/模型/retry/maxTurns）由 handle 装配，这里只补 Web 端请求级选项
             final Flux<AgentEvent> stream = outcome.getRequest()
@@ -501,7 +499,6 @@ public class WebStreamBuilder {
                     .filter(WebEvent::isNotEmpty)
                     .map(toolFilter::apply)
                     .map(uiRenderFilter::apply)
-                    .doOnNext(metricsRecorder::record)
                     .onErrorResume(e -> {
                         log.error("Stream execution error", e);
                         //IM 与 web 是同一 session 的输出端：流式 error 仅 web 可见，

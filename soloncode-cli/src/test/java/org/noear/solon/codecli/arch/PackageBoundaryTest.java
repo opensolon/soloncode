@@ -49,7 +49,8 @@ class PackageBoundaryTest {
      * loop 包必须与 goal 彻底分离：除注释外不得出现 Goal 标识符。
      *
      * <p>Goal 已是独立的会话级能力（已下沉 harness），loop 只是定时任务。
-     * 二者唯一的交汇点是 {@code harness.runtime.ExecutionBridge}（执行通道）。
+     * 二者现在<b>没有任何交汇点</b>（执行通道已各自内联：goal 在 GoalEngine、
+     * loop 在 LoopScheduler，连共享类都已不存在）。
      * 允许的残留仅限：说明性注释中提及 Goal、以及拒绝 {@code type=GOAL}
      * 的入参校验（防止旧客户端把 goal 塞进定时任务表）。</p>
      */
@@ -86,6 +87,56 @@ class PackageBoundaryTest {
         }
         assertTrue(violations.isEmpty(),
                 "loop 包不得持有 goal 实现（应只剩代码外的注释）：" + violations);
+    }
+
+    /**
+     * 防回归：曾用于跨域共享的 {@code ExecutionBridge} 已删除。
+     *
+     * <p>它把「执行投递」「忙判定」「轮次度量」三件不相干的事装进一个类，
+     * 使 loop 的语义渗进 harness（典型症状：通用轮次度量被命名为 {@code _loop_*}）。
+     * 现在 goal 与 loop 各自内联自己的执行通道；若有人重新引入跨域共享类，
+     * 此测试会直接报错，而不会等到行为漂移才被发现。</p>
+     *
+     * <p>只检查非注释行：注释中提及旧类型名是有价值的上下文（解释为何不能回去），
+     * 代码中引用才是回归。</p>
+     */
+    @Test
+    void domainCodeMustNotReferenceRemovedExecutionBridge() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                if (trimmed.contains("ExecutionBridge")) {
+                    violations.add(file.getFileName() + ": " + trimmed);
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "ExecutionBridge 已删除（执行通道已各自内联），不得重新引入：" + violations);
+    }
+
+    /**
+     * 防回归：不得再出现以 loop 名义挂在引擎侧轮次度量上的 {@code _loop_*} 键。
+     *
+     * <p>这两个键的实际写入者是所有入口的所有回合（CLI/Web/Desktop），与 loop 无关；
+     * 它们之所以存在，只是因为执行通道返回类型装不下 token 与工具证据。
+     * 现在证据随返回值上交，键已彻底消失。</p>
+     */
+    @Test
+    void domainCodeMustNotUseLoopPrefixedSessionKeys() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                if (line.contains("_loop_last_")) {
+                    violations.add(file.getFileName() + ": " + line.trim());
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "不得再使用 _loop_* 会话 attrs（轮次度量已改为返回值携带）：" + violations);
     }
 
     /**
