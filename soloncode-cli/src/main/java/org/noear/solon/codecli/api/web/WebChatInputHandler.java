@@ -19,7 +19,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.agent.session.SessionRuns.Claim;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
+import org.noear.solon.ai.harness.session.interrupt.InterruptHelper;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
@@ -37,9 +37,9 @@ import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
-import org.noear.solon.ai.harness.session.queue.SessionQueue;
-import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.session.queue.QueueItem;
+import org.noear.solon.ai.harness.session.queue.QueueExtension;
+import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.handle.UploadedFile;
@@ -107,12 +107,12 @@ class WebChatInputHandler {
                         busyCommand = command != null && !command.terminalOnly() && command.runnableWhenBusy();
                     }
                 }
-                if ((SessionActivity.isBusy(session) || SessionQueue.pendingSize(session) > 0)
+                if ((SessionActivity.isBusy(session) || queue(wsContext).pendingSize(session) > 0)
                         && !dispatch && !busyCommand) {
                     if (attachments != null && attachments.length > 0) {
                         throw new IllegalStateException("Attachments cannot be queued while session is busy");
                     }
-                    int position = SessionQueue.enqueue(session, input,
+                    int position = queue(wsContext).enqueue(session, input,
                             InputOrigin.of(source, sourceUserId, replyTarget, messageId),
                             null, selectedModel, reasoningEffort, thinkingMode, selectedAgent, false);
                     if (position < 0) throw new IllegalStateException("session queue is full or unavailable");
@@ -130,8 +130,8 @@ class WebChatInputHandler {
                     admitted = true;
                 }
                 if (!sideCommand) {
-                    if (dispatch && session.attrs().get("session.queue.executing") instanceof SessionQueueItem) {
-                        SessionQueueItem queued = (SessionQueueItem) session.attrs().get("session.queue.executing");
+                    if (dispatch && session.attrs().get("session.queue.executing") instanceof QueueItem) {
+                        QueueItem queued = (QueueItem) session.attrs().get("session.queue.executing");
                         setReplyRoute(session, queued.getOrigin());
                     } else {
                         setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
@@ -407,7 +407,7 @@ class WebChatInputHandler {
                 // 由 SteerInterceptor 在下一个采样边界消费。插不进去（任务恰在切换/尚未进入推理边界、邮箱已满等）
                 // 或输入是斜杠命令时，再降级为统一持久化排队，确保消息不丢。
                 if (input != null && !input.startsWith("/")) {
-                    SteerResult steerResult = SteerInterceptor.steer(session, null, null, input,
+                    SteerResult steerResult = steer(wsContext).steer(session, null, null, input,
                             InputOrigin.of(source, sourceUserId, replyTarget, messageId),
                             () -> SessionActivity.isBusy(session));
                     if (steerResult.getStatus() == SteerStatus.STEERED) {
@@ -420,7 +420,7 @@ class WebChatInputHandler {
                 }
 
                 // 降级：繁忙时进入统一持久化队列，而不是只让调用方重试。
-                int position = SessionQueue.enqueue(session, input,
+                int position = queue(wsContext).enqueue(session, input,
                         InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                 if (position >= 0) {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
@@ -507,7 +507,7 @@ class WebChatInputHandler {
     /**
      * 中断指定会话的当前 AI 任务。
      *
-     * <p>停流与补写取消消息（含快照）统一由 {@link SessionInterrupt} 负责——运行句柄由
+     * <p>停流与补写取消消息（含快照）统一由 {@link InterruptHelper} 负责——运行句柄由
      * {@code ReActRequest} 自行登记到 {@link SessionRuns}，宿主不再自己维护句柄容器，
      * 也不再手写取消消息与快照（以前抄了 4 端，丢一步就语义漂移）。</p>
      *
@@ -520,7 +520,7 @@ class WebChatInputHandler {
         try {
             AgentSession session = wsContext.getSessionManager().getSession(sessionId);
             // 清队列保存失败时不终止当前流：否则 doFinally 会续发原队列，Stop 不能报告成功。
-            if (!SessionQueue.cancelPending(session)) {
+            if (!queue(wsContext).cancelPending(session)) {
                 LOG.warn("[WebGate] Stop rejected: could not persist queue cancellation for session {}", sessionId);
                 return false;
             }
@@ -552,13 +552,13 @@ class WebChatInputHandler {
 
             try {
                 // 先落库（取消消息 + 快照），再提交事件：与合并前的包序一致（取消回执在持久化之后发送）
-                SessionInterrupt.writeCancel(session);
-                gate.emitToClient(wsContext, sessionId, WebEvent.ofError(SessionInterrupt.CANCEL_TEXT));
+                InterruptHelper.writeCancel(session);
+                gate.emitToClient(wsContext, sessionId, WebEvent.ofError(InterruptHelper.CANCEL_TEXT));
                 // 取消终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
                 replyCanceled.run();
 
                 if (trace != null) {
-                    gate.emitToClient(wsContext, sessionId, WebEvent.ofTrace(null, totalTokens, elapsedSeconds, SessionInterrupt.CANCEL_TEXT));
+                    gate.emitToClient(wsContext, sessionId, WebEvent.ofTrace(null, totalTokens, elapsedSeconds, InterruptHelper.CANCEL_TEXT));
                 }
 
                 // 正常路径同线程先发 done，再停流；doFinally 中 emitDoneOnce 因 CAS 跳过
@@ -571,7 +571,7 @@ class WebChatInputHandler {
             LOG.info("[WebGate] Session {} interrupted", sessionId);
             return true;
         } catch (Exception e) {
-            LOG.error("[WebGate] Interrupt failed for session {}: {}", sessionId, e.getMessage());
+            LOG.error("[WebGate] Interrupt failed for session {}: {}", sessionId, e.getMessage(), e);
             return false;
         }
     }
@@ -624,5 +624,19 @@ class WebChatInputHandler {
             return;
         }
         session.attrs().put("session.replyRoute", origin.toMap());
+    }
+
+    /**
+     * 会话队列门面（统一入口，不再直调静态实现）
+     */
+    private static QueueExtension queue(WorkspaceContext wsContext) {
+        return wsContext.getEngine().getExtension(QueueExtension.class).get();
+    }
+
+    /**
+     * 插话门面（运行中干预统一入口）
+     */
+    private static SteerExtension steer(WorkspaceContext wsContext) {
+        return wsContext.getEngine().getExtension(SteerExtension.class).get();
     }
 }

@@ -16,16 +16,14 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.session.SessionRuns;
+import org.noear.solon.ai.harness.session.SessionStatus;
 
 /**
  * 会话运行状态查询。
  *
- * <p>这些状态属于会话运行时事实，不属于 Web 网关实现。
- * WebGate 保留兼容委托，但命令、队列和其他入口应优先依赖本类。</p>
- *
- * <p>“是否有活跃流”以 {@link SessionRuns} 为准：它是框架（{@code ReActRequest}）自行
- * 登记运行句柄的唯一实现，宿主不再需要（也不再应该）读写任何 attrs key。</p>
+ * <p>运行流与待审批这两项事实统一读 {@link SessionStatus}（harness 门面，一次读全）；
+ * 本类只额外叠加宿主自己的 {@link #ATTR_INPUT_ADMITTING} 标志——
+ * 那是「输入已受理、流尚未注册」的窗口态，harness 无从得知，故只能留在宿主侧。</p>
  */
 public final class SessionActivity {
     /** 会话属性：输入已被接纳但 Agent 流尚未完成注册。 */
@@ -35,13 +33,10 @@ public final class SessionActivity {
     }
 
     /**
-     * 流未建立（或已失败）时返回 false。
-     *
-     * <p>运行句柄的真相源是 {@link SessionRuns}（由 {@code ReActRequest} 自行登记），
-     * 不再读取 {@code attrs("disposable")} —— 那个字符串 key 已不存在。</p>
+     * 是否有活跃的 Agent 运行流（不含 HITL 挂起、不含输入受理窗口）。
      */
     public static boolean hasActiveStream(AgentSession session) {
-        return SessionRuns.isBusy(session);
+        return SessionStatus.of(session).isBusy();
     }
 
     /**
@@ -58,5 +53,22 @@ public final class SessionActivity {
      */
     public static boolean isBusy(AgentSession session) {
         return isInputAdmitting(session) || hasActiveStream(session);
+    }
+
+    /**
+     * 会话是否「占着」：忙碌、待审批，或输入正在受理。
+     *
+     * <p>与 {@link #isBusy(AgentSession)} 的差别是包含待审批：HITL 挂起时引擎里没有运行流，
+     * 但显然不能被新输入顶掉，故「能不能接新输入」要用本方法判断。</p>
+     *
+     * @since 4.2.0
+     */
+    public static boolean isOccupied(AgentSession session) {
+        if (isInputAdmitting(session)) {
+            return true;
+        }
+
+        SessionStatus status = SessionStatus.of(session);
+        return status.isOccupied();
     }
 }

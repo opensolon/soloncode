@@ -16,7 +16,6 @@
 package org.noear.solon.codecli.api.web.settings;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -299,11 +298,9 @@ public class WebSettingsController extends BaseSettingsController {
             // goalsEnabled：热更新 GoalTalent
             try {
                 boolean goalsEnabled = g.isGoalsEnabled();
-                for (HarnessExtension ext : engine.getExtensions()) {
-                    if (ext instanceof GoalExtension) {
-                        ((GoalExtension) ext).getGoalTalent().setEnabled(goalsEnabled);
-                        break;
-                    }
+                GoalExtension goalExt = engine.getExtension(GoalExtension.class).get();
+                if (goalExt != null) {
+                    goalExt.getGoalTalent().setEnabled(goalsEnabled);
                 }
             } catch (Exception e) {
                 warnings.add("goalsEnabled apply failed: " + e.getMessage());

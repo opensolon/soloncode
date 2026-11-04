@@ -986,6 +986,11 @@ class ImageReplyLifecycleTest {
             HarnessEngine engine = mock(HarnessEngine.class);
             ChannelHub hub = mock(ChannelHub.class);
             when(context.getEngine()).thenReturn(engine);
+            // 队列/插话已收口到扩展门面（门面内部转静态实现，无需 attach 即可用）
+            doReturn(new org.noear.solon.ai.harness.session.queue.QueueExtension())
+                    .when(engine).getExtension(org.noear.solon.ai.harness.session.queue.QueueExtension.class);
+            doReturn(new org.noear.solon.ai.harness.session.steer.SteerExtension())
+                    .when(engine).getExtension(org.noear.solon.ai.harness.session.steer.SteerExtension.class);
             when(engine.getSession("s1")).thenReturn(session);
             when(session.getSessionId()).thenReturn("s1");
             when(session.attrs()).thenReturn(attrs);

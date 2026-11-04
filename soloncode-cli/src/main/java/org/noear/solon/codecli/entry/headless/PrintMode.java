@@ -23,7 +23,6 @@ import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
@@ -566,7 +565,7 @@ public class PrintMode {
             synchronized (turnStateLock) {
                 currentTurn.set(session);
                 if (turnInterrupted.get()) {
-                    SessionInterrupt.interrupt(session);
+                    engine.interrupt(session);
                 }
             }
 
@@ -611,8 +610,7 @@ public class PrintMode {
             turnInterrupted.set(true);
             AgentSession session = currentTurn.getAndSet(null);
             if (session != null) {
-                // 停流 + 补写取消消息与快照统一走框架入口（幂等）
-                SessionInterrupt.interrupt(session);
+                engine.interrupt(session);
             }
             // 会话尚未发布也算成功：runAgent 会在发布后观察中断标志并补做取消。
             return true;

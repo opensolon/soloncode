@@ -21,9 +21,7 @@ import org.noear.solon.ai.agent.react.ReActOptionsAmend;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
-import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
-import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
@@ -31,6 +29,7 @@ import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -64,10 +63,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class DesktopStreamTurn {
     static final String SESSION_ATTR_RUN_MODE = "_desktop_run_mode";
 
+    private final HarnessEngine engine;
     private final DesktopStreamHub streamHub;
     private final DesktopEventConverter converter;
 
-    DesktopStreamTurn(DesktopStreamHub streamHub, DesktopEventConverter converter) {
+    DesktopStreamTurn(HarnessEngine engine, DesktopStreamHub streamHub, DesktopEventConverter converter) {
+        this.engine = engine;
         this.streamHub = streamHub;
         this.converter = converter;
     }
@@ -92,11 +93,11 @@ final class DesktopStreamTurn {
         // 同一会话上的上一轮若还在跑（连发输入 / 桌面端重发），先停掉再开新流：
         // 不停会造成两条流的 doOnNext 同时往同一个 streamHub 写，前端两个轮次的输出交错。
         //
-        // 用 cancelAll（推进取消代数）而不是 cancelActive：取消现在以 complete 收尾，
+        // 用 interruptStream（推进取消代数）而不是 interruptStreamActive：取消现在以 complete 收尾，
         // 被顶掉的旧流仍会走 doOnComplete。旧流要能据此判定「自己是被取消的」，
         // 否则它会往刚 begin 的新一轮里发一个 done，前端提前收尾并丢弃后续输出。
         // 这里不会“自己拒掉自己”：本调用在 request.stream() 之前，新流的代数基准在之后才取。
-        SessionRuns.cancelAll(session);
+        engine.interruptStream(session);
 
         if (hitlResume) {
             streamHub.subscribe(sessionId, socket);
@@ -160,10 +161,12 @@ final class DesktopStreamTurn {
         long elapsed = start_time != null ? System.currentTimeMillis() - start_time : 0;
         long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : 0;
 
-        if (HITL.isHitl(session)) {
-            HITLTask task = nextPendingHitlTask(session);
-            if (task != null && terminalSent.compareAndSet(false, true)) {
-                streamHub.emit(finalSessionId, hitlEvent(finalSessionId, task).toJson());
+        // 判据用 next() 而非 hasPendingHitl()：残留决策（整批已决策但续流未发生）
+        // 也要推卡给前端重批/透传，否则残留决策永远等不到续流（next 含回退首项语义）
+        HitlCard card = HitlCard.next(session);
+        if (card != null) {
+            if (terminalSent.compareAndSet(false, true)) {
+                streamHub.emit(finalSessionId, hitlEvent(finalSessionId, card).toJson());
             }
             return;
         }
@@ -175,37 +178,25 @@ final class DesktopStreamTurn {
     /**
      * 取下一张待审批的卡（批挂起时可能有多个）。
      *
-     * <p>桌面端在挂起/未齐备时只推一张卡，必须跳过已决策项，否则会重复推同一张卡；
-     * 若本批已全部决策（残留未清），回退到批中第一项供续流透传。</p>
+     * <p>已决策项跳过（否则会重复推同一张卡），整批已决策时回退到首项供续流透传。
+     * 实现已收归 {@link HitlCard#next}，本方法仅为兼容旧调用保留。</p>
      *
      * @return 待处理任务；无挂起时返回 null
      */
-    static HITLTask nextPendingHitlTask(AgentSession session) {
-        List<HITLTask> pending = HITL.getPendingTasks(session);
-
-        for (HITLTask task : pending) {
-            if (HITL.getDecision(session, task) == null) {
-                return task;
-            }
-        }
-
-        return pending.isEmpty() ? null : pending.get(0);
+    static HitlCard nextPendingHitlTask(AgentSession session) {
+        return HitlCard.next(session);
     }
 
     /**
      * hitl 事件载荷（字段与顺序沿用原实现，不变更前端协议）
      */
-    static ONode hitlEvent(String sessionId, HITLTask task) {
-        String command = "bash".equals(task.getToolName())
-                ? String.valueOf(task.getArgs().get("command"))
-                : null;
-
+    static ONode hitlEvent(String sessionId, HitlCard card) {
         return new ONode().set("type", "hitl")
                 .set("sessionId", sessionId)
-                .set("callId", task.getCallUuid())
-                .set("toolName", task.getToolName())
-                .set("command", command)
-                .set("comment", task.getComment());
+                .set("callId", card.getCallId())
+                .set("toolName", card.getToolName())
+                .set("command", card.getCommand())
+                .set("comment", card.getComment());
     }
 
     private void sendDoneIfNeeded(AtomicBoolean terminalSent, String sessionId,

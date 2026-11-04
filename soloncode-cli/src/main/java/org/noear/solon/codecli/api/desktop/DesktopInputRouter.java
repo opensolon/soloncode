@@ -18,8 +18,7 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.agent.react.intercept.HITLTask;
-import org.noear.solon.ai.agent.session.SessionRuns;
+import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -32,7 +31,6 @@ import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.harness.session.goal.GoalState;
-import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -87,18 +85,18 @@ final class DesktopInputRouter {
             GoalState activeGoal = goalSession == null ? null : gate.goal.state(goalSession);
             if (activeGoal != null) {
                 // goal 轮次：只停流，不落取消消息（历史由 goal.clear 收尾）。
-                // 这里不能用 SessionInterrupt.interrupt：它会补写取消消息，
+                // 这里不能用 engine.interrupt：它会补写取消消息，
                 // 而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
-                SessionRuns.cancelAll(session);
+                engine.interruptStream(session);
                 // clear 门面内含「先 unschedule 再 clear」
                 gate.goal.clear(goalSession);
                 return;
             }
 
-            // 普通轮次：清队列 + 停流 + 幂等补写取消消息与快照，统一走 SessionInterrupt。
+            // 普通轮次：清队列 + 停流 + 幂等补写取消消息与快照。
             // 此处曾再手写一遍取消消息与快照：迁移后 interrupt() 已无条件补写，
             // 继续手写会让同一条取消消息入库两次。
-            SessionInterrupt.interrupt(session);
+            engine.interrupt(session);
             LOG.info("用户已取消任务.");
 
             String interruptModelName = req.getModel();
@@ -337,7 +335,8 @@ final class DesktopInputRouter {
                     return;
                 }
                 // 本批尚有未决卡：推送下一张（跳过已决策项），等宿主再次点击
-                HITLTask next = DesktopStreamTurn.nextPendingHitlTask(session);
+                // 也可以直接用 outcome.getNextHitl()，本处保留 session 查询口径以兼容无 outcome 的调用点
+                HitlCard next = DesktopStreamTurn.nextPendingHitlTask(session);
                 if (next != null) {
                     socket.send(DesktopStreamTurn.hitlEvent(sessionId, next).toJson());
                 } else {

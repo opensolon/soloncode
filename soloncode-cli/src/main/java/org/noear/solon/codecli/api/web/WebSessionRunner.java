@@ -23,9 +23,8 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
-import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
-import org.noear.solon.ai.harness.session.steer.SteerMessage;
+import org.noear.solon.ai.harness.session.queue.QueueItem;
+import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.LogDirUtil;
@@ -76,30 +75,19 @@ class WebSessionRunner {
             // onAgentEnd 不在 finally 中（interrupt/异常路径不触发），若不在此清理，
             // 上一任务未消费的插话会在新任务第二轮被注入，破坏方案 A 的任务级隔离。
             // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律转排队并告知前端。
-            // 与 steer 提交及 onAgentEnd 共用短临界区，保证 runId 与邮箱按同一任务边界切换。
-            Queue<SteerMessage> staleBox;
-            synchronized (session.attrs()) {
-                session.attrs().remove(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-                @SuppressWarnings("unchecked")
-                Queue<SteerMessage> currentBox =
-                        (Queue<SteerMessage>) session.attrs().remove(SteerInterceptor.ATTR_STEER_BOX);
-                staleBox = currentBox;
-            }
-
+            // 清邮箱 + 转排队的内部约定（两个 attrs key、短临界区）已收归 harness 的 handover。
             gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
-            if (staleBox != null && staleBox.isEmpty() == false) {
-                // 此处尚未开流（无 trace），无法推事件：直接复用 harness 的转排队实现，
-                // 再由宿主就地广播结果。排队逻辑只有一处，不随宿主重复实现。
-                List<SteerMessage> stale = new ArrayList<>(staleBox);
-                List<SteerMessage> failed = SteerInterceptor.enqueueIntoSessionQueue(session, stale);
-                List<SteerMessage> queued = new ArrayList<>(stale);
-                queued.removeAll(failed);
+            SteerExtension steer = wsContext.getExtension(SteerExtension.class);
+            SteerExtension.SteerHandover handover = steer == null
+                    ? null : steer.handover(session);
 
-                if (queued.isEmpty() == false) {
-                    gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofSteerDroppedItems(null, queued));
+            if (handover != null && handover.isEmpty() == false) {
+                if (handover.getQueued().isEmpty() == false) {
+                    gate.emitToClient(wsContext, session.getSessionId(),
+                            WebEvent.ofSteerDroppedItems(null, handover.getQueued()));
                 }
-                if (failed.isEmpty() == false) {
+                if (handover.getFailed().isEmpty() == false) {
                     gate.emitToClient(wsContext, session.getSessionId(),
                             WebEvent.ofError("插话尚未排队，已暂存；请清理队列后继续"));
                 }
@@ -117,11 +105,11 @@ class WebSessionRunner {
      */
     void failStreamTurn(WorkspaceContext wsContext, AgentSession session, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
-        boolean queued = session.attrs().get("session.queue.executing") instanceof SessionQueueItem;
+        boolean queued = session.attrs().get("session.queue.executing") instanceof QueueItem;
         if (queued && Thread.currentThread().equals(session.attrs().get(WebQueueDispatcher.ATTR_QUEUE_DISPATCH))) {
             session.attrs().put("session.queue.startFailed", Boolean.TRUE);
         }
-        gate.getQueueDispatcher().finishQueuedTurn(session, false);
+        gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, false);
 
         gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));
         // 失败终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
@@ -205,7 +193,7 @@ class WebSessionRunner {
                     gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
-                    gate.getQueueDispatcher().finishQueuedTurn(session, true);
+                    gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, true);
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);

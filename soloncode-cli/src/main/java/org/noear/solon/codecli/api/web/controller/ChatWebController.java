@@ -27,8 +27,7 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.WebGate;
-import org.noear.solon.ai.harness.session.steer.SteerMessage;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.harness.session.steer.SteerResult;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
@@ -514,12 +513,12 @@ public class ChatWebController extends AbstractWebController {
         if (text == null || text.trim().isEmpty()) {
             return Result.failure(400, "EMPTY_TEXT");
         }
-        if (text.trim().length() > SteerInterceptor.MAX_TEXT_LENGTH) {
+        if (text.trim().length() > SteerExtension.maxTextLength()) {
             return Result.failure(400, "TEXT_TOO_LONG");
         }
 
         if (steerId != null && !steerId.trim().isEmpty()
-                && steerId.trim().length() > SteerInterceptor.MAX_ID_LENGTH) {
+                && steerId.trim().length() > SteerExtension.maxIdLength()) {
             return Result.failure(400, "INVALID_STEER_ID");
         }
         if (!runtimePort().isSessionBusy(engine(), sessionId)) {
@@ -538,7 +537,7 @@ public class ChatWebController extends AbstractWebController {
         }
 
         // 核心入队逻辑与 IM 端共用（activeRunId 绑定校验 + offer + offer 后按 busy 复查回滚）。
-        SteerResult result = SteerInterceptor.steer(
+        SteerResult result = steer().steer(
                 session, runId, steerId, text, null,
                 () -> runtimePort().isSessionBusy(engine(), sessionId));
 
@@ -576,7 +575,7 @@ public class ChatWebController extends AbstractWebController {
         }
         if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
         if (steerId == null || steerId.trim().isEmpty()
-                || steerId.length() > SteerInterceptor.MAX_ID_LENGTH) {
+                || steerId.length() > SteerExtension.maxIdLength()) {
             return Result.failure(400, "INVALID_STEER_ID");
         }
 
@@ -584,23 +583,29 @@ public class ChatWebController extends AbstractWebController {
         if (session == null) {
             return Result.failure(409, "NOT_PENDING");
         }
-        java.util.Queue<SteerMessage> box;
-        synchronized (session.attrs()) {
-            String activeRunId = (String) session.attrs().get(SteerInterceptor.ATTR_ACTIVE_RUN_ID);
-            if (runId == null || !runId.equals(activeRunId)) {
-                return Result.failure(409, "TURN_CHANGED");
-            }
+        SteerExtension steer = steer();
 
-            box = SteerInterceptor.steerBox(session);
-            if (!SteerInterceptor.cancel(box, steerId.trim())) {
-                return Result.failure(409, "NOT_PENDING");
-            }
+        // 轮次已切换时旧 steerId 已无意义，必须回 TURN_CHANGED 而不是默默成功
+        String activeRunId = steer.activeRunId(session);
+        if (runId == null || !runId.equals(activeRunId)) {
+            return Result.failure(409, "TURN_CHANGED");
+        }
+
+        if (!steer.cancel(session, steerId.trim())) {
+            return Result.failure(409, "NOT_PENDING");
         }
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("status", "CANCELED");
         data.put("steerId", steerId.trim());
-        data.put("queued", box.size());
+        data.put("queued", steer.pending(session).size());
         return Result.succeed(data);
+    }
+
+    /**
+     * 插话门面（运行中干预统一入口，不再直调静态实现与内部 attrs key）
+     */
+    private SteerExtension steer() {
+        return engine().getExtension(SteerExtension.class).get();
     }
 }

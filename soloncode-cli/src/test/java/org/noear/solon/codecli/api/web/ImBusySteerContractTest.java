@@ -33,13 +33,13 @@ class ImBusySteerContractTest {
             "ar", "bn", "br", "bs", "da", "de", "en", "es", "fr", "gr", "it",
             "ja", "ko", "nl", "no", "pl", "pt_BR", "ru", "th", "tr", "uk", "vi", "zh_TW");
 
-    /** 忙态默认走插话（SteerInterceptor.steer），而不是直接入队。 */
+    /** 忙态默认走插话（SteerExtension.steer），而不是直接入队。 */
     @Test
     void busySessionDefaultsToSteer() throws IOException {
         String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
 
-        assertTrue(source.contains("SteerInterceptor.steer(session, null, null, input"),
-                "忙态普通输入应默认插话（SteerInterceptor.steer）");
+        assertTrue(source.contains("steer(wsContext).steer(session, null, null, input"),
+                "忙态普通输入应默认插话（SteerExtension.steer）");
         assertTrue(source.contains("ImStatus.STEERED"),
                 "插话成功后必须给来源端一条可感知的回执，否则 IM 端是黑箱");
         // 斜杠命令不走插话（与 web 前端「运行中不把命令当插话」一致），仍走原有处理
@@ -52,8 +52,8 @@ class ImBusySteerContractTest {
     void steerFailureFallsBackToQueue() throws IOException {
         String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
 
-        int steer = source.indexOf("SteerInterceptor.steer(session, null, null, input");
-        int enqueue = source.indexOf("int position = SessionQueue.enqueue(session, input,", steer);
+        int steer = source.indexOf("steer(wsContext).steer(session, null, null, input");
+        int enqueue = source.indexOf("int position = queue(wsContext).enqueue(session, input,", steer);
         assertTrue(steer > 0 && enqueue > steer,
                 "入队必须保留为插话之后的降级路径，保证消息不丢");
     }

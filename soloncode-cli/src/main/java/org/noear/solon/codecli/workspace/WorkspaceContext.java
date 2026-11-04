@@ -1,6 +1,7 @@
 package org.noear.solon.codecli.workspace;
 
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
@@ -13,6 +14,7 @@ import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.lang.Nullable;
 import org.noear.solon.net.websocket.WebSocket;
 
 import java.io.Closeable;
@@ -103,6 +105,10 @@ public class WorkspaceContext implements Closeable {
 
     public HarnessEngine getEngine() {
         return engine;
+    }
+
+    public <T extends HarnessExtension> @Nullable T getExtension(Class<T> type) {
+        return engine.getExtension(type).get();
     }
 
     public Path getSessionsRoot() {

@@ -16,10 +16,10 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.queue.SessionQueue;
-import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
-import org.noear.solon.ai.harness.session.queue.SessionQueueItem;
+import org.noear.solon.ai.harness.session.queue.QueueExtension;
+import org.noear.solon.ai.harness.session.queue.QueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
+import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalState;
@@ -76,7 +76,7 @@ class WebQueueDispatcher {
                 String sessionId = dir.getFileName().toString();
                 AgentSession session = wsContext.getSessionManager().getSession(sessionId);
                 if (session == null) continue;
-                if (legacy) LegacyQueueMigrator.migrate(session, dir);
+                if (legacy) LegacyQueueMigrator.migrate(wsContext, session, dir);
                 drainSessionQueue(wsContext, session);
             }
         } catch (IOException e) {
@@ -134,7 +134,7 @@ class WebQueueDispatcher {
     private static boolean hasQueueTask(WorkspaceContext wsContext, Path sessionDir) {
         String sessionId = sessionDir.getFileName().toString();
         AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
-        if (inMemory != null) return SessionQueue.hasItems(inMemory);
+        if (inMemory != null) return wsContext.getExtension(QueueExtension.class).hasItems(inMemory);
         return SessionSnapshots.hasQueue(sessionDir, sessionId);
     }
 
@@ -145,16 +145,18 @@ class WebQueueDispatcher {
      * boundedElastic，否则同步执行。</p>
      */
     void drainSessionQueue(WorkspaceContext wsContext, AgentSession session) {
-        if (session == null || SessionActivity.isBusy(session)) return;
-        final long generation = SessionQueue.generation(session);
+        if (session == null || isBusy(session)) return;
+        final QueueExtension queue = queueOf(wsContext);
+        if (queue == null) return;
+        final long generation = queue.generation(session);
         final String sessionId = session.getSessionId();
         final String wsLogKey = wsLogKey(wsContext);
         Runnable action = () -> {
             Object logScope = (wsLogKey != null) ? WorkspaceLogRouter.beginScopeByKey(wsLogKey) : null;
             try {
-                boolean started = SessionQueueDrainer.drainOne(session, next -> {
+                boolean started = queue.drainOne(session, next -> {
                     synchronized (session.attrs()) {
-                        if (SessionActivity.isBusy(session) || !SessionQueue.isGenerationActive(session, generation)) {
+                        if (isBusy(session) || !queue.isGenerationActive(session, generation)) {
                             throw new IllegalStateException("session became busy or queue generation changed");
                         }
                         gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(next.getId(), next.getText(), next.getOrigin().getChannel()));
@@ -164,7 +166,7 @@ class WebQueueDispatcher {
                             gate.onChatInput(wsContext, sessionId, null, next.getText(), next.getModel(), null, null, null,
                                     next.getOrigin().getChannel(), next.getReasoningEffort(), next.getThinkingMode(), next.getSelectedAgent(),
                                     next.getOrigin().getSenderId(), next.getOrigin().getReplyTarget(), next.getOrigin().getMessageId());
-                            if (!SessionActivity.isBusy(session)) finishQueuedTurn(session, true);
+                            if (!isBusy(session)) finishQueuedTurn(wsContext, session, true);
                         } finally {
                             session.attrs().remove(ATTR_QUEUE_DISPATCH);
                         }
@@ -172,7 +174,7 @@ class WebQueueDispatcher {
                 }, false);
                 // 同步完成的命令可能在 claim 释放前已触发 drain；释放后再续发下一项。
                 boolean failedToStart = Boolean.TRUE.equals(session.attrs().remove("session.queue.startFailed"));
-                if (started && !failedToStart && !SessionActivity.isBusy(session) && SessionQueue.pendingSize(session) > 0) {
+                if (started && !failedToStart && !isBusy(session) && queue.pendingSize(session) > 0) {
                     drainSessionQueue(wsContext, session);
                 }
             } catch (Throwable e) {
@@ -187,15 +189,27 @@ class WebQueueDispatcher {
     }
 
     /** 仅确认本次队列领取；启动失败则恢复到队首，不按消息来源分支。 */
-    void finishQueuedTurn(AgentSession session, boolean started) {
+    void finishQueuedTurn(WorkspaceContext wsContext, AgentSession session, boolean started) {
         synchronized (session.attrs()) {
             Object value = session.attrs().remove("session.queue.executing");
-            if (!(value instanceof SessionQueueItem)) return;
-            SessionQueueItem item = (SessionQueueItem) value;
-            boolean saved = started ? SessionQueue.acknowledge(session, item.getId())
-                    : SessionQueue.requeueFront(session, item, SessionQueue.generation(session));
+            if (!(value instanceof QueueItem)) return;
+            QueueExtension queue = queueOf(wsContext);
+            if (queue == null) return;
+            QueueItem item = (QueueItem) value;
+            boolean saved = started ? queue.ack(session, item.getId())
+                    : queue.requeueFront(session, item, queue.generation(session));
             if (!saved) LOG.warn("[WebGate] could not persist queued task completion for session {}", session.getSessionId());
         }
+    }
+
+    /** 取队列门面（扩展未装配时为 null，调用方需容错） */
+    private static QueueExtension queueOf(WorkspaceContext wsContext) {
+        return wsContext == null ? null : wsContext.getExtension(QueueExtension.class);
+    }
+
+    /** 会话是否正在跑（统一口径：输入受理中或活跃流） */
+    private static boolean isBusy(AgentSession session) {
+        return SessionActivity.isBusy(session);
     }
 
     /** 当前工作区的日志标识（无上下文时为 null，走默认路由）。 */

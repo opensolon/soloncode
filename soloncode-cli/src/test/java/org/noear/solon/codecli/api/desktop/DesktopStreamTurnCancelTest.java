@@ -56,8 +56,20 @@ class DesktopStreamTurnCancelTest {
         return request;
     }
 
+    /** 引擎替身：停流与状态查询委托给真实静态实现（否则 mock 会让顶流变成空操作）。 */
+    private static HarnessEngine stubEngine() {
+        HarnessEngine engine = mock(HarnessEngine.class);
+        when(engine.interruptStream(any())).thenAnswer(
+                inv -> org.noear.solon.ai.harness.session.interrupt.InterruptHelper
+                        .interruptStreamOnly(inv.getArgument(0)));
+        when(engine.status(any())).thenAnswer(
+                inv -> org.noear.solon.ai.harness.session.SessionStatus.of(inv.getArgument(0)));
+        return engine;
+    }
+
     private static void runTurn(AgentSession session) {
-        new DesktopStreamTurn(new DesktopStreamHub(), new DesktopEventConverter(mock(HarnessEngine.class)))
+        HarnessEngine engine = stubEngine();
+        new DesktopStreamTurn(engine, new DesktopStreamHub(), new DesktopEventConverter(engine))
                 .run(session, stubRequest(), mock(ChatModel.class), "s1", ".", null,
                         mock(WebSocket.class), false, null);
     }
@@ -105,7 +117,8 @@ class DesktopStreamTurnCancelTest {
         stubConfig.setName("stub-model");
         when(chatModel.getConfig()).thenReturn(new org.noear.solon.ai.chat.ChatConfigReadonly(stubConfig));
 
-        new DesktopStreamTurn(new DesktopStreamHub(), new DesktopEventConverter(mock(HarnessEngine.class)))
+        HarnessEngine engine = stubEngine();
+        new DesktopStreamTurn(engine, new DesktopStreamHub(), new DesktopEventConverter(engine))
                 .run(session, request, chatModel, "s1", ".", null, socket, false, null);
 
         // 中断入口已同步发过 reason + done，本轮 doOnComplete 不得再发一个终态帧

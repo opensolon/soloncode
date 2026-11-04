@@ -4,7 +4,7 @@
  */
 package org.noear.solon.codecli.session;
 
-import org.noear.solon.ai.harness.session.queue.SessionQueue;
+import org.noear.solon.ai.harness.session.queue.QueueHelper;
 import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
@@ -41,12 +41,12 @@ public final class SessionSnapshots {
      * 会话目录下的快照是否携带排队任务。
      *
      * <p>只读探测专用：解析快照 JSON 为 {@link FlowContext} 后经
-     * {@link SessionQueue#hasPersistedItems(FlowContext)} 判定。
-     * 会话已在内存时应直接用 {@code getSessionIfPresent} + {@link SessionQueue#hasItems}。</p>
+     * {@link QueueHelper#hasPersistedItems(FlowContext)} 判定。
+     * 会话已在内存时应直接用 {@code getSessionIfPresent} + {@code QueueExtension#hasItems}。</p>
      */
     public static boolean hasQueue(Path sessionDir, String sessionId) {
         FlowContext context = readSnapshot(sessionDir, sessionId);
-        return context != null && SessionQueue.hasPersistedItems(context);
+        return context != null && QueueHelper.hasPersistedItems(context);
     }
 
     /**

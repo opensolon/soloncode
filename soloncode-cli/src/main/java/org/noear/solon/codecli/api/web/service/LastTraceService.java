@@ -24,9 +24,7 @@ import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
-import org.noear.solon.ai.harness.session.steer.SteerMessage;
-import org.noear.solon.ai.harness.session.steer.SteerInterceptor;
+import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.ToolEndPayload;
@@ -82,9 +80,9 @@ public class LastTraceService {
      */
     private static final int MAX_TOTAL_CHARS = 256 * 1024;
     /**
-     * 单条插话的最大保留字符数（与 {@link SteerInterceptor#MAX_TEXT_LENGTH} 对齐）
+     * 单条插话的最大保留字符数（与 {@link SteerExtension#maxTextLength()} 对齐）
      */
-    private static final int MAX_STEER_CHARS = SteerInterceptor.MAX_TEXT_LENGTH;
+    private static final int MAX_STEER_CHARS = SteerExtension.maxTextLength();
     /**
      * 单段思考/正文的最大保留字符数（回放只为还原现场，不必也不该搬运整篇长文）
      */
@@ -471,13 +469,12 @@ public class LastTraceService {
             return null;
         }
 
-        boolean marked = SteerInterceptor.STEER_SOURCE.equals(msg.getMetadataAs("source"));
-        boolean prefixed = content.startsWith(SteerInterceptor.STEER_PREFIX);
-        if (marked == false && prefixed == false) {
+        boolean marked = SteerExtension.isSteerMessage(msg);
+        if (marked == false) {
             return null;
         }
 
-        String text = prefixed ? content.substring(SteerInterceptor.STEER_PREFIX.length()) : content;
+        String text = SteerExtension.stripSteerPrefix(content);
         return (text.length() > MAX_STEER_CHARS) ? text.substring(0, MAX_STEER_CHARS) : text;
     }
 

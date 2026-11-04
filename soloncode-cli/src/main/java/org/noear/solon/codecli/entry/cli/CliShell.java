@@ -27,18 +27,15 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
-import org.noear.solon.ai.agent.react.intercept.HITL;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.agent.react.intercept.HITLDecision;
-import org.noear.solon.ai.agent.react.intercept.HITLTask;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.talents.cli.TodoTalent;
@@ -49,7 +46,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.ExecutionBridge;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.ai.harness.session.queue.SessionQueueDrainer;
+import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
 import org.noear.solon.lang.Preview;
@@ -316,7 +313,7 @@ public class CliShell implements Runnable {
                     terminal.writer().println(outcome.getCommandOutput());
                     terminal.flush();
                 }
-                // CLI 与 Web/IM 共用 SessionQueue；命令完成后由 CLI 自身消费空闲队列
+                // CLI 与 Web/IM 共用会话队列（QueueHelper）；命令完成后由 CLI 自身消费空闲队列
                 //注意顺序：先 drain 再 printWelcome（与改造前的既有行为一致）
                 if (allowDrain) {
                     drainCliQueue(session);
@@ -356,8 +353,13 @@ public class CliShell implements Runnable {
         if (session == null || cliQueueDraining) return;
         cliQueueDraining = true;
         try {
-            while (SessionQueueDrainer.drainOne(session, item -> handleInput(session, item.getText(), item.getModel(), false))) {
-                // 统一由 SessionQueueDrainer 负责 claim/poll/ack/requeue。
+            QueueExtension queue = engine.getExtension(QueueExtension.class).get();
+            if (queue == null) {
+                return;
+            }
+
+            while (queue.drainOne(session, item -> handleInput(session, item.getText(), item.getModel(), false))) {
+                // claim/poll/ack/requeue 由 QueueExtension 负责。
             }
         } finally {
             cliQueueDraining = false;
@@ -439,13 +441,15 @@ public class CliShell implements Runnable {
             if (isInterrupted.get()) {
                 terminal.writer().println(DIM + "[Task interrupted]" + RESET);
                 terminal.flush();
-                // 取消消息与快照已由 SessionInterrupt 幂等补齐，这里只打印用户可见提示
+                // 取消消息与快照已由 engine.interrupt 幂等补齐，这里只打印用户可见提示
                 LOG.info("用户已取消任务.");
                 return finalAnswer.get();
             }
 
             // HITL 处理 (授权交互)：决策写入与续流装配统一走引擎入口
-            if (HITL.isHitl(session)) {
+            // 判据用 next() 而非 hasPendingHitl()：残留决策（整批已决策但续流未发生）
+            // 也必须进 handleHitlRound 透传给引擎，否则永远等不到续流
+            if (HitlCard.next(session) != null) {
                 pendingOutcome = handleHitlRound(session, agentName, modelName);
                 if (pendingOutcome == null) {
                     //审批未能转化为续流：给出可见说明，不让用户无交代地回到提示符
@@ -473,15 +477,16 @@ public class CliShell implements Runnable {
                 int c = terminal.reader().read(50);
                 if (c > 0) {
                     if (c == 27) { //|| c == '\r' || c == '\n'
-                        // 停流 + 补写取消消息与快照统一走 SessionInterrupt（幂等）
-                        SessionInterrupt.interrupt(session);
+                        // 停流 + 补写取消消息与快照统一走引擎入口（幂等）
+                        engine.interrupt(session);
                         isInterrupted.set(true);
                         latch.countDown();
                         break;
                     }
                 }
 
-                if (HITL.isHitl(session)) {
+                // 与主循环同判据：残留决策也需在此唤醒等待（HitlCard.next 含回退首项语义）
+                if (HitlCard.next(session) != null) {
                     latch.countDown();
                     break;
                 }
@@ -510,23 +515,21 @@ public class CliShell implements Runnable {
      */
     private InputOutcome handleHitlRound(AgentSession session, String agentName, String modelName) throws Exception {
         while (true) {
-            HITLTask task = nextHitlTask(session);
+            HitlCard card = HitlCard.next(session);
 
-            if (task == null) {
+            if (card == null) {
                 return null;
             }
 
             // 上一轮决策仍有残留（CLI 会话 ID 固定为 cli，不会与 Web/IM 会话共用）：不再提问，按原决策的三态透传（skip 不能升格为 approve）
-            HITLDecision existing = HITL.getDecision(session, task);
             HITLAction action;
 
-            if (existing != null) {
-                action = existing.isRejected() ? HITLAction.REJECT
-                        : existing.isSkipped() ? HITLAction.SKIP : HITLAction.APPROVE;
+            if (card.isDecided()) {
+                action = card.getDecision();
             } else {
                 terminal.writer().println("\n" + BOLD + YELLOW + "Permission Required" + RESET);
-                if ("bash".equals(task.getToolName())) {
-                    terminal.writer().println(DIM + "Command: " + RESET + task.getArgs().get("command"));
+                if (card.isBash()) {
+                    terminal.writer().println(DIM + "Command: " + RESET + card.getCommand());
                 }
 
                 String line;
@@ -550,9 +553,9 @@ public class CliShell implements Runnable {
                 }
             }
 
-            // 按 callUuid 指定目标：避免并行挂起同名工具时误命中其它任务
+            // 按 callId 指定目标：避免并行挂起同名工具时误命中其它任务
             InputOutcome outcome = engine.handle(HarnessInput.of(session, null)
-                    .hitl(action, task.getCallUuid())
+                    .hitl(action, card.getCallId())
                     .resume(true)
                     .selectedModel(modelName)
                     .selectedAgent(agentName));
@@ -562,33 +565,12 @@ public class CliShell implements Runnable {
             }
 
             if (outcome.isHitlApplied() == Boolean.FALSE) {
-                //决策未命中挂起任务（理论上不会，task 刚查出来）：不续流，交给上层提示
+                //决策未命中挂起任务（理论上不会，card 刚查出来）：不续流，交给上层提示
                 return null;
             }
 
             //本批仍有未决卡：继续问下一张（与迁移前「拦截器再次挂起」的观察结果一致）
         }
-    }
-
-    /**
-     * 取下一张待审批的卡（批挂起时可能有多个）
-     *
-     * <p>优先返回首个未决策项：批挂起时逐张提问，避免重复推同一张卡。
-     * 若本批全部已有决策（上一轮写入后续流中断，残留未清），回退到批中第一项，
-     * 让决策按原样三态透传给引擎续流——不能返回 null，否则残留决策永远等不到续流。</p>
-     *
-     * @return 待处理任务；无挂起时返回 null
-     */
-    private HITLTask nextHitlTask(AgentSession session) {
-        List<HITLTask> pending = HITL.getPendingTasks(session);
-
-        for (HITLTask task : pending) {
-            if (HITL.getDecision(session, task) == null) {
-                return task;
-            }
-        }
-
-        return pending.isEmpty() ? null : pending.get(0);
     }
 
     private StringBuilder getTraceInfo(ReActTrace trace) {

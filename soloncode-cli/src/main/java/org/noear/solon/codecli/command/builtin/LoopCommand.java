@@ -18,7 +18,6 @@ package org.noear.solon.codecli.command.builtin;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.session.interrupt.SessionInterrupt;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.codecli.loop.LoopScheduler;
@@ -109,7 +108,7 @@ public class LoopCommand implements Command {
                 if (task != null) {
                     scheduler.remove(sessionId, task);
                     // 同时中断正在执行的 Agent（清队列 + 停流 + 补写取消消息与快照）
-                    SessionInterrupt.interrupt(ctx.getSession());
+                    engine.interrupt(ctx.getSession());
                 }
 
                 ctx.println(ctx.color(GREEN + "Loop task '" + taskId + "' stopped." + RESET));
@@ -117,7 +116,7 @@ public class LoopCommand implements Command {
         } else if ("stop-all".equals(sub)) {
             scheduler.stopAll(sessionId);
             // 同时中断正在执行的 Agent，防止当前轮次完成后 scheduleContinuation 继续调度
-            SessionInterrupt.interrupt(ctx.getSession());
+            engine.interrupt(ctx.getSession());
             ctx.println(ctx.color(GREEN + "All loop tasks stopped." + RESET));
         } else if ("pause".equals(sub) || "resume".equals(sub)) {
             // pause/resume 仅对 goal 有意义，goal 已独立
