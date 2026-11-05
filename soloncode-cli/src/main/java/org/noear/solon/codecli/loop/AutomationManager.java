@@ -3,6 +3,8 @@ package org.noear.solon.codecli.loop;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.session.loop.LoopPatch;
+import org.noear.solon.ai.harness.session.loop.LoopSpec;
 import org.noear.solon.ai.harness.session.loop.LoopTask;
 import org.noear.solon.codecli.session.SessionManager;
 
@@ -69,13 +71,14 @@ public class AutomationManager {
         // 触发 FileAgentSession 的懒创建，确保专用会话目录在任务落盘前存在。
         sessionManager.getSession(sessionId);
 
-        LoopTask task = new LoopTask(prompt.trim(), intervalMinutes == null ? 5 : intervalMinutes,
-                emptyToNull(cron), Boolean.TRUE.equals(runNow));
         AutomationMeta meta = new AutomationMeta(displayName(name, prompt.trim()),
                 emptyToNull(modelName), emptyToNull(agentName));
-        meta.writeTo(task);
         applySelections(sessionId, meta);
-        loop.schedule(sessionId, task);
+        // 请求参数原样交给规格（null = 未设置），间隔范围与 cron 可触发性由插件统一校验
+        loop.schedule(sessionId, meta.writeTo(LoopSpec.of(prompt)
+                .everyMinutes(intervalMinutes)
+                .cron(cron)
+                .runNow(runNow)));
         sessionManager.markAutomationSession(sessionId, meta.getId());
         return meta.getId();
     }
@@ -129,14 +132,13 @@ public class AutomationManager {
                 intervalMinutes, cron == null ? old.getCron() : cron);
         rejectGoalType(type);
 
-        int interval = intervalMinutes == null ? old.getIntervalMinutes() : intervalMinutes;
-        String effectivePrompt = prompt == null || prompt.trim().isEmpty() ? old.getPrompt() : prompt.trim();
-        LoopTask replacement = old.copyWithUpdate(effectivePrompt, interval,
-                cron == null ? old.getCron() : emptyToNull(cron),
-                runNow == null ? old.isRunNow() : runNow); // 启停状态随 copyWithUpdate 保留
+        // 补丁语义：null = 保持原值、cron 空串 = 回到固定间隔；启停与运行状态由插件保留
         meta.update(name, emptyToNull(modelName), emptyToNull(agentName));
-        meta.writeTo(replacement);
-        loop.update(sessionId, old.getId(), replacement);
+        loop.update(sessionId, old.getId(), meta.writeTo(LoopPatch.create()
+                .prompt(prompt)
+                .everyMinutes(intervalMinutes)
+                .cron(cron)
+                .runNow(runNow)));
         applySelections(sessionId, meta);
     }
 
@@ -163,8 +165,12 @@ public class AutomationManager {
 
     // ==================== 视图构建 ====================
 
+    /** 插件标准视图 + 自动任务字段（id 用 automation id，任务自身 id 放 taskId）。 */
     private Map<String, Object> toMap(String sessionId, LoopTask task) {
         AutomationMeta meta = AutomationMeta.of(task);
+        Map<String, Object> view = task.toMap();
+        view.remove("id");
+
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", meta != null ? meta.getId() : task.getId());
         item.put("type", "AUTOMATION");
@@ -172,20 +178,11 @@ public class AutomationManager {
         item.put("taskId", task.getId());
         // 普通会话任务无覆盖层：名称用提示词截断，和自动任务无名称时的规则一致
         item.put("name", meta != null ? meta.getName() : displayName(null, task.getPrompt()));
-        item.put("prompt", task.getPrompt());
-        item.put("intervalMinutes", task.getIntervalMinutes());
-        if (task.getCron() != null) item.put("cron", task.getCron());
-        item.put("runNow", task.isRunNow());
+        item.putAll(view);
         if (meta != null) {
             if (meta.getModelName() != null) item.put("modelName", meta.getModelName());
             if (meta.getAgentName() != null) item.put("agentName", meta.getAgentName());
         }
-        item.put("enabled", task.isEnabled());
-        item.put("running", task.isRunning());
-        item.put("cancelled", task.isCancelled());
-        item.put("currentIteration", task.getCurrentIteration());
-        if (task.getLastResult() != null) item.put("lastResult", task.getLastResult());
-        if (task.getLastExecutedAt() != null) item.put("lastExecutedAt", task.getLastExecutedAt().toString());
         item.put("automation", meta != null);
         return item;
     }
@@ -214,7 +211,6 @@ public class AutomationManager {
         if (name != null && name.trim().length() > 200) throw new IllegalArgumentException("name is too long");
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt is required");
         if (prompt.length() > 100000) throw new IllegalArgumentException("prompt is too long");
-        if (intervalMinutes != null && intervalMinutes <= 0) throw new IllegalArgumentException("intervalMinutes must be greater than 0");
         if (cron != null && cron.trim().length() > 200) throw new IllegalArgumentException("cron is too long");
         if ((cron == null || cron.trim().isEmpty()) && (intervalMinutes == null || intervalMinutes <= 0)) {
             throw new IllegalArgumentException("cron or intervalMinutes is required");

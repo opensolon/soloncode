@@ -3,6 +3,7 @@ package org.noear.solon.codecli.workspace;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.runtime.RoundResult;
+import org.noear.solon.ai.harness.session.loop.LoopOutcome;
 import org.noear.solon.core.handle.UploadedFile;
 
 /**
@@ -56,9 +57,9 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
                      String reasoningEffort, String thinkingMode, String selectedAgent);
 
     /**
-     * 执行 Loop 专用输入并等待本轮文本结果。
+     * 执行 Loop 注入回合并等待本轮结论（done / skip：工作区未就绪、会话忙、无正文 / failed：流报错）。
      */
-    String runLoop(String workspaceId, String sessionId, String input, String source);
+    LoopOutcome runLoop(String workspaceId, String sessionId, String input, String source);
 
     /**
      * 执行注入回合（goal）并等待本轮客观事实。

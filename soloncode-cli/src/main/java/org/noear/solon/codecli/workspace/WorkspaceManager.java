@@ -22,6 +22,7 @@ import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.loop.LoopDataMigrator;
 import org.noear.solon.ai.harness.session.loop.LoopExecutor;
+import org.noear.solon.ai.harness.session.loop.LoopOutcome;
 import org.noear.solon.ai.harness.session.loop.LoopExtension;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.codecli.goal.GoalDataMigrator;
@@ -972,14 +973,14 @@ public class WorkspaceManager implements WorkspaceRegistry {
      * 本工作区 loop 的 web 端执行器（认领谓词 {@code SessionIdOwnership::isWeb} 交给插件）。
      *
      * <p>每个工作区拥有独立的运行时入口，执行器必须动态绑定当前工作区的运行时端口：
-     * 默认工作区在入口绑定之前创建，不能捕获字段快照；端口暂不可用时返 null 穿透到下一入口。
+     * 默认工作区在入口绑定之前创建，不能捕获字段快照；端口暂不可用时本轮 skip（不计错误）。
      * 忙判定不在此处：由插件经 {@code engine.isIdle} 统一派生。</p>
      */
     private LoopExecutor webLoopExecutor(String workspaceId) {
         return (sessionId, prompt) -> {
             WorkspaceRuntimePort runtime = getRuntimePort();
             if (runtime == null) {
-                return null;
+                return LoopOutcome.skip("web runtime not bound");
             }
             // 子代理归属是会话属性（自动化任务创建时已写入会话选择），不再经参数传递
             // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本

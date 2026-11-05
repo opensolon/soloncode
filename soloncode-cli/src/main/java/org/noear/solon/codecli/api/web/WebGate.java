@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.web;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.session.loop.LoopOutcome;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.ai.harness.session.HarnessAttrs;
@@ -201,17 +202,14 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     }
 
     /**
-     * Loop 专用：安全聊天输入入口，无限等待捕获本轮响应文本。
+     * Loop 专用：注入回合，无限等待本轮结束并回报三态结论。
      *
-     * <p>适用于可能长时间执行的 Loop goal 任务。
-     * 该方法仍会向前端推送完整流式消息，同时等待响应流结束。</p>
-     *
-     * @return 捕获到的 AI 文本；会话繁忙或无文本时返回 null
+     * <p>适用于可能长时间执行的 Loop 任务；仍会向前端推送完整流式消息。</p>
      */
     @Override
-    public String runLoop(String workspaceId, String sessionId, String input, String source) {
+    public LoopOutcome runLoop(String workspaceId, String sessionId, String input, String source) {
         WorkspaceContext wsContext = workspaceRegistry.getContextsCached(workspaceId);
-        return inputHandler.safeChatInputAndCaptureLoop(wsContext, sessionId, input, source);
+        return inputHandler.runLoopRound(wsContext, sessionId, input, source);
     }
 
     @Override
@@ -531,8 +529,8 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
      */
     @Deprecated
     public String safeChatInputAndCaptureLoop(String workspaceId, String sessionId, String input, String source) {
-        WorkspaceContext wsContext = workspaceRegistry.getContextsCached(workspaceId);
-        return inputHandler.safeChatInputAndCaptureLoop(wsContext, sessionId, input, source);
+        LoopOutcome outcome = runLoop(workspaceId, sessionId, input, source);
+        return outcome.isDone() ? outcome.getText() : null;
     }
 
     /**

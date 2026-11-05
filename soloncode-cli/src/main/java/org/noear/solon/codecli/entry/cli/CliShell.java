@@ -46,6 +46,7 @@ import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.session.loop.LoopOutcome;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.ai.harness.session.queue.DrainStatus;
@@ -175,24 +176,13 @@ public class CliShell implements Runnable {
 
 
         // loop 执行通道：只在 loop 插件自己的通道上注册（与 goal 无共享）。
-        // 任务已在插件挂接时加载恢复，此处只接通执行通道与注入屏障。
+        // 任务已在插件挂接时加载恢复，会话忙由插件统一判定；执行器只管「终端此刻能不能用」。
+        // 在调度线程执行（主线程通常仍阻塞于 readLine，两者共用同一 reader，故不消费队列）；
+        // 子代理归属是会话属性（AutomationManager 已写入会话选择），无需在此拼接 @ 前缀。
         LoopExtension loop = engine.getExtension(LoopExtension.class).orElse(null);
         if (loop != null) {
-            // 注入屏障：终端所有权（不是会话状态）。
-            // 放行条件 = 主线程正阻塞于 readLine（主线程空闲、只等着输入）。
-            // 反之主线程在跑 /help、/model 选择器等非流命令时会话不忙，但终端正被占用，
-            // 此时注入会与主线程并发写同一个 terminal，因此不放行。
-            // 注：这与改造前 busyChecker 的 reader==null || !reader.isReading() 完全等价，
-            // 属于既有行为的搬迁，不是新增屏障。
-            loop.setInjectionGate(() -> reader == null || reader.isReading());
-
-            // 任务执行器：在调度线程执行 agent 回合
-            // 注意：它并非运行在主线程 —— 此刻主线程通常仍阻塞于 readLine，两者共用同一 reader，
-            // 因此这里不消费队列（队列消费只归属主循环）
-            // 子代理归属是会话属性（AutomationManager 已写入会话选择），无需在此拼接 @ 前缀
-            // 认领谓词交给插件；直接返回 ReAct 完成时的权威全文，由 loop 记录 lastResult
             loop.addExecutor("cli", SessionIdOwnership::isCli,
-                    (sessionId, prompt) -> safeChatInput(session, prompt));
+                    (sessionId, prompt) -> runLoopRound(session, prompt));
         }
 
         // goal 执行通道：只在 GoalEngine 自己的通道上注册（与 loop 无共享）。
@@ -240,19 +230,24 @@ public class CliShell implements Runnable {
         }
     }
 
-    private String safeChatInput(AgentSession session, String prompt) {
-        if (reader != null && reader.isReading()) {
-            try {
-                RoundResult result = handleInput(session, prompt, null, false);
-                return result == null ? null : result.getFinalResult();
-            } catch (Exception e) {
-                LOG.error("Loop task execution failed: {}", e.getMessage(), e);
-            } finally {
-                //打断主线程的 readLine 阻塞 // 触发 run() 循环中的 UserInterruptException
-                terminal.raise(Terminal.Signal.INT);
-            }
+    /**
+     * 在调度线程代跑一轮 loop 注入回合。
+     *
+     * <p>终端所有权不是会话状态：主线程跑 /help、/model 选择器时会话不忙，但终端正被占用，
+     * 此时注入会与主线程并发写同一个 terminal——只在主线程阻塞于 readLine 时跑，否则 skip（不计错误）。
+     * 失败不吞：异常交给插件计错误、退避重试、达到阈值自动停用。</p>
+     */
+    private LoopOutcome runLoopRound(AgentSession session, String prompt) throws Exception {
+        if (reader == null || reader.isReading() == false) {
+            return LoopOutcome.skip("terminal busy");
         }
-        return null;
+        try {
+            RoundResult result = handleInput(session, prompt, null, false);
+            return result == null ? LoopOutcome.skip("no round produced") : LoopOutcome.done(result.getFinalResult());
+        } finally {
+            // 后台注入轮结束后打断 readLine，让提示符重新出现（触发 run() 循环中的 UserInterruptException）
+            terminal.raise(Terminal.Signal.INT);
+        }
     }
 
     /**

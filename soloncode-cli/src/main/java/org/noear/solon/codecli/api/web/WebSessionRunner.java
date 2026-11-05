@@ -230,6 +230,16 @@ class WebSessionRunner {
      * @return 本轮结果；无正文时返回 null（不得伪造「有结果的轮」）
      */
     RoundResult performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
+        return performAgentTaskSyncRound(wsContext, session, sessionCwd, outcome, null);
+    }
+
+    /**
+     * 同上，并把本轮流错误交给 {@code errorSink}（loop 据此把失败与「没有正文」区分开，计入任务级错误）。
+     *
+     * @param errorSink 可为 null；非 null 时记录首个流错误
+     */
+    RoundResult performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome,
+                                          AtomicReference<Throwable> errorSink) {
         String sessionId = session.getSessionId();
 
         // 会话级模型选择回写：与 async 路径同口径（生效值回写，展示句柄现取）
@@ -289,6 +299,9 @@ class WebSessionRunner {
                 })
                 .doOnError(e -> {
                     LOG.error("Task fail: {}", e.getMessage(), e);
+                    if (errorSink != null) {
+                        errorSink.compareAndSet(null, e);
+                    }
 
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofError(e));
                     gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
@@ -309,6 +322,9 @@ class WebSessionRunner {
             } catch (Throwable e) {
                 //调度线程内的异常不会回到调用方；未订阅成功则 doFinally 不会跑，
                 //此处必须补发终态包并释放闩锁，否则同步等待方（Loop）永久阻塞
+                if (errorSink != null) {
+                    errorSink.compareAndSet(null, e);
+                }
                 failStreamTurn(wsContext, session, turn, e);
                 countDownLatch.countDown();
             } finally {

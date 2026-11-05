@@ -1,6 +1,8 @@
 package org.noear.solon.codecli.loop;
 
 import org.noear.snack4.ONode;
+import org.noear.solon.ai.harness.session.loop.LoopPatch;
+import org.noear.solon.ai.harness.session.loop.LoopSpec;
 import org.noear.solon.ai.harness.session.loop.LoopTask;
 
 import java.time.Instant;
@@ -50,9 +52,14 @@ public class AutomationMeta {
         return node == null ? null : fromONode(node);
     }
 
-    /** 写回任务（覆盖层是任务定义的一部分，修改后必须回写）。 */
-    public void writeTo(LoopTask task) {
-        task.putExtra(EXTRA_KEY, toONode());
+    /** 新建任务时写入覆盖层（覆盖层是任务定义的一部分，随任务持久化）。 */
+    public LoopSpec writeTo(LoopSpec spec) {
+        return spec.extra(EXTRA_KEY, toONode());
+    }
+
+    /** 修改任务时回写覆盖层（未回写则不生效）。 */
+    public LoopPatch writeTo(LoopPatch patch) {
+        return patch.extra(EXTRA_KEY, toONode());
     }
 
     public String getId() { return id; }

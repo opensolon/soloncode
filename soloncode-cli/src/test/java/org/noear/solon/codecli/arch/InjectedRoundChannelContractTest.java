@@ -110,6 +110,34 @@ public class InjectedRoundChannelContractTest {
     }
 
     /**
+     * 宿主只经 loop 门面的规格/补丁操作任务，不得重建已被插件接管的样板：
+     * <ul>
+     *   <li>{@code setInjectionGate} → 已删除：终端占用由 CLI 执行器返回 {@code LoopOutcome.skip}；</li>
+     *   <li>{@code copyWithUpdate} / 手工「传了用新值、没传沿用旧值」→ {@code LoopPatch}；</li>
+     *   <li>{@code safeChatInput(session, prompt)} 吞异常返回 null → 失败必须上抛（否则绕过熔断）。</li>
+     * </ul>
+     */
+    @Test
+    void hostDoesNotReimplementLoopFacadeSamples() throws IOException {
+        List<String> forbidden = java.util.Arrays.asList(
+                "setInjectionGate(", "copyWithUpdate(", "new LoopTask(", "safeChatInput(session, prompt)");
+        try (java.util.stream.Stream<Path> files = java.nio.file.Files.walk(SRC)) {
+            for (Path file : files.filter(p -> p.toString().endsWith(".java")).collect(java.util.stream.Collectors.toList())) {
+                for (String line : java.nio.file.Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                        continue;
+                    }
+                    for (String bad : forbidden) {
+                        assertTrue(!trimmed.contains(bad),
+                                "宿主重复实现了 loop 门面已提供的能力：" + bad + "（文件：" + file + "）");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * loop 与 goal 的注册点必须分别出现，不得互相替代。
      *
      * <p>拆桥的收益正是「两域各自拥有通道」；若某个入口只注册其中一个，
@@ -148,15 +176,16 @@ public class InjectedRoundChannelContractTest {
     /**
      * Web 运行时端口必须分别暴露 loop 与 goal 两条注入入口。
      *
-     * <p>两者是同一段执行、只有返回值不同（loop 要文本、goal 要事实）。
-     * 合成一个「宽返回类型」的接口看似更省，但会重新把两种语义混在一起。</p>
+     * <p>两者是同一段执行、只有返回值不同（loop 要三态结论、goal 要事实）。
+     * loop 若只拿到文本，「会话忙」与「流报错」都会变成 null，失败就绕过了任务级熔断。</p>
      */
     @Test
     void runtimePortExposesBothInjectionEntries() throws Exception {
         Class<?> port = Class.forName("org.noear.solon.codecli.workspace.WorkspaceRuntimePort");
 
         Method runLoop = port.getMethod("runLoop", String.class, String.class, String.class, String.class);
-        assertEquals(String.class, runLoop.getReturnType(), "runLoop 只产出最终文本");
+        assertEquals(org.noear.solon.ai.harness.session.loop.LoopOutcome.class, runLoop.getReturnType(),
+                "runLoop 必须回报三态结论（跳过与失败必须可区分）");
 
         Method runGoal = port.getMethod("runGoalRound", String.class, String.class, String.class, String.class);
         assertEquals(RoundResult.class, runGoal.getReturnType(), "runGoalRound 必须回报本轮客观事实");

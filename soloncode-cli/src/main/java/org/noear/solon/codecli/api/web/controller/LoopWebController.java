@@ -24,7 +24,8 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalSpec;
 import org.noear.solon.ai.harness.session.goal.GoalState;
-import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.session.loop.LoopPatch;
+import org.noear.solon.ai.harness.session.loop.LoopSpec;
 import org.noear.solon.ai.harness.session.loop.LoopTask;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
@@ -187,25 +188,11 @@ public class LoopWebController extends AbstractWebController {
     }
 
     /**
-     * 构建任务 Map（通用方法，供 list/get 复用）
+     * 构建任务 Map（插件标准视图 + 前端分栏用的 type）
      */
     private Map<String, Object> buildTaskMap(LoopTask t) {
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("id", t.getId());
+        Map<String, Object> item = t.toMap();
         item.put("type", "HEARTBEAT");
-        item.put("prompt", t.getPrompt());
-        item.put("intervalMinutes", t.getIntervalMinutes());
-        if (t.getCron() != null) item.put("cron", t.getCron());
-        item.put("enabled", t.isEnabled());
-        item.put("cancelled", t.isCancelled());
-        item.put("running", t.isRunning());
-        item.put("currentIteration", t.getCurrentIteration());
-        if (t.getLastResult() != null) item.put("lastResult", t.getLastResult());
-        if (t.getLastExecutedAt() != null) item.put("lastExecutedAt", t.getLastExecutedAt().toString());
-
-
-        item.put("runNow", t.isRunNow());
-
         return item;
     }
 
@@ -258,19 +245,16 @@ public class LoopWebController extends AbstractWebController {
             return createSessionGoal(sessionId, prompt, maxTokens, maxDurationMs);
         }
 
-        // 初始化状态目录
-        int interval = intervalMinutes != null ? intervalMinutes : 5;
-        LoopTask task = new LoopTask(
-                prompt, interval, cron,
-                runNow != null && runNow
-        );
+        // 请求参数原样交给规格（null = 未设置），校验由插件统一完成
         try {
-            loop().schedule(sessionId, task);
+            LoopTask task = loop().schedule(sessionId, LoopSpec.of(prompt)
+                    .everyMinutes(intervalMinutes)
+                    .cron(cron)
+                    .runNow(runNow));
+            return Result.succeed(task.getId());
         } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.failure(400, e.getMessage());
         }
-
-        return Result.succeed(task.getId());
     }
 
     /**
@@ -304,26 +288,21 @@ public class LoopWebController extends AbstractWebController {
             }
         }
 
-        LoopExtension loop = loop();
-        LoopTask existing = loop.get(sessionId, taskId);
-        if (existing == null) {
-            return Result.failure(404, "Task not found");
-        }
-
-        int interval = intervalMinutes != null ? intervalMinutes : existing.getIntervalMinutes();
-        String effectiveCron = cron != null ? cron : existing.getCron();
-        String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
         if (type != null && "GOAL".equalsIgnoreCase(type)) {
             return Result.failure(400, "GOAL is a session-scoped capability, use /goal or goal endpoints");
         }
 
-        // 基于现有任务构建新版本（保留 id、createdAt、启停与运行时状态）
-        LoopTask newTask = existing.copyWithUpdate(
-                effectivePrompt, interval, effectiveCron,
-                runNow != null ? runNow : existing.isRunNow()
-        );
-        loop.update(sessionId, taskId, newTask);
-        return Result.succeed();
+        // 补丁语义由插件承担：null = 保持原值（启停、运行状态、身份均保留），宿主不再手工合并
+        try {
+            LoopTask updated = loop().update(sessionId, taskId, LoopPatch.create()
+                    .prompt(prompt)
+                    .everyMinutes(intervalMinutes)
+                    .cron(cron)
+                    .runNow(runNow));
+            return updated == null ? Result.failure(404, "Task not found") : Result.succeed();
+        } catch (IllegalArgumentException e) {
+            return Result.failure(400, e.getMessage());
+        }
     }
 
     // ==================== 自动任务内部实现（供 /web/tasks/* 统一门面调用，不单独暴露 HTTP） ====================

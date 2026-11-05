@@ -28,6 +28,7 @@ import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.session.loop.LoopOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.ai.harness.session.steer.SteerResult;
@@ -48,6 +49,7 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.atomic.AtomicReference;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -512,19 +514,40 @@ class WebChatInputHandler {
     }
 
     /**
-     * Loop 专用旧入口：无限等待捕获本轮响应文本。
+     * loop 注入回合：与 goal 同一段执行，但把结果归成 loop 的三态结论。
      *
-     * @return 捕获到的 AI 文本；会话繁忙或无文本时返回 null
+     * <ul>
+     *   <li>工作区未在内存 / 会话忙 / 未受理 / 没有正文（如被中断）→ skip（不计错误）；</li>
+     *   <li>流报错 → failed（计入任务级错误、退避重试、达到阈值自动停用；此前会被当成「不认领」静默跳过）；</li>
+     *   <li>否则 done。</li>
+     * </ul>
      */
-    String safeChatInputAndCaptureLoop(WorkspaceContext wsContext, String sessionId, String input, String source) {
-        RoundResult result = safeChatInputAndCaptureRound(wsContext, sessionId, input, source);
-        return result == null ? null : result.getFinalResult();
+    LoopOutcome runLoopRound(WorkspaceContext wsContext, String sessionId, String input, String source) {
+        if (wsContext == null) {
+            return LoopOutcome.skip("workspace not loaded");
+        }
+        AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+        if (SessionActivity.isBusy(session)) {
+            return LoopOutcome.skip("session busy");
+        }
+        InputOutcome outcome = admitInjected(wsContext, session, input, source);
+        if (outcome.hasRequest() == false) {
+            return LoopOutcome.skip("input not admitted");
+        }
+
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        RoundResult result = gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome, error);
+        if (error.get() != null) {
+            Throwable e = error.get();
+            return LoopOutcome.failed(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+        return result == null ? LoopOutcome.skip("no final answer") : LoopOutcome.done(result.getFinalResult());
     }
 
     /**
-     * 注入回合专用入口（loop / goal 共用同一段执行，仅返回值不同）：无限等待并捕获本轮客观事实。
+     * 注入回合专用入口（goal）：无限等待并捕获本轮客观事实。
      *
-     * <p>与 {@link #safeChatInputAndCaptureLoop} 的差异仅在返回值：goal 需要 token 与工具证据做完成判定。
+     * <p>与 {@link #runLoopRound} 是同一段执行：goal 需要 token 与工具证据做完成判定。
      * 两者都是「已受理的文本」——不识别命令、不排水，过程事件照常推给前端（边跑边输出）。</p>
      *
      * @return 本轮结果；会话繁忙或无正文时返回 null
@@ -544,23 +567,27 @@ class WebChatInputHandler {
             return null;
         }
 
-        // 前端流门解封由 performAgentTaskSync → beginStreamTurn 统一下发（system.reset），
-        // 此处不再重复发送；user_input 先到也会解封，二者不冲突。
-        // Loop 发起：清掉上一轮残留的 IM 定向路由（Loop 不是 IM 来源，过程消息不外发）
-        setReplyRoute(session, InputOrigin.channel(source));
-        gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
-
-        // Loop 的提示词是「已受理的文本」，即使以 / 开头也不应被当命令执行；
-        // 命令识别、提及解析、Prompt 构建统一交给引擎（与 CLI/桌面端同一套口径）
-        InputOutcome outcome = wsContext.getEngine().handle(HarnessInput.of(session, input)
-                .commandAware(false)
-                .origin(InputOrigin.channel(source)));
-
+        InputOutcome outcome = admitInjected(wsContext, session, input, source);
         if (outcome.hasRequest() == false) {
             return null;
         }
 
         return gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome);
+    }
+
+    /** 注入回合（loop / goal）的受理段：路由复位、推用户消息、经引擎装配请求。 */
+    private InputOutcome admitInjected(WorkspaceContext wsContext, AgentSession session, String input, String source) {
+        // 前端流门解封由 performAgentTaskSync → beginStreamTurn 统一下发（system.reset），
+        // 此处不再重复发送；user_input 先到也会解封，二者不冲突。
+        // Loop 发起：清掉上一轮残留的 IM 定向路由（Loop 不是 IM 来源，过程消息不外发）
+        setReplyRoute(session, InputOrigin.channel(source));
+        gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofUserInput(input, source));
+
+        // Loop 的提示词是「已受理的文本」，即使以 / 开头也不应被当命令执行；
+        // 命令识别、提及解析、Prompt 构建统一交给引擎（与 CLI/桌面端同一套口径）
+        return wsContext.getEngine().handle(HarnessInput.of(session, input)
+                .commandAware(false)
+                .origin(InputOrigin.channel(source)));
     }
 
     /**
