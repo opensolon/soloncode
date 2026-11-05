@@ -47,6 +47,7 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.ai.harness.session.queue.DrainStatus;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
@@ -388,8 +389,16 @@ public class CliShell implements Runnable {
                 return;
             }
 
-            while (queue.drainOne(session, item -> handleInput(session, item.getText(), item.getModel(), false))) {
-                // claim/poll/ack/requeue 由 QueueExtension 负责。
+            // 同步语义：回调返回即任务跑完，就地 acknowledge 收口；启动异常由内核自动回滚到队首。
+            // ack 失败（期间被 Stop）必须拖异常：让它走 START_FAILED 分支由内核回滚，
+            // 静默吞掉会停不下来地把后续任务也跑完。
+            while (queue.claimNext(session, claim -> {
+                handleInput(session, claim.getItem().getText(), claim.getItem().getModel(), false);
+                if (!claim.acknowledge()) {
+                    throw new IllegalStateException("queue ack failed: " + claim.getItem().getId());
+                }
+            }) == DrainStatus.STARTED) {
+                // claim/poll/ack/requeue 由内核负责。
             }
         } finally {
             cliQueueDraining = false;
