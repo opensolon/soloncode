@@ -77,12 +77,13 @@ class WebSessionRunner {
             // onAgentEnd 不在 finally 中（interrupt/异常路径不触发），若不在此清理，
             // 上一任务未消费的插话会在新任务第二轮被注入，破坏方案 A 的任务级隔离。
             // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律转排队并告知前端。
-            // 清邮箱 + 转排队的内部约定（两个 attrs key、短临界区）已收归 harness 的 handover。
+            // 清邮箱 + 转排队的内部约定（两个 attrs key、短临界区）已收归 harness；
+            // beginTurn 是 handover 的语义化别名——宿主只需记住「新任务开流前 beginTurn」。
             gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
 
             SteerExtension steer = wsContext.getExtension(SteerExtension.class);
             SteerExtension.SteerHandover handover = steer == null
-                    ? null : steer.handover(session);
+                    ? null : steer.beginTurn(session);
 
             if (handover != null && handover.isEmpty() == false) {
                 if (handover.getQueued().isEmpty() == false) {

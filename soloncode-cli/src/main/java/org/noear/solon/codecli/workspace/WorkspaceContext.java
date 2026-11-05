@@ -104,8 +104,15 @@ public class WorkspaceContext implements Closeable {
         return engine;
     }
 
+    /**
+     * 取扩展（未装配时返回 null，与 {@code @Nullable} 声明一致）。
+     *
+     * <p>此前实现是 {@code engine.getExtension(type).get()}——一个永不返回 null 的
+     * {@code Optional.get()}，导致调用方的判空分支全成了死代码，而真正会抛
+     * {@code NoSuchElementException} 的地方（扩展未装配）反而没被保护。</p>
+     */
     public <T extends HarnessExtension> @Nullable T getExtension(Class<T> type) {
-        return engine.getExtension(type).get();
+        return engine.getExtension(type).orElse(null);
     }
 
     public Path getSessionsRoot() {

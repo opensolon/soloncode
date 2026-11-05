@@ -520,7 +520,29 @@ function cancelSteerMessage(sess, steerId, discard) {
 function discardPendingSteers(sess) {
     if (!sess || !sess.steerPending || !sess.steerPending.length) return;
     var ids = sess.steerPending.map(function(item) { return item.id; });
-    for (var i = 0; i < ids.length; i++) cancelSteerMessage(sess, ids[i], true);
+    // 一次收口：逐条 /web/chat/steer/cancel 会留下半截状态（部分已取消、部分仍在邮箱），
+    // 且 N 条插话要 N 轮往返。批量端点返回实际取消条数，未取消的保留为 unknown 状态等终态事件。
+    var body = new URLSearchParams();
+    body.append('sessionId', sess.sessionId);
+    body.append('steerIds', ids.join(','));
+    fetch('/web/chat/steer/cancelAll', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: body.toString()
+    }).then(function(r) {
+        return r.json();
+    }).then(function() {
+        // 不猜测哪些成功：统一进入 unknown，由 applied/dropped 终态事件收口
+        for (var i = 0; i < sess.steerPending.length; i++) {
+            sess.steerPending[i].status = 'unknown';
+        }
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+    }).catch(function() {
+        for (var i = 0; i < sess.steerPending.length; i++) {
+            sess.steerPending[i].status = 'unknown';
+        }
+        if (typeof renderQueueDock === 'function') renderQueueDock();
+    });
 }
 
 /** 在运行中插话落到时间线前，结束当前流片段的思考块。

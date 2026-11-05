@@ -29,6 +29,7 @@ import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.harness.session.steer.SteerResult;
+import org.noear.solon.ai.harness.session.steer.SteerStatus;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -486,7 +487,7 @@ public class ChatWebController extends AbstractWebController {
     /**
      * 运行中插话（steer）：向正在运行的会话任务插入一条用户消息。
      *
- * <p>消息存入会话级邮箱（transient，不落快照），由 SteerHelper 在下一个推理回合
+ * <p>消息存入会话级邮箱（transient，不落快照），由 SteerInterceptor 在下一个推理回合
      * 开始时（onReasonStart 采样边界）注入工作记忆，不打断进行中的模型流与工具调用。
      * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering 三件套）。</p>
      *
@@ -510,17 +511,9 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(400, "Invalid sessionId");
         }
         if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
-        if (text == null || text.trim().isEmpty()) {
-            return Result.failure(400, "EMPTY_TEXT");
-        }
-        if (text.trim().length() > SteerExtension.maxTextLength()) {
-            return Result.failure(400, "TEXT_TOO_LONG");
-        }
-
-        if (steerId != null && !steerId.trim().isEmpty()
-                && steerId.trim().length() > SteerExtension.maxIdLength()) {
-            return Result.failure(400, "INVALID_STEER_ID");
-        }
+        // 忙态预判保留在宿主侧，因为它是协议语义而非内核判定：
+        // 只有「确认在跑」才回 NOT_RUNNING 让前端回落普通发送，与 TURN_CHANGED（转排队）严格区分。
+        // 这已经不是"重复判定"——内核的 isBusy 才决定投递是否算数（见下方 steerOnRun 的 offer 后复查）。
         if (!runtimePort().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "NOT_RUNNING");
         }
@@ -530,31 +523,43 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(409, "NOT_RUNNING");
         }
 
-        // Web 端必须绑定明确的 runId。任务首个事件到达前尚不能确认归属，此时让前端转普通排队，
-        // 避免无 runId 请求落入任务结束/切换窄窗后成为无人消费的孤儿插话。
-        if (runId == null || runId.trim().isEmpty()) {
-            return Result.failure(409, "TURN_CHANGED");
+        // 入参校验、runId 必填、忙判定全部收归内核（SteerExtension.steerOnRun）：
+        // 此前这里自己判空/判长/判 runId，与内核的判断完全重叠，
+        // 任一上限调整都得改两处。现在宿主只负责把应答码映射成 HTTP 状态。
+        SteerExtension steer = steer();
+        if (steer == null) {
+            // 扩展未装配（能力缺失）与「会话状态不允许」是两回事，不能用 409 混淆
+            return Result.failure(503, "STEER_UNAVAILABLE");
         }
 
-        // 核心入队逻辑与 IM 端共用（activeRunId 绑定校验 + offer + offer 后按 busy 复查回滚）。
-        SteerResult result = steer().steer(
-                session, runId, steerId, text, null,
-                () -> runtimePort().isSessionBusy(engine(), sessionId));
+        SteerResult result = steer.steerOnRun(session, runId, steerId, text, null);
 
-        switch (result.getStatusCode()) {
-            case "STEERED": {
+        return toResult(result);
+    }
+
+    /**
+     * 插话投递结果 → Web 应答。
+     *
+     * <p>按 {@link SteerStatus} 枚举分支，不再 switch 字符串 code：枚举新增态会落到
+     * {@code default} 但至少编译期提示过，而字符串拼错只会静默落 409。</p>
+     */
+    private static Result toResult(SteerResult result) {
+        switch (result.getStatus()) {
+            case STEERED: {
                 Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", "STEERED");
+                data.put("status", result.getStatusCode());
                 data.put("steerId", result.getSteerId());
                 data.put("queued", result.getQueued());
                 return Result.succeed(data);
             }
-            case "EMPTY_TEXT":
-            case "TEXT_TOO_LONG":
-            case "INVALID_STEER_ID":
+            case EMPTY_TEXT:
+            case TEXT_TOO_LONG:
+            case INVALID_STEER_ID:
+                // 参数非法：前端提示后不再重试
                 return Result.failure(400, result.getStatusCode());
             default:
-                // NOT_RUNNING / TURN_CHANGED / BOX_FULL / DUPLICATE_STEER_ID
+                // NOT_RUNNING（回落普通发送）/ TURN_CHANGED / BOX_FULL（转排队）/
+                // DUPLICATE_STEER_ID / DISABLED
                 return Result.failure(409, result.getStatusCode());
         }
     }
@@ -574,8 +579,14 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(400, "Invalid sessionId");
         }
         if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
+        SteerExtension steer = steer();
+        if (steer == null) {
+            // 与 steerSession 同口径：能力缺失统一 STEER_UNAVAILABLE，前端可用同一判断识别
+            return Result.failure(503, "STEER_UNAVAILABLE");
+        }
+        // 上限读实例配置（SteerExtension.builder 可能放宽过），不读静态缺省常量
         if (steerId == null || steerId.trim().isEmpty()
-                || steerId.length() > SteerExtension.maxIdLength()) {
+                || steerId.length() > steer.getLimits().getMaxIdLength()) {
             return Result.failure(400, "INVALID_STEER_ID");
         }
 
@@ -583,7 +594,6 @@ public class ChatWebController extends AbstractWebController {
         if (session == null) {
             return Result.failure(409, "NOT_PENDING");
         }
-        SteerExtension steer = steer();
 
         // 轮次已切换时旧 steerId 已无意义，必须回 TURN_CHANGED 而不是默默成功
         String activeRunId = steer.activeRunId(session);
@@ -603,9 +613,59 @@ public class ChatWebController extends AbstractWebController {
     }
 
     /**
+     * 批量撤销待生效插话（前端「清空队列」用）。
+     *
+     * <p>此前前端逐条调 {@code /web/chat/steer/cancel}：N 轮往返，且中途失败会留下
+     * 半截状态（部分已取消、部分还在邮箱）。本端点一次收口，返回实际取消条数。</p>
+     *
+     * <p>{@code steerIds} 用逗号分隔；省略或为空表示「清空全部待生效插话」。
+     * 只有仍在邮箱中的条目计入 {@code canceled}——已被消费的不算取消成功。</p>
+     */
+    @Post
+    @Mapping("/web/chat/steer/cancelAll")
+    public Result cancelAllSteerSession(@Param("sessionId") String sessionId,
+                                        @Param(value = "steerIds", required = false) String steerIds) {
+        if (!isValidSessionId(sessionId)) {
+            return Result.failure(400, "Invalid sessionId");
+        }
+        if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
+
+        SteerExtension steer = steer();
+        if (steer == null) {
+            // 与 steerSession 同口径：能力缺失统一 STEER_UNAVAILABLE，前端可用同一判断识别
+            return Result.failure(503, "STEER_UNAVAILABLE");
+        }
+
+        org.noear.solon.ai.agent.AgentSession session = engine().getSession(sessionId);
+        if (session == null) {
+            return Result.failure(409, "NOT_PENDING");
+        }
+
+        int canceled;
+        if (steerIds == null || steerIds.trim().isEmpty()) {
+            // 未指定 id = 清空（clearPending 只交出条目，不替宿主决定去向）
+            canceled = steer.clearPending(session).size();
+        } else {
+            java.util.List<String> ids = new java.util.ArrayList<>();
+            for (String id : steerIds.split(",")) {
+                if (id.trim().isEmpty() == false) {
+                    ids.add(id.trim());
+                }
+            }
+            canceled = steer.cancelAll(session, ids);
+        }
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("status", "CANCELED");
+        data.put("canceled", canceled);
+        data.put("queued", steer.pending(session).size());
+        return Result.succeed(data);
+    }
+
+    /**
      * 插话门面（运行中干预统一入口，不再直调静态实现与内部 attrs key）
      */
     private SteerExtension steer() {
-        return engine().getExtension(SteerExtension.class).get();
+        return engine().getExtension(SteerExtension.class).orElse(null);
     }
 }

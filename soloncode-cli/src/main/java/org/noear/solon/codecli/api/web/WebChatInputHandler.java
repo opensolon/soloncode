@@ -451,10 +451,13 @@ class WebChatInputHandler {
                 // 普通消息忙态默认「插话」（与 web 前端流式中 Enter 的默认一致）：把补充注入正在运行的任务，
                 // 由插话拦截器（SteerInterceptor）在下一个采样边界消费。插不进去（任务恰在切换/尚未进入推理边界、邮箱已满等）
                 // 或输入是斜杠命令时，再降级为统一持久化排队，确保消息不丢。
-                if (input != null && !input.startsWith("/")) {
-                    SteerResult steerResult = steer(wsContext).steer(session, null, null, input,
-                            InputOrigin.of(source, sourceUserId, replyTarget, messageId),
-                            () -> SessionActivity.isBusy(session));
+                SteerExtension steerExtension = input != null && !input.startsWith("/")
+                        ? steer(wsContext) : null;
+                if (steerExtension != null) {
+                    // 忙判定不传回调：内核按 engine.status(session).isBusy() 自算（同一口径），
+                    // 宿主少一个与自己无关的 lambda，也少一处口径漂移点。
+                    SteerResult steerResult = steerExtension.steer(session, input,
+                            InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                     if (steerResult.getStatus() == SteerStatus.STEERED) {
                         // 不回放 ofUserInput：web 端由 steer_applied 就地渲染 steer-note（与 web 发起的插话同一路径），
                         // 提前推 user_input 会与 steer-note 重复上屏。
@@ -691,6 +694,7 @@ class WebChatInputHandler {
      * 插话门面（运行中干预统一入口）
      */
     private static SteerExtension steer(WorkspaceContext wsContext) {
-        return wsContext.getEngine().getExtension(SteerExtension.class).get();
+        // 未装配时明确返回 null（调用方据此跳过插话、降级排队），而不是抛 NoSuchElementException
+        return wsContext.getExtension(SteerExtension.class);
     }
 }
