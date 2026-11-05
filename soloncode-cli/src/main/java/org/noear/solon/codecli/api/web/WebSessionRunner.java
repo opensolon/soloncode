@@ -119,16 +119,15 @@ class WebSessionRunner {
      * 管道装配失败）不再落入 {@code onChatInput} 的 catch，而是被调度器吞掉：若不处理，
      * composite 会长驻 attrs 使 busy 判定永久为真（Stop 也只能发假 done），
      * 且前端收不到任何终态包。</p>
+     *
+     * <p>「这是队列派发的一轮」不再用会话态判定（旧写法读 hasQueuedDispatch，历史上还
+     * 误用过线程判定引发无限循环）：{@code turn} 是订阅前捕获的本轮派发事务，有身份保证，
+     * 异步线程上同样可靠。非队列输入 turn 为 null，自然落到 drain 续发分支。</p>
      */
     void failStreamTurn(WorkspaceContext wsContext, AgentSession session, QueueDispatch turn, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
         // 队列派发的启动失败：交给队列派发侧收口（claim 回滚），
         // 「不重试」由 drainLoop 的 START_FAILED 语义保证，宿主不再自己维护标记。
-        //
-        // 这里必须用【跨线程】的 hasQueuedDispatch，不能用 isQueueDispatch：
-        // 本方法由 subscribeAction 在 boundedElastic 上调用，当前线程不是派发线程，
-        // 线程判定恒为 false → 回滚后立即续发 → 又领到同一条 → 无限循环。
-        boolean queued = WebQueueDispatcher.hasQueuedDispatch(session);
         settleTurn(wsContext, session, turn, false);
 
         gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));
@@ -137,7 +136,8 @@ class WebSessionRunner {
 
         gate.getEventPublisher().emitDoneGuarded(wsContext, session);
         // 启动失败的任务已回队首；不要立即重试同一失败任务形成无限循环。
-        if (!queued) gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
+        // turn 非空 = 本轮属于队列派发：claim 已回滚回队首，立即 drain 会领回同一条。
+        if (turn == null) gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
     }
 
     /**

@@ -321,6 +321,22 @@ class PackageBoundaryTest {
             if (name.equals("WebQueueDispatcher.java") && content.contains("synchronized (session.attrs())")) {
                 violations.add(name + " 仍在队列路径上用会话锁（应把谓词下推到 claimNext）");
             }
+            // 同步收口已内核化：宿主回调只报告 true/false，不得手写 acknowledge/rollback
+            // （手写 ack 丢返回值 = Stop 被静默击败、任务无限重跑，该陷阱已从 API 形状上消灭）
+            if (name.equals("CliShell.java") || name.equals("WebQueueDispatcher.java")) {
+                if (content.contains("claim.acknowledge(") || content.contains("claim.rollback(")) {
+                    violations.add(name + " 手写 claim 收口（应在回调里返回 true/false，收口归内核）");
+                }
+            }
+            // CLI 消费是纯同步循环（返回 true），不存在异步队列轮，settleDispatch 在 CLI 无合法用途
+            if (name.equals("CliShell.java") && content.contains("settleDispatch(")) {
+                violations.add(name + " 在 CLI 队列路径上手写 settleDispatch（同步收口应返回 true 交内核）");
+            }
+            // Web 的 finishQueuedTurn（turn==null 兜底）仍用 QueueExtension.settleDispatch，为豁免点；
+            // 但已删除的会话态判定不得回潮：流终态归属看订阅前捕获的 turn，不看会话当前派发
+            if (name.equals("WebQueueDispatcher.java") && content.contains("hasQueuedDispatch")) {
+                violations.add(name + " 仍引用已删除的 hasQueuedDispatch（流终态应用订阅前捕获的 turn）");
+            }
         }
         assertTrue(violations.isEmpty(), "队列派发状态必须由 harness 持有：" + violations);
     }

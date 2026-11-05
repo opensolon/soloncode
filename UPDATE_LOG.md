@@ -1,5 +1,13 @@
 
 ### vNEXT
+* **queue 消费协议迁移：同步收口内核化，CLI/Web 回调改返回值语义，goal 恢复职责归位**（配合 harness 同批改造）:
+  * **`CliShell.drainCliQueue`**：删掉「ack 失败必须抛异常」的手写铁律（那条只活在注释里的陷阱：丢弃 `acknowledge()` 返回值编译照过，Stop 被静默击败、任务无限重跑），回调只剩 `handleInput` + `return true`——收口、回滚、循环终止全部归内核。`acknowledge` 一词从宿主代码中消失
+  * **`WebQueueDispatcher.drainSessionQueue`**：`return !isBusy(session)` 替代「isBusy 反推同步完成 + 手动 `settleDispatch(session, true)`」——同步命令（如 /status）回调返回时不忙 → true → 内核当场收口；异步 Agent 流必然忙 → false → claim 由流终态收口。忙态从「调收口 API 的依据」降为「报告状态」，不再可写出悬挂 claim
+  * **`WebSessionRunner.failStreamTurn`**：「本轮是否队列派发」改用 `turn != null`（订阅前捕获、身份化）；删除对会话态 `hasQueuedDispatch` 的依赖（`WebQueueDispatcher.hasQueuedDispatch` 随之删除，主代码 0 调用）
+  * **`WebGoalRecovery` 新建**：`recoverSessionGoals`（内存会话优先/轻读投影/resumeScheduleOnly）从 `WebQueueDispatcher` 拆出——goal 域知识不住在 queue 派发器里；`WebGate.recoverSessionQueues` 统一接线（goal 先于 queue 恢复，与原时序一致）
+  * **护栏升级**（`PackageBoundaryTest.hostMustNotOwnQueueDispatchState`）：CliShell/WebQueueDispatcher 禁手写 `claim.acknowledge(`/`claim.rollback(`；CliShell 禁 `settleDispatch(`（Web 的 `finishQueuedTurn` turn==null 兜底为豁免点）；Web 禁 `hasQueuedDispatch` 回潮。反向验证：CLI 写回旧手写 ack，护栏准确报出「手写 claim 收口」
+  * **验证**：cli 全量 **1254 例 3F** 与基线逐项一致；`PackageBoundaryTest` 11 例 + `ImBusySteerContractTest` 9 例全绿
+
 * **执行通道分离收尾：CLI / Web 的 goal 轮次恢复「边跑边输出」**（修复前：`/goal` 在这两端只有最终结果、没有过程输出）：
   * **症状与根因**：goal 与 loop 拆开通道后，CLI（`CliShell`）与 Web 工作区（`WorkspaceManager`）从来就没向 `GoalEngine` 注册过执行器——于是 `[0-9]{1,18}` 以外的会话全部落到 `GoalExtension` 的内置缺省执行器（`engine.handle().call()` 同步执行，不推流）。改造前这三端「看起来都走缺省」其实是一个障眼 bug：缺省执行器恒认领且排在列表首位，把宿主的执行器全挡住了；那个 bug 修好后，桌面端恢复推流，而 CLI/Web 的「本来就没注册」才暴露出来
   * **CLI**（`entry/cli/CliShell`）：`performAgentTask` / `dispatchOutcome` / `handleInput` 返回类型 `String` → `RoundResult`；在流回调里就地累加 token（`RunEndEvent.getTrace().getMetrics()`）与工具证据（`ToolCallEndEvent`，排除 `task`/`multitask`/`memory`/`goal` 四类内部工具）；新增 `runInjectedRound` 注册到 `GoalEngine`，认领本引擎的 `cli` 会话，语义与 `safeChatInput` 同构（终端空闲才认领，结束 `raise(INT)` 重现提示符）

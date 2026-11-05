@@ -389,16 +389,14 @@ public class CliShell implements Runnable {
                 return;
             }
 
-            // 同步语义：回调返回即任务跑完，就地 acknowledge 收口；启动异常由内核自动回滚到队首。
-            // ack 失败（期间被 Stop）必须拖异常：让它走 START_FAILED 分支由内核回滚，
-            // 静默吞掉会停不下来地把后续任务也跑完。
+            // 同步语义：回调返回 true = 任务已同步跑完，收口由内核当场完成（ack 被拒自动转回滚 +
+            // START_FAILED，循环终止）；启动异常同样由内核回滚到队首。
+            // ack 一词在宿主代码中消失——不再存在「丢弃 acknowledge 返回值、Stop 被静默击败」的写法。
             while (queue.claimNext(session, claim -> {
                 handleInput(session, claim.getItem().getText(), claim.getItem().getModel(), false);
-                if (!claim.acknowledge()) {
-                    throw new IllegalStateException("queue ack failed: " + claim.getItem().getId());
-                }
+                return true;
             }) == DrainStatus.STARTED) {
-                // claim/poll/ack/requeue 由内核负责。
+                // 领取/收口/回滚全部由内核负责。
             }
         } finally {
             cliQueueDraining = false;

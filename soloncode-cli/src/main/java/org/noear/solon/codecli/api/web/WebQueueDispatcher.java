@@ -21,8 +21,6 @@ import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.ai.harness.session.queue.QueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
-import org.noear.solon.ai.harness.session.goal.GoalExtension;
-import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.session.SessionSnapshots;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
@@ -57,10 +55,10 @@ class WebQueueDispatcher {
         this.gate = gate;
     }
 
-    /** 工作区上下文完成初始化后恢复 session 队列（含旧文件一次性迁移），并恢复未终态的 goal 调度。 */
+    /** 工作区上下文完成初始化后恢复 session 队列（含旧文件一次性迁移）。goal 恢复由
+     *  {@link WebGoalRecovery} 独立负责（领域归位：queue 派发器不携带 goal 域知识）。 */
     void recoverSessionQueues(WorkspaceContext wsContext) {
         if (wsContext == null || wsContext.getSessionManager() == null) return;
-        recoverSessionGoals(wsContext);
         Path root = wsContext.getSessionsRoot();
         if (root == null || !Files.isDirectory(root)) return;
         try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
@@ -77,50 +75,6 @@ class WebQueueDispatcher {
             }
         } catch (IOException e) {
             LOG.warn("[WebGate] recover session queues failed for workspace {}: {}",
-                    wsContext.getMeta().getId(), e.toString());
-        }
-    }
-
-    /**
-     * 恢复快照中的活跃 goal：重启后 job 已丢失，PURSUING（进程中断残留，
-     * 新体系无 shutdown hook 落盘 PAUSED）重新挂上调度直接续跑，
-     * 避免「PURSUING 无法 resume 只能 clear 重建」的卡死回归。
-     *
-     * <p>PAUSED/BLOCKED 不挂 job：新体系下 PAUSED 只能来自用户显式暂停
-     * （旧 shutdown-hook 路径已随 LoopScheduler goal 链退役），重启后保持静默、
-     * 等待用户 /goal resume（或 Web toggle）是尊重用户意图的语义；
-     * BLOCKED 为熔断态，同理需显式恢复。终态则无需调度。</p>
-     */
-    private static void recoverSessionGoals(WorkspaceContext wsContext) {
-        GoalExtension goal = wsContext.getGoalExtension();
-        if (goal == null) return;
-
-        Path root = wsContext.getSessionsRoot();
-        if (root == null || !Files.isDirectory(root)) return;
-        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
-            for (Path dir : dirs) {
-                if (!Files.isDirectory(dir)) continue;
-                String sessionId = dir.getFileName().toString();
-
-                // 内存会话优先（与写侧同源）；未实例化则轻读投影状态，不把会话带进内存
-                AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
-                if (inMemory != null) {
-                    GoalState gs = goal.state(inMemory);
-                    if (gs != null && gs.getStatus().isActive()) {
-                        // 恢复期只挂 job，不能立即跑一轮（resume() 是 runNow=true）
-                        goal.resumeScheduleOnly(sessionId);
-                    }
-                    continue;
-                }
-
-                GoalState.Status status = SessionSnapshots.readGoalStatus(dir, sessionId);
-                if (status == null || !status.isActive()) {
-                    continue;
-                }
-                goal.resumeScheduleOnly(sessionId);
-            }
-        } catch (IOException e) {
-            LOG.warn("[WebGate] recover session goals failed for workspace {}: {}",
                     wsContext.getMeta().getId(), e.toString());
         }
     }
@@ -150,16 +104,18 @@ class WebQueueDispatcher {
             Object logScope = (wsLogKey != null) ? WorkspaceLogRouter.beginScopeByKey(wsLogKey) : null;
             try {
                 // 续发循环、终止条件（含 START_FAILED 不得立即重试）与「能不能接」的原子判定
-                // 全部归 harness；宿主的回调只表达「把这条任务交给输入处理」。
+                // 全部归 harness；宿主的回调只表达两件事：「把这条任务交给输入处理」+
+                // 「返回时它是否已同步跑完」（同步命令如 /status 不忙 → true，内核当场收口；
+                // 异步 Agent 流必然忙 → false，claim 由流终态的 finishQueuedTurn 收口）。
+                // 旧写法（isBusy 反推后手动 settleDispatch）已由返回值语义取代，不再可写出
+                // 「忙态推断错时机导致悬挂 claim」的代码。
                 queue.drainLoop(session, WebQueueDispatcher::isNotOccupied, claim -> {
                     QueueItem item = claim.getItem();
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(item.getId(), item.getText(), item.getOrigin().getChannel()));
                     gate.onChatInput(wsContext, sessionId, null, item.getText(), item.getModel(), null, null, null,
                             item.getOrigin().getChannel(), item.getReasoningEffort(), item.getThinkingMode(), item.getSelectedAgent(),
                             item.getOrigin().getSenderId(), item.getOrigin().getReplyTarget(), item.getOrigin().getMessageId());
-                    // 同步完成的命令（如 /status）在回调返回时就没有活跃流：当场收口，不留悬挂 claim。
-                    // 异步任务此时必然忙，claim 由流终态的 finishQueuedTurn 收口。
-                    if (!isBusy(session)) queue.settleDispatch(session, true);
+                    return !isBusy(session);
                 });
             } catch (Throwable e) {
                 LOG.warn("[WebGate] drain session queue failed for session {}: {}", sessionId, e.toString());
@@ -200,22 +156,12 @@ class WebQueueDispatcher {
      * 本轮输入是否由队列派发而来（且就在当前线程）。
      *
      * <p>只在输入入口使用：判断「这是一轮队列派发，不要再占受理位」。
-     * 流终态请用 {@link #hasQueuedDispatch}（跨线程）。</p>
+     * 流终态不要用会话态判定，应用订阅前捕获的 {@code turn != null}（身份化，见
+     * {@code WebSessionRunner#failStreamTurn}）——异步线程上会话态可能已被下一轮派发覆盖。</p>
      */
     static boolean isQueueDispatch(AgentSession session) {
         QueueDispatch dispatch = QueueDispatch.current(session);
         return dispatch != null && dispatch.isOnDispatchThread();
-    }
-
-    /**
-     * 会话是否有未收口的队列派发事务（跨线程可判）。
-     *
-     * <p>取代此前的线程判定：异步订阅失败发生在 {@code boundedElastic} 上，用
-     * {@link #isQueueDispatch} 必然得到 false，于是「回滚到队首 → 立即续发 → 又领到同一条
-     * → 再失败」形成死循环。</p>
-     */
-    static boolean hasQueuedDispatch(AgentSession session) {
-        return QueueDispatch.current(session) != null;
     }
 
     /** 取队列门面（扩展未装配时为 null，调用方需容错） */

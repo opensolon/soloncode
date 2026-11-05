@@ -153,9 +153,10 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         emitToClient(workspaceContext, sessionId, WebEvent.ofDone());
     }
 
-    /** 工作区上下文完成初始化后恢复 session 队列，包括旧版 Web 队列。 */
+    /** 工作区上下文完成初始化后恢复 session 队列（含旧版 Web 队列）与未终态的 goal 调度。 */
     @Override
     public void recoverSessionQueues(WorkspaceContext wsContext) {
+        WebGoalRecovery.recover(wsContext);
         queueDispatcher.recoverSessionQueues(wsContext);
     }
 
