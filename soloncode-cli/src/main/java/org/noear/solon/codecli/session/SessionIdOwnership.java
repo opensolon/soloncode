@@ -18,7 +18,7 @@ package org.noear.solon.codecli.session;
 /**
  * 会话归属判定 —— 三种运行时入口（CLI / Web / 桌面）的 ID 形态守门人。
  *
- * <p>背景：goal 与 loop 的执行通道都是「认领式」的（{@code TaskHandler} 返回 null 表示
+ * <p>背景：goal 与 loop 的执行通道都是「认领式」的（{@code GoalExecutor} 返回 null 表示
  * 本入口不认领，引擎按注册顺序取首个认领者），而会话 ID 的归属约定只存在于宿主。
  * 此前三个入口各自在注册点内联写谓词（{@code equals("cli")} / {@code startsWith("web-")} /
  * {@code matches("[0-9]{1,18}")}），彼此看不到对方，一旦有人改宽边界就会静默抢跑别人的会话

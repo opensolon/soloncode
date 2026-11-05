@@ -24,7 +24,7 @@ import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
-import org.noear.solon.ai.harness.extension.steer.SteerMessages;
+import org.noear.solon.ai.harness.extension.steer.SteerProtocol;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.ToolEndPayload;
@@ -211,9 +211,9 @@ public class LastTraceService {
                 continue;
             }
 
-            String steerText = SteerMessages.textOf(msg);
+            String steerText = SteerProtocol.textOf(msg);
             if (steerText != null) {
-                /* assistantSeen 才收：SteerMessages 的位置保证（插话只会出现在第一条 assistant 之后）
+                /* assistantSeen 才收：SteerProtocol 的位置保证（插话只会出现在第一条 assistant 之后）
                  * 是公开协议。据此可排除两类假阳性：存量会话里已持久化到 ndjson 的旧插话行
                  * （已由历史渲染为独立 .msg-row，再回放会重复），以及用户亲手敲了一句以插话前缀开头的提问。 */
                 if (assistantSeen) {

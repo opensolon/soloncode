@@ -5,7 +5,6 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
-import org.noear.solon.ai.harness.extension.goal.GoalEngine;
 import org.noear.solon.ai.harness.extension.goal.GoalProjection;
 import org.noear.solon.ai.harness.extension.goal.GoalState;
 import org.noear.solon.flow.FlowContext;
@@ -56,7 +55,7 @@ public final class SessionSnapshots {
      *
      * <p>只读探测专用：解析快照为 {@link FlowContext} 后判定
      * {@code session.goal} 键是否存在。会话已在内存时应直接用
-     * {@code getSessionIfPresent} + {@link GoalEngine#hasGoal}。</p>
+     * {@code getSessionIfPresent} + {@code GoalExtension#hasGoal}。</p>
      */
     public static boolean hasGoal(Path sessionDir, String sessionId) {
         return readGoalStatus(sessionDir, sessionId) != null;

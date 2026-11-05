@@ -32,12 +32,12 @@ import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.input.CommandContextFactory;
+import org.noear.solon.ai.harness.command.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.HarnessInput;
-import org.noear.solon.ai.harness.input.HitlCard;
+import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.input.InputOutcome;
-import org.noear.solon.ai.harness.input.ParsedCommand;
+import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.ai.talents.cli.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.command.CliCommandContext;
@@ -47,9 +47,9 @@ import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
-import org.noear.solon.ai.harness.runtime.RoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.ai.harness.extension.queue.DrainStatus;
+import org.noear.solon.ai.harness.extension.queue.QueueClaimStatus;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.DateUtil;
@@ -187,11 +187,11 @@ public class CliShell implements Runnable {
 
         // goal 执行通道：只在 GoalEngine 自己的通道上注册（与 loop 无共享）。
         // 与 loop 同口径（主线程阻塞于 readLine 时在调度线程代跑一轮、结束后 raise(INT) 让提示符重现），
-        // 区别是必须返回 RoundResult：null 表示「本入口不认领」，失败必须显式携带文本。
+        // 区别是必须返回 GoalRoundResult：null 表示「本入口不认领」，失败必须显式携带文本。
         // 认领谓词交给引擎：重叠时它会告警（此前内联在 handler 里，错抢只能靠静默现象发现）。
         GoalExtension goal = engine.getExtension(GoalExtension.class).orElse(null);
         if (goal != null) {
-            goal.addTaskExecutor("cli", SessionIdOwnership::isCli,
+            goal.addExecutor("cli", SessionIdOwnership::isCli,
                     (sessionId, prompt) -> runInjectedRound(session, prompt));
         }
 
@@ -242,7 +242,7 @@ public class CliShell implements Runnable {
             return LoopOutcome.skip("terminal busy");
         }
         try {
-            RoundResult result = handleInput(session, prompt, null, false);
+            GoalRoundResult result = handleInput(session, prompt, null, false);
             return result == null ? LoopOutcome.skip("no round produced") : LoopOutcome.done(result.getFinalResult());
         } finally {
             // 后台注入轮结束后打断 readLine，让提示符重新出现（触发 run() 循环中的 UserInterruptException）
@@ -256,20 +256,20 @@ public class CliShell implements Runnable {
      * <p>前置条件是主线程阻塞于 {@code readLine}（终端空闲）。不满足时不认领（返回 null），
      * 让 GoalEngine 按「无执行者认领」处理——绝不伪造成功轮。</p>
      */
-    private RoundResult runInjectedRound(AgentSession session, String prompt) {
+    private GoalRoundResult runInjectedRound(AgentSession session, String prompt) {
         if (reader == null || reader.isReading() == false) {
             return null;
         }
 
         try {
-            RoundResult result = handleInput(session, prompt, null, false);
+            GoalRoundResult result = handleInput(session, prompt, null, false);
             // 无任务可执行（未装配出请求）时返回 null，绝不伪造一个「文本为空但已完成」的轮次：
             // 那会被上层记成 ok（目标在跑、实际什么都没做），并清零熔断计数。
             return result;
         } catch (Throwable e) {
             LOG.error("Goal round execution failed: {}", e.getMessage(), e);
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            return RoundResult.ofText("error: " + message);
+            return GoalRoundResult.ofText("error: " + message);
         } finally {
             // 后台注入轮结束后打断 readLine，让提示符重新出现
             terminal.raise(Terminal.Signal.INT);
@@ -291,7 +291,7 @@ public class CliShell implements Runnable {
      *
      * @param model 会话级模型选择（仅已受理文本的队列项携带；手输传 null）
      */
-    private RoundResult handleInput(AgentSession session, String text, String model, boolean userTurn) throws Exception {
+    private GoalRoundResult handleInput(AgentSession session, String text, String model, boolean userTurn) throws Exception {
         HarnessInput harnessInput = HarnessInput.of(session, text)
                 .origin(CLI_ORIGIN)
                 .commandAware(userTurn)
@@ -311,11 +311,11 @@ public class CliShell implements Runnable {
      *
      * @return 任务执行时的本轮客观事实；无任务时为 null
      */
-    private RoundResult dispatchOutcome(AgentSession session, InputOutcome outcome, boolean allowDrain) throws Exception {
+    private GoalRoundResult dispatchOutcome(AgentSession session, InputOutcome outcome, boolean allowDrain) throws Exception {
         switch (outcome.getKind()) {
             case TASK:
                 // 有任务就执行（命令触发与用户手输同一分支）：命令回执已由命令即时写入终端
-                RoundResult result = performAgentTask(session, outcome);
+                GoalRoundResult result = performAgentTask(session, outcome);
                 //只有用户手输回合消费队列（与改造前的既有行为一致）
                 if (allowDrain) {
                     drainCliQueue(session);
@@ -378,7 +378,7 @@ public class CliShell implements Runnable {
             while (queue.claimNext(session, claim -> {
                 handleInput(session, claim.getItem().getText(), claim.getItem().getModel(), false);
                 return true;
-            }) == DrainStatus.STARTED) {
+            }) == QueueClaimStatus.STARTED) {
                 // 领取/收口/回滚全部由内核负责。
             }
         } finally {
@@ -396,7 +396,7 @@ public class CliShell implements Runnable {
      * 首轮直接用引擎装配好的请求；HITL 恢复后的续轮用 {@link InputOutcome} 里的最终生效字段
      * 继续驱动 —— 不重新解析提及、不重新回退模型。
      */
-    private RoundResult performAgentTask(AgentSession session, InputOutcome outcome) throws Exception {
+    private GoalRoundResult performAgentTask(AgentSession session, InputOutcome outcome) throws Exception {
         terminal.writer().println("\n" + BOLD + "Assistant" + RESET + DIM + " " + getTimeNow() + RESET);
 
         final String agentName = outcome.getAgentName();
@@ -504,13 +504,13 @@ public class CliShell implements Runnable {
     }
 
     /** 把一轮的客观事实冻结成返回值（无正文时返回 null，表示本入口未产出结果）。 */
-    private RoundResult buildRoundResult(AtomicBoolean hasToolCalls, AtomicReference<Long> tokensUsed,
+    private GoalRoundResult buildRoundResult(AtomicBoolean hasToolCalls, AtomicReference<Long> tokensUsed,
                                          AtomicReference<String> finalAnswer) {
         String text = finalAnswer.get();
         if (Assert.isEmpty(text)) {
             return null;
         }
-        return RoundResult.of(hasToolCalls.get(), tokensUsed.get(), text);
+        return GoalRoundResult.of(hasToolCalls.get(), tokensUsed.get(), text);
     }
 
     private void waitForTask(CountDownLatch latch,
@@ -689,7 +689,7 @@ public class CliShell implements Runnable {
         ReActTrace trace = reasonEndEvent.getTrace();
 
         // token 不再写会话 attrs：CLI 的 loop 回合只需最终文本，
-        // goal 回合则由执行器把 RoundResult 随返回值上交（不再有跨模块旁路键）。
+        // goal 回合则由执行器把 GoalRoundResult 随返回值上交（不再有跨模块旁路键）。
         if (reasonEndEvent.hasMeta(TaskTalent.TOOL_MULTITASK)) {
             // 仅在多任务并行且有内容时输出
             String content = reasonEndEvent.getText();

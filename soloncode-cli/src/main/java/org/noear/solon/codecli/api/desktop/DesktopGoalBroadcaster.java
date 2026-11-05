@@ -28,7 +28,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 桌面端 Goal 流状态处理：Goal 生命周期事件 → WS 协议消息。
  *
- * <p>监听 {@link GoalEngine#addListener}：每次状态变更广播 {@code goal_status}；
+ * <p>监听 {@link org.noear.solon.ai.harness.extension.goal.GoalExtension#addListener}：每次状态变更广播 {@code goal_status}；
  * 终态时按会话一次性发送权威 {@code done}（携带 modelName/totalTokens/elapsedMs）。</p>
  *
  * @author bai

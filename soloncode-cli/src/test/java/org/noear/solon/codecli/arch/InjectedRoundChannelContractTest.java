@@ -16,8 +16,8 @@
 package org.noear.solon.codecli.arch;
 
 import org.junit.jupiter.api.Test;
-import org.noear.solon.ai.harness.runtime.RoundResult;
-import org.noear.solon.ai.harness.extension.goal.GoalEngine;
+import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalExecutor;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -54,23 +54,23 @@ public class InjectedRoundChannelContractTest {
      * <p>CLI：{@code cli} 会话；Web：{@code web-*} / {@code auto-*}；桌面：纯数字会话。
      * 三者缺任一，该入口的 goal 就只能拿到最终文本、没有过程输出。</p>
      *
-     * <p>注册必须带通道名与认领谓词（{@code addTaskExecutor(channel, claim, handler)}）：
+     * <p>注册必须带通道名与认领谓词（{@code addExecutor(channel, claim, handler)}）：
      * 谓词交给引擎后，多入口认领边界重叠可被静态评估并告警，不再依赖静默抢跑现象排障。</p>
      */
     @Test
     void everyEntryRegistersGoalExecutorOnGoalEngineChannel() throws IOException {
-        // 注册统一走 GoalExtension 门面（addTaskExecutor），宿主不再绕行 getGoalEngine()；
+        // 注册统一走 GoalExtension 门面（addExecutor），宿主不再绕行 getGoalEngine()；
         // 认领谓词统一引用 SessionIdOwnership，避免三处内联正则互不知情而抢跑会话。
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "goal.addTaskExecutor(\"cli\", SessionIdOwnership::isCli",
+                "goal.addExecutor(\"cli\", SessionIdOwnership::isCli",
                 "CLI 未向 GoalEngine 注册通道化执行器（/goal 将没有过程输出）");
 
         assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "goalExtension.addTaskExecutor(\"web\", SessionIdOwnership::isWeb",
+                "goalExtension.addExecutor(\"web\", SessionIdOwnership::isWeb",
                 "Web 未向 GoalEngine 注册通道化执行器（/goal 将没有过程输出）");
 
         assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
-                "goal.addTaskExecutor(\"desktop\", SessionIdOwnership::isDesktop",
+                "goal.addExecutor(\"desktop\", SessionIdOwnership::isDesktop",
                 "桌面未向 GoalEngine 注册通道化执行器（goal 轮次将不再推流）");
     }
 
@@ -79,7 +79,7 @@ public class InjectedRoundChannelContractTest {
      *
      * <p>三条禁令各自对应一处曾经复制粘贴的样板：</p>
      * <ul>
-     *   <li>{@code getGoalEngine().addTaskExecutor} → 用 {@code GoalExtension.addTaskExecutor}；</li>
+     *   <li>{@code getGoalEngine().addExecutor} → 用 {@code GoalExtension.addExecutor}；</li>
      *   <li>{@code while (goal.running(...)) sleep} → 用 {@code pauseAndAwait}/{@code awaitRoundStopped}；</li>
      *   <li>{@code Math.multiplyExact(x, 60_000L)} → 用 {@code GoalSpec.maxDuration(Duration.ofMinutes(x))}。</li>
      * </ul>
@@ -87,7 +87,7 @@ public class InjectedRoundChannelContractTest {
     @Test
     void hostDoesNotReimplementGoalFacadeSamples() throws IOException {
         List<String> forbidden = java.util.Arrays.asList(
-                "getGoalEngine().addTaskExecutor",
+                "getGoalEngine().addExecutor",
                 "goal.running(goal.sessionOf",
                 "Math.multiplyExact(maxDurationMinutes");
 
@@ -161,15 +161,15 @@ public class InjectedRoundChannelContractTest {
      * 也是 CLI/Web 上「完成需行动证据」校验长期失效的根因。</p>
      */
     @Test
-    void goalTaskHandlerReturnsRoundResult() {
-        Method[] methods = GoalEngine.TaskHandler.class.getDeclaredMethods();
-        assertEquals(1, methods.length, "TaskHandler 应当是单方法接口");
+    void goalExecutorReturnsGoalRoundResult() {
+        Method[] methods = GoalExecutor.class.getDeclaredMethods();
+        assertEquals(1, methods.length, "GoalExecutor 应当是单方法接口");
 
         Method handle = methods[0];
-        assertEquals(RoundResult.class, handle.getReturnType(),
-                "TaskHandler 必须返回 RoundResult（返回 String 会迫使指标再走 attrs 旁路）");
+        assertEquals(GoalRoundResult.class, handle.getReturnType(),
+                "GoalExecutor 必须返回 GoalRoundResult（返回 String 会迫使指标再走 attrs 旁路）");
         assertEquals(2, handle.getParameterCount(),
-                "TaskHandler 只应有 (sessionId, prompt) 两个参数："
+                "GoalExecutor 只应有 (sessionId, prompt) 两个参数："
                         + "agentName 恒传 null，子代理归属是会话属性 CTX_AGENT_SELECTED");
     }
 
@@ -188,7 +188,7 @@ public class InjectedRoundChannelContractTest {
                 "runLoop 必须回报三态结论（跳过与失败必须可区分）");
 
         Method runGoal = port.getMethod("runGoalRound", String.class, String.class, String.class, String.class);
-        assertEquals(RoundResult.class, runGoal.getReturnType(), "runGoalRound 必须回报本轮客观事实");
+        assertEquals(GoalRoundResult.class, runGoal.getReturnType(), "runGoalRound 必须回报本轮客观事实");
     }
 
     /** 断言源码中出现了指定片段（非注释行）。 */

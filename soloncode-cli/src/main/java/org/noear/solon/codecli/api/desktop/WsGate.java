@@ -31,7 +31,7 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
-import org.noear.solon.ai.harness.runtime.RoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionIdOwnership;
@@ -106,7 +106,7 @@ public class WsGate extends SimpleWebSocketListener {
             // 桌面端 Goal 轮次经 GoalEngine 自己的执行通道回推（不再有跨域共享桥）；
             // 忙判定由会话快照派生（SessionStatus.isOccupied），无需宿主注入谓词。
             // 认领谓词交给引擎：多入口重叠时告警，不再靠静默抢跑现象排障。
-            goal.addTaskExecutor("desktop", SessionIdOwnership::isDesktop,
+            goal.addExecutor("desktop", SessionIdOwnership::isDesktop,
                     (sessionId, prompt) -> runGoalRoundAndCapture(sessionId, prompt));
         }
     }
@@ -282,7 +282,7 @@ public class WsGate extends SimpleWebSocketListener {
      * <p>token 与工具证据直接随返回值上交，不再写会话 attrs 让引擎回读——
      * 旁路方案下只有桌面端写、CLI/Web 不写，导致完成校验在两端静默失效。</p>
      */
-    public RoundResult runGoalRoundAndCapture(String sessionId, String input) {
+    public GoalRoundResult runGoalRoundAndCapture(String sessionId, String input) {
         AgentSession session;
         try {
             session = engine.getSession(sessionId);
@@ -404,7 +404,7 @@ public class WsGate extends SimpleWebSocketListener {
         if (Assert.isEmpty(finalAnswer.get())) {
             throw new IllegalStateException("Goal round returned no final answer");
         }
-        return RoundResult.of(hasToolCalls.get(), tokensUsed.get(), finalAnswer.get());
+        return GoalRoundResult.of(hasToolCalls.get(), tokensUsed.get(), finalAnswer.get());
     }
 
     public void interruptGoalSession(String sessionId) {

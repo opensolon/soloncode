@@ -2,7 +2,7 @@ package org.noear.solon.codecli.workspace;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.runtime.RoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.core.handle.UploadedFile;
 
@@ -68,5 +68,5 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
      * goal 需要 token 与工具证据做完成判定。两者分开而不合并成一个带额外字段的宽接口，
      * 是因为各自只需要自己那份返回值。</p>
      */
-    RoundResult runGoalRound(String workspaceId, String sessionId, String input, String source);
+    GoalRoundResult runGoalRound(String workspaceId, String sessionId, String input, String source);
 }

@@ -16,7 +16,7 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.InputGate;
+import org.noear.solon.ai.harness.turn.InputGate;
 import org.noear.solon.ai.harness.session.SessionStatus;
 
 /**

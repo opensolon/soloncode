@@ -252,7 +252,7 @@ class PackageBoundaryTest {
  *   <li>禁止引用插件属性键登记表 {@code QueueAttrs}/{@code GoalAttrs}/{@code SteerAttrs}（插件内部契约）；</li>
      *   <li>禁止把 {@code QueueItem.toMap()}（持久化投影）当对外 API（应用 {@code QueueItemView}）；</li>
      *   <li>禁止引用 {@code SteerHelper}（含全限定名）或硬编码 steer 内部 attrs 键
-     *       （steer 只经 {@code SteerExtension} 门面，消息协议经 {@code SteerMessages}）；</li>
+     *       （steer 只经 {@code SteerExtension} 门面，消息协议经 {@code SteerProtocol}）；</li>
      *   <li>禁止回退到已取消的宿主义务 / 已弃用入口：{@code beginTurn}/{@code handover}（开流前交接已由拦截器
      *       onAgentStart 自动完成）、{@code isSteerMessage}/{@code stripSteerPrefix}/{@code maxTextLength}。</li>
      * </ul>
@@ -292,7 +292,7 @@ class PackageBoundaryTest {
                     "SteerExtension.stripSteerPrefix", "SteerExtension.maxTextLength", "SteerExtension.maxIdLength"}) {
                 if (content.contains(legacy)) {
                     violations.add(name + " 使用已弃用的 steer 入口 " + legacy
-                            + "（开流前交接已由框架完成；回放用 SteerMessages.textOf；上限读 getLimits()）");
+                            + "（开流前交接已由框架完成；回放用 SteerProtocol.textOf；上限读 getLimits()）");
                 }
             }
             // 队列展示必须走视图对象；GoalDataMigrator 处理的是历史 ONode，不在此列

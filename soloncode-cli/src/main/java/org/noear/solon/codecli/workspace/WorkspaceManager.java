@@ -7,7 +7,7 @@ import org.noear.solon.Utils;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
-import org.noear.solon.ai.harness.session.interrupt.InterruptCommand;
+import org.noear.solon.ai.harness.command.builtin.InterruptCommand;
 import org.noear.solon.ai.harness.command.builtin.*;
 import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.chat.CacheControl;
@@ -1001,7 +1001,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         }
 
         // 认领谓词交给引擎（重叠可告警）；运行时端口不可用时 handler 返 null 穿透到下一入口
-        goalExtension.addTaskExecutor("web", SessionIdOwnership::isWeb,
+        goalExtension.addExecutor("web", SessionIdOwnership::isWeb,
                 (sessionId, prompt) -> {
                     WorkspaceRuntimePort runtime = getRuntimePort();
                     if (runtime == null) {

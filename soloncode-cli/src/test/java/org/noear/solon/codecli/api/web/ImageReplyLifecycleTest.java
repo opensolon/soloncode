@@ -992,10 +992,10 @@ class ImageReplyLifecycleTest {
                     .when(engine).getExtension(org.noear.solon.ai.harness.extension.queue.QueueExtension.class);
             doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.extension.steer.SteerExtension()))
                     .when(engine).getExtension(org.noear.solon.ai.harness.extension.steer.SteerExtension.class);
-            // 两段式中断走核心认领实现（mock 引擎上无扩展，等价于引擎 prepareInterrupt 的核心段）：
+            // 两段式中断委托给一台无扩展的真实引擎（等价于 prepareInterrupt 的核心段）：
             // mock 引擎默认返回 null 会让 interruptSession 走「无活跃流」兜底分支，测不到真实中断语义
-            doAnswer(inv -> org.noear.solon.ai.harness.session.interrupt.InterruptHelper
-                    .claim(inv.getArgument(0)))
+            HarnessEngine interrupter = bareEngine();
+            doAnswer(inv -> interrupter.prepareInterrupt(inv.getArgument(0)))
                     .when(engine).prepareInterrupt(any());
             when(engine.getSession("s1")).thenReturn(session);
             when(session.getSessionId()).thenReturn("s1");
@@ -1105,6 +1105,17 @@ class ImageReplyLifecycleTest {
             assertFalse(attrs.containsKey(ImageReplyTurn.ATTR));
             
             assertFalse(attrs.containsKey(HostAttrs.ATTR_REPLY_ROUTE));
+        }
+    }
+
+    /** 无扩展的真实引擎：只提供核心中断语义（认领 + 提交），供 mock 引擎委托。 */
+    private static HarnessEngine bareEngine() {
+        try {
+            return HarnessEngine.of(Files.createTempDirectory("irq-ws").toString(), null)
+                    .sessionProvider(org.noear.solon.ai.agent.session.InMemoryAgentSession::of)
+                    .build();
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
         }
     }
 }

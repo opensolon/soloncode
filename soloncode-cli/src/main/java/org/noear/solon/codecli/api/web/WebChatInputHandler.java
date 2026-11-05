@@ -17,20 +17,20 @@ package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.harness.session.interrupt.InterruptPlan;
+import org.noear.solon.ai.harness.turn.InterruptPlan;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.session.InputGate;
-import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
-import org.noear.solon.ai.harness.input.CommandContextFactory;
-import org.noear.solon.ai.harness.input.AdmitDecision;
+import org.noear.solon.ai.harness.turn.InputGate;
+import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
+import org.noear.solon.ai.harness.command.CommandContextFactory;
+import org.noear.solon.ai.harness.turn.AdmitDecision;
 import org.noear.solon.ai.harness.input.HarnessInput;
-import org.noear.solon.ai.harness.input.HitlCard;
+import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
-import org.noear.solon.ai.harness.input.ParsedCommand;
-import org.noear.solon.ai.harness.runtime.RoundResult;
+import org.noear.solon.ai.harness.command.ParsedCommand;
+import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
 import org.noear.solon.ai.harness.extension.steer.SteerResult;
 import org.noear.solon.ai.harness.extension.steer.SteerStatus;
 import org.noear.solon.codecli.channel.ImMessages;
@@ -39,7 +39,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
-import org.noear.solon.ai.harness.session.TurnDispatch;
+import org.noear.solon.ai.harness.turn.TurnDispatch;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
@@ -536,7 +536,7 @@ class WebChatInputHandler {
         }
 
         AtomicReference<Throwable> error = new AtomicReference<>();
-        RoundResult result = gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome, error);
+        GoalRoundResult result = gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome, error);
         if (error.get() != null) {
             Throwable e = error.get();
             return LoopOutcome.failed(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
@@ -552,7 +552,7 @@ class WebChatInputHandler {
      *
      * @return 本轮结果；会话繁忙或无正文时返回 null
      */
-    RoundResult safeChatInputAndCaptureRound(WorkspaceContext wsContext, String sessionId, String input, String source) {
+    GoalRoundResult safeChatInputAndCaptureRound(WorkspaceContext wsContext, String sessionId, String input, String source) {
         AgentSession session;
         try {
             // 使用用户隔离的会话管理器：由 Loop 调度器调用，
