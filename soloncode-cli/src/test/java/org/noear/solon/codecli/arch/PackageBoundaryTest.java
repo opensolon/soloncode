@@ -212,7 +212,8 @@ class PackageBoundaryTest {
      * <ul>
      *   <li>禁止 {@code import QueueHelper}（内核静态类，仅门面与测试使用）；</li>
      *   <li>禁止从会话 attrs 里取 {@code QueueItem} 再强转（领取应由 {@code QueueClaim} 携带）；</li>
-     *   <li>禁止硬编码 {@code GoalEngine.KEY_GOAL} 或投影字段名（读写走 {@code GoalProjection}）；</li>
+ *   <li>禁止硬编码 goal 投影键或投影字段名（读写走 {@code GoalProjection}）；</li>
+ *   <li>禁止引用插件属性键登记表 {@code QueueAttrs}/{@code GoalAttrs}/{@code SteerAttrs}（插件内部契约）；</li>
      *   <li>禁止把 {@code QueueItem.toMap()}（持久化投影）当对外 API（应用 {@code QueueItemView}）；</li>
      *   <li>禁止引用 {@code SteerHelper}（含全限定名）或硬编码 steer 内部 attrs 键
      *       （steer 只经 {@code SteerExtension} 门面，消息协议经 {@code SteerMessages}）；</li>
@@ -233,13 +234,19 @@ class PackageBoundaryTest {
             if (content.contains("instanceof QueueItem") || content.contains("(QueueItem)")) {
                 violations.add(name + " 从 attrs 强转 QueueItem（应由 QueueClaim 携带领域对象）");
             }
-            if (content.contains("GoalEngine.KEY_GOAL")) {
+            if (content.contains("GoalEngine.KEY_GOAL") || content.contains("\"session.goal")) {
                 violations.add(name + " 硬编码 goal 投影键（应使用 GoalProjection）");
+            }
+            // 插件会话属性键登记表只供插件自身与文档使用：宿主一律经门面 / 投影 / engine.status 读取
+            for (String attrs : new String[]{"QueueAttrs.", "GoalAttrs.", "SteerAttrs."}) {
+                if (content.contains(attrs)) {
+                    violations.add(name + " 直接读写插件属性键 " + attrs + "（应经门面、投影或 engine.status 的事实键）");
+                }
             }
             if (content.contains("SteerHelper")) {
                 violations.add(name + " 直接依赖内核 SteerHelper（应经 SteerExtension 门面）");
             }
-            for (String key : new String[]{"\"harness.steer\"", "\"harness.steerBox\"", "\"harness.activeRunId\"",
+            for (String key : new String[]{"\"session.steer\"", "\"harness.steer\"", "\"harness.steerBox\"", "\"harness.activeRunId\"",
                     "\"web.steerBox\"", "\"web.activeRunId\""}) {
                 if (content.contains(key)) {
                     violations.add(name + " 硬编码 steer 内部 attrs 键 " + key + "（宿主不应读写）");

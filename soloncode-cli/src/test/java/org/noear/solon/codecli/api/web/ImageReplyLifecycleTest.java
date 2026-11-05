@@ -992,10 +992,10 @@ class ImageReplyLifecycleTest {
                     .when(engine).getExtension(org.noear.solon.ai.harness.session.queue.QueueExtension.class);
             doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.session.steer.SteerExtension()))
                     .when(engine).getExtension(org.noear.solon.ai.harness.session.steer.SteerExtension.class);
-            // 两段式中断走引擎真实实现（与 CLI/Web 生产路径一致）：mock 引擎默认返回 null 会让
-            // interruptSession 走「无活跃流」兜底分支，测不到真实中断语义
+            // 两段式中断走核心认领实现（mock 引擎上无扩展，等价于引擎 prepareInterrupt 的核心段）：
+            // mock 引擎默认返回 null 会让 interruptSession 走「无活跃流」兜底分支，测不到真实中断语义
             doAnswer(inv -> org.noear.solon.ai.harness.session.interrupt.InterruptHelper
-                    .prepareInterrupt(inv.getArgument(0)))
+                    .claim(inv.getArgument(0)))
                     .when(engine).prepareInterrupt(any());
             when(engine.getSession("s1")).thenReturn(session);
             when(session.getSessionId()).thenReturn("s1");

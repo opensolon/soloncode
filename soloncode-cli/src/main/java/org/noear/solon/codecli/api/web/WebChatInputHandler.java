@@ -107,8 +107,11 @@ class WebChatInputHandler {
             if (admit.getKind() == AdmitDecision.Kind.REJECT) {
                 gate.emitToClient(wsContext, sessionId,
                         WebEvent.ofError(admit.getRejectReason(), admit.getRejectDetail()));
-                // 来源端（IM）也要知道本轮未受理，否则只能盲等。
-                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.HITL_PENDING,
+                // 来源端（IM）也要知道本轮未受理，否则只能盲等。拒因有两种（hitl_pending / busy），
+                // 只有前者是「待审批」；busy 只在引擎没装积压能力时出现，按普通拒收回报。
+                ImStatus rejectStatus = "hitl_pending".equals(admit.getRejectReason())
+                        ? ImStatus.HITL_PENDING : ImStatus.REJECTED;
+                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, rejectStatus,
                         null, source, sourceUserId, replyTarget, messageId);
                 // 必须有终态包：前端在 POST 之前就把 isStreaming 置真，只有 system.done 会复位，
                 // system.error 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态
@@ -118,7 +121,7 @@ class WebChatInputHandler {
                 return;
             }
 
-            if (admit.getKind() == AdmitDecision.Kind.QUEUE) {
+            if (admit.getKind() == AdmitDecision.Kind.DEFER) {
                 // 入队参数仍是宿主域概念（推理强度 / 思考模式），故 enqueue 留在宿主。
                 if (attachments != null && attachments.length > 0) {
                     throw new IllegalStateException("Attachments cannot be queued while session is busy");
@@ -137,10 +140,10 @@ class WebChatInputHandler {
 
             // 忙态旁路命令是旁路操作，不能改写正在运行任务的回复目标。
             boolean sideCommand = admit.getKind() == AdmitDecision.Kind.ADMIT_BYPASS
-                    && admit.isQueueDispatch() == false;
+                    && admit.isDispatched() == false;
             if (!sideCommand) {
                 // 派发轮次沿用派发事务的来源（NONE = 没有可用来源，与旧 getItem()==null 同义）
-                TurnDispatch turn = admit.isQueueDispatch() ? admit.getDispatch() : null;
+                TurnDispatch turn = admit.isDispatched() ? admit.getDispatch() : null;
                 if (turn != null && turn.getOrigin() != InputOrigin.NONE) {
                     setReplyRoute(session, turn.getOrigin());
                 } else {

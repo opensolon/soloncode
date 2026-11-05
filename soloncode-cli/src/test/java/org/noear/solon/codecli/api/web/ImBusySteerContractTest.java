@@ -164,7 +164,7 @@ class ImBusySteerContractTest {
         assertTrue(reject > 0, "拒收分支必须按 admit 的 REJECT 判决");
         int errorEmit = onInput.indexOf("ofError(admit.getRejectReason()", reject);
         int doneEmit = onInput.indexOf("emitDoneGuarded", reject);
-        int queueBranch = onInput.indexOf("AdmitDecision.Kind.QUEUE", reject);
+        int queueBranch = onInput.indexOf("AdmitDecision.Kind.DEFER", reject);
 
         assertTrue(errorEmit > reject, "HITL 拒收必须先给出可读错误（原因与细节取自 AdmitDecision）");
         assertTrue(doneEmit > errorEmit,

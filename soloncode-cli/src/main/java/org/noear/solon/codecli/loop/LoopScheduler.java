@@ -15,7 +15,6 @@
  */
 package org.noear.solon.codecli.loop;
 import org.noear.solon.ai.harness.runtime.ErrorClassifier;
-import org.noear.solon.ai.harness.session.SessionStatus;
 
 import org.noear.java_cron.CronUtils;
 import org.noear.snack4.Feature;
@@ -790,8 +789,8 @@ public class LoopScheduler {
     /**
      * 会话是否应跳过本轮注入。
      *
-     * <p>口径为「占用或有积压」：HITL 挂起时没有活跃流但注入会顶掉未决审批，
-     * 必须算占用；队列压着任务时注入等于插队，也一并跳过。</p>
+     * <p>口径为引擎的 {@code isIdle}（占用或有积压即不空闲）：HITL 挂起时没有活跃流但注入会顶掉
+     * 未决审批，必须算占用；积压压着任务时注入等于插队，也一并跳过。</p>
      *
      * <p><b>与 goal 的差异（故意的）</b>：会话不存在时这里返回 false（不跳过），
      * 而 goal 返回 true。原因是 loop 的 {@code auto-*} 任务可能对应尚未实例化的会话，
@@ -803,8 +802,7 @@ public class LoopScheduler {
             if (session == null) {
                 return false;
             }
-            SessionStatus status = engine.status(session);
-            return status != null && (status.isOccupied() || status.getQueuedCount() > 0);
+            return engine.isIdle(session) == false;
         } catch (Throwable e) {
             LOG.debug("[Loop] status check failed for session '{}': {}", sessionId, e.getMessage());
             return false;
