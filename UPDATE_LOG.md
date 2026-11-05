@@ -1,5 +1,18 @@
 
 ### vNEXT
+* **goal 宿主 DX 收口：停等 / 展示正文 / 执行器注册 / 恢复四类样板收敛进门面**（配套 harness 新增 6 组 API + soloncode-cli 迁移）:
+  * **背景**：goal 内核本身封装得好（宿主理论上只碰 `GoalExtension`），但宿主侧仍有大量胶水——`pause + interrupt + 轮询等停` 的 `for` 循环在 Web（20ms×200）与桌面（10ms×200）**各复制一份**；`GoalSpec` 发布后宿主零采用，创建路径仍写 `Math.multiplyExact(minutes, 60_000L)`；桌面端 `attach(执行正文)` → `setCondition(展示正文)` → `commit` 会广播一次携带附件全文的中间态；三处执行器注册都要 `getGoalEngine().addTaskExecutor(...)` 且认领谓词各自内联
+  * **harness 新增（全部增量，零签名变更）**：
+    * `GoalEngine.awaitRoundStopped(session, timeoutMs)` + `runRound` finally 内 `attrs().notifyAll()`——**锁对象与 CAS 段、清除段完全同一把锁**（`attrs()` 返回稳定实例），唯一清除 `ATTR_RUNNING` 的地方就在该 finally 内，故不存在漏唤醒；取代宿主轮询
+    * `GoalExtension.awaitRoundStopped(session|sessionId, timeoutMs)`、`pauseAndAwait(session, gs, interrupter, timeoutMs)`——顺序固定 `pause → 中断 → 停等`（先摘调度再中断，避免中断后立刻被拉起一轮）；中断动作仍由宿主注入（停流是宿主运行时职责）
+    * `GoalEngine.attach(..., displayObjective, ...)` / `GoalExtension.attach(spec, displayObjective)` / `attachAndSchedule(spec, displayObjective)`——执行正文与展示正文分离，**同一临界区内一次落盘、只广播一次**
+    * `GoalExtension.addTaskExecutor(handler)` 门面直通（返回 `this` 可链式；注册多个时打 debug 提示认领顺序）
+    * `GoalExtension.recoverActiveSchedules(sessionIds, statusReader)`——枚举交宿主（目录布局是存储细节）、挂接语义归门面（仅活跃态、`runNow=false`、幂等、返回挂接数）
+    * `pause/resume/clear/update` 的 `(sessionId)` 与 `(sessionId, taskId)` 重载（`taskId` 不匹配返回 false，适合混合任务列表分流）
+  * **宿主迁移（soloncode-cli）**：`LoopWebController`/`DesktopGoalController` 两处轮询循环删除 → `pauseAndAwait`；创建路径全部改 `GoalSpec`（`Math.multiplyExact` 清零）；`WsGate.startGoalStream` 的「先建后改」三行删除 → `attach(spec, displayedObjective)`；三处执行器注册改走门面，认领谓词集中到新建的 `session/SessionIdOwnership`（CLI=`cli`、Web=`web-|auto-`、桌面=`[0-9]{1,18}`，`DesktopSessionIds.isValid` 改为委托它）；`WebGoalRecovery` 30 行收敛为一次 `recoverActiveSchedules` 调用；控制器读/控路径改 `stateOf`/`find`/`(sessionId,taskId)` 重载
+  * **护栏升级**（`InjectedRoundChannelContractTest` 4 → 5 例）：注册点断言改指向门面；新增 `hostDoesNotReimplementGoalFacadeSamples`——全源码禁 `getGoalEngine().addTaskExecutor`、`goal.running(goal.sessionOf`、`Math.multiplyExact(maxDurationMinutes`，防止样板回潮
+  * **验证**：harness `GoalExtensionTest` 12 → 20 例全绿（停等即时返回/被唤醒/超时、`pauseAndAwait` 顺序、展示正文单次广播、执行器门面直通、String 重载、恢复空安全）；harness 全量 **890 例 33F+5E**、cli 全量 **1255 例 3F**，均与基线逐项一致（新增用例为净增量，无回归）
+
 * **queue 消费协议迁移：同步收口内核化，CLI/Web 回调改返回值语义，goal 恢复职责归位**（配合 harness 同批改造）:
   * **`CliShell.drainCliQueue`**：删掉「ack 失败必须抛异常」的手写铁律（那条只活在注释里的陷阱：丢弃 `acknowledge()` 返回值编译照过，Stop 被静默击败、任务无限重跑），回调只剩 `handleInput` + `return true`——收口、回滚、循环终止全部归内核。`acknowledge` 一词从宿主代码中消失
   * **`WebQueueDispatcher.drainSessionQueue`**：`return !isBusy(session)` 替代「isBusy 反推同步完成 + 手动 `settleDispatch(session, true)`」——同步命令（如 /status）回调返回时不忙 → true → 内核当场收口；异步 Agent 流必然忙 → false → claim 由流终态收口。忙态从「调收口 API 的依据」降为「报告状态」，不再可写出悬挂 claim

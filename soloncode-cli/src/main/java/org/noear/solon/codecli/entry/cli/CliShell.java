@@ -43,6 +43,7 @@ import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
+import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.ai.harness.runtime.RoundResult;
@@ -208,9 +209,9 @@ public class CliShell implements Runnable {
         // 与 loop 同口径（主线程阻塞于 readLine 时在调度线程代跑一轮、结束后 raise(INT) 让提示符重现），
         // 区别是必须返回 RoundResult：null 表示「本入口不认领」，失败必须显式携带文本。
         GoalExtension goal = engine.getExtension(GoalExtension.class).orElse(null);
-        if (goal != null && goal.getGoalEngine() != null) {
-            goal.getGoalEngine().addTaskExecutor((sessionId, prompt) -> {
-                if (SESSION_ID_CLI.equals(sessionId) == false) {
+        if (goal != null) {
+            goal.addTaskExecutor((sessionId, prompt) -> {
+                if (!SessionIdOwnership.isCli(sessionId)) {
                     return null;
                 }
                 return runInjectedRound(session, prompt);

@@ -34,6 +34,7 @@ public final class DesktopSessionIds {
      * @return true 表示合法（非空且为 1~18 位纯数字）
      */
     public static boolean isValid(String value) {
-        return value != null && value.matches("[0-9]{1,18}");
+        // 归属规则单点在 SessionIdOwnership（与 goal 执行器认领、WsGate 校验同源）
+        return org.noear.solon.codecli.session.SessionIdOwnership.isDesktop(value);
     }
 }

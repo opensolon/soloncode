@@ -49,6 +49,8 @@ class GoalLoopEndpointTest {
         when(context.getGoalExtension()).thenReturn(goal);
         when(goal.sessionOf(SESSION)).thenReturn(session);
         when(goal.state(session)).thenReturn(state);
+        when(goal.stateOf(SESSION)).thenReturn(state);
+        when(goal.find(SESSION, TASK_ID)).thenReturn(state);
         when(state.getId()).thenReturn(TASK_ID);
 
         controller = new LoopWebController(manager);
@@ -65,8 +67,9 @@ class GoalLoopEndpointTest {
         Result result = controller.loopGoalPause(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
-        // 调度摘除由 pause 门面内含，控制器不得再单独操作调度器
-        verify(goal).pause(session, state);
+        // 调度摘除由 pause 门面内含，控制器不得再单独操作调度器；
+        // 且走 sessionId+taskId 重载：控制器不再自行解析会话与比对 taskId
+        verify(goal).pause(SESSION, TASK_ID);
     }
 
     @Test
@@ -76,7 +79,7 @@ class GoalLoopEndpointTest {
         Result result = controller.loopGoalPause(SESSION, TASK_ID);
 
         assertEquals(400, result.getCode());
-        verify(goal, never()).pause(any(), any());
+        verify(goal, never()).pause(anyString(), anyString());
     }
 
     @Test
@@ -84,19 +87,19 @@ class GoalLoopEndpointTest {
         Result result = controller.loopGoalPause(SESSION, "not-mine");
 
         assertEquals(404, result.getCode());
-        verify(goal, never()).pause(any(), any());
+        verify(goal, never()).pause(anyString(), anyString());
     }
 
     @Test
     void resumeEndpointResumesThroughFacade() {
         status(GoalState.Status.PAUSED);
-        when(goal.resume(session, state)).thenReturn(true);
+        when(goal.resume(SESSION, TASK_ID)).thenReturn(true);
 
         Result result = controller.loopGoalResume(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
         // 调度恢复（runNow=true）由 resume 门面内含
-        verify(goal).resume(session, state);
+        verify(goal).resume(SESSION, TASK_ID);
     }
 
     @Test
@@ -106,19 +109,16 @@ class GoalLoopEndpointTest {
         Result result = controller.loopGoalResume(SESSION, TASK_ID);
 
         assertEquals(400, result.getCode());
-        verify(goal, never()).resume(any(), any());
+        verify(goal, never()).resume(anyString(), anyString());
     }
 
     @Test
     void clearEndpointClearsThroughFacade() {
-        when(goal.find(SESSION, TASK_ID)).thenReturn(state);
-        when(goal.sessionOf(SESSION)).thenReturn(session);
-
         Result result = controller.loopGoalClear(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
         // 先摘调度再清状态由 clear 门面内含
-        verify(goal).clear(session);
+        verify(goal).clear(SESSION);
         verify(context, never()).getGoalScheduler();
     }
 
@@ -129,31 +129,31 @@ class GoalLoopEndpointTest {
         Result result = controller.loopGoalClear(SESSION, TASK_ID);
 
         assertEquals(404, result.getCode());
-        verify(goal, never()).clear(any());
+        verify(goal, never()).clear(anyString());
     }
 
     @Test
     void togglePausesPursuingGoalThroughFacade() {
         status(GoalState.Status.PURSUING);
-        when(goal.pause(session, state)).thenReturn(true);
+        when(goal.pause(SESSION, TASK_ID)).thenReturn(true);
 
         Result result = controller.loopToggle(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
-        verify(goal).pause(session, state);
-        verify(goal, never()).resume(any(), any());
+        verify(goal).pause(SESSION, TASK_ID);
+        verify(goal, never()).resume(anyString(), anyString());
     }
 
     @Test
     void toggleResumesResumableGoalThroughFacade() {
         status(GoalState.Status.PAUSED);
-        when(goal.resume(session, state)).thenReturn(true);
+        when(goal.resume(SESSION, TASK_ID)).thenReturn(true);
 
         Result result = controller.loopToggle(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
-        verify(goal).resume(session, state);
-        verify(goal, never()).pause(any(), any());
+        verify(goal).resume(SESSION, TASK_ID);
+        verify(goal, never()).pause(anyString(), anyString());
     }
 
     @Test
@@ -163,8 +163,8 @@ class GoalLoopEndpointTest {
         Result result = controller.loopToggle(SESSION, TASK_ID);
 
         assertEquals(400, result.getCode());
-        verify(goal, never()).pause(any(), any());
-        verify(goal, never()).resume(any(), any());
+        verify(goal, never()).pause(anyString(), anyString());
+        verify(goal, never()).resume(anyString(), anyString());
     }
 
     @Test

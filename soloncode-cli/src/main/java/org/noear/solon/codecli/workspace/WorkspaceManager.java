@@ -34,6 +34,7 @@ import org.noear.solon.codecli.config.entity.*;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
+import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.util.JdkHomeUtil;
@@ -998,12 +999,12 @@ public class WorkspaceManager implements WorkspaceRegistry {
      * 而不是往会话 attrs 写一份旁路数据。</p>
      */
     private void registerWebGoalExecutor(GoalExtension goalExtension, String workspaceId) {
-        if (goalExtension == null || goalExtension.getGoalEngine() == null) {
+        if (goalExtension == null) {
             return;
         }
 
-        goalExtension.getGoalEngine().addTaskExecutor((sessionId, prompt) -> {
-            if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
+        goalExtension.addTaskExecutor((sessionId, prompt) -> {
+            if (!SessionIdOwnership.isWeb(sessionId)) {
                 return null;
             }
             WorkspaceRuntimePort runtime = getRuntimePort();

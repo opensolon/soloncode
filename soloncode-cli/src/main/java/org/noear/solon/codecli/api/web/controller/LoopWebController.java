@@ -22,6 +22,7 @@ import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
+import org.noear.solon.ai.harness.session.goal.GoalSpec;
 import org.noear.solon.ai.harness.session.goal.GoalState;
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.loop.LoopTask;
@@ -111,14 +112,13 @@ public class LoopWebController extends AbstractWebController {
         if (goal == null) {
             return null;
         }
-        AgentSession session = goal.sessionOf(sessionId);
-        GoalState gs = session == null ? null : goal.state(session);
+        GoalState gs = goal.stateOf(sessionId);
         if (gs == null) {
             return null;
         }
 
         // 与定时任务同构的展示 Map 由 GoalEngine 统一产出（字段契约单点维护）
-        Map<String, Object> item = goal.toTaskMap(session, gs);
+        Map<String, Object> item = goal.toTaskMap(goal.sessionOf(sessionId), gs);
         item.put("intervalMinutes", 0);
         item.put("enabled", gs.getStatus().isActive());
         item.put("cancelled", gs.getStatus().isTerminal());
@@ -142,10 +142,10 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(404, "Session not found");
         }
         try {
-            GoalState gs = goal.attachAndSchedule(session, prompt.trim(),
-                    maxTokens != null ? maxTokens : 0L,
-                    maxDurationMs != null ? maxDurationMs : 0L,
-                    0);
+            GoalState gs = goal.attachAndSchedule(session, GoalSpec.of(prompt)
+                    .maxTokens(maxTokens != null ? maxTokens : 0L)
+                    .maxDurationMs(maxDurationMs != null ? maxDurationMs : 0L)
+                    .maxIterations(0));
             return Result.succeed(gs.getId());
         } catch (IllegalStateException e) {
             // 单槽语义：已有活跃/可恢复 goal
@@ -163,26 +163,17 @@ public class LoopWebController extends AbstractWebController {
         if (gs.getStatus().isTerminal()) {
             return Result.failure(409, "已完成的 Goal 不能编辑，请先清除");
         }
-        // 编辑前先停住旧轮次，对齐桌面版 pause → interrupt → 等停 → update → resume 的时序
+        // 编辑前先停住旧轮次：pause → 中断 → 停等三连由门面一步完成
         boolean resumeAfterUpdate = gs.getStatus().isActive();
         GoalExtension goal = currentContext().getGoalExtension();
         if (resumeAfterUpdate) {
-            // pause 门面内含 unschedule 配对
-            goal.pause(session, gs);
-            // 中断在跑的轮次，否则旧目标会继续跑并回写覆盖刚改的配置
-            if (runtimePort() != null) {
-                runtimePort().interruptSession(currentContext(), session.getSessionId());
+            Runnable interrupter = runtimePort() == null ? null
+                    : () -> runtimePort().interruptSession(currentContext(), session.getSessionId());
+            if (!goal.pauseAndAwait(session, gs, interrupter, 2000L)) {
+                return Result.failure(409, "Goal is still stopping; please retry");
             }
             if (gs.getStatus() != GoalState.Status.PAUSED) {
                 return Result.failure(409, "Goal state changed before settings could be applied");
-            }
-            for (int attempt = 0; goal.running(session) && attempt < 200; attempt++) {
-                try {
-                    Thread.sleep(20);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
             }
         }
         try {
@@ -543,9 +534,8 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        AgentSession session = goal == null ? null : goal.sessionOf(sessionId);
-        GoalState gs = session == null ? null : goal.state(session);
-        if (gs == null || !taskId.equals(gs.getId())) {
+        GoalState gs = goal == null ? null : goal.find(sessionId, taskId);
+        if (gs == null) {
             return Result.failure(404, "Task not found");
         }
         if (gs.getStatus() != GoalState.Status.PURSUING) {
@@ -553,7 +543,7 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // pause 门面内含 unschedule 配对，不再手工摘 job
-        goal.pause(session, gs);
+        goal.pause(sessionId, taskId);
         return Result.succeed();
     }
 
@@ -572,9 +562,8 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        AgentSession session = goal == null ? null : goal.sessionOf(sessionId);
-        GoalState gs = session == null ? null : goal.state(session);
-        if (gs == null || !taskId.equals(gs.getId())) {
+        GoalState gs = goal == null ? null : goal.find(sessionId, taskId);
+        if (gs == null) {
             return Result.failure(404, "Task not found");
         }
         if (gs.getStatus() != GoalState.Status.PAUSED && gs.getStatus() != GoalState.Status.BLOCKED) {
@@ -583,7 +572,7 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // resume 门面内含 schedule(runNow=true) 配对
-        goal.resume(session, gs);
+        goal.resume(sessionId, taskId);
         return Result.succeed();
     }
 
@@ -608,7 +597,7 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // clear 门面内含「先 unschedule 再 clear」
-        goal.clear(goal.sessionOf(sessionId));
+        goal.clear(sessionId);
         return Result.succeed();
     }
 
@@ -661,10 +650,9 @@ public class LoopWebController extends AbstractWebController {
 
         // goal 分流：列表中 goal 行的 id 即 GoalState.id
         GoalExtension goal = currentContext().getGoalExtension();
-        AgentSession gsSession = goal == null ? null : goal.sessionOf(sessionId);
-        GoalState gs = gsSession == null ? null : goal.state(gsSession);
-        if (gs != null && taskId.equals(gs.getId())) {
-            goal.clear(gsSession);
+        GoalState gs = goal == null ? null : goal.find(sessionId, taskId);
+        if (gs != null) {
+            goal.clear(sessionId);
             return Result.succeed();
         }
 
@@ -693,17 +681,16 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        AgentSession gsSession = goal == null ? null : goal.sessionOf(sessionId);
-        GoalState gs = gsSession == null ? null : goal.state(gsSession);
-        if (gs != null && taskId.equals(gs.getId())) {
+        GoalState gs = goal == null ? null : goal.find(sessionId, taskId);
+        if (gs != null) {
             if (gs.getStatus() == GoalState.Status.PURSUING) {
                 // pause 门面内含 unschedule 配对
-                if (!goal.pause(gsSession, gs)) {
+                if (!goal.pause(sessionId, taskId)) {
                     return Result.failure(400, "Goal cannot be paused in state: " + gs.getStatus());
                 }
             } else if (gs.getStatus().isResumable()) {
                 // resume 门面内含 schedule(runNow=true) 配对
-                if (!goal.resume(gsSession, gs)) {
+                if (!goal.resume(sessionId, taskId)) {
                     return Result.failure(400, "Goal cannot be resumed in state: " + gs.getStatus());
                 }
             } else {
@@ -731,13 +718,13 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        AgentSession gsSession = goal == null ? null : goal.sessionOf(sessionId);
-        GoalState gs = gsSession == null ? null : goal.state(gsSession);
-        if (gs != null && taskId.equals(gs.getId())) {
+        GoalState gs = goal == null ? null : goal.find(sessionId, taskId);
+        if (gs != null) {
             if (!gs.getStatus().isActive()) {
                 return Result.failure(400, "Goal is not active: " + gs.getStatus());
             }
-            goal.runRoundAsync(gsSession);
+            // 轮次执行仍需会话实例（runRoundAsync 的入参），故此处保留 sessionOf
+            goal.runRoundAsync(goal.sessionOf(sessionId));
             return Result.succeed();
         }
 

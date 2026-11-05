@@ -56,14 +56,57 @@ public class InjectedRoundChannelContractTest {
      */
     @Test
     void everyEntryRegistersGoalExecutorOnGoalEngineChannel() throws IOException {
+        // 注册统一走 GoalExtension 门面（addTaskExecutor），宿主不再绕行 getGoalEngine()；
+        // 认领谓词统一引用 SessionIdOwnership，避免三处内联正则互不知情而抢跑会话。
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "goal.getGoalEngine().addTaskExecutor", "CLI 未向 GoalEngine 注册执行器（/goal 将没有过程输出）");
+                "goal.addTaskExecutor", "CLI 未向 GoalEngine 注册执行器（/goal 将没有过程输出）");
+        assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
+                "SessionIdOwnership.isCli", "CLI 认领谓词必须集中到 SessionIdOwnership");
 
         assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "getGoalEngine().addTaskExecutor", "Web 未向 GoalEngine 注册执行器（/goal 将没有过程输出）");
+                "goalExtension.addTaskExecutor", "Web 未向 GoalEngine 注册执行器（/goal 将没有过程输出）");
+        assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
+                "SessionIdOwnership.isWeb", "Web 认领谓词必须集中到 SessionIdOwnership");
 
         assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
-                "getGoalEngine().addTaskExecutor", "桌面未向 GoalEngine 注册执行器（goal 轮次将不再推流）");
+                "goal.addTaskExecutor", "桌面未向 GoalEngine 注册执行器（goal 轮次将不再推流）");
+        assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
+                "SessionIdOwnership.isDesktop", "桌面认领谓词必须集中到 SessionIdOwnership");
+    }
+
+    /**
+     * 宿主不得再绕门面直接操作 GoalEngine 的执行通道，也不得自行轮询等停。
+     *
+     * <p>三条禁令各自对应一处曾经复制粘贴的样板：</p>
+     * <ul>
+     *   <li>{@code getGoalEngine().addTaskExecutor} → 用 {@code GoalExtension.addTaskExecutor}；</li>
+     *   <li>{@code while (goal.running(...)) sleep} → 用 {@code pauseAndAwait}/{@code awaitRoundStopped}；</li>
+     *   <li>{@code Math.multiplyExact(x, 60_000L)} → 用 {@code GoalSpec.maxDuration(Duration.ofMinutes(x))}。</li>
+     * </ul>
+     */
+    @Test
+    void hostDoesNotReimplementGoalFacadeSamples() throws IOException {
+        List<String> forbidden = java.util.Arrays.asList(
+                "getGoalEngine().addTaskExecutor",
+                "goal.running(goal.sessionOf",
+                "Math.multiplyExact(maxDurationMinutes");
+
+        try (java.util.stream.Stream<Path> files = java.nio.file.Files.walk(SRC)) {
+            List<Path> javaFiles = files.filter(p -> p.toString().endsWith(".java"))
+                    .collect(java.util.stream.Collectors.toList());
+            for (Path file : javaFiles) {
+                for (String line : java.nio.file.Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    String trimmed = line.trim();
+                    if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                        continue;
+                    }
+                    for (String bad : forbidden) {
+                        assertTrue(!trimmed.contains(bad),
+                                "宿主重复实现了 goal 门面已提供的能力：" + bad + "（文件：" + file + "）");
+                    }
+                }
+            }
+        }
     }
 
     /**

@@ -29,11 +29,12 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
-import org.noear.solon.ai.harness.session.goal.GoalState;
+import org.noear.solon.ai.harness.session.goal.GoalSpec;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -45,6 +46,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -103,14 +105,12 @@ public class WsGate extends SimpleWebSocketListener {
             goal.addListener(goalBroadcaster::onGoalChanged);
             // 桌面端 Goal 轮次经 GoalEngine 自己的执行通道回推（不再有跨域共享桥）；
             // 忙判定由会话快照派生（SessionStatus.isOccupied），无需宿主注入谓词。
-            if (goal.getGoalEngine() != null) {
-                goal.getGoalEngine().addTaskExecutor((sessionId, prompt) -> {
-                    if (!sessionId.matches("[0-9]{1,18}")) {
-                        return null;
-                    }
-                    return runGoalRoundAndCapture(sessionId, prompt);
-                });
-            }
+            goal.addTaskExecutor((sessionId, prompt) -> {
+                if (!SessionIdOwnership.isDesktop(sessionId)) {
+                    return null;
+                }
+                return runGoalRoundAndCapture(sessionId, prompt);
+            });
         }
     }
 
@@ -194,7 +194,7 @@ public class WsGate extends SimpleWebSocketListener {
         if (goal == null || !goal.hasScheduler()) {
             throw new IllegalStateException("Goal service is unavailable");
         }
-        if (Assert.isEmpty(sessionId) || !sessionId.matches("[0-9]{1,18}")) {
+        if (Assert.isEmpty(sessionId) || !SessionIdOwnership.isDesktop(sessionId)) {
             throw new IllegalArgumentException("Invalid Session ID");
         }
         String displayedObjective = Assert.isNotEmpty(req.getGoalObjective())
@@ -216,15 +216,14 @@ public class WsGate extends SimpleWebSocketListener {
         goalBroadcaster.clearCompleted(sessionId);
         streamHub.begin(sessionId, socket);
 
-        // attach 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径
-        GoalState gs = goal.attach(session, effectiveObjective,
-                maxTokens != null ? maxTokens : 0L,
-                maxDurationMinutes != null ? Math.multiplyExact(maxDurationMinutes, 60_000L) : 0L,
-                maxIterations != null ? maxIterations : 0);
-        if (!displayedObjective.equals(effectiveObjective)) {
-            gs.setCondition(displayedObjective);
-            goal.commit(session, gs);
-        }
+        // attach 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径。
+        // 执行正文（含附件）与展示正文分离：一次成型、只广播一次，不会把附件全文推送成中间态。
+        goal.attach(session, GoalSpec.of(effectiveObjective)
+                        .maxTokens(maxTokens != null ? maxTokens : 0L)
+                        .maxDuration(maxDurationMinutes != null
+                                ? Duration.ofMinutes(maxDurationMinutes) : null)
+                        .maxIterations(maxIterations != null ? maxIterations : 0),
+                displayedObjective);
         // 只挂 job 不立即跑（会话流已由 startGoalStream 自己驱动首轮，与 Web 端 createGoal 的 runNow=true 不同）
         goal.resumeScheduleOnly(sessionId);
     }

@@ -27,6 +27,8 @@ import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 进程重启后恢复快照中的活跃 goal 调度。
@@ -56,27 +58,32 @@ final class WebGoalRecovery {
 
         Path root = wsContext.getSessionsRoot();
         if (root == null || !Files.isDirectory(root)) return;
-        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
-            for (Path dir : dirs) {
-                if (!Files.isDirectory(dir)) continue;
-                String sessionId = dir.getFileName().toString();
+        try {
+            // 先枚举会话 ID（目录布局是宿主存储细节），挂接语义交给门面：
+            // 仅活跃态才挂、终态/PAUSED/BLOCKED 跳过、已调度幂等跳过。
+            List<String> sessionIds = new ArrayList<>();
+            try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
+                for (Path dir : dirs) {
+                    if (Files.isDirectory(dir)) {
+                        sessionIds.add(dir.getFileName().toString());
+                    }
+                }
+            }
 
+            int recovered = goal.recoverActiveSchedules(sessionIds, sessionId -> {
+                Path dir = root.resolve(sessionId);
                 // 内存会话优先（与写侧同源）；未实例化则轻读投影状态，不把会话带进内存
                 AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
                 if (inMemory != null) {
                     GoalState gs = goal.state(inMemory);
-                    if (gs != null && gs.getStatus().isActive()) {
-                        // 恢复期只挂 job，不能立即跑一轮（resume() 是 runNow=true）
-                        goal.resumeScheduleOnly(sessionId);
-                    }
-                    continue;
+                    return gs == null ? null : gs.getStatus();
                 }
+                return SessionSnapshots.readGoalStatus(dir, sessionId);
+            });
 
-                GoalState.Status status = SessionSnapshots.readGoalStatus(dir, sessionId);
-                if (status == null || !status.isActive()) {
-                    continue;
-                }
-                goal.resumeScheduleOnly(sessionId);
+            if (recovered > 0) {
+                LOG.info("[WebGate] resumed {} active goal(s) for workspace {}",
+                        recovered, wsContext.getMeta().getId());
             }
         } catch (IOException e) {
             LOG.warn("[WebGate] recover session goals failed for workspace {}: {}",
