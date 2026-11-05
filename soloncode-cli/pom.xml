@@ -28,27 +28,6 @@
             <artifactId>solon-ai-harness</artifactId>
         </dependency>
 
-        <!-- harness 插件：/goal、/queue、/steer（4.2.0 起从核心独立为插件模块） -->
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-ai-harness-goal</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-ai-harness-queue</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-ai-harness-steer</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.noear</groupId>
-            <artifactId>solon-ai-harness-loop</artifactId>
-        </dependency>
-
         <dependency>
             <groupId>org.noear</groupId>
             <artifactId>soloncode-ui-extension</artifactId>
