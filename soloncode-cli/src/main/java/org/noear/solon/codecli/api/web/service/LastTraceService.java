@@ -24,7 +24,7 @@ import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
-import org.noear.solon.ai.harness.session.steer.SteerExtension;
+import org.noear.solon.ai.harness.session.steer.SteerMessages;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.ToolEndPayload;
@@ -64,7 +64,7 @@ import java.util.Map;
  * 但<b>思考仍需回放</b>（历史只存正文投影，思考会丢）。</p>
  *
  * <h3>插话（steer）</h3>
- * <p>运行中插话是零持久化的（{@link SteerExtension} 的投递链路不写 ndjson），它唯一的留存处就是
+ * <p>运行中插话是零持久化的（steer 的投递链路不写 ndjson），它唯一的留存处就是
  * WorkingMemory 里那条带 {@code source=steer} 的 UserMessage。若不回放，刷新后用户会看到
  * 「AI 忽然改了方向」却找不到自己那句纠偏。</p>
  *
@@ -79,10 +79,6 @@ public class LastTraceService {
      * 本次响应所有工具结果的合计上限（超出后续结果只保留占位）
      */
     private static final int MAX_TOTAL_CHARS = 256 * 1024;
-    /**
-     * 单条插话的最大保留字符数（与 {@link SteerExtension#maxTextLength()} 对齐）
-     */
-    private static final int MAX_STEER_CHARS = SteerExtension.maxTextLength();
     /**
      * 单段思考/正文的最大保留字符数（回放只为还原现场，不必也不该搬运整篇长文）
      */
@@ -215,12 +211,11 @@ public class LastTraceService {
                 continue;
             }
 
-            String steerText = asSteerText(msg);
+            String steerText = SteerMessages.textOf(msg);
             if (steerText != null) {
-                /* assistantSeen 才收：SteerInterceptor 的守卫 1（首轮 reason 不注入）保证插话绝不会
-                 * 排在第一条 assistant 消息之前。据此可排除两类假阳性：存量会话里已持久化到
-                 * ndjson 的旧插话行（已由历史渲染为独立 .msg-row，再回放会重复），
-                 * 以及用户真的亲手敲了一句以 STEER_PREFIX 开头的提问。 */
+                /* assistantSeen 才收：SteerMessages 的位置保证（插话只会出现在第一条 assistant 之后）
+                 * 是公开协议。据此可排除两类假阳性：存量会话里已持久化到 ndjson 的旧插话行
+                 * （已由历史渲染为独立 .msg-row，再回放会重复），以及用户亲手敲了一句以插话前缀开头的提问。 */
                 if (assistantSeen) {
                     Map<String, Object> e = new LinkedHashMap<>();
                     e.put("kind", KIND_STEER);
@@ -449,33 +444,6 @@ public class LastTraceService {
 
     private String clampSegment(String text) {
         return (text.length() > MAX_SEGMENT_CHARS) ? text.substring(0, MAX_SEGMENT_CHARS) : text;
-    }
-
-    /**
-     * 识别插话消息并还原为用户原话。
-     *
-     * <p>双判据：metadata {@code source=steer} 为主，内容前缀为兜底 —— 快照序列化
-     * 往返后 metadata 未必保留，而前缀写在正文里必存。</p>
-     *
-     * @return 非插话消息返回 {@code null}
-     */
-    private String asSteerText(ChatMessage msg) {
-        if ((msg instanceof UserMessage) == false) {
-            return null;
-        }
-
-        String content = msg.getContent();
-        if (Assert.isEmpty(content)) {
-            return null;
-        }
-
-        boolean marked = SteerExtension.isSteerMessage(msg);
-        if (marked == false) {
-            return null;
-        }
-
-        String text = SteerExtension.stripSteerPrefix(content);
-        return (text.length() > MAX_STEER_CHARS) ? text.substring(0, MAX_STEER_CHARS) : text;
     }
 
     /**

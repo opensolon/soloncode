@@ -27,6 +27,7 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.WebGate;
+import org.noear.solon.ai.harness.session.steer.SteerCancelResult;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.harness.session.steer.SteerResult;
 import org.noear.solon.ai.harness.session.steer.SteerStatus;
@@ -532,7 +533,7 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(503, "STEER_UNAVAILABLE");
         }
 
-        SteerResult result = steer.steerOnRun(session, runId, steerId, text, null);
+        SteerResult result = steer.steerOnRun(session, runId, steerId, text);
 
         return toResult(result);
     }
@@ -567,8 +568,9 @@ public class ChatWebController extends AbstractWebController {
     /**
      * 撤销一条尚未到达采样边界的运行中插话。
      *
-     * <p>只有消息仍在会话邮箱中时才返回成功；若消费线程已将其取出，则返回 NOT_PENDING，
-     * 前端保留待生效项，等待 applied/dropped 终态事件，避免把“已经生效”伪装成“删除成功”。</p>
+     * <p>只有消息仍在待生效列表时才返回成功；若消费线程已将其取出，则返回 NOT_PENDING，
+     * 前端保留待生效项，等待 applied/dropped 终态事件，避免把“已经生效”伪装成“删除成功”。
+     * steerId 校验与轮次比对均由内核（{@link SteerExtension#cancelOnRun}）完成，这里只做协议映射。</p>
      */
     @Post
     @Mapping("/web/chat/steer/cancel")
@@ -584,32 +586,8 @@ public class ChatWebController extends AbstractWebController {
             // 与 steerSession 同口径：能力缺失统一 STEER_UNAVAILABLE，前端可用同一判断识别
             return Result.failure(503, "STEER_UNAVAILABLE");
         }
-        // 上限读实例配置（SteerExtension.builder 可能放宽过），不读静态缺省常量
-        if (steerId == null || steerId.trim().isEmpty()
-                || steerId.length() > steer.getLimits().getMaxIdLength()) {
-            return Result.failure(400, "INVALID_STEER_ID");
-        }
 
-        org.noear.solon.ai.agent.AgentSession session = engine().getSession(sessionId);
-        if (session == null) {
-            return Result.failure(409, "NOT_PENDING");
-        }
-
-        // 轮次已切换时旧 steerId 已无意义，必须回 TURN_CHANGED 而不是默默成功
-        String activeRunId = steer.activeRunId(session);
-        if (runId == null || !runId.equals(activeRunId)) {
-            return Result.failure(409, "TURN_CHANGED");
-        }
-
-        if (!steer.cancel(session, steerId.trim())) {
-            return Result.failure(409, "NOT_PENDING");
-        }
-
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("status", "CANCELED");
-        data.put("steerId", steerId.trim());
-        data.put("queued", steer.pending(session).size());
-        return Result.succeed(data);
+        return toResult(steer.cancelOnRun(engine().getSession(sessionId), runId, steerId));
     }
 
     /**
@@ -641,25 +619,36 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(409, "NOT_PENDING");
         }
 
-        int canceled;
-        if (steerIds == null || steerIds.trim().isEmpty()) {
-            // 未指定 id = 清空（clearPending 只交出条目，不替宿主决定去向）
-            canceled = steer.clearPending(session).size();
-        } else {
-            java.util.List<String> ids = new java.util.ArrayList<>();
-            for (String id : steerIds.split(",")) {
-                if (id.trim().isEmpty() == false) {
-                    ids.add(id.trim());
-                }
-            }
-            canceled = steer.cancelAll(session, ids);
-        }
+        // 省略 steerIds = 清空全部；空段与前后空白由内核忽略
+        List<String> ids = (steerIds == null || steerIds.trim().isEmpty())
+                ? null : java.util.Arrays.asList(steerIds.split(","));
+        return toResult(steer.cancelPending(session, ids));
+    }
 
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("status", "CANCELED");
-        data.put("canceled", canceled);
-        data.put("queued", steer.pending(session).size());
-        return Result.succeed(data);
+    /**
+     * 插话撤销结果 → Web 应答（与投递侧 {@link #toResult(SteerResult)} 对称）。
+     *
+     * <p>应答字段保持不变：单条带 {@code steerId}，批量带 {@code canceled}，均带剩余条数 {@code queued}。</p>
+     */
+    private static Result toResult(SteerCancelResult result) {
+        switch (result.getStatus()) {
+            case CANCELED: {
+                Map<String, Object> data = new LinkedHashMap<>();
+                data.put("status", result.getStatusCode());
+                if (result.getSteerId() != null) {
+                    data.put("steerId", result.getSteerId());
+                } else {
+                    data.put("canceled", result.getCanceled());
+                }
+                data.put("queued", result.getRemaining());
+                return Result.succeed(data);
+            }
+            case INVALID_STEER_ID:
+                return Result.failure(400, result.getStatusCode());
+            default:
+                // NOT_PENDING（等待终态事件）/ TURN_CHANGED
+                return Result.failure(409, result.getStatusCode());
+        }
     }
 
     /**

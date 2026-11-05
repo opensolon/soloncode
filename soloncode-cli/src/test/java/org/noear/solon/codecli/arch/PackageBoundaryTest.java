@@ -214,8 +214,10 @@ class PackageBoundaryTest {
      *   <li>禁止从会话 attrs 里取 {@code QueueItem} 再强转（领取应由 {@code QueueClaim} 携带）；</li>
      *   <li>禁止硬编码 {@code GoalEngine.KEY_GOAL} 或投影字段名（读写走 {@code GoalProjection}）；</li>
      *   <li>禁止把 {@code QueueItem.toMap()}（持久化投影）当对外 API（应用 {@code QueueItemView}）；</li>
-     *   <li>禁止 {@code import SteerHelper} 或硬编码 {@code web.steerBox}/{@code web.activeRunId}
-     *       （steer 只经 {@code SteerExtension} 门面，内部键已迁到 {@code harness.*}）。</li>
+     *   <li>禁止引用 {@code SteerHelper}（含全限定名）或硬编码 steer 内部 attrs 键
+     *       （steer 只经 {@code SteerExtension} 门面，消息协议经 {@code SteerMessages}）；</li>
+     *   <li>禁止回退到已取消的宿主义务 / 已弃用入口：{@code beginTurn}/{@code handover}（开流前交接已由拦截器
+     *       onAgentStart 自动完成）、{@code isSteerMessage}/{@code stripSteerPrefix}/{@code maxTextLength}。</li>
      * </ul>
      */
     @Test
@@ -234,11 +236,21 @@ class PackageBoundaryTest {
             if (content.contains("GoalEngine.KEY_GOAL")) {
                 violations.add(name + " 硬编码 goal 投影键（应使用 GoalProjection）");
             }
-            if (content.contains("import org.noear.solon.ai.harness.session.steer.SteerHelper")) {
+            if (content.contains("SteerHelper")) {
                 violations.add(name + " 直接依赖内核 SteerHelper（应经 SteerExtension 门面）");
             }
-            if (content.contains("\"web.steerBox\"") || content.contains("\"web.activeRunId\"")) {
-                violations.add(name + " 硬编码 steer 内部 attrs 键（已迁移到 harness.*，宿主不应读写）");
+            for (String key : new String[]{"\"harness.steer\"", "\"harness.steerBox\"", "\"harness.activeRunId\"",
+                    "\"web.steerBox\"", "\"web.activeRunId\""}) {
+                if (content.contains(key)) {
+                    violations.add(name + " 硬编码 steer 内部 attrs 键 " + key + "（宿主不应读写）");
+                }
+            }
+            for (String legacy : new String[]{".beginTurn(", "SteerHandover", "SteerExtension.isSteerMessage",
+                    "SteerExtension.stripSteerPrefix", "SteerExtension.maxTextLength", "SteerExtension.maxIdLength"}) {
+                if (content.contains(legacy)) {
+                    violations.add(name + " 使用已弃用的 steer 入口 " + legacy
+                            + "（开流前交接已由框架完成；回放用 SteerMessages.textOf；上限读 getLimits()）");
+                }
             }
             // 队列展示必须走视图对象；GoalDataMigrator 处理的是历史 ONode，不在此列
             if (!name.equals("GoalDataMigrator.java")

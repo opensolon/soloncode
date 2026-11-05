@@ -23,7 +23,6 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
 import org.noear.solon.codecli.api.web.pipeline.ToolViewUtil;
-import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.harness.session.SessionTurn;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
@@ -71,28 +70,10 @@ class WebSessionRunner {
         gate.getEventPublisher().resetStreamDoneSent(session);
 
         if (session != null) {
-            // 新任务开流：清上一轮 runId 与残留插话邮箱。
-            // onAgentEnd 不在 finally 中（interrupt/异常路径不触发），若不在此清理，
-            // 上一任务未消费的插话会在新任务第二轮被注入，破坏方案 A 的任务级隔离。
-            // 残留不能静默丢弃（包括 HITL 挂起期间提交的插话），一律转排队并告知前端。
-            // 清邮箱 + 转排队的内部约定（两个 attrs key、短临界区）已收归 harness；
-            // beginTurn 是 handover 的语义化别名——宿主只需记住「新任务开流前 beginTurn」。
+            // 不再需要 steer 开流前交接：上一任务被 interrupt / 异常终止后的残留插话，
+            // 由 harness 在新任务 onAgentStart 自动转排队，并经 SteerDroppedEvent 进入
+            // WebEventMapper 的唯一映射分支（与任务正常结束的残留同一通道）。
             gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofResetStream());
-
-            SteerExtension steer = wsContext.getExtension(SteerExtension.class);
-            SteerExtension.SteerHandover handover = steer == null
-                    ? null : steer.beginTurn(session);
-
-            if (handover != null && handover.isEmpty() == false) {
-                if (handover.getQueued().isEmpty() == false) {
-                    gate.emitToClient(wsContext, session.getSessionId(),
-                            WebEvent.ofSteerDroppedItems(null, handover.getQueued()));
-                }
-                if (handover.getFailed().isEmpty() == false) {
-                    gate.emitToClient(wsContext, session.getSessionId(),
-                            WebEvent.ofError("插话尚未排队，已暂存；请清理队列后继续"));
-                }
-            }
         }
     }
 
