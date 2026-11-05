@@ -8,7 +8,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.tool.ToolCall;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.ai.harness.session.steer.SteerMessages;
+import org.noear.solon.ai.harness.extension.steer.SteerMessages;
 
 import java.util.ArrayList;
 import java.util.Arrays;

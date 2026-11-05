@@ -17,7 +17,7 @@ package org.noear.solon.codecli.arch;
 
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.harness.runtime.RoundResult;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
+import org.noear.solon.ai.harness.extension.goal.GoalEngine;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -184,7 +184,7 @@ public class InjectedRoundChannelContractTest {
         Class<?> port = Class.forName("org.noear.solon.codecli.workspace.WorkspaceRuntimePort");
 
         Method runLoop = port.getMethod("runLoop", String.class, String.class, String.class, String.class);
-        assertEquals(org.noear.solon.ai.harness.session.loop.LoopOutcome.class, runLoop.getReturnType(),
+        assertEquals(org.noear.solon.ai.harness.extension.loop.LoopOutcome.class, runLoop.getReturnType(),
                 "runLoop 必须回报三态结论（跳过与失败必须可区分）");
 
         Method runGoal = port.getMethod("runGoalRound", String.class, String.class, String.class, String.class);

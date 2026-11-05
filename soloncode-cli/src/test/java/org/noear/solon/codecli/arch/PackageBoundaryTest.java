@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * 宿主侧架构边界护栏。
  *
- * <p>goal 域已整体下沉 harness（{@code org.noear.solon.ai.harness.session.goal}），
+ * <p>goal 域已整体下沉 harness（{@code org.noear.solon.ai.harness.extension.goal}），
  * 对应的域内护栏随之迁移到 harness 的 {@code GoalBoundaryTest}。此处只保留
  * <b>宿主视角</b>的约束：
  * <ol>
@@ -153,7 +153,7 @@ class PackageBoundaryTest {
             if (content.contains("import org.noear.solon.codecli.goal.")) {
                 violations.add(file.getFileName().toString() + " 引入了旧 goal 包");
             }
-            if (content.contains("import org.noear.solon.ai.harness.session.goal.")) {
+            if (content.contains("import org.noear.solon.ai.harness.extension.goal.")) {
                 violations.add(file.getFileName().toString() + " 引入了 goal 域");
             }
         }
@@ -264,7 +264,7 @@ class PackageBoundaryTest {
             String name = file.getFileName().toString();
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
 
-            if (content.contains("import org.noear.solon.ai.harness.session.queue.QueueHelper")) {
+            if (content.contains("import org.noear.solon.ai.harness.extension.queue.QueueHelper")) {
                 violations.add(name + " 直接依赖内核 QueueHelper（应经 QueueExtension 门面）");
             }
             if (content.contains("instanceof QueueItem") || content.contains("(QueueItem)")) {

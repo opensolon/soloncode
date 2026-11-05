@@ -10,7 +10,7 @@ import org.noear.solon.annotation.Init;
 import org.noear.solon.annotation.Inject;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
-import org.noear.solon.ai.harness.session.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.codecli.api.web.*;
 import org.noear.solon.codecli.entry.cli.*;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;

@@ -16,8 +16,8 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.goal.GoalExtension;
-import org.noear.solon.ai.harness.session.goal.GoalState;
+import org.noear.solon.ai.harness.extension.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalState;
 import org.noear.solon.codecli.session.SessionSnapshots;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.slf4j.Logger;

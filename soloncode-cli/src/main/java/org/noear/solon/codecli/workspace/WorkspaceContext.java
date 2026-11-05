@@ -5,9 +5,8 @@ import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
-import org.noear.solon.ai.harness.session.goal.GoalExtension;
-
-import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionManager;

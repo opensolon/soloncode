@@ -30,7 +30,7 @@ import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.ParsedCommand;
-import org.noear.solon.ai.harness.session.goal.GoalState;
+import org.noear.solon.ai.harness.extension.goal.GoalState;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.core.util.Assert;

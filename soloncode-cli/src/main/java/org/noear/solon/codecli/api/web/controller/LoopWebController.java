@@ -21,12 +21,12 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.goal.GoalExtension;
-import org.noear.solon.ai.harness.session.goal.GoalSpec;
-import org.noear.solon.ai.harness.session.goal.GoalState;
-import org.noear.solon.ai.harness.session.loop.LoopPatch;
-import org.noear.solon.ai.harness.session.loop.LoopSpec;
-import org.noear.solon.ai.harness.session.loop.LoopTask;
+import org.noear.solon.ai.harness.extension.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalSpec;
+import org.noear.solon.ai.harness.extension.goal.GoalState;
+import org.noear.solon.ai.harness.extension.loop.LoopPatch;
+import org.noear.solon.ai.harness.extension.loop.LoopSpec;
+import org.noear.solon.ai.harness.extension.loop.LoopTask;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 

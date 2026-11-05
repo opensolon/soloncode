@@ -4,10 +4,10 @@
  */
 package org.noear.solon.codecli.session;
 
-import org.noear.solon.ai.harness.session.queue.QueueExtension;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
-import org.noear.solon.ai.harness.session.goal.GoalProjection;
-import org.noear.solon.ai.harness.session.goal.GoalState;
+import org.noear.solon.ai.harness.extension.queue.QueueExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalEngine;
+import org.noear.solon.ai.harness.extension.goal.GoalProjection;
+import org.noear.solon.ai.harness.extension.goal.GoalState;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

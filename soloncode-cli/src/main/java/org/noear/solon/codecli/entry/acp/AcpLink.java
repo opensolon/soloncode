@@ -23,7 +23,7 @@ import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
-import org.noear.solon.ai.harness.session.goal.GoalTalent;
+import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.util.Assert;

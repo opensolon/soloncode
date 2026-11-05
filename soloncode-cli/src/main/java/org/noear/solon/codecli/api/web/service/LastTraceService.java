@@ -24,7 +24,7 @@ import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
-import org.noear.solon.ai.harness.session.steer.SteerMessages;
+import org.noear.solon.ai.harness.extension.steer.SteerMessages;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.ToolEndPayload;
