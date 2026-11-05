@@ -119,7 +119,8 @@ class GoalLoopEndpointTest {
         assertEquals(Result.SUCCEED_CODE, result.getCode());
         // 先摘调度再清状态由 clear 门面内含
         verify(goal).clear(SESSION);
-        verify(context, never()).getGoalScheduler();
+        // WorkspaceContext 的 legacy getter（getGoalEngine/getGoalScheduler）已删除，
+        // 宿主不可能再绕过门面取内核实例——无须 mock 层断言，由编译期保证。
     }
 
     @Test

@@ -22,10 +22,13 @@ public class AutomationManager {
 
     private final LoopScheduler scheduler;
     private final SessionManager sessionManager;
+    private final HarnessEngine engine;
 
-    public AutomationManager(String workspacePath, LoopScheduler scheduler, SessionManager sessionManager) {
+    public AutomationManager(String workspacePath, LoopScheduler scheduler, SessionManager sessionManager,
+                             HarnessEngine engine) {
         this.scheduler = scheduler;
         this.sessionManager = sessionManager;
+        this.engine = engine;
     }
 
     /** 兼容旧调用点：任务随 LoopScheduler.loadAll() 统一恢复，此处不再有独立恢复逻辑。 */
@@ -193,8 +196,8 @@ public class AutomationManager {
 
     private void applySelections(String sessionId, AutomationMeta meta) {
         org.noear.solon.ai.agent.AgentSession session = sessionManager.getSession(sessionId);
-        if (meta.getModelName() != null) session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, meta.getModelName());
-        if (meta.getAgentName() != null) session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, meta.getAgentName());
+        if (meta.getModelName() != null) engine.setSessionModel(session, meta.getModelName());
+        if (meta.getAgentName() != null) engine.setSessionAgent(session, meta.getAgentName());
         session.updateSnapshot();
     }
 

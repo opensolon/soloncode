@@ -128,11 +128,20 @@ class ImBusySteerContractTest {
                 "队列派发的一轮已过 isNotOccupied 闸门，不能二次拦截");        assertTrue(method.contains("isBusyBypassCommand"),
                 "忙态旁路命令由命令自描述决定，闸门不得否定它");
 
-        // 两个入口都必须调用它，不能各写一份口径
+        // 两个入口都必须覆盖同一口径，不能各写一份。
+        // 4.2.3 起：onChatInput 的受理判定收归 engine.admit，豁免以谓词传入；
+        // safeChatInput 的 IM 预检仍直接调用 isHitlExempt。
         assertTrue(source.indexOf("isHitlExempt(", methodStart + method.length()) > 0,
-                "onChatInput 必须调用共用的豁免判定");
-        int callCount = source.split("isHitlExempt\\(", -1).length - 1;
-        assertTrue(callCount >= 3, "两个入口都应调用 isHitlExempt（定义 1 处 + 调用至少 2 处），实际 " + callCount);
+                "safeChatInput 仍须调用共用的豁免判定");
+
+        String onInput = source.substring(source.indexOf("void onChatInput(WorkspaceContext"));
+        onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
+        assertTrue(onInput.contains(".admit("),
+                "onChatInput 的受理判定必须走 engine.admit（不得再在入口手拼六个判定）");
+        assertTrue(onInput.contains("/resume"),
+                "onChatInput 传给 admit 的豁免谓词必须包含 /resume，否则续流会被拦死");
+        assertTrue(onInput.contains("hitlAction"),
+                "onChatInput 传给 admit 的 hitlDecision 必须来自 hitlAction，否则审批永远提不了");
     }
 
     /**
@@ -150,16 +159,18 @@ class ImBusySteerContractTest {
         String onInput = source.substring(source.indexOf("void onChatInput(WorkspaceContext"));
         onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
 
-        int hitl = onInput.indexOf("SessionActivity.hasPendingHitl(session)");
-        int errorEmit = onInput.indexOf("hitl_pending", hitl);
-        int doneEmit = onInput.indexOf("emitDoneGuarded", errorEmit);
-        int busyDispatch = onInput.indexOf("SessionActivity.isBusy(session) ||", hitl);
+        // 4.2.3 起拒收判定来自 engine.admit 的 REJECT（值域与细节由引擎给出）
+        int reject = onInput.indexOf("AdmitDecision.Kind.REJECT");
+        assertTrue(reject > 0, "拒收分支必须按 admit 的 REJECT 判决");
+        int errorEmit = onInput.indexOf("ofError(admit.getRejectReason()", reject);
+        int doneEmit = onInput.indexOf("emitDoneGuarded", reject);
+        int queueBranch = onInput.indexOf("AdmitDecision.Kind.QUEUE", reject);
 
-        assertTrue(errorEmit > hitl, "HITL 拒收必须先给出可读错误");
+        assertTrue(errorEmit > reject, "HITL 拒收必须先给出可读错误（原因与细节取自 AdmitDecision）");
         assertTrue(doneEmit > errorEmit,
                 "拒收分支必须在 return 前发终态包（emitDoneGuarded），否则前端 isStreaming 永久为真");
-        assertTrue(doneEmit < busyDispatch,
-                "终态包必须落在拒收分支内，不能落到后面的忙态分支里");
+        assertTrue(doneEmit < queueBranch,
+                "终态包必须落在拒收分支内，不能落到后面的排队分支里");
     }
 
     /** 新增的 im.hitlPending 必须补齐全部语言包与 FALLBACK，避免局部回退成中文。 */

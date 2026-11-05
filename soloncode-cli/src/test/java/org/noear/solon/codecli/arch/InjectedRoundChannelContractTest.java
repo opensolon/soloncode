@@ -49,29 +49,29 @@ public class InjectedRoundChannelContractTest {
     private static final Path SRC = Paths.get("src/main/java/org/noear/solon/codecli");
 
     /**
-     * 三个入口都必须把 goal 执行器注册到 {@code GoalEngine} 自己的通道上。
+     * 三个入口都必须把 goal 执行器注册到 {@code GoalEngine} 自己的通道上（通道化形态）。
      *
      * <p>CLI：{@code cli} 会话；Web：{@code web-*} / {@code auto-*}；桌面：纯数字会话。
      * 三者缺任一，该入口的 goal 就只能拿到最终文本、没有过程输出。</p>
+     *
+     * <p>注册必须带通道名与认领谓词（{@code addTaskExecutor(channel, claim, handler)}）：
+     * 谓词交给引擎后，多入口认领边界重叠可被静态评估并告警，不再依赖静默抢跑现象排障。</p>
      */
     @Test
     void everyEntryRegistersGoalExecutorOnGoalEngineChannel() throws IOException {
         // 注册统一走 GoalExtension 门面（addTaskExecutor），宿主不再绕行 getGoalEngine()；
         // 认领谓词统一引用 SessionIdOwnership，避免三处内联正则互不知情而抢跑会话。
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "goal.addTaskExecutor", "CLI 未向 GoalEngine 注册执行器（/goal 将没有过程输出）");
-        assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "SessionIdOwnership.isCli", "CLI 认领谓词必须集中到 SessionIdOwnership");
+                "goal.addTaskExecutor(\"cli\", SessionIdOwnership::isCli",
+                "CLI 未向 GoalEngine 注册通道化执行器（/goal 将没有过程输出）");
 
         assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "goalExtension.addTaskExecutor", "Web 未向 GoalEngine 注册执行器（/goal 将没有过程输出）");
-        assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "SessionIdOwnership.isWeb", "Web 认领谓词必须集中到 SessionIdOwnership");
+                "goalExtension.addTaskExecutor(\"web\", SessionIdOwnership::isWeb",
+                "Web 未向 GoalEngine 注册通道化执行器（/goal 将没有过程输出）");
 
         assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
-                "goal.addTaskExecutor", "桌面未向 GoalEngine 注册执行器（goal 轮次将不再推流）");
-        assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
-                "SessionIdOwnership.isDesktop", "桌面认领谓词必须集中到 SessionIdOwnership");
+                "goal.addTaskExecutor(\"desktop\", SessionIdOwnership::isDesktop",
+                "桌面未向 GoalEngine 注册通道化执行器（goal 轮次将不再推流）");
     }
 
     /**

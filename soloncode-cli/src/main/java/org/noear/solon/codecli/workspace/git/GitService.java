@@ -764,10 +764,10 @@ public class GitService {
         try {
             // 通过 sessionId 获取会话，复用用户选择的 LLM 模型
             AgentSession session = engine.getSession(sessionId);
-            String selectedModel = session.getContext().getOrDefault(
-                    HarnessEngine.CTX_MODEL_SELECTED,
-                    engine.getMainModel().getNameOrModel()
-            );
+            String selectedModel = engine.getSessionModel(session);
+            if (selectedModel == null) {
+                selectedModel = engine.getMainModel().getNameOrModel();
+            }
             // 会话级模型优先，回退主模型名（git-summary 子代理无自带 model 配置）
 
             // 收集 diff 内容（最多 15 个文件）

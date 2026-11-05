@@ -23,6 +23,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.session.InputGate;
 import org.noear.solon.ai.harness.input.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.input.CommandContextFactory;
+import org.noear.solon.ai.harness.input.AdmitDecision;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.HitlCard;
 import org.noear.solon.ai.harness.input.InputOrigin;
@@ -96,71 +97,64 @@ class WebChatInputHandler {
             // 仅在对话隔离开启时记录 userId，关闭隔离时使用共享会话
             String userId = resolveUserIdFromContext(wsContext);
             session = wsContext.getSessionManager().getSession(sessionId, userId);
-            // 同一把 session 锁内检查忙态并占位，避免两个窗口同时看见空闲并各开一条流。
-            synchronized (session.attrs()) {
-                boolean dispatch = WebQueueDispatcher.isQueueDispatch(session);
-                boolean busyCommand = wsContext.getEngine().isBusyBypassCommand(input);
+            // 受理判定（原子：判定与占位同临界区）已收归 harness：
+            // 六个判定（运行流 / 受理窗口 / 待审批卡 / 队列积压 / 队列派发 / 忙态旁路命令）
+            // 曾在此处由宿主自行组合成 50 余行 synchronized 块，其中每个原语其实都由引擎提供。
+            // 本方法据此只按 Kind 分派，不再自己拼忙态口径。
+            AdmitDecision admit = wsContext.getEngine().admit(session, input, Assert.isNotEmpty(hitlAction),
+                    in -> in != null && "/resume".equals(in.trim()));
 
-                // HITL 挂起时拒新输入：审批未决策前开新回合会与挂起 trace 并存，
-                // 用户点「同意」时续流被运行态认领拒绝（“点了没反应”），或两条流交叉写快照。
-                if (SessionActivity.hasPendingHitl(session) && !isHitlExempt(wsContext, session, input, hitlAction)) {
-                    HitlCard next = HitlCard.next(session);
-                    String toolName = next == null ? null : next.getToolName();
-                    gate.emitToClient(wsContext, sessionId, WebEvent.ofError("hitl_pending",
-                            toolName == null ? "请先处理待审批操作" : "请先处理待审批操作：" + toolName));
-                    // 来源端（IM）也要知道本轮未受理，否则只能盲等。
-                    gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.HITL_PENDING,
-                            null, source, sourceUserId, replyTarget, messageId);
-                    // 必须有终态包：前端在 POST 之前就把 isStreaming 置真，只有 system.done 会复位，
-                    // system.error 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态
-                    // （停止按钮常亮、占位符不消失），后续输入全部被当成 steer 插话，只能刷新页面。
-                    // 此处未占位（ticket 为 NONE），finally 的兜底不会触发，故必须显式补发。
-                    gate.getEventPublisher().emitDoneGuarded(wsContext, session);
-                    return;
-                }
+            if (admit.getKind() == AdmitDecision.Kind.REJECT) {
+                gate.emitToClient(wsContext, sessionId,
+                        WebEvent.ofError(admit.getRejectReason(), admit.getRejectDetail()));
+                // 来源端（IM）也要知道本轮未受理，否则只能盲等。
+                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.HITL_PENDING,
+                        null, source, sourceUserId, replyTarget, messageId);
+                // 必须有终态包：前端在 POST 之前就把 isStreaming 置真，只有 system.done 会复位，
+                // system.error 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态
+                // （停止按钮常亮、占位符不消失），后续输入全部被当成 steer 插话，只能刷新页面。
+                // 此处未占位（ticket 为 NONE），finally 的兜底不会触发，故必须显式补发。
+                gate.getEventPublisher().emitDoneGuarded(wsContext, session);
+                return;
+            }
 
-                if ((SessionActivity.isBusy(session) || queue(wsContext).pendingSize(session) > 0)
-                        && !dispatch && !busyCommand) {
-                    if (attachments != null && attachments.length > 0) {
-                        throw new IllegalStateException("Attachments cannot be queued while session is busy");
-                    }
-                    int position = queue(wsContext).enqueue(session, input,
-                            InputOrigin.of(source, sourceUserId, replyTarget, messageId),
-                            null, selectedModel, reasoningEffort, thinkingMode, selectedAgent, false);
-                    if (position < 0) throw new IllegalStateException("session queue is full or unavailable");
-                    gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
-                    gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
-                    return;
+            if (admit.getKind() == AdmitDecision.Kind.QUEUE) {
+                // 入队参数仍是宿主域概念（推理强度 / 思考模式），故 enqueue 留在宿主。
+                if (attachments != null && attachments.length > 0) {
+                    throw new IllegalStateException("Attachments cannot be queued while session is busy");
                 }
-                // 忙态命令是旁路操作，不能改写正在运行任务的回复目标。
-                boolean sideCommand = busyCommand && SessionActivity.isBusy(session);
-                // 只有已经在真实任务上运行的旁路命令才不占启动闩。
-                // runnableWhenBusy 命令在空闲会话中也可能启动任务（如 /steer），
-                // 此时必须先占位，否则它与普通输入之间仍存在并发开流窗口。
-                //
-                // 占位语义与竞态防线已收归 harness（InputGate）：本方法只表达「我要受理这一轮」，
-                // 不再自己维护运行态 attrs 键。队列派发的那一轮天然空闲、不需要再占位。
-                if (!dispatch && !sideCommand) {
-                    ticket = InputGate.tryAcquire(session);
-                }
-                if (!sideCommand) {
-                    QueueDispatch turn = dispatch ? QueueDispatch.current(session) : null;
-                    if (turn != null && turn.getItem() != null) {
-                        setReplyRoute(session, turn.getOrigin());
-                    } else {
-                        setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
-                    }
+                int position = queue(wsContext).enqueue(session, input,
+                        InputOrigin.of(source, sourceUserId, replyTarget, messageId),
+                        null, selectedModel, reasoningEffort, thinkingMode, selectedAgent, false);
+                if (position < 0) throw new IllegalStateException("session queue is full or unavailable");
+                gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+                gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
+                return;
+            }
+
+            // ADMIT / ADMIT_BYPASS：取占位凭据（仅 ADMIT 可能真的占到，其余为 NONE）
+            ticket = admit.getTicket();
+
+            // 忙态旁路命令是旁路操作，不能改写正在运行任务的回复目标。
+            boolean sideCommand = admit.getKind() == AdmitDecision.Kind.ADMIT_BYPASS
+                    && admit.isQueueDispatch() == false;
+            if (!sideCommand) {
+                QueueDispatch turn = admit.isQueueDispatch() ? admit.getDispatch() : null;
+                if (turn != null && turn.getItem() != null) {
+                    setReplyRoute(session, turn.getOrigin());
+                } else {
+                    setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                 }
             }
 
             // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
             if (Assert.isNotEmpty(selectedModel)) {
-                session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, selectedModel);
+                wsContext.getEngine().setSessionModel(session, selectedModel);
             }
             // 写入会话级子代理选择（仅在显式指定时）。
             // IM 等未携带该字段的输入传 null，不能把 web 端已选的子代理清空。
             if (selectedAgent != null) {
-                session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, selectedAgent);
+                wsContext.getEngine().setSessionAgent(session, selectedAgent);
             }
             boolean effortProvided = reasoningEffort != null;
             org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionEffort(session, reasoningEffort, effortProvided);

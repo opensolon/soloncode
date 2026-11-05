@@ -517,7 +517,7 @@ public class PrintMode {
 
         String modelSelected = options.getModel();
         if (modelSelected == null) {
-            modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+            modelSelected = engine.getSessionModel(session);
         }
 
         // ---- fallback-model：主模型不可用时回退 ----
@@ -755,7 +755,7 @@ public class PrintMode {
         // model 作为字符串（对齐 Claude Code）
         String modelName = options.getModel();
         if (modelName == null) {
-            modelName = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+            modelName = engine.getSessionModel(session);
         }
         if (modelName == null) {
             ChatModel mainModel = engine.getMainModel();

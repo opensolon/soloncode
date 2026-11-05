@@ -31,6 +31,7 @@ import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HitlCard;
+import org.noear.solon.ai.harness.session.SessionTurn;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -106,10 +107,10 @@ final class DesktopStreamTurn {
             streamHub.begin(sessionId, socket);
         }
 
-        // 取取消代数基准（须在 stream() 之前）：取消后框架以 complete 收尾，会触发下面的
+        // 开一轮（须在 stream() 之前）：取消后框架以 complete 收尾，会触发下面的
         // doOnComplete。但取消路径（DesktopInputRouter 的 interrupt 分支）已经自己发过
         // reason + done，若这里再发一个 done，前端会收到两个终态帧。
-        final int cancelGen = SessionRuns.cancelCount(session);
+        final SessionTurn turn = SessionTurn.begin(session);
 
         request.options(o -> {
                     // 模型已由 handle 装配；这里仅在宿主显式解析出模型时覆盖（幂等，零差异）
@@ -144,7 +145,7 @@ final class DesktopStreamTurn {
                     }
                 })
                 .doOnComplete(() -> {
-                    if (SessionRuns.isCancelledSince(session, cancelGen)) {
+                    if (turn.isCancelled()) {
                         // 本轮是被取消的：中断入口已同步发过 reason + done，不再重复终态
                         return;
                     }

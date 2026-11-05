@@ -105,12 +105,9 @@ public class WsGate extends SimpleWebSocketListener {
             goal.addListener(goalBroadcaster::onGoalChanged);
             // 桌面端 Goal 轮次经 GoalEngine 自己的执行通道回推（不再有跨域共享桥）；
             // 忙判定由会话快照派生（SessionStatus.isOccupied），无需宿主注入谓词。
-            goal.addTaskExecutor((sessionId, prompt) -> {
-                if (!SessionIdOwnership.isDesktop(sessionId)) {
-                    return null;
-                }
-                return runGoalRoundAndCapture(sessionId, prompt);
-            });
+            // 认领谓词交给引擎：多入口重叠时告警，不再靠静默抢跑现象排障。
+            goal.addTaskExecutor("desktop", SessionIdOwnership::isDesktop,
+                    (sessionId, prompt) -> runGoalRoundAndCapture(sessionId, prompt));
         }
     }
 
@@ -137,7 +134,7 @@ public class WsGate extends SimpleWebSocketListener {
             if (modelName.length() > 256 || engine.getModelOrNil(modelName) == null) {
                 throw new IllegalArgumentException("Goal model is unavailable");
             }
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+            engine.setSessionModel(session, modelName);
         }
 
         if (Assert.isNotEmpty(agentName)) {
@@ -145,9 +142,9 @@ public class WsGate extends SimpleWebSocketListener {
             if (!isValidAgentName(normalizedAgent) || !engine.getAgentManager().hasAgent(normalizedAgent)) {
                 throw new IllegalArgumentException("Goal Agent is unavailable");
             }
-            session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, normalizedAgent);
+            engine.setSessionAgent(session, normalizedAgent);
         } else {
-            session.getContext().remove(HarnessEngine.CTX_AGENT_SELECTED);
+            engine.setSessionAgent(session, null);
         }
 
         if (Assert.isNotEmpty(workspace)) {
@@ -298,7 +295,7 @@ public class WsGate extends SimpleWebSocketListener {
         }
 
         // 子代理归属一律取会话属性（goal 轮次不再有 agentName 参数：引擎内两处调用恒传 null）
-        String selectedAgent = (String) session.getContext().get(HarnessEngine.CTX_AGENT_SELECTED);
+        String selectedAgent = engine.getSessionAgent(session);
         String sessionCwd = engine.getSessionCwd(session);
         String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 

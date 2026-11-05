@@ -5,9 +5,8 @@ import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
-import org.noear.solon.ai.harness.session.goal.GoalScheduler;
+
 import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
@@ -36,10 +35,6 @@ public class WorkspaceContext implements Closeable {
     private final GitService gitService;
     private final FileWatchService fileWatchService;
     private final LoopScheduler loopScheduler;
-    /** Goal 引擎（会话级能力；旧测试可缺省为 null）。 */
-    private volatile GoalEngine goalEngine;
-    /** Goal 调度器（会话级 job 装配）。 */
-    private volatile GoalScheduler goalScheduler;
     /** Goal 一键装配扩展（goal 域的唯一宿主交互面；运行期操作经其门面中转）。 */
     private volatile GoalExtension goalExtension;
     private final AutomationManager automationManager;
@@ -139,20 +134,11 @@ public class WorkspaceContext implements Closeable {
         return fileWatchService;
     }
 
-    public GoalEngine getGoalEngine() {
-        return goalEngine;
-    }
-
-    public GoalScheduler getGoalScheduler() {
-        return goalScheduler;
-    }
-
     /**
      * Goal 域的唯一交互面（装配 + 运行期门面）。
      *
      * <p>宿主应优先用它：{@code goal.find(id,taskId)} / {@code goal.pause(...)} /
-     * {@code goal.attachAndSchedule(...)} 等已内含调度配对，不会出现「改了状态忘了挂/摘 job」。
-     * 仅在确需细粒度访问时才回到 {@link #getGoalEngine()}。</p>
+     * {@code goal.attachAndSchedule(...)} 等已内含调度配对，不会出现「改了状态忘了挂/摘 job」。</p>
      */
     public GoalExtension getGoalExtension() {
         return goalExtension;
@@ -162,15 +148,7 @@ public class WorkspaceContext implements Closeable {
     public void attachGoal(GoalExtension goalExtension) {
         if (goalExtension != null) {
             this.goalExtension = goalExtension;
-            this.goalEngine = goalExtension.getGoalEngine();
-            this.goalScheduler = goalExtension.getGoalScheduler();
         }
-    }
-
-    /** 由 WorkspaceManager 装配时注入（避免构造器签名膨胀）。 */
-    public void attachGoal(GoalEngine goalEngine, GoalScheduler goalScheduler) {
-        this.goalEngine = goalEngine;
-        this.goalScheduler = goalScheduler;
     }
 
     public LoopScheduler getLoopScheduler() {

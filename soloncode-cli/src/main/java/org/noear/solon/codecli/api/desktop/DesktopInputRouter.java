@@ -172,6 +172,7 @@ final class DesktopInputRouter {
         String currentInput = input;
 
         String requestedAgent = req.getAgent();
+        String validRequestedAgent = null;
         if (Assert.isNotEmpty(requestedAgent) && !"default".equals(requestedAgent)) {
             // 请求体显式指定：先做格式与可用性校验，无效则直接报错（与迁移前一致）
             requestedAgent = requestedAgent.trim();
@@ -182,23 +183,20 @@ final class DesktopInputRouter {
                         .toJson());
                 return;
             }
-
-            // @子代理 解析口径与 CLI/Web 统一（harness AgentMentions）
-            AgentMentions.Mention mention = AgentMentions.parse(engine, input,
-                    AgentMentions.Options.builder()
-                            .explicitAgent(requestedAgent)
-                            .nameValidator(gate::isValidAgentName));
-            agentName = mention.getAgentName();
-            currentInput = mention.getText();
-        } else {
-            // 桌面端多一道名字格式校验，并需要去掉首尾空白
-            AgentMentions.Mention mention = AgentMentions.parse(engine, input,
-                    AgentMentions.Options.builder()
-                            .nameValidator(gate::isValidAgentName)
-                            .trimContent(true));
-            agentName = mention.getAgentName();
-            currentInput = mention.getText();
+            validRequestedAgent = requestedAgent;
         }
+
+        // @子代理 解析口径与 CLI/Web/引擎完全统一：Options 只在 HarnessInput#parseMention 里构造一处。
+        // 旧实现分两个分支各拼一份 Options（显式分支不 trim、兜底分支 trim），
+        // 同一段输入在宿主与引擎里各解析一次且口径不同；现在宿主提前解析与 handle 内部解析逐字一致。
+        // 桌面端输入框允许换行与缩进，故固定 trimContent(true)。
+        AgentMentions.Mention mention = HarnessInput.of(session, input)
+                .explicitAgent(validRequestedAgent)
+                .agentNameValidator(gate::isValidAgentName)
+                .trimContent(true)
+                .parseMention(engine);
+        agentName = mention.getAgentName();
+        currentInput = mention.getText();
 
         if (Assert.isEmpty(currentInput)) {
             socket.send(new ONode().set("type", "error")
@@ -215,7 +213,7 @@ final class DesktopInputRouter {
         // 会话级模型选择只记录显式指定的值：桌面端未携带 model 时保持已有选择，
         // 否则 HITL 恢复等后续轮次会因 null 覆盖回落默认模型（与 WebChatInputHandler 守卫一致）。
         if (Assert.isNotEmpty(modelName)) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+            engine.setSessionModel(session, modelName);
         }
         if (req.getReasoningEffort() != null) {
             ReasoningSupportUtil.putSessionEffort(session,
@@ -241,7 +239,7 @@ final class DesktopInputRouter {
 
         // 与 WebStreamBuilder 保持一致：记录本轮真正的源 Agent，供 HITL 恢复继续使用。
         final String resolvedAgentName = engine.getAgentOrMain(agentName).name();
-        session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, resolvedAgentName);
+        engine.setSessionAgent(session, resolvedAgentName);
 
         // Goal 是对话持续流，不再交给斜杠命令返回“任务已注册”回执。
         String goalObjective = WsGate.extractGoalObjective(currentInput, mode);
@@ -433,9 +431,9 @@ final class DesktopInputRouter {
 
             AgentSession session = engine.getSession(sessionId);
 
-            String modelName = (String) session.getContext().get(HarnessEngine.CTX_MODEL_SELECTED);
+            String modelName = engine.getSessionModel(session);
             ChatModel chatModel = engine.getModelOrDefInstance(modelName);
-            String selectedAgentName = (String) session.getContext().get(HarnessEngine.CTX_AGENT_SELECTED);
+            String selectedAgentName = engine.getSessionAgent(session);
             String cwd = engine.getSessionCwd(session);
             String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 

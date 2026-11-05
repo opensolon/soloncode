@@ -81,7 +81,7 @@ final class DesktopGoalBroadcaster {
             String modelName = null;
             try {
                 AgentSession session = engine.getSession(sessionId);
-                modelName = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+                modelName = engine.getSessionModel(session);
             } catch (Throwable ignored) {
                 // 会话不可用时回落默认模型名
             }

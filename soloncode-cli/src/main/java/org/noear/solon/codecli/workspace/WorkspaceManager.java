@@ -5,10 +5,9 @@ import org.noear.snack4.Feature;
 import org.noear.solon.Solon;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessExtensions;
 import org.noear.solon.ai.harness.session.interrupt.InterruptCommand;
 import org.noear.solon.ai.harness.command.builtin.*;
-import org.noear.solon.ai.harness.session.queue.QueueExtension;
-import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessExtension;
@@ -20,11 +19,8 @@ import org.noear.solon.ai.talents.mount.source.FileMountSource;
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.loop.*;
-import org.noear.solon.ai.harness.session.goal.BudgetThresholds;
-import org.noear.solon.codecli.goal.GoalDataMigrator;
-import org.noear.solon.ai.harness.session.goal.GoalEngine;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
-import org.noear.solon.ai.harness.session.goal.GoalScheduler;
+import org.noear.solon.codecli.goal.GoalDataMigrator;
 import org.noear.solon.codecli.config.entity.GoalGroupDo;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -815,11 +811,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
-        // /steer、/queue 已下沉 harness：命令注册由各域 Extension 幂等完成（/goal 在上方 GoalExtension 内注册）。
+        // /steer、/queue、/goal 三件套由下方 HarnessExtensions.installDefaults 一次装齐（命令注册幂等）。
         // steer 输出走 AgentEvent（SteerAppliedEvent / SteerDroppedEvent），宿主零装配：
         // Web 由 WebEventMapper 映射为 system.steer_*，其余宿主不识别即忽略。
-        engine.addExtension(new SteerExtension());
-        engine.addExtension(new QueueExtension());
         engine.getCommandRegistry().register(new RerunCommand());
         engine.getCommandRegistry().register(new RewindCommand());
         engine.getCommandRegistry().register(new ModelCommand());
@@ -842,8 +836,11 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json"),
                 WorkspaceDataUtil.sessionsPath(workspacePath));
 
-        // Goal 一键装配（GoalExtension.builder：GoalEngine→GoalScheduler→/goal 命令→Talent 一次完成）
-        // 执行通道已内联在 GoalEngine 内部，无需向组合根借用
+        // harness 内置三件套（steer / queue / goal）一次装齐：
+        // 聚合入口负责顺序与幂等，宿主只负责「goal 怎么配」。此前这里是三处分散的 addExtension，
+        // 中间夹着别的命令注册，少写一行就是「命令没注册、功能静默不存在」。
+        // GoalExtension.builder 内部完成 GoalEngine→GoalScheduler→/goal 命令→Talent 装配，
+        // 执行通道内联在 GoalEngine 内，无需向组合根借用。
         GoalGroupDo goalCfg = wsSettings.getGoal();
         GoalExtension goalExtension = GoalExtension.builder(meta.getId())
                 .budget(goalCfg.getBudgetWarningPercentOrDefault(),
@@ -853,11 +850,14 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .validatorEnabled(goalCfg.isValidatorEnabledOrDefault())
                 .workspace(workspacePath)
                 .build();
-        
+
+        HarnessExtensions.Handles harnessHandles =
+                HarnessExtensions.installDefaults(engine, goalExtension);
+        goalExtension = harnessHandles.goal();
+
         // Goal 模式（关掉只影响模型侧工具，不影响 /goal 命令）
         boolean goalsEnabled = wsSettings.getGeneral().isGoalsEnabled();
         goalExtension.setEnabled(goalsEnabled);
-        engine.addExtension(goalExtension);
 
         LoopCommand loopCommand = new LoopCommand(loopScheduler);
         engine.getCommandRegistry().register(loopCommand);
@@ -937,7 +937,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         FileService fileService = new FileService(workspacePath, engine);
         GitService gitService = new GitService(workspacePath, engine);
 
-        AutomationManager automationManager = new AutomationManager(workspacePath, loopScheduler, sessionManager);
+        AutomationManager automationManager = new AutomationManager(workspacePath, loopScheduler, sessionManager, engine);
         // 循环/自动任务统一存于工作区 tasks.json，由 LoopScheduler 启动时全量加载恢复；
         // 此处仅拉起 scheduler 的加载（含旧版三路数据迁移）。
         automationManager.restore();
@@ -1003,17 +1003,16 @@ public class WorkspaceManager implements WorkspaceRegistry {
             return;
         }
 
-        goalExtension.addTaskExecutor((sessionId, prompt) -> {
-            if (!SessionIdOwnership.isWeb(sessionId)) {
-                return null;
-            }
-            WorkspaceRuntimePort runtime = getRuntimePort();
-            if (runtime == null) {
-                return null;
-            }
-            // 与 loop 同口径：注入回合不识别命令、不排水，但过程事件照常推给前端（边跑边输出）
-            return runtime.runGoalRound(workspaceId, sessionId, prompt, "Goal");
-        });
+        // 认领谓词交给引擎（重叠可告警）；运行时端口不可用时 handler 返 null 穿透到下一入口
+        goalExtension.addTaskExecutor("web", SessionIdOwnership::isWeb,
+                (sessionId, prompt) -> {
+                    WorkspaceRuntimePort runtime = getRuntimePort();
+                    if (runtime == null) {
+                        return null;
+                    }
+                    // 与 loop 同口径：注入回合不识别命令、不排水，但过程事件照常推给前端（边跑边输出）
+                    return runtime.runGoalRound(workspaceId, sessionId, prompt, "Goal");
+                });
     }
 
     private void addServers(HarnessEngine engine, AgentSettings wsSettings) {

@@ -113,7 +113,7 @@ public class ChatWebController extends AbstractWebController {
         if (Assert.isNotEmpty(list)) {
             if (Assert.isNotEmpty(sessionId)) {
                 org.noear.solon.ai.agent.AgentSession session = currentEngine.getSession(sessionId);
-                selected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+                selected = currentEngine.getSessionModel(session);
 
                 if (selected != null) {
                     selected = currentEngine.getModelOrDef(selected).getNameOrModel();
@@ -153,7 +153,7 @@ public class ChatWebController extends AbstractWebController {
         if (Assert.isNotEmpty(sessionId)) {
             try {
                 org.noear.solon.ai.agent.AgentSession session = currentEngine.getSession(sessionId);
-                String agentVal = session.getContext().getAs(HarnessEngine.CTX_AGENT_SELECTED);
+                String agentVal = currentEngine.getSessionAgent(session);
                 selectedAgent = (agentVal != null) ? agentVal : "";
             } catch (Exception ignored) {
                 // 会话不存在或已过期
@@ -228,7 +228,7 @@ public class ChatWebController extends AbstractWebController {
         org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId, userId);
 
         if (Assert.isNotEmpty(modelName)) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, modelName);
+            engine().setSessionModel(session, modelName);
         }
 
         // reasoningEffort 参数出现即写入（含空串表示 auto 清除）
@@ -258,7 +258,7 @@ public class ChatWebController extends AbstractWebController {
                                 @Param(value = "agentName", required = false) String agentName) throws Exception {
         String userId = getCurrentUserId();
         org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId, userId);
-        session.getContext().put(HarnessEngine.CTX_AGENT_SELECTED, agentName != null ? agentName : "");
+        engine().setSessionAgent(session, agentName);
         session.updateSnapshot();
         return Result.succeed();
     }

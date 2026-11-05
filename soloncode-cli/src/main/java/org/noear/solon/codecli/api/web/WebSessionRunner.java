@@ -16,9 +16,7 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
-import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -26,7 +24,7 @@ import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
 import org.noear.solon.codecli.api.web.pipeline.ToolViewUtil;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
-import org.noear.solon.ai.harness.session.queue.QueueDispatch;
+import org.noear.solon.ai.harness.session.SessionTurn;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.LogDirUtil;
@@ -101,11 +99,11 @@ class WebSessionRunner {
     /**
      * 收口本轮所属的队列派发事务（幂等，非队列输入时为空操作）。
      *
-     * <p>优先用捕获到的 {@code turn}：它是「这一条流自己的」派发事务，收口有身份保证。
-     * 早期路径（同步捕获、取消前抛弃）可能拿不到 turn，此时退回“收口会话当前的派发”——
+     * <p>由 {@link SessionTurn#settle(boolean)} 承担：它在 {@code begin} 时已捕获
+     * 「这一条流自己的」派发事务（有身份保证），拿不到时退回“收口会话当前的派发”——
      * 与改造前行为一致，不存在回退风险。</p>
      */
-    private void settleTurn(WorkspaceContext wsContext, AgentSession session, QueueDispatch turn, boolean started) {
+    private void settleTurn(WorkspaceContext wsContext, AgentSession session, SessionTurn turn, boolean started) {
         if (turn != null) {
             turn.settle(started);
         } else {
@@ -125,7 +123,7 @@ class WebSessionRunner {
      * 误用过线程判定引发无限循环）：{@code turn} 是订阅前捕获的本轮派发事务，有身份保证，
      * 异步线程上同样可靠。非队列输入 turn 为 null，自然落到 drain 续发分支。</p>
      */
-    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, QueueDispatch turn, Throwable e) {
+    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, SessionTurn turn, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
         // 队列派发的启动失败：交给队列派发侧收口（claim 回滚），
         // 「不重试」由 drainLoop 的 START_FAILED 语义保证，宿主不再自己维护标记。
@@ -151,14 +149,11 @@ class WebSessionRunner {
      * @param outcome 引擎装配结果（含 request 与生效的模型/子代理名）
      */
     void performAgentTaskAsync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
-        //订阅前（调用线程内）取取消代数基准：订阅动作被调度到别的线程异步执行，
-        //这段窗口内若发生 interrupt，本流到订阅时应立即放弃，而不是成为一条取消不掉的幽灵流。
-        final int cancelGen = SessionRuns.cancelCount(session);
-        // 同样在订阅前（派发调用栈内）捕获本轮所属的派发事务：终态收口必须收「这一条流自己的」
-        // 那个事务，而不是「会话当前」的那个。二者在真实时序里总是同一条（busy 期间
-        // isNotOccupied 挡住任何新派发），但那份安全性来自外部不变量而非 API 保证——
-        // 捕获后即便发生了意外的并发派发，也不会把别人的 claim 收掉。
-        final QueueDispatch turn = QueueDispatch.current(session);
+        // 订阅前（调用线程内）开一轮：捕获取消代数基准与本轮派发事务。
+        // 订阅动作被调度到别的线程异步执行，这段窗口内若发生 interrupt，本流到订阅时应立即放弃，
+        // 而不是成为一条取消不掉的幽灵流；终态也必须收「这一条流自己的」派发事务。
+        // 两件事均收归 harness（SessionTurn），宿主不再接触 SessionRuns / QueueDispatch。
+        final SessionTurn turn = SessionTurn.begin(session);
 
         //agent 执行主体在 boundedElastic 线程上跑，订阅动作包在工作区日志作用域里：
         //同步源的整个管道执行发生在 subscribe() 调用栈内，故管道主体线程携带工作区标记
@@ -166,7 +161,7 @@ class WebSessionRunner {
         Runnable subscribeAction = () -> {
             Object logScope = WorkspaceLogRouter.beginScopeByKey(wsLogKey);
             try {
-                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, cancelGen, turn);
+                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, turn);
             } catch (Throwable e) {
                 //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾
                 failStreamTurn(wsContext, session, turn, e);
@@ -182,13 +177,13 @@ class WebSessionRunner {
         }
     }
 
-    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, int cancelGen, QueueDispatch turn) {
+    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, SessionTurn turn) {
         String sessionId = session.getSessionId();
 
         //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）。
         //与 sync 路径对称地补发终态：若 interrupt 已发过 done，会被 emitDoneOnce 的去重门
         //静默吞掉（无害）；若上游异常路径未发过，则前端不至因收不到任何事件而卡在等待态
-        if (SessionRuns.isCancelledSince(session, cancelGen)) {
+        if (turn.isCancelled()) {
             LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
             gate.getEventPublisher().emitDoneOnce(wsContext, session);
             return;
@@ -197,7 +192,7 @@ class WebSessionRunner {
         // 会话级模型选择回写：outcome 里是引擎已解析的生效值（命令声明 → 会话选择 → 默认），
         // 回写保持后续轮次（HITL 恢复、queue 续发）读到同一口径。
         if (outcome.getModelName() != null) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, outcome.getModelName());
+            wsContext.getEngine().setSessionModel(session, outcome.getModelName());
         }
         // 展示用模型句柄（trace 事件的 model 标签）：由生效名现取，取不到时用默认实例
         ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(outcome.getModelName());
@@ -258,7 +253,7 @@ class WebSessionRunner {
 
         // 会话级模型选择回写：与 async 路径同口径（生效值回写，展示句柄现取）
         if (outcome.getModelName() != null) {
-            session.getContext().put(HarnessEngine.CTX_MODEL_SELECTED, outcome.getModelName());
+            wsContext.getEngine().setSessionModel(session, outcome.getModelName());
         }
         ChatModel chatModel = wsContext.getEngine().getModelOrDefInstance(outcome.getModelName());
         CountDownLatch countDownLatch = new CountDownLatch(1);
@@ -267,11 +262,9 @@ class WebSessionRunner {
         java.util.concurrent.atomic.AtomicLong tokensRef = new java.util.concurrent.atomic.AtomicLong(0L);
         java.util.concurrent.atomic.AtomicBoolean hasToolCallsRef = new java.util.concurrent.atomic.AtomicBoolean(false);
 
-        // 取取消代数基准（早于任何开流动作）：同步等待方（Loop）依赖它判定本轮是否已被取消
-        final int cancelGen = SessionRuns.cancelCount(session);
-        // 同步路径（Loop 等）不经过队列派发，此值通常为 null；仍统一捕获以保持两条路径同构，
-        // 收口时 null 落到「无未收口派发 → 空操作」。
-        final QueueDispatch turn = QueueDispatch.current(session);
+        // 开一轮（早于任何开流动作）：同步等待方（Loop）依赖它判定本轮是否已被取消；
+        // 同步路径（Loop 等）通常不经过队列派发，dispatch 为 null，收口落到空操作。
+        final SessionTurn turn = SessionTurn.begin(session);
 
         final String wsLogKey = wsLogKey(wsContext);
         Runnable subscribeAction = () -> {
@@ -279,7 +272,7 @@ class WebSessionRunner {
             try {
                 //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）；
                 //但必须释放闩锁，否则同步等待方（Loop）永久阻塞
-                if (SessionRuns.isCancelledSince(session, cancelGen)) {
+                if (turn.isCancelled()) {
                     LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
                     countDownLatch.countDown();
@@ -320,6 +313,10 @@ class WebSessionRunner {
                     gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
+                    // 与 async 路径同构地收口派发事务（旧实现在此漏了 settle：
+                    // 同一不变量写两遍必然漏一遍，收归 SessionTurn 后不再依赖人工对称）
+                    settleTurn(wsContext, session, turn, true);
+
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
                     gate.getQueueDispatcher().drainSessionQueue(wsContext, session);

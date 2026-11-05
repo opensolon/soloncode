@@ -208,14 +208,11 @@ public class CliShell implements Runnable {
         // goal 执行通道：只在 GoalEngine 自己的通道上注册（与 loop 无共享）。
         // 与 loop 同口径（主线程阻塞于 readLine 时在调度线程代跑一轮、结束后 raise(INT) 让提示符重现），
         // 区别是必须返回 RoundResult：null 表示「本入口不认领」，失败必须显式携带文本。
+        // 认领谓词交给引擎：重叠时它会告警（此前内联在 handler 里，错抢只能靠静默现象发现）。
         GoalExtension goal = engine.getExtension(GoalExtension.class).orElse(null);
         if (goal != null) {
-            goal.addTaskExecutor((sessionId, prompt) -> {
-                if (!SessionIdOwnership.isCli(sessionId)) {
-                    return null;
-                }
-                return runInjectedRound(session, prompt);
-            });
+            goal.addTaskExecutor("cli", SessionIdOwnership::isCli,
+                    (sessionId, prompt) -> runInjectedRound(session, prompt));
         }
 
         // 2. 主循环
@@ -867,7 +864,7 @@ public class CliShell implements Runnable {
             if (session == null) {
                 modelName = engine.getMainModel().getNameOrModel();
             } else {
-                String modelSelected = session.getContext().getAs(HarnessEngine.CTX_MODEL_SELECTED);
+                String modelSelected = engine.getSessionModel(session);
                 modelName = engine.getModelOrDef(modelSelected).getNameOrModel();
             }
         }

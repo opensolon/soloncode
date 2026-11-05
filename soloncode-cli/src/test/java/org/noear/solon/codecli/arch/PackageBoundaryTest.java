@@ -382,6 +382,155 @@ class PackageBoundaryTest {
                 "宿主会话属性键必须来自 HostAttrs（裸字面量键会与 harness 契约脱钩）：" + violations);
     }
 
+    /**
+     * 宿主不得自己维护取消代数 / 派发身份：一轮流的生命周期凭据归 harness（{@code SessionTurn}）。
+     *
+     * <p>此前同一段「订阅前取代数基准 + 流终态判取消」的代码在 Web 的 async/sync 两条路径
+     * 与桌面端各写一遍，三处必然漏一处（sync 路径曾漏掉派发事务收口）。
+     * 「取消以 onComplete 收尾」这条不变量只靠 README 记住，属于典型的事故温床。</p>
+     */
+    @Test
+    void hostMustNotTrackCancelGenerationManually() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+
+            // 取消代数基准：任何宿主文件都不得自己取（这是「取消以 complete 收尾」不变量的入口）
+            if (content.contains("SessionRuns.cancelCount") || content.contains("SessionRuns.isCancelledSince")) {
+                violations.add(name + " 自行捕获取消代数（应用 SessionTurn）");
+            }
+        }
+        // 派发事务身份：流生命周期路径不得自己捕获，只有队列适配器可读取派发线程身份
+        for (String rel : new String[]{
+                "api/web/WebSessionRunner.java",
+                "api/desktop/DesktopStreamTurn.java",
+                "entry/cli/CliShell.java",
+                "entry/headless/PrintMode.java"}) {
+            Path file = SRC.resolve(rel);
+            if (!Files.exists(file)) continue;
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+            if (content.contains("QueueDispatch.current")) {
+                violations.add(file.getFileName() + " 自行捕获派发事务（应用 SessionTurn#begin/dispatch）");
+            }
+        }
+        assertTrue(violations.isEmpty(), "一轮流的生命周期凭据必须由 SessionTurn 持有：" + violations);
+    }
+
+    /**
+     * 宿主不得自己组合受理判定：能不能接、该走哪条路归 harness（{@code engine.admit}）。
+     *
+     * <p>受限文件：Web 输入入口与队列派发器。这两处曾用 50 余行 {@code synchronized} 块
+     * 自行组合运行流、受理窗口、HITL、队列积压、派发身份、忙态旁路六个判定。</p>
+     */
+    @Test
+    void hostMustNotComposeAdmissionManually() throws IOException {
+        List<String> violations = new ArrayList<>();
+        Path file = SRC.resolve("api/web/WebChatInputHandler.java");
+
+        if (Files.exists(file)) {
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+
+            // 受理入口不得再自己拼装：那段 50 余行 synchronized 块是历史事故源头
+            if (content.contains("synchronized (session.attrs())")) {
+                violations.add("WebChatInputHandler.java 仍在入口手拼受理判定（应用 engine.admit）");
+            }
+            // 必须真的走到 engine.admit，否则「收敛」只是删了代码
+            if (!content.contains(".admit(")) {
+                violations.add("WebChatInputHandler.java 未调用 engine.admit");
+            }
+        }
+
+        // safeChatInput 的预检（IM 通道 / Loop 调度）保留 isBusy 判定：
+        // 那是「要不要转发这条消息」的宿主策略，不是开流受理，不占位也不该占位。
+        assertTrue(violations.isEmpty(), "受理判定必须走 engine.admit：" + violations);
+    }
+
+    /**
+     * 宿主不得直接读写会话级选择项裸常量（模型 / 子代理）。
+     *
+     * <p>与「不得硬编码 {@code GoalEngine.KEY_GOAL}」同一条理由：同一键曾出现四种写法
+     * （put 值 / put 空串 / remove / 带守卫），语义漂移正是「裸常量当私有状态用」的必然结果。
+     * {@code SessionSelections} 是给拿不到引擎实例的静态工具用的读开口。</p>
+     */
+    @Test
+    void hostMustNotTouchSessionSelectionKeys() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                if (trimmed.contains("CTX_MODEL_SELECTED") || trimmed.contains("CTX_AGENT_SELECTED")) {
+                    violations.add(name + ": " + trimmed);
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "会话级选择项必须走 get/setSessionModel、get/setSessionAgent（或 SessionSelections）：" + violations);
+    }
+
+    /**
+     * 宿主不得自行拼装 {@code AgentMentions.Options}。
+     *
+     * <p>失效形态是静默的：宿主为了提前拿到「剥离提及后的正文」（Goal 拦截、名字校验、
+     * 规划模式改写都作用在正文上）而自己拼一份 Options，于是同一段输入在宿主与引擎里
+     * <b>各解析一次、口径不同</b>（一个 trim 一个不 trim），最终生效的子代理与正文
+     * 取决于哪一次先落地。{@code HarnessInput.parseMention} 是唯一入口，
+     * {@code handle} 内部也走它。</p>
+     */
+    @Test
+    void hostMustNotBuildMentionOptionsManually() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                if (trimmed.contains("AgentMentions.Options.builder()")
+                        || trimmed.contains("AgentMentions.parse(")) {
+                    violations.add(name + ": " + trimmed);
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "子代理提及解析必须走 HarnessInput#parseMention（与 handle 同口径）：" + violations);
+    }
+
+    /**
+     * harness 内置三件套（steer / queue / goal）必须经聚合入口装配，不得在宿主组合根逐行手拼。
+     *
+     * <p>手拼装配的失效形态是静默的：少写一行就是「命令没注册、功能不存在」，
+     * 且 <code>addExtension</code> 不查重，重复写会二次 <code>onAttach</code> 重建调度器。
+     * 判定走 <code>HarnessExtensions.installDefaults</code> 后，顺序与幂等不再外包给宿主。</p>
+     *
+     * <p>豁免：测试源码不在 SRC 范围内，自然不命中。</p>
+     */
+    @Test
+    void hostMustUseAggregateExtensionInstaller() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String name = file.getFileName().toString();
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+
+            if (content.contains("addExtension(new SteerExtension())")) {
+                violations.add(name + " 逐行装配 steer（应用 HarnessExtensions.installDefaults）");
+            }
+            if (content.contains("addExtension(new QueueExtension())")) {
+                violations.add(name + " 逐行装配 queue（应用 HarnessExtensions.installDefaults）");
+            }
+            if (content.contains("addExtension(goalExtension)")) {
+                violations.add(name + " 逐行装配 goal（应用 HarnessExtensions.installDefaults）");
+            }
+        }
+        assertTrue(violations.isEmpty(),
+                "harness 内置三件套必须经 HarnessExtensions.installDefaults 装配：" + violations);
+    }
+
     private static List<Path> javaFiles(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) {
             return new ArrayList<>();
