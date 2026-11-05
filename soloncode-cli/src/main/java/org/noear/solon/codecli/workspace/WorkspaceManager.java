@@ -5,7 +5,8 @@ import org.noear.snack4.Feature;
 import org.noear.solon.Solon;
 import org.noear.solon.Utils;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessExtensions;
+import org.noear.solon.ai.harness.session.queue.QueueExtension;
+import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.ai.harness.session.interrupt.InterruptCommand;
 import org.noear.solon.ai.harness.command.builtin.*;
 import org.noear.solon.ai.talents.lsp.LspManager;
@@ -811,7 +812,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
-        // /steer、/queue、/goal 三件套由下方 HarnessExtensions.installDefaults 一次装齐（命令注册幂等）。
+        // /steer、/queue、/goal 三个插件由下方 addExtensionIfAbsent 装配（按类型幂等）。
         // steer 输出走 AgentEvent（SteerAppliedEvent / SteerDroppedEvent），宿主零装配：
         // Web 由 WebEventMapper 映射为 system.steer_*，其余宿主不识别即忽略。
         engine.getCommandRegistry().register(new RerunCommand());
@@ -836,9 +837,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json"),
                 WorkspaceDataUtil.sessionsPath(workspacePath));
 
-        // harness 内置三件套（steer / queue / goal）一次装齐：
-        // 聚合入口负责顺序与幂等，宿主只负责「goal 怎么配」。此前这里是三处分散的 addExtension，
-        // 中间夹着别的命令注册，少写一行就是「命令没注册、功能静默不存在」。
+        // harness 三个插件（steer / queue / goal，各自独立模块）集中在此装配：
+        // addExtensionIfAbsent 按类型幂等、返回实际生效实例；插件间只经核心契约协作，装配顺序不承载语义。
         // GoalExtension.builder 内部完成 GoalEngine→GoalScheduler→/goal 命令→Talent 装配，
         // 执行通道内联在 GoalEngine 内，无需向组合根借用。
         GoalGroupDo goalCfg = wsSettings.getGoal();
@@ -851,9 +851,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .workspace(workspacePath)
                 .build();
 
-        HarnessExtensions.Handles harnessHandles =
-                HarnessExtensions.installDefaults(engine, goalExtension);
-        goalExtension = harnessHandles.goal();
+        engine.addExtensionIfAbsent(new SteerExtension());
+        engine.addExtensionIfAbsent(new QueueExtension());
+        goalExtension = engine.addExtensionIfAbsent(goalExtension);
 
         // Goal 模式（关掉只影响模型侧工具，不影响 /goal 命令）
         boolean goalsEnabled = wsSettings.getGeneral().isGoalsEnabled();

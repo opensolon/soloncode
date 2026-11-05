@@ -514,33 +514,41 @@ class PackageBoundaryTest {
     }
 
     /**
-     * harness 内置三件套（steer / queue / goal）必须经聚合入口装配，不得在宿主组合根逐行手拼。
+     * harness 三个插件（steer / queue / goal）必须用 <code>addExtensionIfAbsent</code> 幂等装配。
      *
-     * <p>手拼装配的失效形态是静默的：少写一行就是「命令没注册、功能不存在」，
-     * 且 <code>addExtension</code> 不查重，重复写会二次 <code>onAttach</code> 重建调度器。
-     * 判定走 <code>HarnessExtensions.installDefaults</code> 后，顺序与幂等不再外包给宿主。</p>
+     * <p><code>addExtension</code> 不查重，重复写会二次 <code>onAttach</code>（重复注册、重建调度器）。
+     * 原聚合入口 <code>HarnessExtensions</code> 已随插件独立而移除（它让核心反向依赖插件）。
+     * 同时要求三个插件确实装配了：少写一行就是「命令没注册、功能静默不存在」。</p>
      *
      * <p>豁免：测试源码不在 SRC 范围内，自然不命中。</p>
      */
     @Test
-    void hostMustUseAggregateExtensionInstaller() throws IOException {
+    void hostMustInstallHarnessPluginsIdempotently() throws IOException {
         List<String> violations = new ArrayList<>();
+        boolean steer = false, queue = false, goal = false;
         for (Path file : javaFiles(SRC)) {
             String name = file.getFileName().toString();
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
 
+            if (content.contains("HarnessExtensions")) {
+                violations.add(name + " 引用已移除的 HarnessExtensions（应用 addExtensionIfAbsent）");
+            }
             if (content.contains("addExtension(new SteerExtension())")) {
-                violations.add(name + " 逐行装配 steer（应用 HarnessExtensions.installDefaults）");
+                violations.add(name + " 非幂等装配 steer（应用 addExtensionIfAbsent）");
             }
             if (content.contains("addExtension(new QueueExtension())")) {
-                violations.add(name + " 逐行装配 queue（应用 HarnessExtensions.installDefaults）");
+                violations.add(name + " 非幂等装配 queue（应用 addExtensionIfAbsent）");
             }
             if (content.contains("addExtension(goalExtension)")) {
-                violations.add(name + " 逐行装配 goal（应用 HarnessExtensions.installDefaults）");
+                violations.add(name + " 非幂等装配 goal（应用 addExtensionIfAbsent）");
             }
+            steer |= content.contains("addExtensionIfAbsent(new SteerExtension())");
+            queue |= content.contains("addExtensionIfAbsent(new QueueExtension())");
+            goal |= content.contains("addExtensionIfAbsent(goalExtension)");
         }
-        assertTrue(violations.isEmpty(),
-                "harness 内置三件套必须经 HarnessExtensions.installDefaults 装配：" + violations);
+        assertTrue(violations.isEmpty(), "harness 插件必须幂等装配：" + violations);
+        assertTrue(steer && queue && goal,
+                "组合根必须装配 steer/queue/goal 三个插件：steer=" + steer + ", queue=" + queue + ", goal=" + goal);
     }
 
     private static List<Path> javaFiles(Path dir) throws IOException {

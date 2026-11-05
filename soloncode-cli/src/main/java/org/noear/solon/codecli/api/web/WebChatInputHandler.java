@@ -38,7 +38,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
-import org.noear.solon.ai.harness.session.queue.QueueDispatch;
+import org.noear.solon.ai.harness.session.TurnDispatch;
 import org.noear.solon.ai.harness.session.queue.QueueExtension;
 import org.noear.solon.ai.harness.session.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
@@ -139,8 +139,9 @@ class WebChatInputHandler {
             boolean sideCommand = admit.getKind() == AdmitDecision.Kind.ADMIT_BYPASS
                     && admit.isQueueDispatch() == false;
             if (!sideCommand) {
-                QueueDispatch turn = admit.isQueueDispatch() ? admit.getDispatch() : null;
-                if (turn != null && turn.getItem() != null) {
+                // 派发轮次沿用派发事务的来源（NONE = 没有可用来源，与旧 getItem()==null 同义）
+                TurnDispatch turn = admit.isQueueDispatch() ? admit.getDispatch() : null;
+                if (turn != null && turn.getOrigin() != InputOrigin.NONE) {
                     setReplyRoute(session, turn.getOrigin());
                 } else {
                     setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
