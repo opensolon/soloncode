@@ -50,7 +50,7 @@ class PackageBoundaryTest {
      *
      * <p>Goal 已是独立的会话级能力（已下沉 harness），loop 只是定时任务。
      * 二者现在<b>没有任何交汇点</b>（执行通道已各自内联：goal 在 GoalEngine、
-     * loop 在 LoopScheduler，连共享类都已不存在）。
+     * loop 在 solon-ai-harness-loop 插件，连共享类都已不存在）。
      * 允许的残留仅限：说明性注释中提及 Goal、以及拒绝 {@code type=GOAL}
      * 的入参校验（防止旧客户端把 goal 塞进定时任务表）。</p>
      */
@@ -162,6 +162,42 @@ class PackageBoundaryTest {
     }
 
     /**
+     * 宿主侧 {@code codecli.loop} 包不得让调度实现回流。
+     *
+     * <p>loop 已下沉为 solon-ai-harness-loop 插件（调度、持久化、/loop 命令、loop_* 工具），
+     * 宿主只保留自动任务这一宿主概念（专用会话、覆盖层）与存储历史迁移。
+     * 同时禁止引用插件的内部实现名（它们是包内可见，引用即说明有人在宿主重建同名类）。</p>
+     */
+    @Test
+    void hostLoopPackageMayOnlyHoldAutomationAndMigrator() throws IOException {
+        List<String> names = new ArrayList<>();
+        for (Path file : javaFiles(SRC.resolve("loop"))) {
+            names.add(file.getFileName().toString());
+        }
+        names.removeAll(java.util.Arrays.asList(
+                "AutomationManager.java", "AutomationMeta.java", "LoopDataMigrator.java"));
+        assertTrue(names.isEmpty(),
+                "codecli.loop 只允许保留自动任务与历史迁移器（调度应全部在 loop 插件），多出：" + names);
+
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) {
+                    continue;
+                }
+                for (String bad : new String[]{"LoopScheduler", "LoopStore", "LoopCron",
+                        "getLoopScheduler", "loopScheduler", "codecli.command.builtin.LoopCommand"}) {
+                    if (trimmed.contains(bad)) {
+                        violations.add(file.getFileName() + ": " + trimmed);
+                    }
+                }
+            }
+        }
+        assertTrue(violations.isEmpty(), "宿主只经 LoopExtension 门面操作 loop：" + violations);
+    }
+
+    /**
      * 宿主侧 {@code codecli.goal} 包不得让领域实现回流。
      *
      * <p>goal 域下沉 harness 后，宿主只应保留「一次性历史数据迁移」这一
@@ -198,7 +234,7 @@ class PackageBoundaryTest {
 
         String content = new String(Files.readAllBytes(ctrl), StandardCharsets.UTF_8);
         int goalIdx = content.indexOf("buildGoalMap(sessionId)");
-        int loopIdx = content.indexOf("loopScheduler().listAll(sessionId)");
+        int loopIdx = content.indexOf("loop().list(sessionId)");
         assertTrue(goalIdx > 0, "合并列表应包含 goal 条目");
         assertTrue(loopIdx > 0, "合并列表应包含定时任务条目");
         assertTrue(goalIdx < loopIdx,

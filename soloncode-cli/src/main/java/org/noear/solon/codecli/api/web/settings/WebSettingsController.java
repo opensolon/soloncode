@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.web.settings;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
 
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -182,7 +183,7 @@ public class WebSettingsController extends BaseSettingsController {
                     applyPermissionToAllEngines(applied, warnings);
                 }
                 if (loopChanged) {
-                    applied.add("loop"); // loop 仅内存，LoopScheduler 读 settings
+                    applied.add("loop"); // loop 仅内存：loop 插件经 maxErrors 供应器实时读 settings
                 }
 
                 if (defaultModelChanged) {
@@ -298,7 +299,7 @@ public class WebSettingsController extends BaseSettingsController {
             // goalsEnabled：热更新 GoalTalent
             try {
                 boolean goalsEnabled = g.isGoalsEnabled();
-                GoalExtension goalExt = engine.getExtension(GoalExtension.class).get();
+                GoalExtension goalExt = engine.getExtension(GoalExtension.class).orElse(null);
                 if (goalExt != null) {
                     goalExt.getGoalTalent().setEnabled(goalsEnabled);
                 }
@@ -306,7 +307,12 @@ public class WebSettingsController extends BaseSettingsController {
                 warnings.add("goalsEnabled apply failed: " + e.getMessage());
             }
 
-            // loopsEnabled：由 LoopTalent.isEnabled() 实时读取（同 ManagerTalent 模式），无需热更新
+            // loopsEnabled：热更新 loop 插件开关（只关模型工具；/loop 命令与已有定时任务不受影响）
+            try {
+                engine.getExtension(LoopExtension.class).ifPresent(e -> e.setEnabled(g.isLoopsEnabled()));
+            } catch (Exception e) {
+                warnings.add("loopsEnabled apply failed: " + e.getMessage());
+            }
 
             if (g.getLogLevel() != null && !g.getLogLevel().isEmpty()) {
                 ch.qos.logback.classic.Level level = ch.qos.logback.classic.Level.toLevel(g.getLogLevel(), null);
@@ -831,7 +837,7 @@ public class WebSettingsController extends BaseSettingsController {
             tmp.bindTo(settings().getLoop());
         }
         saveSettings();
-        // loop 为公用（无 scope）配置：其它工作区的 LoopScheduler 读取各自 settings.loop，
+        // loop 为公用（无 scope）配置：其它工作区的 loop 插件读取各自 settings.loop，
         // 必须重读磁盘才能拿到最新值
         reloadOtherWorkspaces();
         return Result.succeed();

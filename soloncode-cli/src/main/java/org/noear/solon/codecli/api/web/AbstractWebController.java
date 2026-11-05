@@ -23,7 +23,7 @@ import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +32,7 @@ import java.nio.file.Path;
  * Web 领域 Controller 共享基类。
  *
  * <p>原 WebController（3000+ 行、70 路由）按领域拆分后，各子 Controller 复用同一组
- * 工作区访问辅助：currentContext / engine / runtimePort / loopScheduler 等。这些辅助
+ * 工作区访问辅助：currentContext / engine / runtimePort / loop 等。这些辅助
  * 全部依赖「当前请求工作区」语义（多工作区下按请求路由到对应上下文），因此收敛到
  * 本基类统一提供，避免每个领域 Controller 重复持有 WorkspaceManager 并复制取数逻辑。</p>
  *
@@ -72,8 +72,9 @@ public abstract class AbstractWebController {
         return currentContext().getRuntimePort();
     }
 
-    protected LoopScheduler loopScheduler() {
-        return currentContext().getLoopScheduler();
+    /** 当前工作区的 loop（会话定时任务）插件门面；未装配时为 null。 */
+    protected LoopExtension loop() {
+        return currentContext().getLoopExtension();
     }
 
     protected AutomationManager automationManager() {

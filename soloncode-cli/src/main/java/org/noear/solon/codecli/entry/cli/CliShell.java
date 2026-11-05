@@ -45,7 +45,7 @@ import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalTalent;
 import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.config.AgentFlags;
-import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.ai.harness.session.queue.DrainStatus;
@@ -83,7 +83,6 @@ public class CliShell implements Runnable {
     private LineReader reader;
     private final HarnessEngine engine;
     private final AgentSettings agentProps;
-    private final LoopScheduler loopScheduler;
     private boolean cliQueueDraining;
 
     // ANSI 颜色常量
@@ -99,10 +98,9 @@ public class CliShell implements Runnable {
             RESET = "\033[0m";     // 重置所有样式和颜色（恢复终端默认）
 
 
-    public CliShell(HarnessEngine engine, AgentSettings agentProps, LoopScheduler loopScheduler) {
+    public CliShell(HarnessEngine engine, AgentSettings agentProps) {
         this.engine = engine;
         this.agentProps = agentProps;
-        this.loopScheduler = loopScheduler;
 
         try {
             this.terminal = TerminalBuilder.builder()
@@ -176,33 +174,25 @@ public class CliShell implements Runnable {
         AgentSession session = prepare(SESSION_ID_CLI);
 
 
-        // 恢复上次未过期的 loop 定时任务（如果有）
-        if (loopScheduler != null) {
-            loopScheduler.restore(session.getSessionId());
-        }
-
-        // loop 执行通道：只在 LoopScheduler 自己的通道上注册（与 goal 无共享）
-        if (loopScheduler != null) {
+        // loop 执行通道：只在 loop 插件自己的通道上注册（与 goal 无共享）。
+        // 任务已在插件挂接时加载恢复，此处只接通执行通道与注入屏障。
+        LoopExtension loop = engine.getExtension(LoopExtension.class).orElse(null);
+        if (loop != null) {
             // 注入屏障：终端所有权（不是会话状态）。
             // 放行条件 = 主线程正阻塞于 readLine（主线程空闲、只等着输入）。
             // 反之主线程在跑 /help、/model 选择器等非流命令时会话不忙，但终端正被占用，
             // 此时注入会与主线程并发写同一个 terminal，因此不放行。
             // 注：这与改造前 busyChecker 的 reader==null || !reader.isReading() 完全等价，
             // 属于既有行为的搬迁，不是新增屏障。
-            loopScheduler.setInjectionGate(() -> reader == null || reader.isReading());
+            loop.setInjectionGate(() -> reader == null || reader.isReading());
 
             // 任务执行器：在调度线程执行 agent 回合
             // 注意：它并非运行在主线程 —— 此刻主线程通常仍阻塞于 readLine，两者共用同一 reader，
             // 因此这里不消费队列（队列消费只归属主循环）
-            // 子代理归属是会话属性（AutomationManager 已写入 CTX_AGENT_SELECTED），无需在此拼接 @ 前缀
-            loopScheduler.addExecutor((sessionId, prompt) -> {
-                if (SESSION_ID_CLI.equals(sessionId) == false) {
-                    return null;
-                }
-
-                // 直接返回 ReAct 完成时的权威全文，由 loop 记录 lastResult
-                return safeChatInput(session, prompt);
-            });
+            // 子代理归属是会话属性（AutomationManager 已写入会话选择），无需在此拼接 @ 前缀
+            // 认领谓词交给插件；直接返回 ReAct 完成时的权威全文，由 loop 记录 lastResult
+            loop.addExecutor("cli", SessionIdOwnership::isCli,
+                    (sessionId, prompt) -> safeChatInput(session, prompt));
         }
 
         // goal 执行通道：只在 GoalEngine 自己的通道上注册（与 loop 无共享）。

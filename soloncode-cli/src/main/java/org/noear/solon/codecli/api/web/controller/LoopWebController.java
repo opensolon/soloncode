@@ -24,8 +24,8 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.ai.harness.session.goal.GoalSpec;
 import org.noear.solon.ai.harness.session.goal.GoalState;
-import org.noear.solon.codecli.loop.LoopScheduler;
-import org.noear.solon.codecli.loop.LoopTask;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.session.loop.LoopTask;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 
@@ -66,7 +66,7 @@ public class LoopWebController extends AbstractWebController {
             data.add(goalItem);
         }
 
-        for (LoopTask t : loopScheduler().listAll(sessionId)) {
+        for (LoopTask t : loop().list(sessionId)) {
             data.add(buildTaskMap(t));
         }
         return Result.succeed(data);
@@ -79,9 +79,8 @@ public class LoopWebController extends AbstractWebController {
     @Get
     @Mapping("/web/chat/loop/all")
     public Result<List<Map>> loopAll() {
-        LoopScheduler loopScheduler = loopScheduler();
-        loopScheduler.restoreAll();
-        Map<String, List<LoopTask>> tasksBySession = loopScheduler.listAll();
+        // 任务已在插件挂接时全量加载，此处只读快照
+        Map<String, List<LoopTask>> tasksBySession = loop().listAll();
         List<Map> data = new ArrayList<>();
 
         for (Map.Entry<String, List<LoopTask>> entry : tasksBySession.entrySet()) {
@@ -230,13 +229,8 @@ public class LoopWebController extends AbstractWebController {
             return Result.succeed(goalItem);
         }
 
-        List<LoopTask> tasks = loopScheduler().listAll(sessionId);
-        for (LoopTask t : tasks) {
-            if (t.getId().equals(taskId)) {
-                return Result.succeed(buildTaskMap(t));
-            }
-        }
-        return Result.failure(404, "Task not found");
+        LoopTask t = loop().get(sessionId, taskId);
+        return t == null ? Result.failure(404, "Task not found") : Result.succeed(buildTaskMap(t));
     }
 
     /**
@@ -271,7 +265,7 @@ public class LoopWebController extends AbstractWebController {
                 runNow != null && runNow
         );
         try {
-            loopScheduler().schedule(sessionId, task);
+            loop().schedule(sessionId, task);
         } catch (IllegalArgumentException | IllegalStateException e) {
             return Result.failure(400, e.getMessage());
         }
@@ -290,7 +284,6 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "intervalMinutes", required = false) Integer intervalMinutes,
                              @Param(value = "cron", required = false) String cron,
                              @Param(value = "type", required = false) String type,
-                             @Param(value = "channelNotify", required = false) String channelNotify,
                              @Param(value = "runNow", required = false) Boolean runNow,
                              @Param(value = "maxTokens", required = false) Long maxTokens,
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
@@ -311,13 +304,12 @@ public class LoopWebController extends AbstractWebController {
             }
         }
 
-        LoopScheduler loopScheduler = loopScheduler();
-        LoopTask existing = loopScheduler.getTaskById(sessionId, taskId);
+        LoopExtension loop = loop();
+        LoopTask existing = loop.get(sessionId, taskId);
         if (existing == null) {
             return Result.failure(404, "Task not found");
         }
 
-        // 基于现有任务构建新任务（保留 id、createdAt、expireAt 等）
         int interval = intervalMinutes != null ? intervalMinutes : existing.getIntervalMinutes();
         String effectiveCron = cron != null ? cron : existing.getCron();
         String effectivePrompt = (prompt != null && !prompt.trim().isEmpty()) ? prompt.trim() : existing.getPrompt();
@@ -325,15 +317,12 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "GOAL is a session-scoped capability, use /goal or goal endpoints");
         }
 
+        // 基于现有任务构建新版本（保留 id、createdAt、启停与运行时状态）
         LoopTask newTask = existing.copyWithUpdate(
                 effectivePrompt, interval, effectiveCron,
                 runNow != null ? runNow : existing.isRunNow()
         );
-
-        // 保留 enabled
-        newTask.setEnabled(existing.isEnabled());
-
-        loopScheduler.update(sessionId, taskId, newTask);
+        loop.update(sessionId, taskId, newTask);
         return Result.succeed();
     }
 
@@ -473,7 +462,7 @@ public class LoopWebController extends AbstractWebController {
         if (isAutomationType(type)) {
             return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName);
         }
-        return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, null, runNow, maxTokens, maxDurationMs);
+        return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs);
     }
 
     @Post
@@ -656,13 +645,9 @@ public class LoopWebController extends AbstractWebController {
             return Result.succeed();
         }
 
-        LoopScheduler loopScheduler = loopScheduler();
-        LoopTask task = loopScheduler.getTaskById(sessionId, taskId);
-        if (task == null) {
+        if (!loop().remove(sessionId, taskId)) {
             return Result.failure(400, "the task does not exist.");
         }
-
-        loopScheduler.remove(sessionId, task);
         return Result.succeed();
     }
 
@@ -700,7 +685,7 @@ public class LoopWebController extends AbstractWebController {
             return Result.succeed();
         }
 
-        loopScheduler().toggle(sessionId, taskId);
+        loop().toggle(sessionId, taskId);
         return Result.succeed();
     }
 
@@ -728,7 +713,7 @@ public class LoopWebController extends AbstractWebController {
             return Result.succeed();
         }
 
-        loopScheduler().trigger(sessionId, taskId);
+        loop().trigger(sessionId, taskId);
         return Result.succeed();
     }
 }

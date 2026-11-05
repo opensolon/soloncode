@@ -118,10 +118,11 @@ public class InjectedRoundChannelContractTest {
     @Test
     void eachEntryRegistersBothChannelsSeparately() throws IOException {
         // CLI 与 Web 工作区都同时服务 loop 与 goal
+        // loop 通道经插件门面注册（CLI 与 Web 同形：挂接后 addExecutor，认领谓词交给插件）
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "loopScheduler.addExecutor", "CLI 的 loop 通道丢失");
+                "loop.addExecutor(\"cli\", SessionIdOwnership::isCli,", "CLI 的 loop 通道丢失");
         assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "loopScheduler.addExecutor", "Web 的 loop 通道丢失");
+                "loopExtension.addExecutor(\"web\", SessionIdOwnership::isWeb, webLoopExecutor(", "Web 的 loop 通道丢失");
     }
 
     /**

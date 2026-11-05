@@ -8,7 +8,6 @@ import org.noear.solon.annotation.Bean;
 import org.noear.solon.annotation.Configuration;
 import org.noear.solon.annotation.Init;
 import org.noear.solon.annotation.Inject;
-import org.noear.solon.codecli.loop.LoopScheduler;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
@@ -78,7 +77,6 @@ public class Configurator {
     @Inject
     SessionManager sessionManager;
 
-    private LoopScheduler loopScheduler;
     private GoalExtension goalExtension;
 
     @Inject
@@ -109,10 +107,9 @@ public class Configurator {
         // 复用默认工作区 engine：引擎构建逻辑已收敛到 WorkspaceManager.createWorkspaceContext，
         // 禁止再维护第二份 200 行构建代码（同一 user.dir 双 engine 会导致内存/MCP/LSP 子进程翻倍）。
         // 语义对齐：默认工作区 wsSettings 即注入的 settings；SessionManager(workspace) 与无参构造
-        // 均指向 AgentFlags.getUserDir()；命令注册/LoopScheduler/GoalExtension 完全一致。
+        // 均指向 AgentFlags.getUserDir()；命令注册/LoopExtension/GoalExtension 完全一致。
         workspaceManager.initDefaultWorkspace();
         WorkspaceContext defaultCtx = workspaceManager.getOrCreate(null);
-        this.loopScheduler = defaultCtx.getLoopScheduler();
         this.goalExtension = defaultCtx.getGoalExtension();
         return defaultCtx.getEngine();
     }
@@ -127,7 +124,7 @@ public class Configurator {
         // 容器扩展订阅已由 WorkspaceManager.createWorkspaceContext 统一完成
         //（agentRuntime 即默认工作区 engine），此处禁止重复订阅，否则同一扩展被注册两遍
 
-        CliShell cliShell = new CliShell(agentRuntime, agentSettings, loopScheduler);
+        CliShell cliShell = new CliShell(agentRuntime, agentSettings);
         String flag = Solon.cfg().argx().flagAt(0);
 
         // help 优先于其它一切分支：不做更新检查，保证帮助输出可被工具链解析

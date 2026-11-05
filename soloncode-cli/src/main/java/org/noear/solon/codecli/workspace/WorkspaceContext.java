@@ -7,7 +7,7 @@ import org.noear.solon.codecli.channel.ChannelHub;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 
-import org.noear.solon.codecli.loop.LoopScheduler;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.codecli.session.SessionManager;
@@ -34,7 +34,6 @@ public class WorkspaceContext implements Closeable {
     private final FileService fileService;
     private final GitService gitService;
     private final FileWatchService fileWatchService;
-    private final LoopScheduler loopScheduler;
     /** Goal 一键装配扩展（goal 域的唯一宿主交互面；运行期操作经其门面中转）。 */
     private volatile GoalExtension goalExtension;
     private final AutomationManager automationManager;
@@ -54,11 +53,10 @@ public class WorkspaceContext implements Closeable {
                             FileService fileService,
                             GitService gitService,
                             FileWatchService fileWatchService,
-                            LoopScheduler loopScheduler,
                             WorkspaceManager manager,
                             AgentSettings settings) {
         this(meta, engine, sessionManager, fileService, gitService, fileWatchService,
-                loopScheduler, null, manager, settings);
+                null, manager, settings);
     }
 
     public WorkspaceContext(WorkspaceMeta meta,
@@ -67,7 +65,6 @@ public class WorkspaceContext implements Closeable {
                             FileService fileService,
                             GitService gitService,
                             FileWatchService fileWatchService,
-                            LoopScheduler loopScheduler,
                             AutomationManager automationManager,
                             WorkspaceManager manager,
                             AgentSettings settings) {
@@ -78,7 +75,6 @@ public class WorkspaceContext implements Closeable {
         this.fileService = fileService;
         this.gitService = gitService;
         this.fileWatchService = fileWatchService;
-        this.loopScheduler = loopScheduler;
         this.automationManager = automationManager;
         this.manager = manager;
         this.messageGateway = manager == null ? null : manager.getMessageGateway();
@@ -151,8 +147,13 @@ public class WorkspaceContext implements Closeable {
         }
     }
 
-    public LoopScheduler getLoopScheduler() {
-        return loopScheduler;
+    /**
+     * loop（会话定时任务）插件门面；未装配时为 null。
+     *
+     * <p>不再持字段：扩展由引擎持有，生命周期（onDetach 卸载 job）也随引擎。</p>
+     */
+    public @Nullable LoopExtension getLoopExtension() {
+        return getExtension(LoopExtension.class);
     }
 
     public AutomationManager getAutomationManager() {
@@ -196,16 +197,10 @@ public class WorkspaceContext implements Closeable {
     public void close() throws IOException {
         // 不再调用 channelHub.stop()：IM 连接（飞书/钉钉 WS、微信长轮询）已归进程级
         // ImGateway 持有，工作区 LRU 释放/关闭不得断开它们，否则消息会丢失（方案 3.3）。
-        if (loopScheduler != null) {
-            try {
-                loopScheduler.shutdown();
-            } catch (Exception e) {
-                // Ignore
-            }
-        }
-        // 停掉本工作区全部 goal job：JobManager 是 JVM 单例，
+        // 停掉本工作区全部 goal / loop job：JobManager 是 JVM 单例，
         // 不注销则 job 会带着已关闭引擎的引用在全局调度器里空转。
-        // engine.shutdown() 会遍历回调各扩展的 onDetach（GoalExtension.onDetach → stopAll），
+        // engine.shutdown() 会遍历回调各扩展的 onDetach（GoalExtension → stopAll；
+        // LoopExtension → 卸载 job 但保留 tasks.json 记录），
         // 并关闭子代理委派的私有执行器。不再单独取 goalExtension 打补丁。
         try {
             engine.shutdown();

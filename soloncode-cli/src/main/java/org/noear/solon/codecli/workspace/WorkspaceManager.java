@@ -19,7 +19,10 @@ import org.noear.solon.ai.talents.mount.source.FileMountSource;
 
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.command.builtin.*;
-import org.noear.solon.codecli.loop.*;
+import org.noear.solon.codecli.loop.AutomationManager;
+import org.noear.solon.codecli.loop.LoopDataMigrator;
+import org.noear.solon.ai.harness.session.loop.LoopExecutor;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
 import org.noear.solon.ai.harness.session.goal.GoalExtension;
 import org.noear.solon.codecli.goal.GoalDataMigrator;
 import org.noear.solon.codecli.config.entity.GoalGroupDo;
@@ -181,7 +184,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 long last = ctx.getMeta().getLastAccessed();
                 if (now - last > IDLE_RELEASE_MS
                         && (ctx.getConnections() == null || ctx.getConnections().isEmpty())
-                        && (ctx.getLoopScheduler() == null || !ctx.getLoopScheduler().hasActiveTasks())) {
+                        && (ctx.getLoopExtension() == null || !ctx.getLoopExtension().hasActiveTasks())) {
                     idleIds.add(ctx.getMeta().getId());
                 }
             }
@@ -549,7 +552,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         if (ctx.getConnections() != null && !ctx.getConnections().isEmpty()) {
             return; // 预检查后有新连接
         }
-        if (ctx.getLoopScheduler() != null && ctx.getLoopScheduler().hasActiveTasks()) {
+        if (ctx.getLoopExtension() != null && ctx.getLoopExtension().hasActiveTasks()) {
             return;
         }
         // 活跃 goal 仍在调度的工作区不得被 LRU 释放（否则 goal 静默丢失）
@@ -827,15 +830,14 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // （旧的 ExecutionBridge 已删除：它同时挂载「执行投递」「忙判定」「轮次度量」三件不相干的事，
         //   而 busy 判定与轮次度量本可（且已）由会话快照与返回值直接得出）
 
-        // loop scheduler（纯定时任务）
-        // loop scheduler（纯定时任务，自持执行通道；与 goal 无任何共享）
-        LoopScheduler loopScheduler = new LoopScheduler(engine, wsSettings);
-
-        // 一次性迁移：tasks.json 的历史 GOAL 条目 → 各会话快照 session.goal。
-        // 必须在任何会话实例化之前执行（迁移直接读写快照文件，绕过会话锁）。
-        GoalDataMigrator.migrate(
-                WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json"),
-                WorkspaceDataUtil.sessionsPath(workspacePath));
+        // 两步一次性迁移（顺序承载语义：必须先于 LoopExtension 挂接——挂接即加载 tasks.json）：
+        // ① tasks.json 的历史 GOAL 条目 → 各会话快照 session.goal（必须在任何会话实例化之前，绕过会话锁直写快照）；
+        // ② 旧版每会话 loop-tasks.json → tasks.json（仅 tasks.json 尚不存在时）。
+        // 即便顺序被打乱也不会丢数据：loop 插件对不认识的条目（如 GOAL）原样写回，只是迁移推迟。
+        Path tasksFile = WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json");
+        Path sessionsRoot = WorkspaceDataUtil.sessionsPath(workspacePath);
+        GoalDataMigrator.migrate(tasksFile, sessionsRoot);
+        LoopDataMigrator.migrate(tasksFile, sessionsRoot);
 
         // harness 三个插件（steer / queue / goal，各自独立模块）集中在此装配：
         // addExtensionIfAbsent 按类型幂等、返回实际生效实例；插件间只经核心契约协作，装配顺序不承载语义。
@@ -851,18 +853,28 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .workspace(workspacePath)
                 .build();
 
+        // loop（会话定时任务）：宿主只提供存储位置、孤儿判定、阈值（实时读，支持热更新）与
+        // 调度线程日志归属；调度/持久化/命令/工具全部在插件内。执行通道在挂接后注册（与 goal、CLI 同形）。
+        // 没人认领时只记日志跳过（关闭插件缺省执行器，桌面会话等保持既有行为）。
+        LoopExtension loopExtension = LoopExtension.builder(meta.getId())
+                .storeFile(tasksFile)
+                .sessionAlive(id -> id.startsWith(AutomationManager.SESSION_PREFIX)
+                        || Files.isDirectory(sessionsRoot.resolve(id)))
+                .maxErrors(() -> wsSettings.getLoop().getMaxConsecutiveErrorsOrDefault())
+                .triggerWrapper(r -> WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, r))
+                .defaultExecutor(false)
+                .build();
+
         engine.addExtensionIfAbsent(new SteerExtension());
         engine.addExtensionIfAbsent(new QueueExtension());
         goalExtension = engine.addExtensionIfAbsent(goalExtension);
+        loopExtension = engine.addExtensionIfAbsent(loopExtension);
+        loopExtension.addExecutor("web", SessionIdOwnership::isWeb, webLoopExecutor(meta.getId()));
 
-        // Goal 模式（关掉只影响模型侧工具，不影响 /goal 命令）
-        boolean goalsEnabled = wsSettings.getGeneral().isGoalsEnabled();
-        goalExtension.setEnabled(goalsEnabled);
+        // Goal / Loop 模式（关掉只影响模型侧工具，不影响 /goal、/loop 命令与已有定时任务）
+        goalExtension.setEnabled(wsSettings.getGeneral().isGoalsEnabled());
+        loopExtension.setEnabled(wsSettings.getGeneral().isLoopsEnabled());
 
-        LoopCommand loopCommand = new LoopCommand(loopScheduler);
-        engine.getCommandRegistry().register(loopCommand);
-
-        engine.addExtension(new LoopExtension(loopScheduler, wsSettings));
         engine.addExtension(new ManagerExtension(engine, wsSettings));
 
 
@@ -871,12 +883,6 @@ public class WorkspaceManager implements WorkspaceRegistry {
             engine.addExtension(extension);
         });
 
-
-        // 为本工作区的 LoopScheduler 就地注册 web 端执行器与忙碌检查。
-        // 注意：此处不能捕获 runtimePort 字段快照——默认工作区在入口绑定之前创建，
-        // 快照为 null 会导致注册被跳过；改为 lambda 内动态取值，注入完成后自然生效。
-        // 为本工作区的 LoopScheduler 就地注册 web 端执行器（loop 自己的通道）
-        registerWebLoopExecutor(engine, meta.getId(), loopScheduler);
 
         // 为本工作区的 GoalEngine 就地注册 web 端执行器（goal 自己的通道，与 loop 无共享）
         registerWebGoalExecutor(goalExtension, meta.getId());
@@ -937,11 +943,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
         FileService fileService = new FileService(workspacePath, engine);
         GitService gitService = new GitService(workspacePath, engine);
 
-        AutomationManager automationManager = new AutomationManager(workspacePath, loopScheduler, sessionManager, engine);
-        // 循环/自动任务统一存于工作区 tasks.json，由 LoopScheduler 启动时全量加载恢复；
-        // 此处仅拉起 scheduler 的加载（含旧版三路数据迁移）。
-        automationManager.restore();
-        WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, loopScheduler, automationManager, this, wsSettings);
+        // 循环/自动任务统一存于工作区 tasks.json，已在 LoopExtension 挂接时全量加载恢复
+        AutomationManager automationManager = new AutomationManager(loopExtension, sessionManager, engine);
+        WorkspaceContext context = new WorkspaceContext(meta, engine, sessionManager, fileService, gitService, fileWatchService, automationManager, this, wsSettings);
         context.attachGoal(goalExtension);
 
         // 拉起本工作区的 IM 渠道长连接（微信/飞书/钉钉），恢复已持久化的绑定连接。
@@ -965,30 +969,22 @@ public class WorkspaceManager implements WorkspaceRegistry {
     }
 
     /**
-     * 为本工作区的 LoopScheduler 注册 web 端任务执行器。
+     * 本工作区 loop 的 web 端执行器（认领谓词 {@code SessionIdOwnership::isWeb} 交给插件）。
      *
-     * <p>每个工作区拥有独立的运行时入口，执行器必须动态绑定当前工作区的
-     * 运行时端口，以保证定时触发的 AI 响应推送到本工作区的连接池。
-     * 忙判定不在此处：由 LoopScheduler 从会话快照（SessionStatus）统一派生。</p>
+     * <p>每个工作区拥有独立的运行时入口，执行器必须动态绑定当前工作区的运行时端口：
+     * 默认工作区在入口绑定之前创建，不能捕获字段快照；端口暂不可用时返 null 穿透到下一入口。
+     * 忙判定不在此处：由插件经 {@code engine.isIdle} 统一派生。</p>
      */
-    private void registerWebLoopExecutor(HarnessEngine engine, String workspaceId,
-                                         LoopScheduler loopScheduler) {
-        if (loopScheduler == null) {
-            return;
-        }
-
-        loopScheduler.addExecutor((sessionId, prompt) -> {
-            if (sessionId == null || (!sessionId.startsWith("web-") && !sessionId.startsWith("auto-"))) {
-                return null;
-            }
+    private LoopExecutor webLoopExecutor(String workspaceId) {
+        return (sessionId, prompt) -> {
             WorkspaceRuntimePort runtime = getRuntimePort();
             if (runtime == null) {
                 return null;
             }
-            // 子代理归属是会话属性（自动化任务创建时已写入 CTX_AGENT_SELECTED），不再经参数传递
+            // 子代理归属是会话属性（自动化任务创建时已写入会话选择），不再经参数传递
             // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本
             return runtime.runLoop(workspaceId, sessionId, prompt, "Loop");
-        });
+        };
     }
 
     /**

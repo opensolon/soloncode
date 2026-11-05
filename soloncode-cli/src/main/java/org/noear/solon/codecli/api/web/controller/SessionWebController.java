@@ -140,8 +140,7 @@ public class SessionWebController extends AbstractWebController {
                     item.put("isPinned", meta.isPinned());
                     data.add(item);
 
-                    //恢复定时任务
-                    loopScheduler().restore(sid);
+                    // 定时任务已在 loop 插件挂接时全量恢复，列表页不再逐会话触发
                 }
 
                 // 排序：置顶优先（按 time/createdAt 降序），非置顶在后（按 time/createdAt 降序）
@@ -189,8 +188,8 @@ public class SessionWebController extends AbstractWebController {
                     skippedBusy++;
                     continue;
                 }
-                if (loopScheduler() != null) {
-                    loopScheduler().stopAll(sessionId);
+                if (loop() != null) {
+                    loop().stopAll(sessionId);
                 }
                 sessionManager().removeSession(sessionId);
                 // 主动清理该会话的 IM 绑定，避免悬挂路由
@@ -276,8 +275,8 @@ public class SessionWebController extends AbstractWebController {
 
         // 仅清理当前运行时工作区的内存状态，避免数字会话 ID 在不同项目间碰撞。
         if (activeWorkspaceSession) {
-            if (loopScheduler() != null) {
-                loopScheduler().stopAll(sessionId);
+            if (loop() != null) {
+                loop().stopAll(sessionId);
             }
             sessionManager().removeSession(sessionId);
         }

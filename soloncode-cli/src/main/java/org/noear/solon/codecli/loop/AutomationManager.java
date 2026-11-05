@@ -1,9 +1,9 @@
 package org.noear.solon.codecli.loop;
 
+import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.codecli.loop.AutomationMeta;
-import org.noear.solon.codecli.loop.LoopScheduler;
-import org.noear.solon.codecli.loop.LoopTask;
+import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.session.loop.LoopTask;
 import org.noear.solon.codecli.session.SessionManager;
 
 import java.io.IOException;
@@ -14,26 +14,22 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 自动任务薄门面：统一存储（tasks.json）后任务本体由 LoopScheduler 管理，
- * 本类只负责 auto- 专用会话生命周期、automation 覆盖层读写与 Web 端视图。
+ * 自动任务薄门面：任务本体由 loop 插件（{@link LoopExtension}）管理，
+ * 本类只负责 auto- 专用会话生命周期、automation 覆盖层（任务扩展字段）读写与 Web 端视图。
+ *
+ * <p>任务随 LoopExtension 挂接时统一加载恢复，本类没有独立的恢复逻辑。</p>
  */
 public class AutomationManager {
     public static final String SESSION_PREFIX = "auto-";
 
-    private final LoopScheduler scheduler;
+    private final LoopExtension loop;
     private final SessionManager sessionManager;
     private final HarnessEngine engine;
 
-    public AutomationManager(String workspacePath, LoopScheduler scheduler, SessionManager sessionManager,
-                             HarnessEngine engine) {
-        this.scheduler = scheduler;
+    public AutomationManager(LoopExtension loop, SessionManager sessionManager, HarnessEngine engine) {
+        this.loop = loop;
         this.sessionManager = sessionManager;
         this.engine = engine;
-    }
-
-    /** 兼容旧调用点：任务随 LoopScheduler.loadAll() 统一恢复，此处不再有独立恢复逻辑。 */
-    public synchronized void restore() {
-        scheduler.restoreAll();
     }
 
     // ==================== 视图 ====================
@@ -41,7 +37,7 @@ public class AutomationManager {
     /** 全部任务（自动化任务 + 会话循环任务），供自动任务页统一展示。 */
     public synchronized List<Map<String, Object>> list() {
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map.Entry<String, List<LoopTask>> entry : scheduler.listAll().entrySet()) {
+        for (Map.Entry<String, List<LoopTask>> entry : loop.listAll().entrySet()) {
             for (LoopTask task : entry.getValue()) {
                 result.add(toMap(entry.getKey(), task));
             }
@@ -50,14 +46,8 @@ public class AutomationManager {
     }
 
     public synchronized Map<String, Object> get(String id) {
-        for (Map.Entry<String, List<LoopTask>> entry : scheduler.listAll().entrySet()) {
-            for (LoopTask task : entry.getValue()) {
-                if (task.isAutomation() && id.equals(task.getAutomation().getId())) {
-                    return toMap(entry.getKey(), task);
-                }
-            }
-        }
-        return null;
+        Located found = find(id);
+        return found == null ? null : toMap(found.sessionId, found.task);
     }
 
     /** 空名称时取提示词前 20 字作为展示名（首个换行处截断），避免多个任务同名不可辨。 */
@@ -67,106 +57,114 @@ public class AutomationManager {
         return base.length() > 20 ? base.substring(0, 20) : (base.isEmpty() ? "自动化任务" : base);
     }
 
-    // ==================== CRUD（委托 scheduler + 覆盖层） ====================
+    // ==================== CRUD（委托 loop 插件 + 覆盖层） ====================
 
     public synchronized String create(String name, String prompt, Integer intervalMinutes,
                                       String cron, String type, Boolean runNow,
                                       Long maxTokens, Long maxDurationMs, String modelName,
                                       String agentName) throws IOException {
         validate(name, prompt, intervalMinutes, cron);
+        rejectGoalType(type);
         String sessionId = SESSION_PREFIX + UUID.randomUUID().toString().replace("-", "");
         // 触发 FileAgentSession 的懒创建，确保专用会话目录在任务落盘前存在。
         sessionManager.getSession(sessionId);
 
-        rejectGoalType(type);
         LoopTask task = new LoopTask(prompt.trim(), intervalMinutes == null ? 5 : intervalMinutes,
                 emptyToNull(cron), Boolean.TRUE.equals(runNow));
-        task.setAutomation(new AutomationMeta(displayName(name, prompt.trim()),
-                emptyToNull(modelName), emptyToNull(agentName)));
-        applySelections(sessionId, task.getAutomation());
-        scheduler.schedule(sessionId, task);
-        sessionManager.markAutomationSession(sessionId, task.getAutomation().getId());
-        if (!task.getAutomation().isEnabled()) scheduler.toggle(sessionId, task.getId());
-        return task.getAutomation().getId();
+        AutomationMeta meta = new AutomationMeta(displayName(name, prompt.trim()),
+                emptyToNull(modelName), emptyToNull(agentName));
+        meta.writeTo(task);
+        applySelections(sessionId, meta);
+        loop.schedule(sessionId, task);
+        sessionManager.markAutomationSession(sessionId, meta.getId());
+        return meta.getId();
     }
 
-    /** 定位 automation id 对应的 (sessionId, task)。 */
-    private LoopTask locate(String id, String[] sessionIdOut) {
-        for (Map.Entry<String, List<LoopTask>> entry : scheduler.listAll().entrySet()) {
+    /** automation id 定位到的任务及其所属会话。 */
+    private static final class Located {
+        final String sessionId;
+        final LoopTask task;
+
+        Located(String sessionId, LoopTask task) {
+            this.sessionId = sessionId;
+            this.task = task;
+        }
+    }
+
+    /** 定位 automation id 对应的任务；不存在返回 null。 */
+    private Located find(String id) {
+        if (id == null) {
+            return null;
+        }
+        for (Map.Entry<String, List<LoopTask>> entry : loop.listAll().entrySet()) {
             for (LoopTask task : entry.getValue()) {
-                if (task.isAutomation() && id.equals(task.getAutomation().getId())) {
-                    sessionIdOut[0] = entry.getKey();
-                    return task;
+                AutomationMeta meta = AutomationMeta.of(task);
+                if (meta != null && id.equals(meta.getId())) {
+                    return new Located(entry.getKey(), task);
                 }
             }
         }
-        throw new IllegalArgumentException("Automation not found");
+        return null;
+    }
+
+    private Located locate(String id) {
+        Located found = find(id);
+        if (found == null) {
+            throw new IllegalArgumentException("Automation not found");
+        }
+        return found;
     }
 
     public synchronized void update(String id, String name, String prompt, Integer intervalMinutes,
                                     String cron, String type, Boolean runNow,
-                                     Long maxTokens, Long maxDurationMs, String modelName,
-                                     String agentName) throws IOException {
-        String[] sessionIdOut = new String[1];
-        LoopTask old = locate(id, sessionIdOut);
-        String sessionId = sessionIdOut[0];
-        AutomationMeta meta = old.getAutomation();
+                                    Long maxTokens, Long maxDurationMs, String modelName,
+                                    String agentName) throws IOException {
+        Located found = locate(id);
+        LoopTask old = found.task;
+        String sessionId = found.sessionId;
+        AutomationMeta meta = AutomationMeta.of(old);
 
         validate(name == null ? meta.getName() : name,
                 prompt == null ? old.getPrompt() : prompt,
                 intervalMinutes, cron == null ? old.getCron() : cron);
+        rejectGoalType(type);
 
         int interval = intervalMinutes == null ? old.getIntervalMinutes() : intervalMinutes;
         String effectivePrompt = prompt == null || prompt.trim().isEmpty() ? old.getPrompt() : prompt.trim();
-        rejectGoalType(type);
         LoopTask replacement = old.copyWithUpdate(effectivePrompt, interval,
                 cron == null ? old.getCron() : emptyToNull(cron),
-                runNow == null ? old.isRunNow() : runNow);
-        replacement.setEnabled(old.isEnabled());
-        replacement.setAutomation(meta);
+                runNow == null ? old.isRunNow() : runNow); // 启停状态随 copyWithUpdate 保留
         meta.update(name, emptyToNull(modelName), emptyToNull(agentName));
-        scheduler.update(sessionId, old.getId(), replacement);
+        meta.writeTo(replacement);
+        loop.update(sessionId, old.getId(), replacement);
         applySelections(sessionId, meta);
     }
 
     public synchronized void toggle(String id) throws IOException {
-        String[] sessionIdOut = new String[1];
-        LoopTask task = locate(id, sessionIdOut);
-        scheduler.toggle(sessionIdOut[0], task.getId());
-        task = scheduler.getTaskById(sessionIdOut[0], task.getId());
-        if (task != null && task.isAutomation()) {
-            task.getAutomation().setEnabled(task.isEnabled());
-        }
+        Located found = locate(id);
+        loop.toggle(found.sessionId, found.task.getId());
     }
 
     public synchronized void trigger(String id) {
-        String[] sessionIdOut = new String[1];
-        LoopTask task = locate(id, sessionIdOut);
-        scheduler.trigger(sessionIdOut[0], task.getId());
+        Located found = locate(id);
+        loop.trigger(found.sessionId, found.task.getId());
     }
 
     public synchronized void remove(String id) throws IOException {
-        String[] sessionIdOut = new String[1];
-        LoopTask task = locate(id, sessionIdOut);
-        String sessionId = sessionIdOut[0];
-        scheduler.remove(sessionId, task);
-        sessionManager.archiveAutomationSession(sessionId, id);
+        Located found = locate(id);
+        loop.remove(found.sessionId, found.task.getId());
+        sessionManager.archiveAutomationSession(found.sessionId, id);
     }
 
     public String sessionId(String id) {
-        try {
-            String[] sessionIdOut = new String[1];
-            locate(id, sessionIdOut);
-            return sessionIdOut[0];
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        Located found = find(id);
+        return found == null ? null : found.sessionId;
     }
 
     // ==================== 视图构建 ====================
 
     private Map<String, Object> toMap(String sessionId, LoopTask task) {
-        AutomationMeta meta = task.getAutomation();
+        AutomationMeta meta = AutomationMeta.of(task);
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", meta != null ? meta.getId() : task.getId());
         item.put("type", "AUTOMATION");
@@ -188,14 +186,14 @@ public class AutomationManager {
         item.put("currentIteration", task.getCurrentIteration());
         if (task.getLastResult() != null) item.put("lastResult", task.getLastResult());
         if (task.getLastExecutedAt() != null) item.put("lastExecutedAt", task.getLastExecutedAt().toString());
-        item.put("automation", task.isAutomation());
+        item.put("automation", meta != null);
         return item;
     }
 
     // ==================== 内部工具 ====================
 
     private void applySelections(String sessionId, AutomationMeta meta) {
-        org.noear.solon.ai.agent.AgentSession session = sessionManager.getSession(sessionId);
+        AgentSession session = sessionManager.getSession(sessionId);
         if (meta.getModelName() != null) engine.setSessionModel(session, meta.getModelName());
         if (meta.getAgentName() != null) engine.setSessionAgent(session, meta.getAgentName());
         session.updateSnapshot();
