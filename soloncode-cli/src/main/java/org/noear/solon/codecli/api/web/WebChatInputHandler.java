@@ -40,7 +40,7 @@ import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.ai.harness.session.TurnDispatch;
-import org.noear.solon.ai.harness.session.queue.QueueExtension;
+import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;

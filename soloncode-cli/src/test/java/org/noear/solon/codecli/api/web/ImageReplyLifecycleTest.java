@@ -988,8 +988,8 @@ class ImageReplyLifecycleTest {
             ChannelHub hub = mock(ChannelHub.class);
             when(context.getEngine()).thenReturn(engine);
             // 队列/插话已收口到扩展门面（门面内部转静态实现，无需 attach 即可用）
-            doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.session.queue.QueueExtension()))
-                    .when(engine).getExtension(org.noear.solon.ai.harness.session.queue.QueueExtension.class);
+            doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.extension.queue.QueueExtension()))
+                    .when(engine).getExtension(org.noear.solon.ai.harness.extension.queue.QueueExtension.class);
             doReturn(java.util.Optional.of(new org.noear.solon.ai.harness.extension.steer.SteerExtension()))
                     .when(engine).getExtension(org.noear.solon.ai.harness.extension.steer.SteerExtension.class);
             // 两段式中断走核心认领实现（mock 引擎上无扩展，等价于引擎 prepareInterrupt 的核心段）：

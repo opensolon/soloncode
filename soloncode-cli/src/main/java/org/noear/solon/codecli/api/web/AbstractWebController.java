@@ -23,7 +23,7 @@ import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.session.loop.LoopExtension;
+import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 
 import java.nio.file.Files;
 import java.nio.file.Path;

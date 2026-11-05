@@ -2,10 +2,10 @@ package org.noear.solon.codecli.loop;
 
 import org.junit.jupiter.api.Test;
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.harness.session.loop.LoopExtension;
-import org.noear.solon.ai.harness.session.loop.LoopPatch;
-import org.noear.solon.ai.harness.session.loop.LoopSpec;
-import org.noear.solon.ai.harness.session.loop.LoopTask;
+import org.noear.solon.ai.harness.extension.loop.LoopExtension;
+import org.noear.solon.ai.harness.extension.loop.LoopPatch;
+import org.noear.solon.ai.harness.extension.loop.LoopSpec;
+import org.noear.solon.ai.harness.extension.loop.LoopTask;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;

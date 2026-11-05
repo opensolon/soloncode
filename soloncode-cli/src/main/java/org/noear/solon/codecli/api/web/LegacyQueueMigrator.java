@@ -5,7 +5,7 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.queue.QueueExtension;
+import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.slf4j.Logger;

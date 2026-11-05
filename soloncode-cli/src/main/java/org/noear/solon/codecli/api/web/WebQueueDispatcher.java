@@ -16,9 +16,9 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.queue.QueueDispatch;
-import org.noear.solon.ai.harness.session.queue.QueueExtension;
-import org.noear.solon.ai.harness.session.queue.QueueItem;
+import org.noear.solon.ai.harness.extension.queue.QueueDispatch;
+import org.noear.solon.ai.harness.extension.queue.QueueExtension;
+import org.noear.solon.ai.harness.extension.queue.QueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionSnapshots;

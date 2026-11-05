@@ -3,7 +3,7 @@ package org.noear.solon.codecli.workspace;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.runtime.RoundResult;
-import org.noear.solon.ai.harness.session.loop.LoopOutcome;
+import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.core.handle.UploadedFile;
 
 /**

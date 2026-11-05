@@ -1,9 +1,9 @@
 package org.noear.solon.codecli.loop;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.harness.session.loop.LoopPatch;
-import org.noear.solon.ai.harness.session.loop.LoopSpec;
-import org.noear.solon.ai.harness.session.loop.LoopTask;
+import org.noear.solon.ai.harness.extension.loop.LoopPatch;
+import org.noear.solon.ai.harness.extension.loop.LoopSpec;
+import org.noear.solon.ai.harness.extension.loop.LoopTask;
 
 import java.time.Instant;
 import java.util.UUID;

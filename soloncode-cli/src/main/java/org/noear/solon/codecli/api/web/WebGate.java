@@ -17,7 +17,7 @@ package org.noear.solon.codecli.api.web;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.session.loop.LoopOutcome;
+import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.runtime.RoundResult;
 import org.noear.solon.ai.harness.session.HarnessAttrs;
