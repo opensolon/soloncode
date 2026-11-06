@@ -442,7 +442,7 @@ public class SessionWebController extends AbstractWebController {
      *
      * <p>取数走会话实例：消息文件是 {@code FileAgentSession} 的实现细节，其内存缓存与磁盘同源
      * （缓存层 maxMessages=0，不做窗口裁剪），而回退/清空等写动作都先落内存再同步磁盘，
-     * 读实例才不会与写侧脱节。用 {@code getSessionOrNil}：会话目录已存在时加载进内存（点开后通常紧接着发消息，
+     * 读实例才不会与写侧脱节。用 {@code getSessionOrNull}：会话目录已存在时加载进内存（点开后通常紧接着发消息，
      * 常驻可接受），尚不存在（新会话首条消息前）返回空列表，不顺带把目录建出来。</p>
      *
      * @param sessionId 会话 ID

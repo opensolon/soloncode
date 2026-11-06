@@ -60,7 +60,7 @@ public class SessionManager implements AgentSessionProvider {
             return sessionMap.computeIfAbsent(sessionId, key -> new FileAgentSession(key, dir.toString()));
         }
 
-        Path dir = sessionPathOrNil(sessionId);
+        Path dir = sessionPathOrNull(sessionId);
         if (dir == null) {
             return null;
         }
@@ -166,7 +166,7 @@ public class SessionManager implements AgentSessionProvider {
 
     /** 解析会话存储路径；ID 为空或越界抛 {@link IllegalArgumentException}。 */
     private Path resolveSessionPath(String sessionId) {
-        Path dir = sessionPathOrNil(sessionId);
+        Path dir = sessionPathOrNull(sessionId);
         if (dir == null) {
             throw new IllegalArgumentException("Invalid sessionId: " + sessionId);
         }
@@ -174,7 +174,7 @@ public class SessionManager implements AgentSessionProvider {
     }
 
     /** 解析会话存储路径；ID 为空、含非法字符或不是 sessions 的直接子目录（防 "../" 越界）时返回 null。 */
-    private @Nullable Path sessionPathOrNil(String sessionId) {
+    private @Nullable Path sessionPathOrNull(String sessionId) {
         if (sessionId == null || sessionId.isEmpty()) {
             return null;
         }

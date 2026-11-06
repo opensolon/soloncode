@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * SessionManager 获取契约：
  * <ul>
- *   <li>getSession(id, false) / getSessionOrNil：不存在时返回 null 且不建目录、不进缓存；目录存在时加载并缓存</li>
+ *   <li>getSession(id, false) / getSessionOrNull：不存在时返回 null 且不建目录、不进缓存；目录存在时加载并缓存</li>
  *   <li>getLoadedSession：只看内存</li>
  *   <li>ID 为空或越界：新建类方法抛 IAE 且不在 sessions 外建目录，只取类方法返回 null</li>
  *   <li>getOwnedSession：认领归属，不同用户拒绝</li>
@@ -43,7 +43,7 @@ class SessionManagerTest {
     }
 
     @Test
-    void getSessionOrNilReturnsNullAndCreatesNothingWhenAbsent() {
+    void getSessionOrNullReturnsNullAndCreatesNothingWhenAbsent() {
         SessionManager manager = new SessionManager(workspace.toString());
 
         assertNull(manager.getSessionOrNull("absent"));
@@ -53,7 +53,7 @@ class SessionManagerTest {
     }
 
     @Test
-    void getSessionOrNilLoadsExistingDirectoryAndCaches() throws IOException {
+    void getSessionOrNullLoadsExistingDirectoryAndCaches() throws IOException {
         Files.createDirectories(sessionsRoot().resolve("s1"));
         SessionManager manager = new SessionManager(workspace.toString());
 
@@ -65,7 +65,7 @@ class SessionManagerTest {
     }
 
     @Test
-    void getSessionOrNilReturnsCachedInstanceEvenBeforeDirectoryExists() {
+    void getSessionOrNullReturnsCachedInstanceEvenBeforeDirectoryExists() {
         SessionManager manager = new SessionManager(workspace.toString());
         AgentSession created = manager.getSession("s2");
 

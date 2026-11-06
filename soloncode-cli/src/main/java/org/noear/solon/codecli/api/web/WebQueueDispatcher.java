@@ -81,7 +81,7 @@ class WebQueueDispatcher {
     }
 
     /** 会话是否携带排队任务：已加载的会话优先（与写侧同源），未加载时只读解析快照判定。
-     *  不为探测而加载会话（getSession/getSessionOrNil 都会常驻内存并装载全量历史）。 */
+     *  不为探测而加载会话（getSession/getSessionOrNull 都会常驻内存并装载全量历史）。 */
     private static boolean hasQueueTask(WorkspaceContext wsContext, Path sessionDir) {
         String sessionId = sessionDir.getFileName().toString();
         AgentSession inMemory = wsContext.getSessionManager().getLoadedSession(sessionId);

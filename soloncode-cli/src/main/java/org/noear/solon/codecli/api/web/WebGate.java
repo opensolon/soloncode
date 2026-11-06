@@ -174,7 +174,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     public boolean isSessionBusy(HarnessEngine engine, String sessionId) {
         try {
             // 只取已存在的会话：判忙不应顺带新建（不存在即不忙）
-            AgentSession session = engine.getSessionOrNil(sessionId);
+            AgentSession session = engine.getSessionOrNull(sessionId);
             return session != null && SessionActivity.isBusy(session);
         } catch (Exception e) {
             LOG.warn("[WebGate] busy check failed for session {}: {}", sessionId, e.getMessage());
