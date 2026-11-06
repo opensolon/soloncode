@@ -68,6 +68,8 @@ final class DesktopStreamTurn {
     private final HarnessEngine engine;
     private final DesktopStreamHub streamHub;
     private final DesktopEventConverter converter;
+    /** 一轮结束（含取消 / 出错）后的回调：用于续发会话积压（忙时进积压的输入） */
+    private volatile java.util.function.BiConsumer<AgentSession, WebSocket> turnFinishedListener;
 
     DesktopStreamTurn(HarnessEngine engine, DesktopStreamHub streamHub, DesktopEventConverter converter) {
         this.engine = engine;
@@ -86,6 +88,11 @@ final class DesktopStreamTurn {
      *
      * @param hitlResume true 表示 HITL 审批后的续跑（复用既有流状态 subscribe，不再 begin）
      */
+    /** 设置一轮结束后的回调（续发积压）。 */
+    void setTurnFinishedListener(java.util.function.BiConsumer<AgentSession, WebSocket> listener) {
+        this.turnFinishedListener = listener;
+    }
+
     void run(AgentSession session, ReActRequest request, ChatModel chatModel,
              String sessionId, String cwd, String reasoningEffort,
              WebSocket socket, boolean hitlResume,
@@ -153,6 +160,19 @@ final class DesktopStreamTurn {
                             chatModel.getConfig().getNameOrModel(), 0, 0);
                 })
                 .doOnError(err -> sendErrorIfNeeded(terminalSent, sessionId, err))
+                .doFinally(signal -> {
+                    // 收口本轮所属的程序派发（积压续发的那一轮；非派发为空操作，幂等）
+                    turn.settle(true);
+                    java.util.function.BiConsumer<AgentSession, WebSocket> listener = turnFinishedListener;
+                    if (listener != null) {
+                        try {
+                            listener.accept(session, socket);
+                        } catch (Throwable e) {
+                            org.slf4j.LoggerFactory.getLogger(DesktopStreamTurn.class)
+                                    .warn("[Desktop] turn finished listener failed: {}", e.toString());
+                        }
+                    }
+                })
                 .subscribe();
     }
 

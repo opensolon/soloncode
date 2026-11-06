@@ -16,15 +16,14 @@
 package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.turn.InputGate;
 import org.noear.solon.ai.harness.session.SessionStatus;
 
 /**
  * 会话运行状态查询（宿主侧唯一口径）。
  *
  * <p>三项事实（运行流、待审批卡、输入受理窗口）全部由 harness 提供：
- * {@link SessionStatus} 一次读全，{@link InputGate} 把「已受理、流尚未登记」的窗口态
- * 也纳入占用判定。宿主不再自己维护任何运行态 attrs 键——此前那份私有标记
+ * {@link SessionStatus} 一次读全（「已受理、流尚未登记」的受理窗口由引擎 {@code handle} 占位，
+ * 同样经 {@link SessionStatus#isAdmitting()} 读到）。宿主不再自己维护任何运行态 attrs 键——此前那份私有标记
  * 既不跨端通用，也漏进了 {@link SessionStatus} 的视野，不占位的端就判定不到。</p>
  *
  * <p>本类保留为宿主内部的语义命名（{@code busy} / {@code activeStream} 在 Web 各处高频使用），
@@ -45,10 +44,10 @@ public final class SessionActivity {
     /**
      * 输入是否已被受理、但 Agent 流尚未完成注册。
      *
-     * @see InputGate
+     * @see SessionStatus#isAdmitting()
      */
     public static boolean isInputAdmitting(AgentSession session) {
-        return InputGate.isAdmitting(session);
+        return SessionStatus.of(session).isAdmitting();
     }
 
     /**

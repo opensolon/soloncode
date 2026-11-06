@@ -294,15 +294,15 @@ public class WsGate extends SimpleWebSocketListener {
         String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
 
         //goal objective 由程序生成（含“[附件: xxx]”前缀），不当命令、不当子代理提及，原文交给代理自己识别
-        InputOutcome outcome = engine.handle(HarnessInput.of(session, input)
-                                .selectedAgent(selectedAgent)
-                                .commandAware(false)
-                                .agentAware(false));
+        // 程序轮次（ofProgram）：会话忙时引擎直接拒绝、不进积压
+        InputOutcome outcome = engine.handle(HarnessInput.ofProgram(session, input, null)
+                                .selectedAgent(selectedAgent));
 
         Prompt prompt = outcome.getPrompt();
         // 无正文的输入（如空 objective）会被引擎归为 IGNORED，此时没有 prompt 可写属性
         if (prompt == null || !outcome.hasRequest()) {
-            return GoalOutcome.skip("input not admitted");
+            outcome.discard();
+            return GoalOutcome.skip(outcome.getRejectReason() != null ? outcome.getRejectReason() : "input not admitted");
         }
         prompt.attrPut("start_time", System.currentTimeMillis());
         applyReasoningEffort(prompt, reasoningEffort);

@@ -24,6 +24,7 @@ import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
 import org.noear.solon.ai.mount.source.FileMountSource;
@@ -529,12 +530,18 @@ public class PrintMode {
         }
 
         try {
-            engine.handle(HarnessInput.of(session, prompt)
+            InputOutcome outcome = engine.handle(HarnessInput.of(session, prompt)
                                     .selectedModel(modelSelected)
                                     //headless 一律用主代理：原实现直接取 getMainAgent()，不解析输入里的 @提及
                                     //（子代理选择走 --agent 参数，由调用方自行拼接，不经此处解析）
                                     .commandAware(false)
-                                    .agentAware(false))
+                                    .agentAware(false));
+            if (outcome.hasRequest() == false) {
+                // 未受理（会话正被其它入口占用 / 待审批）或空输入：不能当作成功静默退出
+                throw new IllegalStateException(outcome.getRejectDetail() != null
+                        ? outcome.getRejectDetail() : "Input not admitted: " + outcome.getKind());
+            }
+            outcome
                             //输入装配统一走 input，宿主只补 CLI 侧选项
                             .getRequest()
                             .options(o -> {

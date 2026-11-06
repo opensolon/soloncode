@@ -462,7 +462,7 @@ class PackageBoundaryTest {
     }
 
     /**
-     * 宿主不得自己组合受理判定：能不能接、该走哪条路归 harness（{@code engine.admit}）。
+     * 宿主不得自己组合受理判定：能不能接、该走哪条路归 harness 的唯一执行入口（{@code engine.handle} 第 0 步）。
      *
      * <p>受限文件：Web 输入入口与队列派发器。这两处曾用 50 余行 {@code synchronized} 块
      * 自行组合运行流、受理窗口、HITL、队列积压、派发身份、忙态旁路六个判定。</p>
@@ -477,17 +477,35 @@ class PackageBoundaryTest {
 
             // 受理入口不得再自己拼装：那段 50 余行 synchronized 块是历史事故源头
             if (content.contains("synchronized (session.attrs())")) {
-                violations.add("WebChatInputHandler.java 仍在入口手拼受理判定（应用 engine.admit）");
+                violations.add("WebChatInputHandler.java 仍在入口手拼受理判定（受理归 engine.handle）");
             }
-            // 必须真的走到 engine.admit，否则「收敛」只是删了代码
-            if (!content.contains(".admit(")) {
-                violations.add("WebChatInputHandler.java 未调用 engine.admit");
+            // 唯一执行入口：不得再出现独立的受理入口、受理凭据或宿主自己入队
+            if (content.contains(".admit(") || content.contains("AdmitDecision") || content.contains("InputGate")) {
+                violations.add("WebChatInputHandler.java 仍在调用独立受理入口（admit / AdmitDecision / InputGate 已删除）");
             }
+            if (content.contains(".enqueue(session")) {
+                violations.add("WebChatInputHandler.java 仍在宿主侧入队（忙时入积压由 engine.handle 完成）");
+            }
+        }
+
+        // 全部宿主主代码都不得出现独立受理入口
+        try (java.util.stream.Stream<Path> files = Files.walk(SRC)) {
+            files.filter(p -> p.toString().endsWith(".java")).forEach(p -> {
+                try {
+                    String text = new String(Files.readAllBytes(p), StandardCharsets.UTF_8);
+                    if (text.contains("engine.admit(") || text.contains("getEngine().admit(")
+                            || text.contains("turn.AdmitDecision") || text.contains("turn.InputGate")) {
+                        violations.add(SRC.relativize(p) + " 调用了已删除的独立受理入口");
+                    }
+                } catch (IOException e) {
+                    throw new java.io.UncheckedIOException(e);
+                }
+            });
         }
 
         // safeChatInput 的预检（IM 通道 / Loop 调度）保留 isBusy 判定：
         // 那是「要不要转发这条消息」的宿主策略，不是开流受理，不占位也不该占位。
-        assertTrue(violations.isEmpty(), "受理判定必须走 engine.admit：" + violations);
+        assertTrue(violations.isEmpty(), "受理判定必须走唯一执行入口 engine.handle：" + violations);
     }
 
     /**

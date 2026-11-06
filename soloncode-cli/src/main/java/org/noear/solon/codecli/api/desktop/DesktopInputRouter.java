@@ -29,6 +29,8 @@ import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.extension.queue.QueueExtension;
+import org.noear.solon.ai.harness.extension.queue.QueueItem;
 import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.session.SessionActivity;
@@ -55,9 +57,14 @@ import java.util.List;
 final class DesktopInputRouter {
     private static final Logger LOG = LoggerFactory.getLogger(DesktopInputRouter.class);
 
+    /** 宿主域输入属性：推理强度（与 QueueItem#getReasoningEffort 约定同名，忙时随积压保存） */
+    static final String ATTR_REASONING_EFFORT = "reasoningEffort";
+
     private final WsGate gate;
 
     DesktopInputRouter(WsGate gate) {
+        // 忙时进积压的输入（handle → DEFERRED）在本会话一轮结束后续发
+        gate.streamTurn.setTurnFinishedListener(this::drainBacklog);
         this.gate = gate;
     }
 
@@ -149,21 +156,7 @@ final class DesktopInputRouter {
             return;
         }
 
-        // HITL 挂起时拒新输入（未决策前开新回合会与挂起 trace 并存；
-        // 用户点「同意」时续流会被运行态认领拒绝，或两条流交叉写快照）。
-        // 忙态旁路命令除外（它们是旁路操作，不改写运行任务的回复目标）。
-        if (!engine.isBusyBypassCommand(input) && SessionActivity.hasPendingHitl(session)) {
-            HitlCard pending = HitlCard.next(session);
-            String toolName = pending == null ? null : pending.getToolName();
-            socket.send(new ONode().set("type", "error")
-                    .set("sessionId", sessionId)
-                    .set("code", "hitl_pending")
-                    .set("text", toolName == null
-                            ? "请先处理待审批操作"
-                            : "请先处理待审批操作：" + toolName)
-                    .toJson());
-            return;
-        }
+        // 受理判定（待审批拦截、忙时排队、占位）统一在引擎 handle 第 0 步，见 dispatchTurn 的 REJECTED / DEFERRED 分支。
 
         String agentName = null;
         String currentInput = input;
@@ -284,6 +277,7 @@ final class DesktopInputRouter {
                         .explicitAgent(agentName)
                         .selectedModel(modelName)
                         .attachments(attachResult)
+                        .attr(ATTR_REASONING_EFFORT, reasoningEffort)
                         .commandContextFactory(desktopCommandFactory()),
                 reasoningEffort, chatModel, false);
     }
@@ -309,6 +303,21 @@ final class DesktopInputRouter {
         InputOutcome outcome = gate.engine.handle(hin);
 
         switch (outcome.getKind()) {
+            case REJECTED:
+                // 未受理：待审批卡 / 忙且无处可延 / 附件不能排队（不发 done：正在运行的那一轮自己会发）
+                socket.send(new ONode().set("type", "error")
+                        .set("sessionId", sessionId)
+                        .set("code", outcome.getRejectReason())
+                        .set("text", outcome.getRejectDetail())
+                        .toJson());
+                return;
+            case DEFERRED:
+                // 会话忙，引擎已入积压：只回执排队位置，当前一轮结束后续发（drainBacklog）
+                socket.send(new ONode().set("type", "command")
+                        .set("sessionId", sessionId)
+                        .set("text", "当前任务正在执行，已加入队列（第 " + outcome.getBacklogPosition() + " 位）")
+                        .toJson());
+                return;
             case TASK:
                 if (outcome.hasRequest() == false) {
                     // 仅续流路径可能出现：无可续的挂起任务
@@ -329,8 +338,14 @@ final class DesktopInputRouter {
 
                 // 命令触发的任务不发独立回执（与迁移前一致）：命令输出由任务流自身携带，
                 // 若在此先发回执，会绕过 DesktopStreamHub 的序号/回放缓冲
-                gate.streamTurn.run(session, outcome.getRequest(), turnModel, sessionId, cwd,
-                        reasoningEffort, socket, hitlResume, gate.desktopHitlInterceptor);
+                try {
+                    gate.streamTurn.run(session, outcome.getRequest(), turnModel, sessionId, cwd,
+                            reasoningEffort, socket, hitlResume, gate.desktopHitlInterceptor);
+                } catch (RuntimeException e) {
+                    // 开流前失败：放弃本轮，立即释放受理占位
+                    outcome.discard();
+                    throw e;
+                }
                 return;
             case REPLY:
                 // 命令已执行，或命令在本渠道不可用：回执后结束本轮
@@ -356,6 +371,33 @@ final class DesktopInputRouter {
                 // IGNORED
                 return;
         }
+    }
+
+    /**
+     * 续发会话积压：忙时进积压的输入在一轮结束后逐条交回唯一入口 {@code handle}。
+     *
+     * <p>领取循环、终止条件与「能不能接」的原子判定归 queue 插件（{@code drainLoop}）；
+     * 本方法只表达「把这条交给处置核心」与「返回时它是否已同步跑完」。</p>
+     */
+    void drainBacklog(AgentSession session, WebSocket socket) {
+        if (session == null || socket == null) {
+            return;
+        }
+        QueueExtension queue = gate.engine.getExtension(QueueExtension.class).orElse(null);
+        if (queue == null || queue.hasItems(session) == false) {
+            return;
+        }
+        String sessionId = session.getSessionId();
+        queue.drainLoop(session, s -> gate.engine.status(s).isOccupied() == false, claim -> {
+            QueueItem item = claim.getItem();
+            String cwd = gate.engine.getSessionCwd(session);
+            String effort = item.getReasoningEffort();
+            dispatchTurn(socket, session, sessionId, cwd,
+                    item.toInput(session).trimContent(true).commandContextFactory(desktopCommandFactory()),
+                    effort, gate.engine.getModelOrDefInstance(item.getModel()), false);
+            // 同步跑完（命令回执 / 流已结束）= true；仍在跑 = false（终态由本轮 doFinally 的 settle 收口）
+            return SessionActivity.isBusy(session) == false;
+        });
     }
 
     /**

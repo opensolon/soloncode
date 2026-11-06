@@ -57,9 +57,10 @@ class ImBusySteerContractTest {
         String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
 
         int steer = source.indexOf("steerExtension.steer(session, input");
-        int enqueue = source.indexOf("int position = queue(wsContext).enqueue(session, input,", steer);
-        assertTrue(steer > 0 && enqueue > steer,
-                "入队必须保留为插话之后的降级路径，保证消息不丢");
+        int fallback = source.indexOf("InputOutcome outcome = onChatInput(", steer);
+        int queued = source.indexOf("InputOutcome.Kind.DEFERRED", fallback);
+        assertTrue(steer > 0 && fallback > steer && queued > fallback,
+                "插话失败必须降级交给唯一入口（引擎忙时自己入积压），并按 DEFERRED 回报排队位次，保证消息不丢");
     }
 
     /** 插话回执文案按地区解析（zh/en 为代表），且 textOf 能兜底取到。 */
@@ -129,19 +130,19 @@ class ImBusySteerContractTest {
                 "忙态旁路命令由命令自描述决定，闸门不得否定它");
 
         // 两个入口都必须覆盖同一口径，不能各写一份。
-        // 4.2.3 起：onChatInput 的受理判定收归 engine.admit，豁免以谓词传入；
+        // onChatInput 的受理判定收归 engine.handle 第 0 步（审批决策 / 续流按输入本身豁免）；
         // safeChatInput 的 IM 预检仍直接调用 isHitlExempt。
         assertTrue(source.indexOf("isHitlExempt(", methodStart + method.length()) > 0,
                 "safeChatInput 仍须调用共用的豁免判定");
 
-        String onInput = source.substring(source.indexOf("void onChatInput(WorkspaceContext"));
+        String onInput = source.substring(source.indexOf("InputOutcome onChatInput(WorkspaceContext"));
         onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
-        assertTrue(onInput.contains(".admit("),
-                "onChatInput 的受理判定必须走 engine.admit（不得再在入口手拼六个判定）");
-        assertTrue(onInput.contains("/resume"),
-                "onChatInput 传给 admit 的豁免谓词必须包含 /resume，否则续流会被拦死");
-        assertTrue(onInput.contains("hitlAction"),
-                "onChatInput 传给 admit 的 hitlDecision 必须来自 hitlAction，否则审批永远提不了");
+        assertFalse(onInput.contains(".admit("),
+                "受理判定只在唯一执行入口 engine.handle 里（admit 已删除）");
+        assertTrue(onInput.contains("/resume") && onInput.contains(".resume(isHitl || resumeInput)"),
+                "文本 /resume 必须转成显式 resume（引擎据此豁免待审批拦截），否则续流会被拦死");
+        assertTrue(onInput.contains("hin.hitl(HITLAction.of(hitlAction)"),
+                "审批决策必须作为 hitl 输入交给引擎（引擎据此豁免待审批拦截），否则审批永远提不了");
     }
 
     /**
@@ -156,17 +157,17 @@ class ImBusySteerContractTest {
     void hitlRejectBranchEmitsTerminalPacket() throws IOException {
         String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
         // 拒收分支在 onChatInput（有 WS 事件出口的那个），不是 IM 用的 safeChatInput
-        String onInput = source.substring(source.indexOf("void onChatInput(WorkspaceContext"));
+        String onInput = source.substring(source.indexOf("InputOutcome onChatInput(WorkspaceContext"));
         onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
 
-        // 4.2.3 起拒收判定来自 engine.admit 的 REJECT（值域与细节由引擎给出）
-        int reject = onInput.indexOf("AdmitDecision.Kind.REJECT");
-        assertTrue(reject > 0, "拒收分支必须按 admit 的 REJECT 判决");
-        int errorEmit = onInput.indexOf("ofError(admit.getRejectReason()", reject);
+        // 拒收判定来自 engine.handle 的 REJECTED（值域与细节由引擎给出）
+        int reject = onInput.indexOf("InputOutcome.Kind.REJECTED");
+        assertTrue(reject > 0, "拒收分支必须按 handle 的 REJECTED 结局");
+        int errorEmit = onInput.indexOf("ofError(outcome.getRejectReason()", reject);
         int doneEmit = onInput.indexOf("emitDoneGuarded", reject);
-        int queueBranch = onInput.indexOf("AdmitDecision.Kind.DEFER", reject);
+        int queueBranch = onInput.indexOf("InputOutcome.Kind.DEFERRED", reject);
 
-        assertTrue(errorEmit > reject, "HITL 拒收必须先给出可读错误（原因与细节取自 AdmitDecision）");
+        assertTrue(errorEmit > reject, "HITL 拒收必须先给出可读错误（原因与细节取自 InputOutcome）");
         assertTrue(doneEmit > errorEmit,
                 "拒收分支必须在 return 前发终态包（emitDoneGuarded），否则前端 isStreaming 永久为真");
         assertTrue(doneEmit < queueBranch,

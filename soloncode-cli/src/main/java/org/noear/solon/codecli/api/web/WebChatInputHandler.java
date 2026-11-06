@@ -19,10 +19,8 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.harness.turn.InterruptPlan;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.harness.turn.InputGate;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
-import org.noear.solon.ai.harness.turn.AdmitDecision;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
@@ -61,6 +59,11 @@ import java.nio.file.Path;
 class WebChatInputHandler {
     private static final Logger LOG = LoggerFactory.getLogger(WebChatInputHandler.class);
 
+    /** 宿主域输入属性：推理强度（与 QueueItem#getReasoningEffort 约定同名，忙时随积压保存） */
+    static final String ATTR_REASONING_EFFORT = "reasoningEffort";
+    /** 宿主域输入属性：思考模式（与 QueueItem#getThinkingMode 约定同名） */
+    static final String ATTR_THINKING_MODE = "thinkingMode";
+
     private final WebGate gate;
 
     WebChatInputHandler(WebGate gate) {
@@ -79,7 +82,7 @@ class WebChatInputHandler {
      *   <li>构建 Prompt 并启动 Agent 流式任务</li>
      * </ol>
      */
-    void onChatInput(WorkspaceContext wsContext,
+    InputOutcome onChatInput(WorkspaceContext wsContext,
                      String sessionId,
                      String sessionCwd,
                      String input, String selectedModel,
@@ -88,89 +91,21 @@ class WebChatInputHandler {
                      String reasoningEffort, String thinkingMode, String selectedAgent,
                      String sourceUserId, String replyTarget, String messageId) {
         AgentSession session = null;
-        InputGate.Ticket ticket = InputGate.Ticket.NONE;
+        InputOutcome outcome = null;
+        // 本轮结束后是否需要立即尝试续发队列（同步完成的结局；TASK 由流终态续发）
+        boolean drainAfter = false;
         try {
             // 本网关实例已绑定所属工作区的引擎（与 connections 同一上下文），
             // 无需再从 Context.current()/sessionId 猜测引擎，避免异步线程下回退默认引擎。
             // 仅在对话隔离开启时记录 userId，关闭隔离时使用共享会话
             String userId = resolveUserIdFromContext(wsContext);
             session = wsContext.getSessionManager().getOwnedSession(sessionId, userId);
-            // 受理判定（原子：判定与占位同临界区）已收归 harness：
-            // 六个判定（运行流 / 受理窗口 / 待审批卡 / 队列积压 / 队列派发 / 忙态旁路命令）
-            // 曾在此处由宿主自行组合成 50 余行 synchronized 块，其中每个原语其实都由引擎提供。
-            // 本方法据此只按 Kind 分派，不再自己拼忙态口径。
-            AdmitDecision admit = wsContext.getEngine().admit(session, input, Assert.isNotEmpty(hitlAction),
-                    in -> in != null && "/resume".equals(in.trim()));
-
-            if (admit.getKind() == AdmitDecision.Kind.REJECT) {
-                gate.emitToClient(wsContext, sessionId,
-                        WebEvent.ofError(admit.getRejectReason(), admit.getRejectDetail()));
-                // 来源端（IM）也要知道本轮未受理，否则只能盲等。拒因有两种（hitl_pending / busy），
-                // 只有前者是「待审批」；busy 只在引擎没装积压能力时出现，按普通拒收回报。
-                ImStatus rejectStatus = "hitl_pending".equals(admit.getRejectReason())
-                        ? ImStatus.HITL_PENDING : ImStatus.REJECTED;
-                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, rejectStatus,
-                        null, source, sourceUserId, replyTarget, messageId);
-                // 必须有终态包：前端在 POST 之前就把 isStreaming 置真，只有 system.done 会复位，
-                // system.error 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态
-                // （停止按钮常亮、占位符不消失），后续输入全部被当成 steer 插话，只能刷新页面。
-                // 此处未占位（ticket 为 NONE），finally 的兜底不会触发，故必须显式补发。
-                gate.getEventPublisher().emitDoneGuarded(wsContext, session);
-                return;
-            }
-
-            if (admit.getKind() == AdmitDecision.Kind.DEFER) {
-                // 入队参数仍是宿主域概念（推理强度 / 思考模式），故 enqueue 留在宿主。
-                if (attachments != null && attachments.length > 0) {
-                    throw new IllegalStateException("Attachments cannot be queued while session is busy");
-                }
-                int position = queue(wsContext).enqueue(session, input,
-                        InputOrigin.of(source, sourceUserId, replyTarget, messageId),
-                        null, selectedModel, reasoningEffort, thinkingMode, selectedAgent, false);
-                if (position < 0) throw new IllegalStateException("session queue is full or unavailable");
-                gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
-                gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
-                return;
-            }
-
-            // ADMIT / ADMIT_BYPASS：取占位凭据（仅 ADMIT 可能真的占到，其余为 NONE）
-            ticket = admit.getTicket();
-
-            // 忙态旁路命令是旁路操作，不能改写正在运行任务的回复目标。
-            boolean sideCommand = admit.getKind() == AdmitDecision.Kind.ADMIT_BYPASS
-                    && admit.isDispatched() == false;
-            if (!sideCommand) {
-                // 派发轮次沿用派发事务的来源（NONE = 没有可用来源，与旧 getItem()==null 同义）
-                TurnDispatch turn = admit.isDispatched() ? admit.getDispatch() : null;
-                if (turn != null && turn.getOrigin() != InputOrigin.NONE) {
-                    setReplyRoute(session, turn.getOrigin());
-                } else {
-                    setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
-                }
-            }
-
-            // 写入会话级模型 / 推理（后续 StreamBuilder 与旁路任务均可读取）
-            if (Assert.isNotEmpty(selectedModel)) {
-                wsContext.getEngine().setSessionModel(session, selectedModel);
-            }
-            // 写入会话级子代理选择（仅在显式指定时）。
-            // IM 等未携带该字段的输入传 null，不能把 web 端已选的子代理清空。
-            if (selectedAgent != null) {
-                wsContext.getEngine().setSessionAgent(session, selectedAgent);
-            }
-            boolean effortProvided = reasoningEffort != null;
-            org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionEffort(session, reasoningEffort, effortProvided);
-            boolean modeProvided = thinkingMode != null;
-            org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionThinkingMode(session, thinkingMode, modeProvided);
 
             // @子代理 解析口径与 CLI/桌面端统一（harness AgentMentions）：
             // 输入开头的有效 @子代理 优先；否则使用选择器传入的有效子代理。
-            // 解析、附件落盘、命令识别、Prompt 构建、请求装配全部下沉到引擎（input 唯一入口）。
-            // Web 只保留：命令回执的信封渲染、请求级上下文写入、流的订阅。
-            //
-            // 两条输入（用户消息 / HITL 审批）共用同一次 handle + 同一个 switch：
-            // 引擎的 HITL 分支优先于空输入判空与命令识别（HarnessEngine#handle 第 1 步），
-            // 因此下面把差异收敛为参数差异（正文、resume、子代理、来源、附件），处置逻辑只有一套。
+            // 受理判定（忙 / 待审批 / 积压 / 派发 / 忙时可执行命令）、入积压、占位、解析、
+            // 命令识别、Prompt 构建、请求装配全部在引擎唯一入口 handle 里完成。
+            // Web 只保留：结局的事件渲染、请求级上下文写入、流的订阅。
             boolean isHitl = Assert.isNotEmpty(hitlAction);
 
             // callId 通过 session context 透传（前端 POST hitlCallId），避免全链路改签名
@@ -181,16 +116,18 @@ class WebChatInputHandler {
             }
 
             // 历史前端兼容：旧版会以文本 "/resume" 触发续流，转为显式 resume 语义
-            // （等价于原 buildStreamFlux 里的 /resume 剥离，语义前移到入口处）。
+            // （续流同时豁免待审批拦截，与原先额外传入的 "/resume" 豁免谓词等价）。
             boolean resumeInput = "/resume".equals(input != null ? input.trim() : null);
 
             // 续流用的子代理取引擎的会话级记忆（session.agent.effective，handle 返回 TASK 时自动写入）：
             // 审批请求通常不带 selectedAgent，回落主代理会取不到子代理挂起的 trace（续跑空转）。
-            // 引擎已内置回填，这里仅在请求自带 selectedAgent 时显式传，避免覆盖记忆。
+            // 推理强度 / 思考模式是宿主域参数：作为属性交给引擎，忙时原样进积压、续发时原样带回。
             HarnessInput hin = HarnessInput.of(session, (isHitl || resumeInput) ? null : input)
                     .resume(isHitl || resumeInput)
                     .selectedAgent(selectedAgent)
                     .selectedModel(selectedModel)
+                    .attr(ATTR_REASONING_EFFORT, reasoningEffort)
+                    .attr(ATTR_THINKING_MODE, thinkingMode)
                     .commandContextFactory(webCommandFactory());
 
             if (isHitl) {
@@ -202,34 +139,92 @@ class WebChatInputHandler {
                                 wsContext.getEngine().getWorkspace(), attachments, attachmentTypes));
             }
 
-            // 一次调用完成「写决策 + 必要时的续流装配」或「命令识别 + 提及解析 + 请求装配」，宿主只 switch kind：
-            //   TASK —— 可执行任务。HITL 决策已写入且本批齐备（isCommand() 恒 false，直接跑任务）；
-            //           命令触发（isCommand() 为 true）先发回执再跑任务；普通消息直接跑任务。
-            //   REPLY —— 只有回执：命令已执行或在本渠道不可用，回执自成一轮。
-            //   HITL  —— 决策已写入但未续流：过期审批卡（isHitlApplied()==false）或本批尚有未决卡。
-            //           Web 首次挂起时已推送全部审批卡，此处不需要再推，静默等待其余卡即可。
-            InputOutcome outcome = wsContext.getEngine().handle(hin);
+            // 一次调用，宿主只 switch kind：
+            //   DEFERRED —— 会话忙，引擎已入积压：回放用户消息并触发续发；
+            //   REJECTED —— 未受理（待审批 / 忙且无处可延 / 附件不能排队）：报错并发终态；
+            //   TASK —— 可执行任务（占位跟着请求走，开流时由请求自己释放）；
+            //   REPLY —— 只有回执：命令已执行或在本渠道不可用，回执自成一轮；
+            //   HITL  —— 决策已写入但未续流：过期审批卡或本批尚有未决卡（Web 首次挂起时已推送全部卡）。
+            outcome = wsContext.getEngine().handle(hin);
+
+            if (outcome.getKind() == InputOutcome.Kind.REJECTED) {
+                gate.emitToClient(wsContext, sessionId,
+                        WebEvent.ofError(outcome.getRejectReason(), outcome.getRejectDetail()));
+                // 来源端（IM）也要知道本轮未受理，否则只能盲等。只有 hitl_pending 是「待审批」，
+                // 其余（busy / 附件不能排队 / 积压拒收）按普通拒收回报。
+                ImStatus rejectStatus = InputOutcome.REJECT_HITL_PENDING.equals(outcome.getRejectReason())
+                        ? ImStatus.HITL_PENDING : ImStatus.REJECTED;
+                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, rejectStatus,
+                        null, source, sourceUserId, replyTarget, messageId);
+                // 必须有终态包：前端在 POST 之前就把 isStreaming 置真，只有 system.done 会复位，
+                // system.error 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态
+                // （停止按钮常亮、占位符不消失），后续输入全部被当成 steer 插话，只能刷新页面。
+                gate.getEventPublisher().emitDoneGuarded(wsContext, session);
+                return outcome;
+            }
+
+            if (outcome.getKind() == InputOutcome.Kind.DEFERRED) {
+                gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+                drainAfter = true;
+                return outcome;
+            }
+
+            // 忙时可执行命令在运行中的任务旁边执行：不能改写正在运行任务的回复目标。
+            if (!outcome.isBesideRunning()) {
+                // 派发轮次沿用派发事务的来源（NONE = 没有可用来源）
+                TurnDispatch turn = outcome.getDispatch();
+                if (turn != null && turn.getOrigin() != InputOrigin.NONE) {
+                    setReplyRoute(session, turn.getOrigin());
+                } else {
+                    setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
+                }
+
+                // 写入会话级模型 / 子代理 / 推理（后续 StreamBuilder、HITL 恢复与旁路任务均可读取）。
+                // 受理后才写：被排队或拒绝的输入不得改写正在运行会话的选择。
+                if (Assert.isNotEmpty(selectedModel)) {
+                    wsContext.getEngine().setSessionModel(session, selectedModel);
+                }
+                // IM 等未携带该字段的输入传 null，不能把 web 端已选的子代理清空。
+                if (selectedAgent != null) {
+                    wsContext.getEngine().setSessionAgent(session, selectedAgent);
+                }
+                boolean effortProvided = reasoningEffort != null;
+                org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionEffort(session, reasoningEffort, effortProvided);
+                boolean modeProvided = thinkingMode != null;
+                org.noear.solon.codecli.util.ReasoningSupportUtil.putSessionThinkingMode(session, thinkingMode, modeProvided);
+            }
 
             switch (outcome.getKind()) {
                 case TASK:
-                    if (outcome.isCommand()) {
-                        // 命令触发的任务：回执照发、不抢发 done，收尾交给任务流
-                        startCommandTaskTurn(wsContext, session, sessionCwd, outcome);
-                    } else {
-                        // 流式处理：输出通过 WebSocket 推送（模型/子代理一律用引擎生效值）
-                        gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, outcome);
+                    try {
+                        if (outcome.isCommand()) {
+                            // 命令触发的任务：回执照发、不抢发 done，收尾交给任务流
+                            startCommandTaskTurn(wsContext, session, sessionCwd, outcome);
+                        } else {
+                            // 流式处理：输出通过 WebSocket 推送（模型/子代理一律用引擎生效值）
+                            gate.getSessionRunner().performAgentTaskAsync(wsContext, session, sessionCwd, outcome);
+                        }
+                    } catch (RuntimeException e) {
+                        // 开流前失败：放弃本轮，立即释放受理占位
+                        outcome.discard();
+                        throw e;
                     }
                     break;
                 case REPLY:
-                    // 命令已执行，或命令在本渠道不可用：回执自成一轮
+                    // 命令已执行，或命令在本渠道不可用：回执自成一轮（空闲时其内部负责续发）
                     startReplyTurn(wsContext, session, outcome, source, sourceUserId, replyTarget, messageId);
                     break;
                 default:
                     // HITL / IGNORED：决策已写入但未续流，或无事可做
+                    drainAfter = true;
                     break;
             }
+            return outcome;
         } catch (Exception e) {
             LOG.error("Task fail: {}", e.getMessage(), e);
+            if (outcome != null) {
+                outcome.discard();
+            }
             if (WebQueueDispatcher.isQueueDispatch(session)) {
                 // 队列派发的启动失败：领取事务交还派发侧回滚到队首（代际校验在 harness 内部完成）。
                 throw new IllegalStateException("Queued task could not start", e);
@@ -240,15 +235,15 @@ class WebChatInputHandler {
             // 流可能尚未建立：有 session 走去重出口，否则直接发 done
             if (session != null) {
                 gate.getEventPublisher().emitDoneGuarded(wsContext, session);
+                drainAfter = true;
             } else {
                 gate.emitToClient(wsContext, sessionId, WebEvent.ofDone());
             }
+            return null;
         } finally {
             if (session != null) {
-                // 释放受理窗口（幂等）：未占到时是空操作，故可无条件调用。
-                // 释放后立刻尝试续发队列，覆盖「同步完成的命令」场景。
-                if (ticket.isAcquired()) {
-                    ticket.close();
+                // 同步完成的结局（已排队 / 审批未续流 / 空输入 / 启动失败）后立刻尝试续发队列。
+                if (drainAfter) {
                     gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
                 }
                 if (session.isEmpty() && Assert.isNotEmpty(input)) {
@@ -283,11 +278,12 @@ class WebChatInputHandler {
         // 防重入（原先在命令回调里）：会话已有流在跑（含上一轮 doFinally 尚未归位槽位的瞬时窗口）时，
         // 再开一条流会与在跑流共享同一 ReActTrace —— 旧流把 route 置 END 后新流立即空转结束，
         // 表现为「点了没反应、马上结束」。此处已不再是输入受理占位持有者（占位在本轮 finally 才释放），
-        // 只能用真实流句柄判断，不能用 isBusy，否则 /continue、/rerun 会被自身拦截。
+        // 只能用真实流句柄判断，不能用 isBusy（本轮的受理占位尚未释放），否则 /continue、/rerun 会被自身拦截。
         if (SessionActivity.hasActiveStream(session)) {
             LOG.warn("[WebGate] Session {} agent task via /{} skipped: another task in progress",
                     session.getSessionId(), outcome.getCommandName());
             gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofCommand("当前有任务正在执行，本次触发已忽略"));
+            outcome.discard();
             return;
         }
 
@@ -463,25 +459,24 @@ class WebChatInputHandler {
                     }
                 }
 
-                // 降级：繁忙时进入统一持久化队列，而不是只让调用方重试。
-                int position = queue(wsContext).enqueue(session, input,
-                        InputOrigin.of(source, sourceUserId, replyTarget, messageId));
-                if (position >= 0) {
-                    gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
+                // 降级：交给唯一入口 handle——会话仍忙时引擎自己入积压（DEFERRED），
+                // 恰好空闲则直接受理；拒收（积压已满等）时 onChatInput 已向来源端回报 REJECTED。
+                InputOutcome outcome = onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
+                        null, null, null, sourceUserId, replyTarget, messageId);
+                if (outcome == null || outcome.getKind() == InputOutcome.Kind.REJECTED) {
+                    LOG.warn("[WebGate] {} event could not be queued for busy session {}", source, sessionId);
+                    return false;
+                }
+                if (outcome.getKind() == InputOutcome.Kind.DEFERRED) {
                     // IM 侧感知补齐：web 能看到排队状态，IM 看不到；把位次主动推给来源端。
-                    // position 为入队后的队列长度，本项位居队尾，故前面还有 position-1 条。
+                    // 位置从 1 计，本项位居其后，故前面还有 position-1 条。
                     // 命令引导（/steer、/interrupt）同一轮忙态只教学一次，避免连发多条时刷屏。
                     boolean withCommandHint = gate.getStreamBuilder().claimCommandHint(session);
                     gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.QUEUED,
-                            ImMessages.queued(position - 1, withCommandHint), source, sourceUserId, replyTarget, messageId);
-                    gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
-                    return true;
+                            ImMessages.queued(outcome.getBacklogPosition() - 1, withCommandHint),
+                            source, sourceUserId, replyTarget, messageId);
                 }
-                LOG.warn("[WebGate] {} event could not be queued for busy session {}", source, sessionId);
-                // 入队失败（队列满/落盘失败）：明确告知来源端本轮未被接收，不能让其以为发出去了。
-                gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.REJECTED,
-                        null, source, sourceUserId, replyTarget, messageId);
-                return false;
+                return true;
             }
 
             // 必须在 onChatInput 之前发布：onChatInput 会异步调度任务，快速任务可能立即输出。
@@ -587,14 +582,17 @@ class WebChatInputHandler {
         // 前端流门解封由 performAgentTaskSync → beginStreamTurn 统一下发（system.reset），
         // 此处不再重复发送；user_input 先到也会解封，二者不冲突。
         // Loop 发起：清掉上一轮残留的 IM 定向路由（Loop 不是 IM 来源，过程消息不外发）
-        setReplyRoute(session, InputOrigin.channel(source));
-        gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofUserInput(input, source));
-
         // Loop 的提示词是「已受理的文本」，即使以 / 开头也不应被当命令执行；
-        // 命令识别、提及解析、Prompt 构建统一交给引擎（与 CLI/桌面端同一套口径）
-        return wsContext.getEngine().handle(HarnessInput.of(session, input)
-                .commandAware(false)
-                .origin(InputOrigin.channel(source)));
+        // 命令识别、提及解析、Prompt 构建统一交给引擎（与 CLI/桌面端同一套口径）。
+        // 程序轮次（ofProgram）：会话忙时引擎直接拒绝、不进积压；保留 @子代理 解析（用户写的定时提示词可指定子代理）
+        InputOutcome outcome = wsContext.getEngine().handle(HarnessInput.ofProgram(session, input, source)
+                .agentAware(true));
+        if (outcome.getKind() == InputOutcome.Kind.TASK) {
+            // 受理后才改写路由与回放用户消息：未受理的程序轮次不得动正在运行会话的路由
+            setReplyRoute(session, InputOrigin.channel(source));
+            gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofUserInput(input, source));
+        }
+        return outcome;
     }
 
     /**

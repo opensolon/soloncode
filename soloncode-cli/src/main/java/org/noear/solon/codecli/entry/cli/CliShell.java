@@ -331,6 +331,16 @@ public class CliShell implements Runnable {
                     printWelcome(session);
                 }
                 return null;
+            case DEFERRED:
+                // 会话忙（如 Web/IM 正在跑同一会话）：引擎已入积压，空闲后由队列续发
+                terminal.writer().println("当前任务正在执行，已加入队列（第 " + outcome.getBacklogPosition() + " 位）");
+                terminal.flush();
+                return null;
+            case REJECTED:
+                // 未受理：待审批卡 / 忙且无处可延 / 附件不能排队
+                terminal.writer().println(outcome.getRejectDetail() != null ? outcome.getRejectDetail() : "输入未受理");
+                terminal.flush();
+                return null;
             case HITL:
                 // 决策已受理但未续流（两种情形：未传 resume；批内仍有未决卡；决策未命中挂起任务）
                 // CLI 正常审批路径不经此处：handleHitlRound 逐张提问直到拿到 TASK（见该方法）

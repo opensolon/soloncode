@@ -144,7 +144,8 @@ class WebSessionRunner {
             try {
                 doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, turn);
             } catch (Throwable e) {
-                //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾
+                //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾（含释放本轮受理占位）
+                outcome.discard();
                 failStreamTurn(wsContext, session, turn, e);
             } finally {
                 WorkspaceLogRouter.endScope(logScope);
@@ -166,6 +167,7 @@ class WebSessionRunner {
         //静默吞掉（无害）；若上游异常路径未发过，则前端不至因收不到任何事件而卡在等待态
         if (turn.isCancelled()) {
             LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
+            outcome.discard();
             gate.getEventPublisher().emitDoneOnce(wsContext, session);
             return;
         }
@@ -265,6 +267,7 @@ class WebSessionRunner {
                 //但必须释放闩锁，否则同步等待方（Loop）永久阻塞
                 if (turn.isCancelled()) {
                     LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
+                    outcome.discard();
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
                     countDownLatch.countDown();
                     return;
@@ -325,6 +328,7 @@ class WebSessionRunner {
                 if (errorSink != null) {
                     errorSink.compareAndSet(null, e);
                 }
+                outcome.discard();
                 failStreamTurn(wsContext, session, turn, e);
                 countDownLatch.countDown();
             } finally {
