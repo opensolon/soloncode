@@ -301,12 +301,12 @@ public class AcpLink implements Runnable {
      * 同步移除后端 AgentSession（仅内存 map，不删除磁盘历史）。
      *
      * <p>HarnessEngine.getSessionProvider() 返回 AgentSessionProvider 接口，
-     * removeSession 仅定义在具体实现 SessionManager 上，故需 instanceof 判断。</p>
+     * evictSession 仅定义在具体实现 SessionManager 上，故需 instanceof 判断。</p>
      */
     private void removeBackendSession(String sessionId) {
         AgentSessionProvider provider = agentRuntime.getSessionProvider();
         if (provider instanceof SessionManager) {
-            ((SessionManager) provider).removeSession(sessionId);
+            ((SessionManager) provider).evictSession(sessionId);
         }
     }
 

@@ -226,7 +226,7 @@ public class ChatWebController extends AbstractWebController {
                                 @Param(value = "reasoningEffort", required = false) String reasoningEffort,
                                 @Param(value = "thinkingMode", required = false) String thinkingMode) throws Exception {
         String userId = getCurrentUserId();
-        org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId, userId);
+        org.noear.solon.ai.agent.AgentSession session = sessionManager().getOwnedSession(sessionId, userId);
 
         if (Assert.isNotEmpty(modelName)) {
             engine().setSessionModel(session, modelName);
@@ -258,7 +258,7 @@ public class ChatWebController extends AbstractWebController {
     public Result agents_select(@Param("sessionId") String sessionId,
                                 @Param(value = "agentName", required = false) String agentName) throws Exception {
         String userId = getCurrentUserId();
-        org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId, userId);
+        org.noear.solon.ai.agent.AgentSession session = sessionManager().getOwnedSession(sessionId, userId);
         engine().setSessionAgent(session, agentName);
         session.updateSnapshot();
         return Result.succeed();
@@ -394,7 +394,7 @@ public class ChatWebController extends AbstractWebController {
             // HITL 审批时，将前端回传的 callUuid 写入 session context，供 WebGate 精确定位决策
             if (Assert.isNotEmpty(hitlAction) && Assert.isNotEmpty(hitlCallId)) {
                 String userId = getCurrentUserId();
-                sessionManager().getSession(sessionId, userId).getContext().put(WebGate.CTX_HITL_CALL_ID, hitlCallId);
+                sessionManager().getOwnedSession(sessionId, userId).getContext().put(WebGate.CTX_HITL_CALL_ID, hitlCallId);
             }
 
             // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）

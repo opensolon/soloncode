@@ -558,7 +558,7 @@ class ImageReplyLifecycleTest {
         org.noear.solon.codecli.session.SessionManager manager =
                 mock(org.noear.solon.codecli.session.SessionManager.class);
         when(f.context.getSessionManager()).thenReturn(manager);
-        when(manager.getSession("s1")).thenReturn(f.session);
+        when(manager.getSessionOrNil("s1")).thenReturn(f.session);
         ReActRequest request = f.mockRequest();
         when(request.stream()).thenReturn(Flux.never());
         Flux<WebEvent<?>> stream = f.buildStream();
@@ -659,7 +659,7 @@ class ImageReplyLifecycleTest {
         org.noear.solon.codecli.session.SessionManager manager =
                 mock(org.noear.solon.codecli.session.SessionManager.class);
         when(f.context.getSessionManager()).thenReturn(manager);
-        when(manager.getSession("s1")).thenReturn(f.session);
+        when(manager.getSessionOrNil("s1")).thenReturn(f.session);
         ReActRequest request = f.mockRequest();
         CountDownLatch upstreamCanceled = new CountDownLatch(1);
         when(request.stream()).thenReturn(Flux.<AgentEvent>never().doOnCancel(upstreamCanceled::countDown));
@@ -1112,7 +1112,7 @@ class ImageReplyLifecycleTest {
     private static HarnessEngine bareEngine() {
         try {
             return HarnessEngine.of(Files.createTempDirectory("irq-ws").toString(), null)
-                    .sessionProvider(org.noear.solon.ai.agent.session.InMemoryAgentSession::of)
+                    .sessionProvider((id, create) -> org.noear.solon.ai.agent.session.InMemoryAgentSession.of(id))
                     .build();
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);

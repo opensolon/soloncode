@@ -890,7 +890,7 @@ public class AcpLinkTest {
     // ─────────────────── removeBackendSession ───────────────────
 
     @Test
-    @DisplayName("removeBackendSession: SessionManager 实现时调用 removeSession")
+    @DisplayName("removeBackendSession: SessionManager 实现时调用 evictSession")
     void removeBackendSession_withSessionManager() {
         SessionManager sessionManager = (SessionManager) mockEngine.getSessionProvider();
         // 先放一个 session 进去
@@ -902,7 +902,7 @@ public class AcpLinkTest {
         invokeRemoveBackendSession("test-sid");
 
         // 验证 removeSession 被调用
-        verify(sessionManager, times(1)).removeSession("test-sid");
+        verify(sessionManager, times(1)).evictSession("test-sid");
     }
 
     @Test

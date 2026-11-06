@@ -162,7 +162,11 @@ public class QueueWebController extends AbstractWebController {
         }
 
         try {
-            AgentSession session = sessionManager().getSession(sessionId);
+            // 只取已存在的会话：读队列不应顺带建会话；会话尚不存在即空队列
+            AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            if (session == null) {
+                return Result.succeed(emptyQueueResult());
+            }
             return Result.succeed(queueResult(session));
         } catch (Exception e) {
             LOG.error("Failed to read queue for session {}: {}", sessionId, e.getMessage());
@@ -215,8 +219,9 @@ public class QueueWebController extends AbstractWebController {
             String sessionId = root == null ? null : root.get("sessionId").getString();
             String itemId = root == null ? null : root.get("itemId").getString();
             Path queuePath = resolveSessionQueuePath(sessionId);
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
-            if (!isValidSessionId(sessionId) || session == null || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
+            if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            if (session == null) return Result.failure(404, "Session not found");
             if (!queue().cancelItem(session, itemId)) return Result.failure(404, "Queue item not found");
             return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
@@ -231,8 +236,9 @@ public class QueueWebController extends AbstractWebController {
             String sessionId = root == null ? null : root.get("sessionId").getString();
             String itemId = root == null ? null : root.get("itemId").getString();
             Path queuePath = resolveSessionQueuePath(sessionId);
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
-            if (!isValidSessionId(sessionId) || session == null || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
+            if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            if (session == null) return Result.failure(404, "Session not found");
             if (!queue().promote(session, itemId)) return Result.failure(404, "Queue item not found");
             runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(session));
@@ -253,6 +259,15 @@ public class QueueWebController extends AbstractWebController {
         data.put("exists", !rows.isEmpty());
         data.put("items", rows);
         data.put("updatedAt", rows.isEmpty() ? 0L : System.currentTimeMillis());
+        return data;
+    }
+
+    /** 会话尚不存在时的队列视图（与空队列同形）。 */
+    private static Map<String, Object> emptyQueueResult() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("exists", false);
+        data.put("items", new ArrayList<Map>());
+        data.put("updatedAt", 0L);
         return data;
     }
 

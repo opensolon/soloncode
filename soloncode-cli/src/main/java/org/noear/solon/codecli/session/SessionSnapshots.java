@@ -43,7 +43,7 @@ public final class SessionSnapshots {
      *
      * <p>只读探测专用：解析快照 JSON 为 {@link FlowContext} 后经
      * {@link QueueExtension#isPersisted(FlowContext)} 判定。
-     * 会话已在内存时应直接用 {@code getSessionIfPresent} + {@code QueueExtension#hasItems}。</p>
+     * 会话已在内存时应直接用 {@code getLoadedSession} + {@code QueueExtension#hasItems}。</p>
      */
     public static boolean hasQueue(Path sessionDir, String sessionId) {
         FlowContext context = readSnapshot(sessionDir, sessionId);
@@ -55,7 +55,7 @@ public final class SessionSnapshots {
      *
      * <p>只读探测专用：解析快照为 {@link FlowContext} 后判定
      * {@code session.goal} 键是否存在。会话已在内存时应直接用
-     * {@code getSessionIfPresent} + {@code GoalExtension#get}。</p>
+     * {@code getLoadedSession} + {@code GoalExtension#get}。</p>
      */
     public static boolean hasGoal(Path sessionDir, String sessionId) {
         return readGoalStatus(sessionDir, sessionId) != null;

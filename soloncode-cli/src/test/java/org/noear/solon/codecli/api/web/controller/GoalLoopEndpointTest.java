@@ -45,7 +45,7 @@ class GoalLoopEndpointTest {
     void setUp() {
         goal = GoalExtension.builder("ws-endpoint").jobManager(null).build();
         HarnessEngine.of(workspace.toString(), workspace.resolve("home").toString())
-                .sessionProvider(id -> sessions.computeIfAbsent(id, InMemoryAgentSession::of))
+                .sessionProvider((id, create) -> create ? sessions.computeIfAbsent(id, InMemoryAgentSession::of) : sessions.get(id))
                 .extensionAdd(goal)
                 .build();
         // 触发轮次时不调用模型：本通道认领并 skip

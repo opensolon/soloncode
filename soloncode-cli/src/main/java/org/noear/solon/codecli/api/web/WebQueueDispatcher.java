@@ -80,11 +80,11 @@ class WebQueueDispatcher {
         }
     }
 
-    /** 会话是否携带排队任务：内存会话优先（与写侧同源），未命中时只读解析快照判定。
-     *  不为探测而实例化会话（getSession 会常驻内存并装载全量历史）。 */
+    /** 会话是否携带排队任务：已加载的会话优先（与写侧同源），未加载时只读解析快照判定。
+     *  不为探测而加载会话（getSession/getSessionOrNil 都会常驻内存并装载全量历史）。 */
     private static boolean hasQueueTask(WorkspaceContext wsContext, Path sessionDir) {
         String sessionId = sessionDir.getFileName().toString();
-        AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
+        AgentSession inMemory = wsContext.getSessionManager().getLoadedSession(sessionId);
         if (inMemory != null) return wsContext.getExtension(QueueExtension.class).hasItems(inMemory);
         return SessionSnapshots.hasQueue(sessionDir, sessionId);
     }

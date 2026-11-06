@@ -68,9 +68,8 @@ public class AutomationManager {
         validate(name, prompt, intervalMinutes, cron);
         rejectGoalType(type);
         String sessionId = SESSION_PREFIX + UUID.randomUUID().toString().replace("-", "");
-        // 触发 FileAgentSession 的懒创建，确保专用会话目录在任务落盘前存在。
-        sessionManager.getSession(sessionId);
 
+        // applySelections 内的 getSession 会建出专用会话目录，且在 loop.schedule 落盘任务之前
         AutomationMeta meta = new AutomationMeta(displayName(name, prompt.trim()),
                 emptyToNull(modelName), emptyToNull(agentName));
         applySelections(sessionId, meta);

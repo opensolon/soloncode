@@ -49,8 +49,11 @@ public class DemoApp {
             private Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
             @Override
-            public AgentSession getSession(String instanceId) {
-                return sessionMap.computeIfAbsent(instanceId, k -> InMemoryAgentSession.of(k));
+            public AgentSession getSession(String instanceId, boolean createIfAbsent) {
+                // createIfAbsent=false 且不存在时必须返回 null、且无副作用（不建、不缓存）
+                return createIfAbsent
+                        ? sessionMap.computeIfAbsent(instanceId, k -> InMemoryAgentSession.of(k))
+                        : sessionMap.get(instanceId);
             }
         };
 

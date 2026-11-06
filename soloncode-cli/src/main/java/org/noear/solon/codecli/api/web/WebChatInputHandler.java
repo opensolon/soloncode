@@ -98,7 +98,7 @@ class WebChatInputHandler {
             // 无需再从 Context.current()/sessionId 猜测引擎，避免异步线程下回退默认引擎。
             // 仅在对话隔离开启时记录 userId，关闭隔离时使用共享会话
             String userId = resolveUserIdFromContext(wsContext);
-            session = wsContext.getSessionManager().getSession(sessionId, userId);
+            session = wsContext.getSessionManager().getOwnedSession(sessionId, userId);
             // 受理判定（原子：判定与占位同临界区）已收归 harness：
             // 六个判定（运行流 / 受理窗口 / 待审批卡 / 队列积压 / 队列派发 / 忙态旁路命令）
             // 曾在此处由宿主自行组合成 50 余行 synchronized 块，其中每个原语其实都由引擎提供。
@@ -526,7 +526,11 @@ class WebChatInputHandler {
         if (wsContext == null) {
             return LoopOutcome.skip("workspace not loaded");
         }
-        AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+        // 只取已存在的会话：定时轮次不得把已删除的会话重新建出来
+        AgentSession session = wsContext.getSessionManager().getSessionOrNil(sessionId);
+        if (session == null) {
+            return LoopOutcome.skip("session not found");
+        }
         if (SessionActivity.isBusy(session)) {
             return LoopOutcome.skip("session busy");
         }
@@ -560,7 +564,11 @@ class WebChatInputHandler {
         if (wsContext == null) {
             return GoalOutcome.skip("workspace not loaded");
         }
-        AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+        // 只取已存在的会话：定时轮次不得把已删除的会话重新建出来
+        AgentSession session = wsContext.getSessionManager().getSessionOrNil(sessionId);
+        if (session == null) {
+            return GoalOutcome.skip("session not found");
+        }
         if (SessionActivity.isBusy(session)) {
             return GoalOutcome.skip("session busy");
         }
@@ -604,7 +612,12 @@ class WebChatInputHandler {
      */
     boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         try {
-            AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+            AgentSession session = wsContext.getSessionManager().getSessionOrNil(sessionId);
+            if (session == null) {
+                // 会话不存在：没有可中断的任务，也不要为了中断把它建出来
+                LOG.info("[WebGate] Session {} interrupt ignored (session not found)", sessionId);
+                return false;
+            }
             // 两段式第一段：清队列（保存失败时 prepareInterrupt 不会发生）→ 原子认领运行句柄。
             // 清队列保存失败时不终止当前流：否则 doFinally 会续发原队列，Stop 不能报告成功。
             if (!queue(wsContext).cancelPending(session)) {

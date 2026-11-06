@@ -176,7 +176,7 @@ public class DesktopSessionController extends AbstractDesktopController {
 
         Path messageFile = resolveSessionMessageFile(sessionId);
         if (!Files.isRegularFile(messageFile)) {
-            sessionManager.removeSession(sessionId);
+            sessionManager.evictSession(sessionId);
             return Result.succeed();
         }
 
@@ -199,7 +199,8 @@ public class DesktopSessionController extends AbstractDesktopController {
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(tempFile, messageFile, StandardCopyOption.REPLACE_EXISTING);
             }
-            sessionManager.removeSession(sessionId);
+            // 只移出内存（下次按新历史重建），不是删除会话：不调 engine.removeSession，定时任务保留
+            sessionManager.evictSession(sessionId);
             return Result.succeed();
         } catch (Exception e) {
             try {
@@ -234,8 +235,15 @@ public class DesktopSessionController extends AbstractDesktopController {
         if (!Files.exists(sessionDir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             return Result.succeed();
         }
-        if (isActiveWorkspace(workspaceRoot) && wsGate.isSessionBusy(sessionId)) {
+        boolean activeWorkspace = isActiveWorkspace(workspaceRoot);
+        if (activeWorkspace && wsGate.isSessionBusy(sessionId)) {
             return Result.failure(409, "Session is running");
+        }
+        if (activeWorkspace) {
+            // 先通知扩展（撤掉 loop/goal 定时任务），再移出内存、删目录；
+            // 否则内存里的会话带着 goal 继续跑，写快照时会把刚删的目录重新建出来
+            engine.removeSession(sessionId);
+            sessionManager.evictSession(sessionId);
         }
         try (java.util.stream.Stream<Path> paths = Files.walk(sessionDir)) {
             paths.sorted(Comparator.reverseOrder()).forEach(path -> {

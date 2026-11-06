@@ -71,8 +71,8 @@ final class WebGoalRecovery {
 
             int recovered = goal.recover(sessionIds, sessionId -> {
                 Path dir = root.resolve(sessionId);
-                // 内存会话优先（与写侧同源）；未实例化则轻读投影状态，不把会话带进内存
-                if (wsContext.getSessionManager().getSessionIfPresent(sessionId) != null) {
+                // 已加载的会话优先（与写侧同源）；未加载则轻读投影状态，不把会话带进内存
+                if (wsContext.getSessionManager().getLoadedSession(sessionId) != null) {
                     GoalTask task = goal.get(sessionId);
                     return task == null ? null : task.getStatus();
                 }

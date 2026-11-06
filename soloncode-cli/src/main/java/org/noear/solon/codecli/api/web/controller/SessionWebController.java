@@ -30,6 +30,7 @@ import org.noear.solon.codecli.api.web.service.LastTraceService;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionJanitor;
+import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.codecli.session.SessionRewindService;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
@@ -187,10 +188,9 @@ public class SessionWebController extends AbstractWebController {
                     skippedBusy++;
                     continue;
                 }
-                if (loop() != null) {
-                    loop().removeAll(sessionId);
-                }
-                sessionManager().removeSession(sessionId);
+                // 先通知扩展（撤掉 loop/goal 定时任务），再移出内存、删目录
+                engine().removeSession(sessionId);
+                sessionManager().evictSession(sessionId);
                 // 主动清理该会话的 IM 绑定，避免悬挂路由
                 ImGateway.getInstance(engine())
                         .onSessionRemoved(currentContext().getMeta().getId(), sessionId);
@@ -268,16 +268,25 @@ public class SessionWebController extends AbstractWebController {
 
         Path activeWorkspace = Paths.get(currentEngine.getWorkspace()).toAbsolutePath().normalize();
         boolean activeWorkspaceSession = workspaceRoot.equals(activeWorkspace);
-        if (activeWorkspaceSession && runtimePort().isSessionBusy(engine(), sessionId)) {
+        // 目标工作区的运行时：当前工作区取当前引擎；跨工作区只用已加载的上下文（未加载则没有 goal job，
+        // loop 任务由该工作区下次加载时的 sessionAlive 孤儿清理兜底）。按工作区各自处理，数字会话 ID 不会串。
+        WorkspaceContext targetContext =
+                workspaceManager.getContextsCached(workspaceRoot.toString());
+        HarnessEngine targetEngine = activeWorkspaceSession ? currentEngine
+                : (targetContext == null ? null : targetContext.getEngine());
+        SessionManager targetSessions = activeWorkspaceSession ? sessionManager()
+                : (targetContext == null ? null : targetContext.getSessionManager());
+
+        if (targetEngine != null && runtimePort().isSessionBusy(targetEngine, sessionId)) {
             return Result.failure(409, "Session is running");
         }
 
-        // 仅清理当前运行时工作区的内存状态，避免数字会话 ID 在不同项目间碰撞。
-        if (activeWorkspaceSession) {
-            if (loop() != null) {
-                loop().removeAll(sessionId);
-            }
-            sessionManager().removeSession(sessionId);
+        // 先通知扩展（撤掉 loop/goal 定时任务），再移出内存、删目录
+        if (targetEngine != null) {
+            targetEngine.removeSession(sessionId);
+        }
+        if (targetSessions != null) {
+            targetSessions.evictSession(sessionId);
         }
 
         if (sessionPathExists) {
@@ -291,8 +300,6 @@ public class SessionWebController extends AbstractWebController {
 
         // 主动清理该会话的 IM 绑定（支持跨工作区删除：按目标工作区路径反查 workspaceId，
         // 内存未命中则跳过，由消息到达时的惰性校验兜底），避免悬挂路由
-        WorkspaceContext targetContext =
-                workspaceManager.getContextsCached(workspaceRoot.toString());
         if (targetContext != null) {
             ImGateway.getInstance(engine())
                     .onSessionRemoved(targetContext.getMeta().getId(), sessionId);
@@ -434,10 +441,10 @@ public class SessionWebController extends AbstractWebController {
     /**
      * 获取指定会话的消息历史记录。
      *
-     * <p>取数优先走内存会话实例：消息文件是 {@code FileAgentSession} 的实现细节，其内存缓存与磁盘同源
+     * <p>取数走会话实例：消息文件是 {@code FileAgentSession} 的实现细节，其内存缓存与磁盘同源
      * （缓存层 maxMessages=0，不做窗口裁剪），而回退/清空等写动作都先落内存再同步磁盘，
-     * 读内存才不会与写侧脱节。仅当该会话尚未被打开（内存中无实例）时才读文件，
-     * 以免为「只是点开看一下」的会话凭空创建常驻内存会话。</p>
+     * 读实例才不会与写侧脱节。用 {@code getSessionOrNil}：会话目录已存在时加载进内存（点开后通常紧接着发消息，
+     * 常驻可接受），尚不存在（新会话首条消息前）返回空列表，不顺带把目录建出来。</p>
      *
      * @param sessionId 会话 ID
      * @return 消息列表，每项包含 role、content、createdAt
@@ -456,7 +463,11 @@ public class SessionWebController extends AbstractWebController {
         Path sessionPath = currentContext().getSessionPath(sessionId);
         if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
 
-        org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
+        // 只取已存在的会话：新会话在首条消息前还没有目录，读历史不应顺带把它建出来
+        org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+        if (session == null) {
+            return Result.succeed(new ArrayList<>());
+        }
         return Result.succeed(readMessagesFromSession(session));
     }
 
@@ -595,7 +606,10 @@ public class SessionWebController extends AbstractWebController {
         }
 
         try {
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId);
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            if (session == null) {
+                return Result.succeed(LAST_TRACE_SERVICE.buildLastTrace(null, false, null));
+            }
             String lastUserMsg = readLastUserMessage(session);
             boolean running = runtimePort().isSessionBusy(engine(), sessionId);
 
@@ -693,7 +707,7 @@ public class SessionWebController extends AbstractWebController {
         }
 
         try {
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSession(sessionId, getCurrentUserId());
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getOwnedSession(sessionId, getCurrentUserId());
             SessionRewindService.RewindResult rr = REWIND_SERVICE.rewind(
                     session, anchorRunId, anchorRole, count);
 
