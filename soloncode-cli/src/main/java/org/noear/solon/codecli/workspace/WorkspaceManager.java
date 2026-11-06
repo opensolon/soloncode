@@ -845,19 +845,19 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // addExtensionIfAbsent 按类型幂等、返回实际生效实例；插件间只经核心契约协作，装配顺序不承载语义。
         // GoalExtension 在挂接时完成运行态→调度→/goal 命令→Talent 装配；执行通道在挂接后按通道注册。
         GoalGroupDo goalCfg = wsSettings.getGoal();
-        GoalExtension goalExtension = GoalExtension.builder(meta.getId())
+        // 验证器在 engine.getWorkspace()（即 workspacePath）下执行；job 名前缀由插件按实例自动生成
+        GoalExtension goalExtension = GoalExtension.builder()
                 .budget(goalCfg.getBudgetWarningPercentOrDefault(),
                         goalCfg.getBudgetCriticalPercentOrDefault())
                 .stagnation(goalCfg.getStagnationThresholdOrDefault())
                 .maxErrors(goalCfg.getMaxConsecutiveErrorsOrDefault())
                 .validatorEnabled(goalCfg.isValidatorEnabledOrDefault())
-                .workspace(workspacePath)
                 .build();
 
         // loop（会话定时任务）：宿主只提供存储位置、孤儿判定、阈值（实时读，支持热更新）与
         // 调度线程日志归属；调度/持久化/命令/工具全部在插件内。执行通道在挂接后注册（与 goal、CLI 同形）。
         // 没人认领时只记日志跳过（关闭插件缺省执行器，桌面会话等保持既有行为）。
-        LoopExtension loopExtension = LoopExtension.builder(meta.getId())
+        LoopExtension loopExtension = LoopExtension.builder()
                 .storeFile(tasksFile)
                 .sessionAlive(id -> id.startsWith(AutomationManager.SESSION_PREFIX)
                         || Files.isDirectory(sessionsRoot.resolve(id)))

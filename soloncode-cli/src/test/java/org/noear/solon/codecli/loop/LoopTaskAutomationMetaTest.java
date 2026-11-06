@@ -21,7 +21,7 @@ public class LoopTaskAutomationMetaTest {
 
     /** 只在内存、无调度：只验证任务定义与扩展字段。 */
     private static LoopExtension loop() {
-        return LoopExtension.builder("ws").jobManager(null).defaultExecutor(false).build();
+        return LoopExtension.builder().jobManager(null).defaultExecutor(false).build();
     }
 
     private static LoopTask roundTrip(LoopTask task, String sessionId) {

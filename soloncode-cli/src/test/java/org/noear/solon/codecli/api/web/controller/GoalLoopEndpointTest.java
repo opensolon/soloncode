@@ -43,7 +43,7 @@ class GoalLoopEndpointTest {
 
     @BeforeEach
     void setUp() {
-        goal = GoalExtension.builder("ws-endpoint").jobManager(null).build();
+        goal = GoalExtension.builder().jobManager(null).build();
         HarnessEngine.of(workspace.toString(), workspace.resolve("home").toString())
                 .sessionProvider((id, create) -> create ? sessions.computeIfAbsent(id, InMemoryAgentSession::of) : sessions.get(id))
                 .extensionAdd(goal)
