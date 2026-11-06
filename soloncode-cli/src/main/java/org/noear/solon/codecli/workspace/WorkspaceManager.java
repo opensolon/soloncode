@@ -844,7 +844,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // addExtensionIfAbsent 按类型幂等、返回实际生效实例；插件间只经核心契约协作，装配顺序不承载语义。
         // GoalExtension 在挂接时完成运行态→调度→/goal 命令→Talent 装配；执行通道在挂接后按通道注册。
         GoalGroupDo goalCfg = wsSettings.getGoal();
-        // 验证器在 engine.getWorkspace()（即 workspacePath）下执行；job 名前缀由插件按实例自动生成
+        // 验证器在本轮会话工作目录（__cwd，缺省 engine.getSessionCwd()）下执行；job 名前缀由插件按实例自动生成
         GoalExtension goalExtension = GoalExtension.builder()
                 .budget(goalCfg.getBudgetWarningPercentOrDefault(),
                         goalCfg.getBudgetCriticalPercentOrDefault())

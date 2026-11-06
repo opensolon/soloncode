@@ -1,7 +1,7 @@
 package org.noear.solon.codecli.api.web.pipeline;
 
 import org.noear.solon.ai.talents.cli.TerminalTalent;
-import org.noear.solon.ai.talents.cli.TodoTalent;
+import org.noear.solon.ai.talents.todo.TodoTalent;
 import org.noear.solon.ai.talents.lsp.LspCheckState;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;

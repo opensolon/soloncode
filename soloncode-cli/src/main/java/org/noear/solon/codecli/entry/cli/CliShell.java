@@ -38,7 +38,7 @@ import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.command.ParsedCommand;
-import org.noear.solon.ai.talents.cli.TodoTalent;
+import org.noear.solon.ai.talents.todo.TodoTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.codecli.command.CliCommandContext;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
