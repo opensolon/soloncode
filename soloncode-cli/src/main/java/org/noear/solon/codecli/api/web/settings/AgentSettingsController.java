@@ -2,6 +2,7 @@ package org.noear.solon.codecli.api.web.settings;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
+import org.noear.solon.ai.util.MarkdownUtil;
 import org.noear.solon.ai.talents.mount.catalog.AgentDescriptor;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
@@ -25,6 +26,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -591,7 +593,9 @@ public class AgentSettingsController extends BaseSettingsController {
     private AgentDefinition parseAndValidate(String markdown, String expectedName) {
         AgentDefinition definition;
         try {
-            definition = AgentDefinition.fromMarkdown(markdown);
+            definition = markdown == null || markdown.isEmpty()
+                    ? new AgentDefinition()
+                    : AgentDefinition.fromParsedMarkdown(MarkdownUtil.resolve(Arrays.asList(markdown.split("\\n"))));
         } catch (Exception e) {
             throw new IllegalArgumentException("Markdown/YAML 格式无效: " + e.getMessage());
         }

@@ -18,7 +18,7 @@ package org.noear.solon.codecli.api.web;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.input.InputOutcome;
-import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
@@ -88,7 +88,7 @@ class WebSessionRunner {
         if (turn != null) {
             turn.settle(started);
         } else {
-            gate.getQueueDispatcher().finishQueuedTurn(wsContext, session, started);
+            gate.getQueueDispatcher().finishQueuedTurn(session, started);
         }
     }
 
@@ -216,8 +216,8 @@ class WebSessionRunner {
      * @return 捕获到的 finalAnswer 文本（无则返回空串）
      */
     String performAgentTaskSync(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
-        GoalRoundResult result = performAgentTaskSyncRound(wsContext, session, sessionCwd, outcome);
-        return result == null ? "" : result.getFinalResult();
+        GoalOutcome result = performAgentTaskSyncRound(wsContext, session, sessionCwd, outcome);
+        return result == null ? "" : result.getText();
     }
 
     /**
@@ -229,7 +229,7 @@ class WebSessionRunner {
      *
      * @return 本轮结果；无正文时返回 null（不得伪造「有结果的轮」）
      */
-    GoalRoundResult performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
+    GoalOutcome performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome) {
         return performAgentTaskSyncRound(wsContext, session, sessionCwd, outcome, null);
     }
 
@@ -238,7 +238,7 @@ class WebSessionRunner {
      *
      * @param errorSink 可为 null；非 null 时记录首个流错误
      */
-    GoalRoundResult performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome,
+    GoalOutcome performAgentTaskSyncRound(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome,
                                           AtomicReference<Throwable> errorSink) {
         String sessionId = session.getSessionId();
 
@@ -351,7 +351,7 @@ class WebSessionRunner {
         if (org.noear.solon.core.util.Assert.isEmpty(text)) {
             return null;
         }
-        return GoalRoundResult.of(hasToolCallsRef.get(), tokensRef.get(), text);
+        return GoalOutcome.done(text, hasToolCallsRef.get(), tokensRef.get());
     }
 
     /** 当前工作区的日志标识（无上下文时为 null，走默认路由）。 */

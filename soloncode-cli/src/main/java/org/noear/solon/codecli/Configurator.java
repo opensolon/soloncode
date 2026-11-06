@@ -238,7 +238,7 @@ public class Configurator {
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
                 new DesktopSessionController(agentRuntime, wsGate, sessionManager));
         Solon.app().router().add(desktopBean);
-        // 桌面端 Goal 执行器由 WsGate 构造时注册到 GoalEngine 自己的执行通道，
+        // 桌面端 Goal 执行器由 WsGate 构造时注册到 GoalRuntime 自己的执行通道，
         // Goal 状态与 Web/CLI 同源（会话快照 session.goal）
         desktopBean = Solon.context().wrapAndPut(AbstractDesktopController.class,
                 new DesktopGoalController(agentRuntime, wsGate, sessionManager, goalExtension));

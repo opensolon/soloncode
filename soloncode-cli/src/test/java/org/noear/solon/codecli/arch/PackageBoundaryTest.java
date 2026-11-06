@@ -49,7 +49,7 @@ class PackageBoundaryTest {
      * loop 包必须与 goal 彻底分离：除注释外不得出现 Goal 标识符。
      *
      * <p>Goal 已是独立的会话级能力（已下沉 harness），loop 只是定时任务。
-     * 二者现在<b>没有任何交汇点</b>（执行通道已各自内联：goal 在 GoalEngine、
+     * 二者现在<b>没有任何交汇点</b>（执行通道已各自内联：goal 在 GoalRuntime、
      * loop 在 solon-ai-harness-loop 插件，连共享类都已不存在）。
      * 允许的残留仅限：说明性注释中提及 Goal、以及拒绝 {@code type=GOAL}
      * 的入参校验（防止旧客户端把 goal 塞进定时任务表）。</p>
@@ -246,12 +246,11 @@ class PackageBoundaryTest {
      *
      * <p>本轮封装改造后的契约（已在代码中落地，此处锁定不被回退）：</p>
      * <ul>
-     *   <li>禁止 {@code import QueueHelper}（内核静态类，仅门面与测试使用）；</li>
+     *   <li>禁止 {@code import QueueStore}（内核静态类，仅门面与测试使用）；</li>
      *   <li>禁止从会话 attrs 里取 {@code QueueItem} 再强转（领取应由 {@code QueueClaim} 携带）；</li>
  *   <li>禁止硬编码 goal 投影键或投影字段名（读写走 {@code GoalProjection}）；</li>
  *   <li>禁止引用插件属性键登记表 {@code QueueAttrs}/{@code GoalAttrs}/{@code SteerAttrs}（插件内部契约）；</li>
-     *   <li>禁止把 {@code QueueItem.toMap()}（持久化投影）当对外 API（应用 {@code QueueItemView}）；</li>
-     *   <li>禁止引用 {@code SteerHelper}（含全限定名）或硬编码 steer 内部 attrs 键
+     *   <li>禁止引用 {@code SteerMailbox}（含全限定名）或硬编码 steer 内部 attrs 键
      *       （steer 只经 {@code SteerExtension} 门面，消息协议经 {@code SteerProtocol}）；</li>
      *   <li>禁止回退到已取消的宿主义务 / 已弃用入口：{@code beginTurn}/{@code handover}（开流前交接已由拦截器
      *       onAgentStart 自动完成）、{@code isSteerMessage}/{@code stripSteerPrefix}/{@code maxTextLength}。</li>
@@ -264,13 +263,13 @@ class PackageBoundaryTest {
             String name = file.getFileName().toString();
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
 
-            if (content.contains("import org.noear.solon.ai.harness.extension.queue.QueueHelper")) {
-                violations.add(name + " 直接依赖内核 QueueHelper（应经 QueueExtension 门面）");
+            if (content.contains("import org.noear.solon.ai.harness.extension.queue.QueueStore")) {
+                violations.add(name + " 直接依赖内核 QueueStore（应经 QueueExtension 门面）");
             }
             if (content.contains("instanceof QueueItem") || content.contains("(QueueItem)")) {
                 violations.add(name + " 从 attrs 强转 QueueItem（应由 QueueClaim 携带领域对象）");
             }
-            if (content.contains("GoalEngine.KEY_GOAL") || content.contains("\"session.goal")) {
+            if (content.contains("GoalRuntime.KEY_GOAL") || content.contains("\"session.goal")) {
                 violations.add(name + " 硬编码 goal 投影键（应使用 GoalProjection）");
             }
             // 插件会话属性键登记表只供插件自身与文档使用：宿主一律经门面 / 投影 / engine.status 读取
@@ -279,8 +278,8 @@ class PackageBoundaryTest {
                     violations.add(name + " 直接读写插件属性键 " + attrs + "（应经门面、投影或 engine.status 的事实键）");
                 }
             }
-            if (content.contains("SteerHelper")) {
-                violations.add(name + " 直接依赖内核 SteerHelper（应经 SteerExtension 门面）");
+            if (content.contains("SteerMailbox")) {
+                violations.add(name + " 直接依赖内核 SteerMailbox（应经 SteerExtension 门面）");
             }
             for (String key : new String[]{"\"session.steer\"", "\"harness.steer\"", "\"harness.steerBox\"", "\"harness.activeRunId\"",
                     "\"web.steerBox\"", "\"web.activeRunId\""}) {
@@ -294,12 +293,6 @@ class PackageBoundaryTest {
                     violations.add(name + " 使用已弃用的 steer 入口 " + legacy
                             + "（开流前交接已由框架完成；回放用 SteerProtocol.textOf；上限读 getLimits()）");
                 }
-            }
-            // 队列展示必须走视图对象；GoalDataMigrator 处理的是历史 ONode，不在此列
-            if (!name.equals("GoalDataMigrator.java")
-                    && content.contains("QueueItem item")
-                    && content.contains(".toMap()")) {
-                violations.add(name + " 把持久化投影当对外 API（应使用 QueueItemView）");
             }
         }
         assertTrue(violations.isEmpty(), "宿主不得触碰 harness 内部实现细节：" + violations);
@@ -360,11 +353,12 @@ class PackageBoundaryTest {
      * 宿主不得自行维护「队列派发」状态（本轮封装改造的最终一步）。
      *
      * <p>异步队列任务必须回答两件事：本轮是否队列派发、该用哪个 claim 收口。
-     * {@code QueueDispatch} 落地前，宿主只能自建内部类 + 宿主私有键 + 两处 synchronized
-     * 来重新记一份，换一端就要重写。现在统一由 harness 持有：</p>
+     * 此前宿主只能自建内部类 + 宿主私有键 + 两处 synchronized 来重新记一份，换一端就要重写。
+     * 现在统一由 harness 持有（{@code QueueClaim} 即核心的 {@code TurnDispatch}）：</p>
      * <ul>
-     *   <li>{@code QueueDispatch#current(session)} 读（静态入口，与是否有扩展实例无关）；</li>
-     *   <li>{@code QueueDispatch#settle(boolean)} / {@code QueueExtension#settleDispatch} 收口。</li>
+     *   <li>读：{@code QueueClaim#current(session)}（静态入口，与是否有扩展实例无关）；</li>
+     *   <li>收口只有两条路：同步任务由领取回调返回 true，异步任务在流终态调 {@code SessionTurn#settle}
+     *       （无 turn 时兜底用核心的 {@code TurnDispatch.current(session).settle}）。</li>
      * </ul>
      */
     @Test
@@ -375,28 +369,23 @@ class PackageBoundaryTest {
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
 
             if (content.contains("cli.queue")) {
-                violations.add(name + " 自建队列派发键（应用 QueueDispatch）");
+                violations.add(name + " 自建队列派发键（应用 QueueClaim）");
             }
             if (content.contains("class QueuedTurn")) {
-                violations.add(name + " 自建派发事务类（应用 QueueDispatch）");
+                violations.add(name + " 自建派发事务类（应用 QueueClaim）");
             }
             // 队列派发路径不应再碰会话锁：能不能接的判定已与领取原子化
             if (name.equals("WebQueueDispatcher.java") && content.contains("synchronized (session.attrs())")) {
                 violations.add(name + " 仍在队列路径上用会话锁（应把谓词下推到 claimNext）");
             }
-            // 同步收口已内核化：宿主回调只报告 true/false，不得手写 acknowledge/rollback
-            // （手写 ack 丢返回值 = Stop 被静默击败、任务无限重跑，该陷阱已从 API 形状上消灭）
+            // 同步收口已内核化：宿主回调只报告 true/false，不得在回调里手写收口
+            // （手写收口丢返回值 = Stop 被静默击败、任务无限重跑，该陷阱已从 API 形状上消灭）
             if (name.equals("CliShell.java") || name.equals("WebQueueDispatcher.java")) {
-                if (content.contains("claim.acknowledge(") || content.contains("claim.rollback(")) {
-                    violations.add(name + " 手写 claim 收口（应在回调里返回 true/false，收口归内核）");
+                if (content.contains("claim.settle(")) {
+                    violations.add(name + " 在领取回调里手写 claim 收口（应返回 true/false，收口归内核）");
                 }
             }
-            // CLI 消费是纯同步循环（返回 true），不存在异步队列轮，settleDispatch 在 CLI 无合法用途
-            if (name.equals("CliShell.java") && content.contains("settleDispatch(")) {
-                violations.add(name + " 在 CLI 队列路径上手写 settleDispatch（同步收口应返回 true 交内核）");
-            }
-            // Web 的 finishQueuedTurn（turn==null 兜底）仍用 QueueExtension.settleDispatch，为豁免点；
-            // 但已删除的会话态判定不得回潮：流终态归属看订阅前捕获的 turn，不看会话当前派发
+            // 已删除的会话态判定不得回潮：流终态归属看订阅前捕获的 turn，不看会话当前派发
             if (name.equals("WebQueueDispatcher.java") && content.contains("hasQueuedDispatch")) {
                 violations.add(name + " 仍引用已删除的 hasQueuedDispatch（流终态应用订阅前捕获的 turn）");
             }
@@ -465,7 +454,7 @@ class PackageBoundaryTest {
             Path file = SRC.resolve(rel);
             if (!Files.exists(file)) continue;
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-            if (content.contains("QueueDispatch.current")) {
+            if (content.contains("QueueClaim.current") || content.contains("TurnDispatch.current")) {
                 violations.add(file.getFileName() + " 自行捕获派发事务（应用 SessionTurn#begin/dispatch）");
             }
         }
@@ -504,7 +493,7 @@ class PackageBoundaryTest {
     /**
      * 宿主不得直接读写会话级选择项裸常量（模型 / 子代理）。
      *
-     * <p>与「不得硬编码 {@code GoalEngine.KEY_GOAL}」同一条理由：同一键曾出现四种写法
+     * <p>与「不得硬编码 {@code GoalRuntime.KEY_GOAL}」同一条理由：同一键曾出现四种写法
      * （put 值 / put 空串 / remove / 带守卫），语义漂移正是「裸常量当私有状态用」的必然结果。
      * {@code SessionSelections} 是给拿不到引擎实例的静态工具用的读开口。</p>
      */

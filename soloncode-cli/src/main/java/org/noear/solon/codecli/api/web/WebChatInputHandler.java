@@ -30,16 +30,16 @@ import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.command.ParsedCommand;
-import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.ai.harness.extension.steer.SteerResult;
-import org.noear.solon.ai.harness.extension.steer.SteerStatus;
+import org.noear.solon.ai.harness.extension.steer.SteerResult;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
-import org.noear.solon.ai.harness.turn.TurnDispatch;
+import org.noear.solon.ai.harness.spi.TurnDispatch;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
@@ -458,7 +458,7 @@ class WebChatInputHandler {
                     // 宿主少一个与自己无关的 lambda，也少一处口径漂移点。
                     SteerResult steerResult = steerExtension.steer(session, input,
                             InputOrigin.of(source, sourceUserId, replyTarget, messageId));
-                    if (steerResult.getStatus() == SteerStatus.STEERED) {
+                    if (steerResult.getCode() == SteerResult.Code.STEERED) {
                         // 不回放 ofUserInput：web 端由 steer_applied 就地渲染 steer-note（与 web 发起的插话同一路径），
                         // 提前推 user_input 会与 steer-note 重复上屏。
                         gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.STEERED,
@@ -536,43 +536,46 @@ class WebChatInputHandler {
         }
 
         AtomicReference<Throwable> error = new AtomicReference<>();
-        GoalRoundResult result = gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome, error);
+        GoalOutcome result = gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome, error);
         if (error.get() != null) {
             Throwable e = error.get();
             return LoopOutcome.failed(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
         }
-        return result == null ? LoopOutcome.skip("no final answer") : LoopOutcome.done(result.getFinalResult());
+        return result == null ? LoopOutcome.skip("no final answer") : LoopOutcome.done(result.getText());
     }
 
     /**
      * 注入回合专用入口（goal）：无限等待并捕获本轮客观事实。
      *
-     * <p>与 {@link #runLoopRound} 是同一段执行：goal 需要 token 与工具证据做完成判定。
+     * <p>与 {@link #runLoopRound} 是同一段执行、同一套三态口径：goal 额外需要 token 与工具证据做完成判定。
      * 两者都是「已受理的文本」——不识别命令、不排水，过程事件照常推给前端（边跑边输出）。</p>
      *
-     * @return 本轮结果；会话繁忙或无正文时返回 null
+     * <ul>
+     *   <li>工作区未在内存 / 会话忙 / 未受理 / 没有正文 → skip（不计错误）；</li>
+     *   <li>流报错 → failed（参与 goal 的错误分级熔断）；</li>
+     *   <li>否则 done（携带工具证据与 token）。</li>
+     * </ul>
      */
-    GoalRoundResult safeChatInputAndCaptureRound(WorkspaceContext wsContext, String sessionId, String input, String source) {
-        AgentSession session;
-        try {
-            // 使用用户隔离的会话管理器：由 Loop 调度器调用，
-            // 需要通过 sessionId 从 SessionManager 的 sessionUserMap 中查找 userId
-            session = wsContext.getSessionManager().getSession(sessionId);
-            if (SessionActivity.isBusy(session)) {
-                LOG.warn("[WebGate] {} event skipped for session {}: task in progress", source, sessionId);
-                return null;
-            }
-        } catch (Throwable e) {
-            LOG.warn("[WebGate] {} event check failed for session {}: {}", source, sessionId, e.getMessage());
-            return null;
+    GoalOutcome runGoalRound(WorkspaceContext wsContext, String sessionId, String input, String source) {
+        if (wsContext == null) {
+            return GoalOutcome.skip("workspace not loaded");
         }
-
+        AgentSession session = wsContext.getSessionManager().getSession(sessionId);
+        if (SessionActivity.isBusy(session)) {
+            return GoalOutcome.skip("session busy");
+        }
         InputOutcome outcome = admitInjected(wsContext, session, input, source);
         if (outcome.hasRequest() == false) {
-            return null;
+            return GoalOutcome.skip("input not admitted");
         }
 
-        return gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome);
+        AtomicReference<Throwable> error = new AtomicReference<>();
+        GoalOutcome result = gate.getSessionRunner().performAgentTaskSyncRound(wsContext, session, null, outcome, error);
+        if (error.get() != null) {
+            Throwable e = error.get();
+            return GoalOutcome.failed(e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+        return result == null ? GoalOutcome.skip("no final answer") : result;
     }
 
     /** 注入回合（loop / goal）的受理段：路由复位、推用户消息、经引擎装配请求。 */

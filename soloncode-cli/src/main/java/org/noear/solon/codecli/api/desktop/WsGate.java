@@ -31,7 +31,7 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
-import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionIdOwnership;
@@ -95,7 +95,7 @@ public class WsGate extends SimpleWebSocketListener {
         this.engine = engine;
         this.agentSettings = agentSettings;
         this.goal = goal;
-        this.goalBroadcaster = new DesktopGoalBroadcaster(engine, goal, streamHub);
+        this.goalBroadcaster = new DesktopGoalBroadcaster(engine, streamHub);
         this.eventConverter = new DesktopEventConverter(engine);
         this.streamTurn = new DesktopStreamTurn(engine, streamHub, eventConverter);
         this.configHandler = new DesktopConfigHandler(engine);
@@ -103,7 +103,7 @@ public class WsGate extends SimpleWebSocketListener {
 
         if (goal != null) {
             goal.addListener(goalBroadcaster::onGoalChanged);
-            // 桌面端 Goal 轮次经 GoalEngine 自己的执行通道回推（不再有跨域共享桥）；
+            // 桌面端 Goal 轮次经 GoalRuntime 自己的执行通道回推（不再有跨域共享桥）；
             // 忙判定由会话快照派生（SessionStatus.isOccupied），无需宿主注入谓词。
             // 认领谓词交给引擎：多入口重叠时告警，不再靠静默抢跑现象排障。
             goal.addExecutor("desktop", SessionIdOwnership::isDesktop,
@@ -213,16 +213,16 @@ public class WsGate extends SimpleWebSocketListener {
         goalBroadcaster.clearCompleted(sessionId);
         streamHub.begin(sessionId, socket);
 
-        // attach 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径。
+        // create 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径。
         // 执行正文（含附件）与展示正文分离：一次成型、只广播一次，不会把附件全文推送成中间态。
-        goal.attach(session, GoalSpec.of(effectiveObjective)
-                        .maxTokens(maxTokens != null ? maxTokens : 0L)
-                        .maxDuration(maxDurationMinutes != null
-                                ? Duration.ofMinutes(maxDurationMinutes) : null)
-                        .maxIterations(maxIterations != null ? maxIterations : 0),
-                displayedObjective);
-        // 只挂 job 不立即跑（会话流已由 startGoalStream 自己驱动首轮，与 Web 端 createGoal 的 runNow=true 不同）
-        goal.resumeScheduleOnly(sessionId);
+        // runNow(false)：只挂 job 不立即跑（首轮由本方法的会话流自己驱动，与 Web 端创建不同）
+        goal.create(sessionId, GoalSpec.of(effectiveObjective)
+                .displayObjective(displayedObjective)
+                .maxTokens(maxTokens != null ? maxTokens : 0L)
+                .maxDuration(maxDurationMinutes != null
+                        ? Duration.ofMinutes(maxDurationMinutes) : null)
+                .maxIterations(maxIterations != null ? maxIterations : 0)
+                .runNow(false));
     }
 
     private Long normalizeGoalBudget(Long value, long maximum, String label) {
@@ -282,16 +282,10 @@ public class WsGate extends SimpleWebSocketListener {
      * <p>token 与工具证据直接随返回值上交，不再写会话 attrs 让引擎回读——
      * 旁路方案下只有桌面端写、CLI/Web 不写，导致完成校验在两端静默失效。</p>
      */
-    public GoalRoundResult runGoalRoundAndCapture(String sessionId, String input) {
-        AgentSession session;
-        try {
-            session = engine.getSession(sessionId);
-            if (isSessionBusy(sessionId)) {
-                return null;
-            }
-        } catch (Throwable error) {
-            LOG.warn("[Desktop] Goal session check failed for {}: {}", sessionId, error.getMessage());
-            return null;
+    public GoalOutcome runGoalRoundAndCapture(String sessionId, String input) {
+        AgentSession session = engine.getSession(sessionId);
+        if (isSessionBusy(sessionId)) {
+            return GoalOutcome.skip("session busy");
         }
 
         // 子代理归属一律取会话属性（goal 轮次不再有 agentName 参数：引擎内两处调用恒传 null）
@@ -308,7 +302,7 @@ public class WsGate extends SimpleWebSocketListener {
         Prompt prompt = outcome.getPrompt();
         // 无正文的输入（如空 objective）会被引擎归为 IGNORED，此时没有 prompt 可写属性
         if (prompt == null || !outcome.hasRequest()) {
-            return null;
+            return GoalOutcome.skip("input not admitted");
         }
         prompt.attrPut("start_time", System.currentTimeMillis());
         applyReasoningEffort(prompt, reasoningEffort);
@@ -331,7 +325,7 @@ public class WsGate extends SimpleWebSocketListener {
         // doFinally 只放闩锁），被顶掉的旧流即使以 complete 收尾也不会产生重复 done 帧。
         // 对比：下方 InterruptedException 分支用 cancelAll。区别在于「顶流」只是给新轮次腾位，
         // 而「打断本轮」与 Stop 同义，需要推进代数连带拦住调度窗口内即将到来的流。
-        engine.interruptStreamActive(session);
+        engine.preemptStream(session);
 
         outcome.getRequest()
                 .options(options -> {
@@ -389,9 +383,9 @@ public class WsGate extends SimpleWebSocketListener {
             Thread.currentThread().interrupt();
             // 等待被中断时只 countDown 是不够的：那一轮流会继续在后台跑到底，
             // 模型与工具照常执行、事件继续写进 streamHub。必须真正停流。
-            // 用 interruptStream 而不是 interruptStreamActive：这是“打断本轮”（与 Stop 同义），
+            // 用 cancelStream 而不是 preemptStream：这是“打断本轮”（与 Stop 同义），
             // 推进取消代数可连带拦住调度窗口内即将到来的流。
-            engine.interruptStream(session);
+            engine.cancelStream(session);
             completed.countDown();
             throw new IllegalStateException("Goal round interrupted", error);
         }
@@ -404,13 +398,13 @@ public class WsGate extends SimpleWebSocketListener {
         if (Assert.isEmpty(finalAnswer.get())) {
             throw new IllegalStateException("Goal round returned no final answer");
         }
-        return GoalRoundResult.of(hasToolCalls.get(), tokensUsed.get(), finalAnswer.get());
+        return GoalOutcome.done(finalAnswer.get(), hasToolCalls.get(), tokensUsed.get());
     }
 
     public void interruptGoalSession(String sessionId) {
         try {
             AgentSession session = engine.getSession(sessionId);
-            engine.interruptStream(session);
+            engine.cancelStream(session);
         } catch (Throwable error) {
             LOG.debug("[Desktop] Goal interrupt skipped for {}: {}", sessionId, error.getMessage());
         }

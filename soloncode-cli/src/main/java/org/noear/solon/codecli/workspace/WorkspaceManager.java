@@ -25,6 +25,7 @@ import org.noear.solon.ai.harness.extension.loop.LoopExecutor;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.codecli.goal.GoalDataMigrator;
 import org.noear.solon.codecli.config.entity.GoalGroupDo;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -557,7 +558,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
             return;
         }
         // 活跃 goal 仍在调度的工作区不得被 LRU 释放（否则 goal 静默丢失）
-        if (ctx.getGoalExtension() != null && ctx.getGoalExtension().hasScheduledGoals()) {
+        if (ctx.getGoalExtension() != null && ctx.getGoalExtension().hasActiveGoals()) {
             return;
         }
         LOG.info("[Workspace] Releasing idle workspace: {}", id);
@@ -842,8 +843,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
 
         // harness 三个插件（steer / queue / goal，各自独立模块）集中在此装配：
         // addExtensionIfAbsent 按类型幂等、返回实际生效实例；插件间只经核心契约协作，装配顺序不承载语义。
-        // GoalExtension.builder 内部完成 GoalEngine→GoalScheduler→/goal 命令→Talent 装配，
-        // 执行通道内联在 GoalEngine 内，无需向组合根借用。
+        // GoalExtension 在挂接时完成运行态→调度→/goal 命令→Talent 装配；执行通道在挂接后按通道注册。
         GoalGroupDo goalCfg = wsSettings.getGoal();
         GoalExtension goalExtension = GoalExtension.builder(meta.getId())
                 .budget(goalCfg.getBudgetWarningPercentOrDefault(),
@@ -872,7 +872,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
         loopExtension = engine.addExtensionIfAbsent(loopExtension);
         loopExtension.addExecutor("web", SessionIdOwnership::isWeb, webLoopExecutor(meta.getId()));
 
-        // Goal / Loop 模式（关掉只影响模型侧工具，不影响 /goal、/loop 命令与已有定时任务）
+        // Goal / Loop 模式开关：loop 只关模型工具（/loop 命令与已有定时任务照常）；
+        // goal 关闭时一并关闭 /goal 与调度（goal 依赖 goal_update 声明完成，工具关了继续跑只会空耗预算）
         goalExtension.setEnabled(wsSettings.getGeneral().isGoalsEnabled());
         loopExtension.setEnabled(wsSettings.getGeneral().isLoopsEnabled());
 
@@ -885,7 +886,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         });
 
 
-        // 为本工作区的 GoalEngine 就地注册 web 端执行器（goal 自己的通道，与 loop 无共享）
+        // 为本工作区的 GoalRuntime 就地注册 web 端执行器（goal 自己的通道，与 loop 无共享）
         registerWebGoalExecutor(goalExtension, meta.getId());
 
         // FileWatchService（自建轮询/初始化线程，需显式带上工作区日志归属）
@@ -989,7 +990,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
     }
 
     /**
-     * 为本工作区的 GoalEngine 注册 web 端任务执行器。
+     * 为本工作区的 GoalRuntime 注册 web 端任务执行器。
      *
      * <p>与 loop 执行器形状相同但通道分开：各自只服务自己那个引擎，没有共享类型、没有交叉兜底。
      * 返回值必须携带本轮客观事实（token / 工具证据）——goal 的完成判定需要它，
@@ -1000,12 +1001,12 @@ public class WorkspaceManager implements WorkspaceRegistry {
             return;
         }
 
-        // 认领谓词交给引擎（重叠可告警）；运行时端口不可用时 handler 返 null 穿透到下一入口
+        // 认领谓词交给引擎（重叠可告警）；运行时端口未就绪时本轮 skip（不计错误，等下一轮）
         goalExtension.addExecutor("web", SessionIdOwnership::isWeb,
                 (sessionId, prompt) -> {
                     WorkspaceRuntimePort runtime = getRuntimePort();
                     if (runtime == null) {
-                        return null;
+                        return GoalOutcome.skip("runtime port not ready");
                     }
                     // 与 loop 同口径：注入回合不识别命令、不排水，但过程事件照常推给前端（边跑边输出）
                     return runtime.runGoalRound(workspaceId, sessionId, prompt, "Goal");

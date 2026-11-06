@@ -2,189 +2,179 @@ package org.noear.solon.codecli.api.web.controller;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
-import org.noear.solon.ai.harness.extension.goal.GoalState;
+import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
+import org.noear.solon.ai.harness.extension.goal.GoalProjection;
+import org.noear.solon.ai.harness.extension.goal.GoalTask;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 
+import java.nio.file.Path;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * LoopWebController 的 goal 端点行为基线（P0/P1 改造前先锁定行为）。
+ * LoopWebController 的 goal 端点行为：分流命中、状态校验、404/400 分支。
  *
- * <p>这些端点在改造中由「手工 pause + unschedule / resume + schedule / clear + unschedule」
- * 改为走 {@link GoalExtension} 门面。本测试锁定改造前后对外可见的行为：分流命中、
- * 状态校验、404/400 分支、以及「调度配对只由门面负责，控制器不再直接操作调度器」。</p>
+ * <p>用真实 {@link GoalExtension}（内存会话、无调度）而非 mock：端点只经门面操作 goal，
+ * 断言落在门面可见的状态上，不依赖控制器内部调用顺序。初始状态经 {@link GoalProjection} 写入会话快照，
+ * 首次访问时由插件 hydrate（与重启恢复同一路径）。</p>
  */
 class GoalLoopEndpointTest {
     private static final String SESSION = "web-test";
     private static final String TASK_ID = "goal-1";
 
-    private WorkspaceManager manager;
-    private WorkspaceContext context;
+    @TempDir
+    Path workspace;
+
+    private final Map<String, AgentSession> sessions = new ConcurrentHashMap<>();
     private GoalExtension goal;
-    private AgentSession session;
-    private GoalState state;
     private LoopWebController controller;
 
     @BeforeEach
     void setUp() {
-        manager = mock(WorkspaceManager.class);
-        context = mock(WorkspaceContext.class);
-        goal = mock(GoalExtension.class);
-        session = InMemoryAgentSession.of(SESSION);
-        state = mock(GoalState.class);
+        goal = GoalExtension.builder("ws-endpoint").jobManager(null).build();
+        HarnessEngine.of(workspace.toString(), workspace.resolve("home").toString())
+                .sessionProvider(id -> sessions.computeIfAbsent(id, InMemoryAgentSession::of))
+                .extensionAdd(goal)
+                .build();
+        // 触发轮次时不调用模型：本通道认领并 skip
+        goal.addExecutor("web", null, (sid, prompt) -> GoalOutcome.skip("test"));
 
+        WorkspaceManager manager = mock(WorkspaceManager.class);
+        WorkspaceContext context = mock(WorkspaceContext.class);
         when(manager.currentContext()).thenReturn(context);
         when(context.getGoalExtension()).thenReturn(goal);
-        when(goal.sessionOf(SESSION)).thenReturn(session);
-        when(goal.state(session)).thenReturn(state);
-        when(goal.stateOf(SESSION)).thenReturn(state);
-        when(goal.find(SESSION, TASK_ID)).thenReturn(state);
-        when(state.getId()).thenReturn(TASK_ID);
-
         controller = new LoopWebController(manager);
     }
 
-    private void status(GoalState.Status status) {
-        when(state.getStatus()).thenReturn(status);
+    /** 预置一条指定状态的 goal（经快照投影，首次访问时 hydrate）。 */
+    private void seed(GoalTask.Status status) {
+        AgentSession session = sessions.computeIfAbsent(SESSION, InMemoryAgentSession::of);
+        GoalProjection.builder()
+                .goalId(TASK_ID)
+                .objective("目标")
+                .status(status)
+                .startEpochMs(System.currentTimeMillis())
+                .build()
+                .writeTo(session.getContext());
+    }
+
+    private GoalTask.Status statusNow() {
+        GoalTask task = goal.get(SESSION);
+        return task == null ? null : task.getStatus();
     }
 
     @Test
-    void pauseEndpointPausesThroughFacade() {
-        status(GoalState.Status.PURSUING);
+    void pauseEndpointPausesPursuingGoal() {
+        seed(GoalTask.Status.PURSUING);
 
         Result result = controller.loopGoalPause(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
-        // 调度摘除由 pause 门面内含，控制器不得再单独操作调度器；
-        // 且走 sessionId+taskId 重载：控制器不再自行解析会话与比对 taskId
-        verify(goal).pause(SESSION, TASK_ID);
+        assertEquals(GoalTask.Status.PAUSED, statusNow());
     }
 
     @Test
     void pauseEndpointRejectsNonPursuingGoal() {
-        status(GoalState.Status.PAUSED);
+        seed(GoalTask.Status.PAUSED);
 
-        Result result = controller.loopGoalPause(SESSION, TASK_ID);
-
-        assertEquals(400, result.getCode());
-        verify(goal, never()).pause(anyString(), anyString());
+        assertEquals(400, controller.loopGoalPause(SESSION, TASK_ID).getCode());
+        assertEquals(GoalTask.Status.PAUSED, statusNow());
     }
 
     @Test
     void pauseEndpointReturns404ForForeignTaskId() {
-        Result result = controller.loopGoalPause(SESSION, "not-mine");
+        seed(GoalTask.Status.PURSUING);
 
-        assertEquals(404, result.getCode());
-        verify(goal, never()).pause(anyString(), anyString());
+        assertEquals(404, controller.loopGoalPause(SESSION, "not-mine").getCode());
+        assertEquals(GoalTask.Status.PURSUING, statusNow());
     }
 
     @Test
-    void resumeEndpointResumesThroughFacade() {
-        status(GoalState.Status.PAUSED);
-        when(goal.resume(SESSION, TASK_ID)).thenReturn(true);
+    void resumeEndpointResumesPausedGoal() {
+        seed(GoalTask.Status.PAUSED);
 
-        Result result = controller.loopGoalResume(SESSION, TASK_ID);
-
-        assertEquals(Result.SUCCEED_CODE, result.getCode());
-        // 调度恢复（runNow=true）由 resume 门面内含
-        verify(goal).resume(SESSION, TASK_ID);
+        assertEquals(Result.SUCCEED_CODE, controller.loopGoalResume(SESSION, TASK_ID).getCode());
+        assertEquals(GoalTask.Status.PURSUING, statusNow());
     }
 
     @Test
     void resumeEndpointRejectsTerminalGoal() {
-        status(GoalState.Status.ACHIEVED);
+        seed(GoalTask.Status.ACHIEVED);
 
-        Result result = controller.loopGoalResume(SESSION, TASK_ID);
-
-        assertEquals(400, result.getCode());
-        verify(goal, never()).resume(anyString(), anyString());
+        assertEquals(400, controller.loopGoalResume(SESSION, TASK_ID).getCode());
+        assertEquals(GoalTask.Status.ACHIEVED, statusNow());
     }
 
     @Test
-    void clearEndpointClearsThroughFacade() {
-        Result result = controller.loopGoalClear(SESSION, TASK_ID);
+    void clearEndpointRemovesGoal() {
+        seed(GoalTask.Status.PURSUING);
 
-        assertEquals(Result.SUCCEED_CODE, result.getCode());
-        // 先摘调度再清状态由 clear 门面内含
-        verify(goal).clear(SESSION);
-        // WorkspaceContext 的 legacy getter（getGoalEngine/getGoalScheduler）已删除，
-        // 宿主不可能再绕过门面取内核实例——无须 mock 层断言，由编译期保证。
+        assertEquals(Result.SUCCEED_CODE, controller.loopGoalClear(SESSION, TASK_ID).getCode());
+        assertNull(goal.get(SESSION));
     }
 
     @Test
     void clearEndpointReturns404WhenGoalMissing() {
-        when(goal.find(SESSION, TASK_ID)).thenReturn(null);
-
-        Result result = controller.loopGoalClear(SESSION, TASK_ID);
-
-        assertEquals(404, result.getCode());
-        verify(goal, never()).clear(anyString());
+        assertEquals(404, controller.loopGoalClear(SESSION, TASK_ID).getCode());
     }
 
     @Test
-    void togglePausesPursuingGoalThroughFacade() {
-        status(GoalState.Status.PURSUING);
-        when(goal.pause(SESSION, TASK_ID)).thenReturn(true);
+    void togglePausesPursuingGoal() {
+        seed(GoalTask.Status.PURSUING);
 
-        Result result = controller.loopToggle(SESSION, TASK_ID);
-
-        assertEquals(Result.SUCCEED_CODE, result.getCode());
-        verify(goal).pause(SESSION, TASK_ID);
-        verify(goal, never()).resume(anyString(), anyString());
+        assertEquals(Result.SUCCEED_CODE, controller.loopToggle(SESSION, TASK_ID).getCode());
+        assertEquals(GoalTask.Status.PAUSED, statusNow());
     }
 
     @Test
-    void toggleResumesResumableGoalThroughFacade() {
-        status(GoalState.Status.PAUSED);
-        when(goal.resume(SESSION, TASK_ID)).thenReturn(true);
+    void toggleResumesResumableGoal() {
+        seed(GoalTask.Status.BLOCKED);
 
-        Result result = controller.loopToggle(SESSION, TASK_ID);
-
-        assertEquals(Result.SUCCEED_CODE, result.getCode());
-        verify(goal).resume(SESSION, TASK_ID);
-        verify(goal, never()).pause(anyString(), anyString());
+        assertEquals(Result.SUCCEED_CODE, controller.loopToggle(SESSION, TASK_ID).getCode());
+        assertEquals(GoalTask.Status.PURSUING, statusNow());
     }
 
     @Test
     void toggleRejectsTerminalGoal() {
-        status(GoalState.Status.ACHIEVED);
+        seed(GoalTask.Status.ACHIEVED);
 
-        Result result = controller.loopToggle(SESSION, TASK_ID);
-
-        assertEquals(400, result.getCode());
-        verify(goal, never()).pause(anyString(), anyString());
-        verify(goal, never()).resume(anyString(), anyString());
+        assertEquals(400, controller.loopToggle(SESSION, TASK_ID).getCode());
+        assertEquals(GoalTask.Status.ACHIEVED, statusNow());
     }
 
     @Test
     void triggerRunsRoundOnlyForActiveGoal() {
-        status(GoalState.Status.PURSUING);
-
-        Result result = controller.loopTrigger(SESSION, TASK_ID);
-
-        assertEquals(Result.SUCCEED_CODE, result.getCode());
-        verify(goal).runRoundAsync(session);
+        seed(GoalTask.Status.PURSUING);
+        assertEquals(Result.SUCCEED_CODE, controller.loopTrigger(SESSION, TASK_ID).getCode());
     }
 
     @Test
     void triggerRejectsInactiveGoal() {
-        status(GoalState.Status.PAUSED);
+        seed(GoalTask.Status.PAUSED);
+        assertEquals(400, controller.loopTrigger(SESSION, TASK_ID).getCode());
+    }
 
-        Result result = controller.loopTrigger(SESSION, TASK_ID);
+    @Test
+    void listRowUsesPluginStandardView() {
+        seed(GoalTask.Status.PAUSED);
 
-        assertEquals(400, result.getCode());
-        verify(goal, never()).runRoundAsync(any());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> row = (Map<String, Object>) controller.loopGet(SESSION, TASK_ID).getData();
+
+        assertEquals("GOAL", row.get("type"));
+        assertEquals(false, row.get("enabled"), "非活跃 goal 的 enabled 由插件视图给出");
+        assertEquals(false, row.get("cancelled"));
     }
 }

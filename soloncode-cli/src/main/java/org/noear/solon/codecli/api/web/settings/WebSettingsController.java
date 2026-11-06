@@ -296,12 +296,12 @@ public class WebSettingsController extends BaseSettingsController {
                 engine.getLspTalent().setEnabled(g.isLspEnabled());
             }
 
-            // goalsEnabled：热更新 GoalTalent
+            // goalsEnabled：热更新 goal 插件开关（与启动装配同一入口：工具、/goal 命令与调度一并开关）
             try {
                 boolean goalsEnabled = g.isGoalsEnabled();
                 GoalExtension goalExt = engine.getExtension(GoalExtension.class).orElse(null);
                 if (goalExt != null) {
-                    goalExt.getGoalTalent().setEnabled(goalsEnabled);
+                    goalExt.setEnabled(goalsEnabled);
                 }
             } catch (Exception e) {
                 warnings.add("goalsEnabled apply failed: " + e.getMessage());

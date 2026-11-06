@@ -166,7 +166,7 @@ public final class GoalDataMigrator {
      *
      * <p>字段集合与键名由 harness 的 {@link GoalProjection.Builder} 定义，
      * 本方法只负责 ONode → 值的映射，不再拼装投影 Map（此前宿主复刻了一份
-     * {@code GoalState.toMap()}，harness 改字段即静默失效）。</p>
+     * 投影序列化，harness 改字段即静默失效）。</p>
      */
     private static GoalProjection toProjection(ONode item) {
         ONode gsNode = item.getOrNull("goalState");
@@ -176,7 +176,7 @@ public final class GoalDataMigrator {
 
         GoalProjection.Builder builder = GoalProjection.builder()
                 .goalId(strOrNull(gsNode, "id"))
-                .condition(strOrNull(gsNode, "condition"))
+                .objective(strOrNull(gsNode, "condition"))
                 .statusName(strOrNull(gsNode, "status"))
                 .consumedTokens(longOf(gsNode, "consumedTokens"))
                 .maxIterations((int) longOf(gsNode, "maxIterations"))

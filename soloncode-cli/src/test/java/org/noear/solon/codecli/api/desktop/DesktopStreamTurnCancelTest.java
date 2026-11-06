@@ -59,7 +59,7 @@ class DesktopStreamTurnCancelTest {
     /** 引擎替身：停流走真实方法（只依赖核心静态实现），状态查询委托真实快照（否则 mock 会让顶流变成空操作）。 */
     private static HarnessEngine stubEngine() {
         HarnessEngine engine = mock(HarnessEngine.class);
-        when(engine.interruptStream(any())).thenCallRealMethod();
+        when(engine.cancelStream(any())).thenCallRealMethod();
         when(engine.status(any())).thenAnswer(
                 inv -> org.noear.solon.ai.harness.session.SessionStatus.of(inv.getArgument(0)));
         return engine;

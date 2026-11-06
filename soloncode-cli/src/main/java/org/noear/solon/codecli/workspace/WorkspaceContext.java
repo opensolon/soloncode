@@ -132,8 +132,8 @@ public class WorkspaceContext implements Closeable {
     /**
      * Goal 域的唯一交互面（装配 + 运行期门面）。
      *
-     * <p>宿主应优先用它：{@code goal.find(id,taskId)} / {@code goal.pause(...)} /
-     * {@code goal.attachAndSchedule(...)} 等已内含调度配对，不会出现「改了状态忘了挂/摘 job」。</p>
+     * <p>宿主只经它操作 goal：{@code goal.get/create/update/pause/resume/trigger/remove} 均按 sessionId 定位，
+     * 已内含调度配对，不会出现「改了状态忘了挂/摘 job」。</p>
      */
     public GoalExtension getGoalExtension() {
         return goalExtension;
@@ -198,7 +198,7 @@ public class WorkspaceContext implements Closeable {
         // ImGateway 持有，工作区 LRU 释放/关闭不得断开它们，否则消息会丢失（方案 3.3）。
         // 停掉本工作区全部 goal / loop job：JobManager 是 JVM 单例，
         // 不注销则 job 会带着已关闭引擎的引用在全局调度器里空转。
-        // engine.shutdown() 会遍历回调各扩展的 onDetach（GoalExtension → stopAll；
+        // engine.shutdown() 会遍历回调各扩展的 onDetach（GoalExtension → 卸载全部 goal job；
         // LoopExtension → 卸载 job 但保留 tasks.json 记录），
         // 并关闭子代理委派的私有执行器。不再单独取 goalExtension 打补丁。
         try {

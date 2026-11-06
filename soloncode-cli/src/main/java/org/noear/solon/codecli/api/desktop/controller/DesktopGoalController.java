@@ -16,7 +16,6 @@
 package org.noear.solon.codecli.api.desktop.controller;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
@@ -25,7 +24,8 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.api.desktop.WsGate;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
-import org.noear.solon.ai.harness.extension.goal.GoalState;
+import org.noear.solon.ai.harness.extension.goal.GoalPatch;
+import org.noear.solon.ai.harness.extension.goal.GoalTask;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -56,7 +56,7 @@ public class DesktopGoalController extends AbstractDesktopController {
         super(engine, sessionManager);
         this.wsGate = wsGate;
         this.goal = goal;
-        // 桌面端 TaskExecutor 已由 WsGate 构造时注册到 GoalEngine 自己的执行通道；
+        // 桌面端 TaskExecutor 已由 WsGate 构造时注册到 GoalRuntime 自己的执行通道；
         // 忙判定由会话快照（SessionStatus）统一派生，桌面端不再单独注册
     }
 
@@ -67,10 +67,10 @@ public class DesktopGoalController extends AbstractDesktopController {
         if (!DesktopSessionIds.isValid(sessionId) || goal == null) {
             return Result.failure(400, "Invalid session id");
         }
-        GoalState gs = goal.stateOf(sessionId);
+        GoalTask task = goal.get(sessionId);
         List<Map> items = new ArrayList<>();
-        if (gs != null) {
-            items.add(goal.toTaskMap(goal.sessionOf(sessionId), gs));
+        if (task != null) {
+            items.add(task.toMap());
         }
         return Result.succeed(items);
     }
@@ -108,16 +108,12 @@ public class DesktopGoalController extends AbstractDesktopController {
                     root.get("workspace").getString(),
                     root.get("reasoningEffort").getString());
 
-            AgentSession session = goal.sessionOf(sessionId);
-            if (session == null) {
-                return Result.failure(404, "Session not found");
-            }
-            GoalState gs = goal.attachAndSchedule(session, GoalSpec.of(prompt)
+            GoalTask task = goal.create(sessionId, GoalSpec.of(prompt)
                     .maxTokens(maxTokens != null ? maxTokens : 0L)
                     .maxDuration(maxDurationMinutes != null
                             ? java.time.Duration.ofMinutes(maxDurationMinutes) : null)
                     .maxIterations(maxIterations != null ? maxIterations : 0));
-            return Result.succeed(gs.getId());
+            return Result.succeed(task.getId());
         } catch (IllegalArgumentException | ArithmeticException error) {
             return Result.failure(400, error.getMessage());
         } catch (IllegalStateException error) {
@@ -138,17 +134,8 @@ public class DesktopGoalController extends AbstractDesktopController {
             return Result.failure(400, "Invalid Goal request");
         }
 
-        GoalState gs = goal.find(sessionId, taskId);
-        if (gs == null) {
-            return Result.failure(404, "Goal not found");
-        }
-        if (gs.getStatus().isTerminal()) {
-            return Result.failure(409, "Completed Goal cannot be edited");
-        }
-
-        String objective = root.getOrNull("prompt") == null
-                ? gs.getCondition() : root.get("prompt").getString().trim();
-        if (Assert.isEmpty(objective) || objective.length() > 20_000) {
+        String objective = root.getOrNull("prompt") == null ? null : root.get("prompt").getString().trim();
+        if (objective != null && (objective.isEmpty() || objective.length() > 20_000)) {
             return Result.failure(400, "Goal prompt is required and must not exceed 20000 characters");
         }
         Long maxTokens = optionalNonNegativeLong(root, "maxTokens", 1_000_000_000L);
@@ -157,21 +144,15 @@ public class DesktopGoalController extends AbstractDesktopController {
             return Result.failure(400, "Invalid Goal limit");
         }
 
-        boolean resumeAfterUpdate = gs.getStatus() == GoalState.Status.PURSUING;
-        if (resumeAfterUpdate) {
-            // pause → 中断 → 停等三连由门面一步完成（不忙等，超时即回 409）
-            if (!goal.pauseAndAwait(goal.sessionOf(sessionId), gs,
-                    () -> wsGate.interruptGoalSession(sessionId), 2000L)) {
-                return Result.failure(409, "Goal is still stopping; please retry");
-            }
-            if (gs.getStatus() != GoalState.Status.PAUSED) {
-                return Result.failure(409, "Goal state changed before settings could be applied");
-            }
+        // 暂停 → 停流 → 停等 → 改写 → 恢复由门面一步完成（停不稳或终态回 409）；桌面端不支持改时长
+        try {
+            GoalTask updated = goal.update(sessionId, taskId,
+                    GoalPatch.create().objective(objective).maxTokens(maxTokens).maxIterations(maxIterations),
+                    () -> wsGate.interruptGoalSession(sessionId));
+            return updated == null ? Result.failure(404, "Goal not found") : Result.succeed();
+        } catch (IllegalStateException e) {
+            return Result.failure(409, e.getMessage());
         }
-
-        // 后半段（update + resume + schedule）由门面一步完成；桌面端不支持改时长
-        goal.updateAndReschedule(goal.sessionOf(sessionId), gs, objective, maxTokens, null, resumeAfterUpdate);
-        return Result.succeed();
     }
 
     @Post
@@ -208,8 +189,8 @@ public class DesktopGoalController extends AbstractDesktopController {
         if (!DesktopSessionIds.isValid(sessionId) || Assert.isEmpty(taskId) || taskId.length() > 64) {
             return Result.failure(400, "Invalid Goal request");
         }
-        GoalState gs = goal.find(sessionId, taskId);
-        if (gs == null) {
+        GoalTask task = goal.get(sessionId, taskId);
+        if (task == null) {
             return Result.failure(404, "Goal not found");
         }
         switch (action) {
@@ -219,15 +200,17 @@ public class DesktopGoalController extends AbstractDesktopController {
                 break;
             case "resume":
                 if (!goal.resume(sessionId, taskId)) {
-                    return Result.failure(409, "Goal cannot be resumed in state: " + gs.getStatus());
+                    return Result.failure(409, "Goal cannot be resumed in state: " + task.getStatus());
                 }
                 break;
             case "trigger":
-                goal.scheduleNow(sessionId);
+                if (!goal.trigger(sessionId, taskId)) {
+                    return Result.failure(409, "Goal is not active: " + task.getStatus());
+                }
                 break;
             case "remove":
                 wsGate.interruptGoalSession(sessionId);
-                goal.clear(sessionId);
+                goal.remove(sessionId, taskId);
                 break;
             default:
                 return Result.failure(400, "Invalid Goal action");

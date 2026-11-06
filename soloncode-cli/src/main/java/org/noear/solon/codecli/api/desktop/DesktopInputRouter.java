@@ -30,7 +30,6 @@ import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.command.ParsedCommand;
-import org.noear.solon.ai.harness.extension.goal.GoalState;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.core.util.Assert;
@@ -82,15 +81,13 @@ final class DesktopInputRouter {
         AgentSession session = engine.getSession(sessionId);
 
         if ("[(sec)interrupt]".equals(req.getInput())) {
-            AgentSession goalSession = gate.goal == null ? null : gate.goal.sessionOf(sessionId);
-            GoalState activeGoal = goalSession == null ? null : gate.goal.state(goalSession);
-            if (activeGoal != null) {
-                // goal 轮次：只停流，不落取消消息（历史由 goal.clear 收尾）。
+            if (gate.goal != null && gate.goal.get(sessionId) != null) {
+                // goal 轮次：只停流，不落取消消息（历史由 goal.remove 收尾）。
                 // 这里不能用 engine.interrupt：它会补写取消消息，
                 // 而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
-                engine.interruptStream(session);
-                // clear 门面内含「先 unschedule 再 clear」
-                gate.goal.clear(goalSession);
+                engine.cancelStream(session);
+                // remove 门面内含「先摘调度再清除」
+                gate.goal.remove(sessionId, null);
                 return;
             }
 

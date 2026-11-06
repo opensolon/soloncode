@@ -28,7 +28,6 @@ import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
-import org.noear.solon.ai.harness.extension.goal.GoalState;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionMeta;
@@ -189,7 +188,7 @@ public class SessionWebController extends AbstractWebController {
                     continue;
                 }
                 if (loop() != null) {
-                    loop().stopAll(sessionId);
+                    loop().removeAll(sessionId);
                 }
                 sessionManager().removeSession(sessionId);
                 // 主动清理该会话的 IM 绑定，避免悬挂路由
@@ -276,7 +275,7 @@ public class SessionWebController extends AbstractWebController {
         // 仅清理当前运行时工作区的内存状态，避免数字会话 ID 在不同项目间碰撞。
         if (activeWorkspaceSession) {
             if (loop() != null) {
-                loop().stopAll(sessionId);
+                loop().removeAll(sessionId);
             }
             sessionManager().removeSession(sessionId);
         }
@@ -649,14 +648,9 @@ public class SessionWebController extends AbstractWebController {
 
         // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
         GoalExtension goal = currentContext().getGoalExtension();
-        if (goal != null) {
-            AgentSession goalSession = goal.sessionOf(sessionId);
-            GoalState activeGoal = goalSession == null ? null : goal.state(goalSession);
-            if (activeGoal != null && activeGoal.getStatus().isActive()) {
-                // pause 门面内含 unschedule 配对
-                goal.pause(goalSession, activeGoal);
-                LOG.info("[SessionWebController] Goal '{}' paused due to session interrupt", activeGoal.getId());
-            }
+        // pause 门面内含摘调度配对；仅活跃 goal 会被暂停
+        if (goal != null && goal.pause(sessionId, null)) {
+            LOG.info("[SessionWebController] Goal of session '{}' paused due to session interrupt", sessionId);
         }
 
         return Result.succeed();

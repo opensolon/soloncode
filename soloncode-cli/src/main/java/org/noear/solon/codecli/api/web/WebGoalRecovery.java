@@ -15,9 +15,8 @@
  */
 package org.noear.solon.codecli.api.web;
 
-import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
-import org.noear.solon.ai.harness.extension.goal.GoalState;
+import org.noear.solon.ai.harness.extension.goal.GoalTask;
 import org.noear.solon.codecli.session.SessionSnapshots;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.slf4j.Logger;
@@ -70,13 +69,12 @@ final class WebGoalRecovery {
                 }
             }
 
-            int recovered = goal.recoverActiveSchedules(sessionIds, sessionId -> {
+            int recovered = goal.recover(sessionIds, sessionId -> {
                 Path dir = root.resolve(sessionId);
                 // 内存会话优先（与写侧同源）；未实例化则轻读投影状态，不把会话带进内存
-                AgentSession inMemory = wsContext.getSessionManager().getSessionIfPresent(sessionId);
-                if (inMemory != null) {
-                    GoalState gs = goal.state(inMemory);
-                    return gs == null ? null : gs.getStatus();
+                if (wsContext.getSessionManager().getSessionIfPresent(sessionId) != null) {
+                    GoalTask task = goal.get(sessionId);
+                    return task == null ? null : task.getStatus();
                 }
                 return SessionSnapshots.readGoalStatus(dir, sessionId);
             });

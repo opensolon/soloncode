@@ -17,7 +17,7 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.agent.TaskWrapEvent;
+import org.noear.solon.ai.harness.agent.task.TaskWrapEvent;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.HostAttrs;

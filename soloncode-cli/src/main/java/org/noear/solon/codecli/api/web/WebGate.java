@@ -19,7 +19,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.extension.goal.GoalRoundResult;
+import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.ai.harness.session.HarnessAttrs;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.SessionActivity;
@@ -213,9 +213,9 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     }
 
     @Override
-    public GoalRoundResult runGoalRound(String workspaceId, String sessionId, String input, String source) {
+    public GoalOutcome runGoalRound(String workspaceId, String sessionId, String input, String source) {
         WorkspaceContext wsContext = workspaceRegistry.getContextsCached(workspaceId);
-        return inputHandler.safeChatInputAndCaptureRound(wsContext, sessionId, input, source);
+        return inputHandler.runGoalRound(wsContext, sessionId, input, source);
     }
 
     // ═══════════════════════════════════════════════════════════════

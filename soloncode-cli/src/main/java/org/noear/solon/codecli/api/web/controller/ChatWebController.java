@@ -30,7 +30,7 @@ import org.noear.solon.codecli.api.web.WebGate;
 import org.noear.solon.ai.harness.extension.steer.SteerCancelResult;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerResult;
-import org.noear.solon.ai.harness.extension.steer.SteerStatus;
+import org.noear.solon.ai.harness.extension.steer.SteerResult;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -541,27 +541,27 @@ public class ChatWebController extends AbstractWebController {
     /**
      * 插话投递结果 → Web 应答。
      *
-     * <p>按 {@link SteerStatus} 枚举分支，不再 switch 字符串 code：枚举新增态会落到
+     * <p>按 {@link SteerResult.Code} 枚举分支，不再 switch 字符串 code：枚举新增态会落到
      * {@code default} 但至少编译期提示过，而字符串拼错只会静默落 409。</p>
      */
     private static Result toResult(SteerResult result) {
-        switch (result.getStatus()) {
+        switch (result.getCode()) {
             case STEERED: {
                 Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", result.getStatusCode());
+                data.put("status", result.getCodeName());
                 data.put("steerId", result.getSteerId());
-                data.put("queued", result.getQueued());
+                data.put("queued", result.getPendingCount());
                 return Result.succeed(data);
             }
             case EMPTY_TEXT:
             case TEXT_TOO_LONG:
             case INVALID_STEER_ID:
                 // 参数非法：前端提示后不再重试
-                return Result.failure(400, result.getStatusCode());
+                return Result.failure(400, result.getCodeName());
             default:
                 // NOT_RUNNING（回落普通发送）/ TURN_CHANGED / BOX_FULL（转排队）/
                 // DUPLICATE_STEER_ID / DISABLED
-                return Result.failure(409, result.getStatusCode());
+                return Result.failure(409, result.getCodeName());
         }
     }
 
@@ -631,10 +631,10 @@ public class ChatWebController extends AbstractWebController {
      * <p>应答字段保持不变：单条带 {@code steerId}，批量带 {@code canceled}，均带剩余条数 {@code queued}。</p>
      */
     private static Result toResult(SteerCancelResult result) {
-        switch (result.getStatus()) {
+        switch (result.getCode()) {
             case CANCELED: {
                 Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", result.getStatusCode());
+                data.put("status", result.getCodeName());
                 if (result.getSteerId() != null) {
                     data.put("steerId", result.getSteerId());
                 } else {
@@ -644,10 +644,10 @@ public class ChatWebController extends AbstractWebController {
                 return Result.succeed(data);
             }
             case INVALID_STEER_ID:
-                return Result.failure(400, result.getStatusCode());
+                return Result.failure(400, result.getCodeName());
             default:
                 // NOT_PENDING（等待终态事件）/ TURN_CHANGED
-                return Result.failure(409, result.getStatusCode());
+                return Result.failure(409, result.getCodeName());
         }
     }
 

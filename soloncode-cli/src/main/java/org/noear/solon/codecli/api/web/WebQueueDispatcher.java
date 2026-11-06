@@ -16,7 +16,8 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.harness.extension.queue.QueueDispatch;
+import org.noear.solon.ai.harness.extension.queue.QueueClaim;
+import org.noear.solon.ai.harness.spi.TurnDispatch;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.queue.QueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -140,16 +141,14 @@ class WebQueueDispatcher {
     }
 
     /**
-     * 仅确认本次队列领取；启动失败则恢复到队首，不按消息来源分支。
+     * 兜底收口：没有捕获到 {@code SessionTurn} 时，收口会话当前未收口的程序派发（无则空操作）。
      *
-     * <p>派发事务的登记与注销、身份校验、代际判定全部由 harness 的 {@code QueueDispatch}
-     * 负责：成功走 {@code acknowledge()}，失败走 {@code rollback()}（带回领取瞬间的代际快照，
-     * Stop 之后必然被拒）。无未收口派发时为空操作。</p>
+     * <p>只经核心契约 {@link TurnDispatch}：登记与注销、身份校验、代际判定全部由派发方
+     * （队列的 {@code QueueClaim}）负责，Stop 之后的回滚必然被拒。</p>
      */
-    void finishQueuedTurn(WorkspaceContext wsContext, AgentSession session, boolean started) {
-        QueueExtension queue = queueOf(wsContext);
-        if (queue == null) return;
-        queue.settleDispatch(session, started);
+    void finishQueuedTurn(AgentSession session, boolean started) {
+        TurnDispatch dispatch = TurnDispatch.current(session);
+        if (dispatch != null) dispatch.settle(started);
     }
 
     /**
@@ -160,8 +159,8 @@ class WebQueueDispatcher {
      * {@code WebSessionRunner#failStreamTurn}）——异步线程上会话态可能已被下一轮派发覆盖。</p>
      */
     static boolean isQueueDispatch(AgentSession session) {
-        QueueDispatch dispatch = QueueDispatch.current(session);
-        return dispatch != null && dispatch.isOnDispatchThread();
+        QueueClaim claim = QueueClaim.current(session);
+        return claim != null && claim.isOnDispatchThread();
     }
 
     /** 取队列门面（扩展未装配时为 null，调用方需容错） */
