@@ -16,7 +16,6 @@
 package org.noear.solon.codecli.api.web.controller;
 
 import org.noear.snack4.ONode;
-import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.chat.ChatRole;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -464,7 +463,7 @@ public class SessionWebController extends AbstractWebController {
         if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
 
         // 只取已存在的会话：新会话在首条消息前还没有目录，读历史不应顺带把它建出来
-        org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+        org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
         if (session == null) {
             return Result.succeed(new ArrayList<>());
         }
@@ -606,7 +605,7 @@ public class SessionWebController extends AbstractWebController {
         }
 
         try {
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) {
                 return Result.succeed(LAST_TRACE_SERVICE.buildLastTrace(null, false, null));
             }

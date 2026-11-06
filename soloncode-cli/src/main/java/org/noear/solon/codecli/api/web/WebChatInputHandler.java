@@ -19,19 +19,16 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.harness.turn.InterruptPlan;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.turn.InputGate;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
 import org.noear.solon.ai.harness.turn.AdmitDecision;
 import org.noear.solon.ai.harness.input.HarnessInput;
-import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
-import org.noear.solon.ai.harness.extension.steer.SteerResult;
 import org.noear.solon.ai.harness.extension.steer.SteerResult;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
@@ -51,7 +48,6 @@ import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.nio.file.Path;
-import java.util.List;
 
 /**
  * 聊天输入的受理、分发与中断：忙态插话（降级排队）、斜杠命令、HITL 审批、Loop 同步捕获与 interrupt。
@@ -527,7 +523,7 @@ class WebChatInputHandler {
             return LoopOutcome.skip("workspace not loaded");
         }
         // 只取已存在的会话：定时轮次不得把已删除的会话重新建出来
-        AgentSession session = wsContext.getSessionManager().getSessionOrNil(sessionId);
+        AgentSession session = wsContext.getSessionManager().getSessionOrNull(sessionId);
         if (session == null) {
             return LoopOutcome.skip("session not found");
         }
@@ -565,7 +561,7 @@ class WebChatInputHandler {
             return GoalOutcome.skip("workspace not loaded");
         }
         // 只取已存在的会话：定时轮次不得把已删除的会话重新建出来
-        AgentSession session = wsContext.getSessionManager().getSessionOrNil(sessionId);
+        AgentSession session = wsContext.getSessionManager().getSessionOrNull(sessionId);
         if (session == null) {
             return GoalOutcome.skip("session not found");
         }
@@ -612,7 +608,7 @@ class WebChatInputHandler {
      */
     boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         try {
-            AgentSession session = wsContext.getSessionManager().getSessionOrNil(sessionId);
+            AgentSession session = wsContext.getSessionManager().getSessionOrNull(sessionId);
             if (session == null) {
                 // 会话不存在：没有可中断的任务，也不要为了中断把它建出来
                 LOG.info("[WebGate] Session {} interrupt ignored (session not found)", sessionId);

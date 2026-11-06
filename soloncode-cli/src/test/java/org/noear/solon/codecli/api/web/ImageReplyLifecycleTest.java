@@ -558,7 +558,7 @@ class ImageReplyLifecycleTest {
         org.noear.solon.codecli.session.SessionManager manager =
                 mock(org.noear.solon.codecli.session.SessionManager.class);
         when(f.context.getSessionManager()).thenReturn(manager);
-        when(manager.getSessionOrNil("s1")).thenReturn(f.session);
+        when(manager.getSessionOrNull("s1")).thenReturn(f.session);
         ReActRequest request = f.mockRequest();
         when(request.stream()).thenReturn(Flux.never());
         Flux<WebEvent<?>> stream = f.buildStream();
@@ -659,7 +659,7 @@ class ImageReplyLifecycleTest {
         org.noear.solon.codecli.session.SessionManager manager =
                 mock(org.noear.solon.codecli.session.SessionManager.class);
         when(f.context.getSessionManager()).thenReturn(manager);
-        when(manager.getSessionOrNil("s1")).thenReturn(f.session);
+        when(manager.getSessionOrNull("s1")).thenReturn(f.session);
         ReActRequest request = f.mockRequest();
         CountDownLatch upstreamCanceled = new CountDownLatch(1);
         when(request.stream()).thenReturn(Flux.<AgentEvent>never().doOnCancel(upstreamCanceled::countDown));

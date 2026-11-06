@@ -46,7 +46,7 @@ class SessionManagerTest {
     void getSessionOrNilReturnsNullAndCreatesNothingWhenAbsent() {
         SessionManager manager = new SessionManager(workspace.toString());
 
-        assertNull(manager.getSessionOrNil("absent"));
+        assertNull(manager.getSessionOrNull("absent"));
         assertNull(manager.getSession("absent", false));
         assertFalse(Files.exists(sessionsRoot().resolve("absent")), "不得在磁盘上建出会话目录");
         assertNull(manager.getLoadedSession("absent"), "不得放入缓存");
@@ -58,7 +58,7 @@ class SessionManagerTest {
         SessionManager manager = new SessionManager(workspace.toString());
 
         assertNull(manager.getLoadedSession("s1"), "目录存在但未加载时，getLoadedSession 不读磁盘");
-        AgentSession loaded = manager.getSessionOrNil("s1");
+        AgentSession loaded = manager.getSessionOrNull("s1");
         assertNotNull(loaded, "目录存在时应加载");
         assertSame(loaded, manager.getLoadedSession("s1"), "加载后应缓存");
         assertSame(loaded, manager.getSession("s1"), "已在内存时返回同一实例");
@@ -69,17 +69,17 @@ class SessionManagerTest {
         SessionManager manager = new SessionManager(workspace.toString());
         AgentSession created = manager.getSession("s2");
 
-        assertSame(created, manager.getSessionOrNil("s2"));
+        assertSame(created, manager.getSessionOrNull("s2"));
     }
 
     @Test
     void lookupMethodsReturnNullForBlankAndTraversalIds() {
         SessionManager manager = new SessionManager(workspace.toString());
 
-        assertNull(manager.getSessionOrNil(null));
-        assertNull(manager.getSessionOrNil(""));
-        assertNull(manager.getSessionOrNil("../outside"));
-        assertNull(manager.getSessionOrNil("a/b"));
+        assertNull(manager.getSessionOrNull(null));
+        assertNull(manager.getSessionOrNull(""));
+        assertNull(manager.getSessionOrNull("../outside"));
+        assertNull(manager.getSessionOrNull("a/b"));
         assertNull(manager.getLoadedSession(null));
         assertNull(manager.evictSession(null));
         manager.archiveAutomationSession("../outside", "auto-1"); // 不抛、不建
@@ -137,6 +137,6 @@ class SessionManagerTest {
         assertSame(created, manager.evictSession("s3"));
         assertNull(manager.getLoadedSession("s3"));
         assertTrue(Files.isDirectory(sessionsRoot().resolve("s3")), "evict 不删磁盘");
-        assertNotNull(manager.getSessionOrNil("s3"), "磁盘仍在，可重新加载");
+        assertNotNull(manager.getSessionOrNull("s3"), "磁盘仍在，可重新加载");
     }
 }

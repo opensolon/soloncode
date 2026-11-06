@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <ul>
  *   <li>{@link #getSession(String)}：不存在则新建（建目录、常驻内存）</li>
  *   <li>{@link #getOwnedSession(String, String)}：同上，并校验/认领归属用户</li>
- *   <li>{@link #getSessionOrNil(String)}：只取已存在的（内存或磁盘），磁盘有则加载进内存，不新建</li>
+ *   <li>{@link #getSessionOrNull(String)}：只取已存在的（内存或磁盘），磁盘有则加载进内存，不新建</li>
  *   <li>{@link #getLoadedSession(String)}：只取已加载进内存的，不读磁盘、不加载</li>
  * </ul>
  * <p>{@link #evictSession(String)} 与 {@link #getLoadedSession(String)} 对应：把已加载的会话移出内存。</p>
@@ -74,7 +74,7 @@ public class SessionManager implements AgentSessionProvider {
     }
 
     /** 只取已存在的会话（内存或磁盘），不存在返回 null、不新建（= {@code getSession(sessionId, false)}）。 */
-    public @Nullable AgentSession getSessionOrNil(String sessionId) {
+    public @Nullable AgentSession getSessionOrNull(String sessionId) {
         return getSession(sessionId, false);
     }
 
@@ -103,7 +103,7 @@ public class SessionManager implements AgentSessionProvider {
     /**
      * 只取「已加载进内存」的会话，未加载返回 null（不读磁盘、不加载、不新建）。
      *
-     * <p>与 {@link #getSessionOrNil(String)} 的区别：后者磁盘有就加载进内存（含快照反序列化 + 全量历史消息），
+     * <p>与 {@link #getSessionOrNull(String)} 的区别：后者磁盘有就加载进内存（含快照反序列化 + 全量历史消息），
      * 加载后常驻。批量扫描全部会话目录的场景（如启动时探测队列、恢复目标）必须用本方法，
      * 否则每个会话都会被加载并钉在内存里；未命中时由调用方自行读磁盘投影。</p>
      */
@@ -123,7 +123,7 @@ public class SessionManager implements AgentSessionProvider {
 
     /** 删除任务时归档专用会话，保留历史消息，避免误删上下文。会话已不存在时什么也不做（不把它建出来）。 */
     public void archiveAutomationSession(String sessionId, String automationId) {
-        AgentSession session = getSessionOrNil(sessionId);
+        AgentSession session = getSessionOrNull(sessionId);
         if (session == null) return;
         updateMeta(session, sessionId, meta -> {
             meta.setSessionType("AUTOMATION");

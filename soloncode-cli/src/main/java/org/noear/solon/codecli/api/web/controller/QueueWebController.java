@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.web.controller;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
@@ -64,12 +65,20 @@ public class QueueWebController extends AbstractWebController {
             return Result.failure(400, "Invalid sessionId");
         }
 
-        org.noear.solon.ai.harness.HarnessEngine currentEngine = engine();
-        Path todoPath = currentEngine.getTodoTalent().getTodoPath(currentEngine.getWorkspace(), sessionId);
+        HarnessEngine currentEngine = engine();
+        // 经 TodoTalent 的存储口径读取（数据来源可能不是本地文件）
+        String raw;
+        try {
+            raw = currentEngine.getTodoTalent().readTodo(currentEngine.getWorkspace(), sessionId);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(400, "Invalid sessionId");
+        } catch (Exception e) {
+            return Result.failure(500, "Failed to read TODO: " + e.getMessage());
+        }
 
         Map<String, Object> data = new LinkedHashMap<>();
 
-        if (!java.nio.file.Files.exists(todoPath)) {
+        if (raw == null) {
             data.put("exists", false);
             data.put("items", new ArrayList<>());
             Map<String, Integer> stats = new LinkedHashMap<>();
@@ -82,7 +91,6 @@ public class QueueWebController extends AbstractWebController {
         }
 
         try {
-            String raw = new String(java.nio.file.Files.readAllBytes(todoPath), "UTF-8");
             data.put("exists", true);
             data.put("raw", raw);
 
@@ -163,7 +171,7 @@ public class QueueWebController extends AbstractWebController {
 
         try {
             // 只取已存在的会话：读队列不应顺带建会话；会话尚不存在即空队列
-            AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) {
                 return Result.succeed(emptyQueueResult());
             }
@@ -220,7 +228,7 @@ public class QueueWebController extends AbstractWebController {
             String itemId = root == null ? null : root.get("itemId").getString();
             Path queuePath = resolveSessionQueuePath(sessionId);
             if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) return Result.failure(404, "Session not found");
             if (!queue().cancelItem(session, itemId)) return Result.failure(404, "Queue item not found");
             return Result.succeed(queueResult(session));
@@ -237,7 +245,7 @@ public class QueueWebController extends AbstractWebController {
             String itemId = root == null ? null : root.get("itemId").getString();
             Path queuePath = resolveSessionQueuePath(sessionId);
             if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
-            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNil(sessionId);
+            org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) return Result.failure(404, "Session not found");
             if (!queue().promote(session, itemId)) return Result.failure(404, "Queue item not found");
             runtimePort().drainSessionQueue(currentContext(), session);

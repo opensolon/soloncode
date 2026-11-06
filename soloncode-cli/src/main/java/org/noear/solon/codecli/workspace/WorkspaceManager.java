@@ -59,7 +59,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.BiFunction;
 
 /**
  * 工作区管理器，用于统一管理多工作区的生命周期、实例化底层引擎及持久化最近工作区。
@@ -737,6 +736,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .autoRethink(wsSettings.getGeneral().isAutoRethink())
                 .sessionWindowSize(wsSettings.getGeneral().getSessionWindowSize())
                 .sessionProvider(new SessionManager(workspacePath))
+                // harness 状态（TODO 清单等）经数据来源读写：~/.soloncode/workspaces/<key>/sessions/<sid>/TODO.md，
+                // 与会话目录同处；清单归属会话、不随 cwd 漂移。换成 db / http 来源即可算存分离
+                .dataSource(FileMountSource.of(WorkspaceDataUtil.dataDir(workspacePath).toPath()))
                 // 压缩默认上下文窗口：通用页「模型默认-上下文长度」优先，未设置时保持 CLI 缺省 1m
                 .compressionDefaultContextLength(resolveCompressionDefaultContextLength(wsSettings.getGeneral().getModelDefaultContextLength()))
                 .compressionThreshold(wsSettings.getGeneral().getCompressionThresholdMessages(), wsSettings.getGeneral().getCompressionThresholdPercent() / 100.0D)
@@ -766,12 +768,6 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.setDefaultModel(wsSettings.getDefaultModel());
 
 
-        engine.getTodoTalent().setWorkPathHook(new BiFunction<String, String, Path>() {
-            @Override
-            public Path apply(String __cwd, String __sessionId) {
-                return WorkspaceDataUtil.sessionsPath(__cwd).resolve(__sessionId);
-            }
-        });
 
         //清理 web 端遗留的僵尸会话目录（新建对话未发消息即切走产生的空壳）
         Path wsSessionsRoot = WorkspaceDataUtil.sessionsPath(workspacePath);
