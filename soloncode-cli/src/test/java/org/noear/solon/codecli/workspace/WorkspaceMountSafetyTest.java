@@ -3,15 +3,15 @@ package org.noear.solon.codecli.workspace;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
-import org.noear.solon.ai.talents.mount.source.FindOptions;
-import org.noear.solon.ai.talents.mount.source.MountCapabilities;
-import org.noear.solon.ai.talents.mount.source.MountEntry;
-import org.noear.solon.ai.talents.mount.source.MountSource;
-import org.noear.solon.ai.talents.mount.source.MoveOptions;
-import org.noear.solon.ai.talents.mount.source.WriteOptions;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.source.FindOptions;
+import org.noear.solon.ai.mount.source.MountCapabilities;
+import org.noear.solon.ai.mount.source.MountEntry;
+import org.noear.solon.ai.mount.source.MountSource;
+import org.noear.solon.ai.mount.source.MoveOptions;
+import org.noear.solon.ai.mount.source.WriteOptions;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -82,7 +82,7 @@ public class WorkspaceMountSafetyTest {
 
         @Override
         public MountCapabilities capabilities() {
-            return new MountCapabilities(true, true, true, true, true, true, true, false, false, false);
+            return MountCapabilities.builder().readWrite().build();
         }
     }
 

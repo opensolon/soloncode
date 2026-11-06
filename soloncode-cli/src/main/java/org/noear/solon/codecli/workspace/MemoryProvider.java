@@ -4,10 +4,15 @@ import org.noear.solon.Utils;
 import org.noear.solon.ai.talents.memory.MemorySolution;
 import org.noear.solon.ai.talents.memory.MemorySolutionProvider;
 import org.noear.solon.ai.talents.memory.md.MemorySolutionMdImpl;
+import org.noear.solon.ai.mount.source.FileMountSource;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -36,12 +41,23 @@ public class MemoryProvider implements MemorySolutionProvider {
 
     @Override
     public MemorySolution get(String __cwd) {
+        // 记忆 MD 经挂载来源读写；本机宿主用本地目录，换成 db / http 来源即可算存分离
         return cached.computeIfAbsent(__cwd, k ->
-                new MemorySolutionMdImpl(
+                MemorySolutionMdImpl.of(
                         Utils.asMap(
-                                AgentFlags.SCOPE_USER, Paths.get(AgentFlags.getUserHome(), AgentFlags.getHarnessMemory()),
-                                AgentFlags.SCOPE_LOCAL, Paths.get(k, AgentFlags.getHarnessMemory())
+                                AgentFlags.SCOPE_USER, localScope(Paths.get(AgentFlags.getUserHome(), AgentFlags.getHarnessMemory())),
+                                AgentFlags.SCOPE_LOCAL, localScope(Paths.get(k, AgentFlags.getHarnessMemory()))
                         )));
+    }
+
+    /** 本地作用域目录（不存在时创建，与旧的 Path 构造器行为一致）。 */
+    private static FileMountSource localScope(Path dir) {
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Failed to create memory storage directory: " + dir, e);
+        }
+        return FileMountSource.of(dir);
     }
 
     public String getScopeDefault() {

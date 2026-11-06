@@ -26,9 +26,9 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.core.util.Assert;
@@ -412,7 +412,7 @@ public class PrintMode {
                         .type(MountType.FILES)
                         // --add-dir 指向的本机目录同样按普通目录对待（可为 Junction/符号链接）
                         .source(FileMountSource.of(dir, true))
-                        .writeable(true)
+                        .writable(true)
                         .enabled(true)
                         .build();
                 engine.addMount(mount);

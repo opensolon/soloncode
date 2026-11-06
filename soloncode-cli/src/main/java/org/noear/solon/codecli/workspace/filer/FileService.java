@@ -16,9 +16,9 @@
 package org.noear.solon.codecli.workspace.filer;
 
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.workspace.filer.FilerIgnoreRules;
 import org.noear.solon.core.handle.Result;
 
@@ -168,8 +168,8 @@ public class FileService {
             item.put("id", entry.getAlias());
             item.put("name", entry.getAlias());
             item.put("type", "mount");
-            item.put("writeable", entry.isWriteable());
-            item.put("readonly", !entry.isWriteable());
+            item.put("writeable", entry.isWritable());
+            item.put("readonly", !entry.isWritable());
             item.put("realPath", ((FileMountSource) entry.getSource()).getRootPath().toString());
             list.add(item);
         }
@@ -382,7 +382,7 @@ public class FileService {
      * <p>安全模型与 {@link #read(String, String)} 一致：路径含 ".." 拒绝、
      * 解析后必须落在工作区根目录内、符号链接拒绝；写专属约束：</p>
      * <ul>
-     *   <li>挂载点必须 writeable（默认工作区天然可写，挂载需 {@link Mount#isWriteable()}）</li>
+     *   <li>挂载点必须 writeable（默认工作区天然可写，挂载需 {@link Mount#isWritable()}）</li>
      *   <li>仅支持覆盖已存在的文本文件，不做新建/删除</li>
      *   <li>内容上限 2MB（与读取一致）</li>
      *   <li>原文件必须为合法 UTF-8（防止把其他编码文件静默转码）</li>
@@ -419,7 +419,7 @@ public class FileService {
         // 写专属：非默认工作区必须校验挂载可写
         if (!"workspace".equals(workspaceId)) {
             Mount mount = engine.getMount(workspaceId);
-            if (mount == null || !mount.isWriteable()) {
+            if (mount == null || !mount.isWritable()) {
                 return Result.failure(403, "Mount is readonly: " + workspaceId);
             }
         }

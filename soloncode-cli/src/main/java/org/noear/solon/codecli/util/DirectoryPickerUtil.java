@@ -15,6 +15,9 @@
  */
 package org.noear.solon.codecli.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -81,8 +84,7 @@ public class DirectoryPickerUtil {
      */
     static final String SUBPROCESS_ENTRY = "org/noear/solon/codecli/util/DirectoryPickerSubprocess.class";
 
-    private static final org.slf4j.Logger LOG =
-            org.slf4j.LoggerFactory.getLogger(DirectoryPickerUtil.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DirectoryPickerUtil.class);
 
     private static void warn(String msg) {
         try {

@@ -13,9 +13,9 @@ import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.chat.CacheControl;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
 
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.command.builtin.*;
@@ -738,7 +738,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .sessionProvider(new SessionManager(workspacePath))
                 // harness 状态（TODO 清单等）经数据来源读写：~/.soloncode/workspaces/<key>/sessions/<sid>/TODO.md，
                 // 与会话目录同处；清单归属会话、不随 cwd 漂移。换成 db / http 来源即可算存分离
-                .dataSource(FileMountSource.of(WorkspaceDataUtil.dataDir(workspacePath).toPath()))
+                .stateSource(FileMountSource.of(WorkspaceDataUtil.dataDir(workspacePath).toPath()))
                 // 压缩默认上下文窗口：通用页「模型默认-上下文长度」优先，未设置时保持 CLI 缺省 1m
                 .compressionDefaultContextLength(resolveCompressionDefaultContextLength(wsSettings.getGeneral().getModelDefaultContextLength()))
                 .compressionThreshold(wsSettings.getGeneral().getCompressionThresholdMessages(), wsSettings.getGeneral().getCompressionThresholdPercent() / 100.0D)
@@ -786,7 +786,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                     .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), workspacePath), true))
                     .primary(mount.isPrimary())
                     .enabled(mount.isEnabled())
-                    .writeable(mount.isWriteable())
+                    .writable(mount.isWriteable())
                     .build());
         }
 
@@ -805,8 +805,11 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 灌入技能禁用清单
         engine.disallowSkillReset(wsSettings.getPermission().getDisallowedSkills());
 
-        engine.getCommandRegistry().load(Paths.get(AgentFlags.getUserHome(), engine.getHarnessCommands()));
-        engine.getCommandRegistry().load(Paths.get(workspacePath, engine.getHarnessCommands()));
+        // 自定义命令统一经挂载来源加载：用户级命令是本机配置，按命令目录建本地来源（与技能/子代理挂载一致，
+        // 允许跟随指到根外的链接）；工作区命令跟随引擎的工作区来源，工作区换成远程来源时无需再改这里。
+        // 先用户级、后工作区，注册为 putIfAbsent，同名时用户级优先（与旧行为一致）。
+        engine.getCommandRegistry().load(FileMountSource.of(Paths.get(AgentFlags.getUserHome(), engine.getHarnessCommands()), true), "");
+        engine.getCommandRegistry().load(engine.getWorkspaceSource(), engine.getHarnessCommands());
 
         engine.getCommandRegistry().register(new ExitCommand());
         engine.getCommandRegistry().register(new HelpCommand());
@@ -853,8 +856,10 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // loop（会话定时任务）：宿主只提供存储位置、孤儿判定、阈值（实时读，支持热更新）与
         // 调度线程日志归属；调度/持久化/命令/工具全部在插件内。执行通道在挂接后注册（与 goal、CLI 同形）。
         // 没人认领时只记日志跳过（关闭插件缺省执行器，桌面会话等保持既有行为）。
+        // 任务存储跟随引擎的数据来源（与 TODO 清单同一来源）：本地时即 <dataDir>/tasks.json，与上方迁移器操作的文件相同；
+        // 数据来源换成 db / http 时 loop 一并跟随（上方两个迁移器只处理本地旧数据，届时应改为一次性导入）。
         LoopExtension loopExtension = LoopExtension.builder()
-                .storeFile(tasksFile)
+                .store(engine.getStateSource(), "tasks.json")
                 .sessionAlive(id -> id.startsWith(AutomationManager.SESSION_PREFIX)
                         || Files.isDirectory(sessionsRoot.resolve(id)))
                 .maxErrors(() -> wsSettings.getLoop().getMaxConsecutiveErrorsOrDefault())

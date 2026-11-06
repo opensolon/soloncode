@@ -4,9 +4,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.charset.StandardCharsets;
@@ -81,7 +81,7 @@ public class FileServiceSymlinkTest {
                 .alias(alias)
                 .type(MountType.FILES)
                 .source(FileMountSource.of(root, follow))
-                .writeable(true)
+                .writable(true)
                 .build());
         return new FileService(workspace.toString(), engine);
     }

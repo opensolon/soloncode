@@ -3,7 +3,7 @@ package org.noear.solon.codecli.api.web.settings;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.util.MarkdownUtil;
-import org.noear.solon.ai.talents.mount.catalog.AgentDescriptor;
+import org.noear.solon.ai.mount.catalog.AgentDescriptor;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;

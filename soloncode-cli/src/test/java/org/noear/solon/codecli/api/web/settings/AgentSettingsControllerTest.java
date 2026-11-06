@@ -6,9 +6,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.util.MountPathUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -501,14 +501,14 @@ class AgentSettingsControllerTest {
     @Test
     void extensionMountAgentsAreListedReadableAndCopyable() throws Exception {
         // 模拟扩展方通过 engine.addMount 注册的 ClasspathMountSource 型 AGENTS 挂载
-        org.noear.solon.ai.talents.mount.source.ClasspathMountSource extensionSource =
-                org.noear.solon.ai.talents.mount.source.ClasspathMountSource.of("test-agents/");
-        engine.addMount(org.noear.solon.ai.talents.mount.Mount.builder()
+        org.noear.solon.ai.mount.source.ClasspathMountSource extensionSource =
+                org.noear.solon.ai.mount.source.ClasspathMountSource.of("test-agents/");
+        engine.addMount(org.noear.solon.ai.mount.Mount.builder()
                 .alias("@ext-agents")
                 .description("Extension agents")
-                .type(org.noear.solon.ai.talents.mount.MountType.AGENTS)
+                .type(org.noear.solon.ai.mount.MountType.AGENTS)
                 .enabled(true)
-                .writeable(false)
+                .writable(false)
                 .visible(true)
                 .source(extensionSource)
                 .build());

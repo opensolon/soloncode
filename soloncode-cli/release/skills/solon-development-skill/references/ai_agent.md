@@ -266,7 +266,7 @@ public ChatModel chatModel(WeatherTalent weatherTalent) {
 | `solon-ai-talent-diff` | `ApplyDiffTalent` / `ApplyPatchTalent` | 差异/补丁应用（4.0.4+） |
 | `solon-ai-talent-lucene` | `LuceneTalent` | Lucene 全文索引才能（4.0.4+） |
 | `solon-ai-talent-lsp` | `LspTalent` | LSP 代码导航才能（4.0.4+） |
-| `solon-ai-talent-mount` | `MountManager` / `MountDir` | 挂载点管理（4.0.4+） |
+| `solon-ai-mount` | `MountManager` / `MountSource` | 挂载与通用 IO 抽象（4.2.0 起由 `solon-ai-talent-mount` 更名，包 `org.noear.solon.ai.mount`） |
 | `solon-ai-talent-memory` | `MemoryTalent` | 长期记忆管理（4.0.4+） |
 
 ## Loop — 循环执行引擎（4.0.3+）
@@ -314,7 +314,7 @@ LoopResult result = session.getResult();
 | `solon-ai-talent-diff` | 差异/补丁应用才能（4.0.4+） |
 | `solon-ai-talent-lucene` | Lucene 全文索引才能（4.0.4+） |
 | `solon-ai-talent-lsp` | LSP 代码导航才能（4.0.4+） |
-| `solon-ai-talent-mount` | 挂载点管理才能（4.0.4+） |
+| `solon-ai-mount` | 挂载与通用 IO 抽象（4.2.0 起由 `solon-ai-talent-mount` 更名） |
 | `solon-ai-talent-memory` | 长期记忆管理才能（4.0.4+） |
 | `solon-ai-talent-*` | 其它预置才能（见上文表格） |
 | `solon-ai-harness` | 马具框架 → 见 `ai_harness.md` |

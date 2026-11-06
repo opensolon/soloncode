@@ -1,14 +1,14 @@
 package org.noear.solon.codecli.api.web.settings;
 
 import org.noear.solon.ai.harness.agent.AgentDefinition;
-import org.noear.solon.ai.talents.mount.catalog.AgentDescriptor;
-import org.noear.solon.ai.talents.mount.catalog.SkillDescriptor;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
-import org.noear.solon.ai.talents.mount.source.MountCapabilities;
-import org.noear.solon.ai.talents.mount.source.MountSource;
-import org.noear.solon.ai.talents.mount.source.MountEntry;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.catalog.AgentDescriptor;
+import org.noear.solon.ai.mount.catalog.SkillDescriptor;
+import org.noear.solon.ai.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.source.MountCapabilities;
+import org.noear.solon.ai.mount.source.MountSource;
+import org.noear.solon.ai.mount.source.MountEntry;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
@@ -102,7 +102,7 @@ public class MountSettingsController extends BaseSettingsController {
             item.put("sourceDisplayName", source.getScheme());
             item.put("enabled", entry.isEnabled());
             item.put("system", entry.isPrimary());
-            item.put("writeable", entry.isWriteable() && capabilities.isWritable());
+            item.put("writeable", entry.isWritable() && capabilities.isWritable());
             item.put("realPath", entryRoot != null ? entryRoot.toString() : ""); // 兼容旧客户端
             item.put("description", entry.getDescription());
             item.put("capabilities", capabilitiesToMap(capabilities));
@@ -141,10 +141,8 @@ public class MountSettingsController extends BaseSettingsController {
         result.put("readable", capabilities.isReadable());
         result.put("writable", capabilities.isWritable());
         result.put("searchable", capabilities.isSearchable());
-        result.put("editable", capabilities.isEditable());
         result.put("deletable", capabilities.isDeletable());
         result.put("movable", capabilities.isMovable());
-        result.put("watchable", capabilities.isWatchable());
         result.put("shellAccessible", capabilities.isShellAccessible());
         result.put("localPathAccessible", capabilities.isLocalPathAccessible());
         result.put("materializable", capabilities.isMaterializable());
@@ -202,7 +200,7 @@ public class MountSettingsController extends BaseSettingsController {
                 // 与启动路径保持一致：用户通过界面添加的目录同样允许跟随 Junction（Windows 上
                 // 把目录放到其他盘再链回来是常规做法），否则“启动时可用的挂载，界面添加后不可用”。
                 .source(FileMountSource.of(MountPathUtil.resolve(path, engine().getWorkspace()), true))
-                .writeable(writeable)
+                .writable(writeable)
                 .build());
 
         // 同步注册文件监听
@@ -263,7 +261,7 @@ public class MountSettingsController extends BaseSettingsController {
             return Result.failure("挂载池不存在: " + alias);
         } else {
             engine().removeMount(alias);
-            engine().addMount(copyMount(mountDir, mountDir.getDescription(), Boolean.TRUE.equals(enabled), mountDir.isWriteable()));
+            engine().addMount(copyMount(mountDir, mountDir.getDescription(), Boolean.TRUE.equals(enabled), mountDir.isWritable()));
         }
 
         // 更新配置
@@ -495,7 +493,7 @@ public class MountSettingsController extends BaseSettingsController {
      */
     private void registerMountWatch(Mount mount) {
         if (mount == null || fileWatchService() == null || !mount.isEnabled()
-                || !mount.getSource().capabilities().isWatchable()) return;
+                || !mount.getSource().capabilities().isLocalPathAccessible()) return; // 只能监听有本地根的来源
         Path rootPath = fileMountRoot(mount);
         if (rootPath == null) return;
 
@@ -530,7 +528,7 @@ public class MountSettingsController extends BaseSettingsController {
                 .primary(mount.isPrimary())
                 .visible(mount.isVisible())
                 .enabled(enabled)
-                .writeable(writeable)
+                .writable(writeable)
                 .source(mount.getSource())
                 .build();
     }

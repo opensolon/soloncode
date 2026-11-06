@@ -11,7 +11,7 @@ import org.noear.solon.core.util.Assert;
 import org.noear.snack4.Feature;
 import org.noear.snack4.ONode;
 import org.noear.snack4.Options;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.MountType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -213,7 +213,7 @@ public class AgentSettings implements Serializable {
             // SKILLS/AGENTS 类属于能力注入，保留继承。工作区自己的挂载由下方 local 文件提供。
             if (isLocalAsGlobal == false) {
                 agentSettings.getMountPools().values().removeIf(mount ->
-                        mount.getType() == org.noear.solon.ai.talents.mount.MountType.FILES
+                        mount.getType() == org.noear.solon.ai.mount.MountType.FILES
                                 && AgentFlags.SCOPE_LOCAL.equals(mount.getScope()) == false);
             }
 

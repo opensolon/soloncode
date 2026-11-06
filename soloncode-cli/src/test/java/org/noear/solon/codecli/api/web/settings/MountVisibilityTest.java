@@ -2,7 +2,7 @@ package org.noear.solon.codecli.api.web.settings;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.entity.MountDo;
 

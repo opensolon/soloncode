@@ -1,7 +1,7 @@
 package org.noear.solon.codecli.config;
 
 import org.junit.jupiter.api.*;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.MountDo;
 

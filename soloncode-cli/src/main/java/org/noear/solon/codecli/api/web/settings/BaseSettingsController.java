@@ -4,9 +4,9 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.talents.lsp.LspManager;
 import org.noear.solon.ai.talents.lsp.LspServerParameters;
-import org.noear.solon.ai.talents.mount.source.FileMountSource;
-import org.noear.solon.ai.talents.mount.Mount;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.source.FileMountSource;
+import org.noear.solon.ai.mount.Mount;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.entity.ApiSourceDo;
@@ -684,7 +684,7 @@ public class BaseSettingsController {
                 .source(FileMountSource.of(MountPathUtil.resolve(mount.getPath(), engine.getWorkspace()), true))
                 .primary(mount.isPrimary())
                 .enabled(mount.isEnabled())
-                .writeable(mount.isWriteable())
+                .writable(mount.isWriteable())
                 .build();
     }
 

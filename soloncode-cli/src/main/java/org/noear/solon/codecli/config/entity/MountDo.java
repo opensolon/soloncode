@@ -4,7 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import org.noear.solon.ai.talents.mount.MountType;
+import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.codecli.config.AgentFlags;
 
 import java.io.Serializable;
