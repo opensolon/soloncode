@@ -26,6 +26,7 @@ import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
@@ -308,7 +309,7 @@ public class WsGate extends SimpleWebSocketListener {
         // 无正文的输入（如空 objective）会被引擎归为 IGNORED，此时没有 prompt 可写属性
         if (prompt == null || !outcome.hasRequest()) {
             outcome.discard();
-            return GoalOutcome.skip(outcome.getRejectReason() != null ? outcome.getRejectReason() : "input not admitted");
+            return GoalOutcome.skip(outcome.getRejectReason() != null ? outcome.getRejectReason().code() : "input not admitted");
         }
         prompt.attrPut("start_time", System.currentTimeMillis());
         applyReasoningEffort(prompt, reasoningEffort);
@@ -331,7 +332,7 @@ public class WsGate extends SimpleWebSocketListener {
         // doFinally 只放闩锁），被顶掉的旧流即使以 complete 收尾也不会产生重复 done 帧。
         // 对比：下方 InterruptedException 分支用 cancelAll。区别在于「顶流」只是给新轮次腾位，
         // 而「打断本轮」与 Stop 同义，需要推进代数连带拦住调度窗口内即将到来的流。
-        engine.preemptStream(session);
+        engine.interrupt(session, InterruptMode.PREEMPT_STREAM);
 
         outcome.getRequest()
                 .options(options -> {
@@ -389,9 +390,9 @@ public class WsGate extends SimpleWebSocketListener {
             Thread.currentThread().interrupt();
             // 等待被中断时只 countDown 是不够的：那一轮流会继续在后台跑到底，
             // 模型与工具照常执行、事件继续写进 streamHub。必须真正停流。
-            // 用 cancelStream 而不是 preemptStream：这是“打断本轮”（与 Stop 同义），
+            // 用 CANCEL_STREAM 而不是 PREEMPT_STREAM：这是“打断本轮”（与 Stop 同义），
             // 推进取消代数可连带拦住调度窗口内即将到来的流。
-            engine.cancelStream(session);
+            engine.interrupt(session, InterruptMode.CANCEL_STREAM);
             completed.countDown();
             throw new IllegalStateException("Goal round interrupted", error);
         }
@@ -410,7 +411,7 @@ public class WsGate extends SimpleWebSocketListener {
     public void interruptGoalSession(String sessionId) {
         try {
             AgentSession session = engine.getSession(sessionId);
-            engine.cancelStream(session);
+            engine.interrupt(session, InterruptMode.CANCEL_STREAM);
         } catch (Throwable error) {
             LOG.debug("[Desktop] Goal interrupt skipped for {}: {}", sessionId, error.getMessage());
         }

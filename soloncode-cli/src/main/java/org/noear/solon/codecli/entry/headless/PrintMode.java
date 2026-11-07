@@ -23,6 +23,7 @@ import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
@@ -359,7 +360,7 @@ public class PrintMode {
 
         // ---- max-turns ----
         if (options.getMaxTurns() != null) {
-            engine.setMaxTurns(options.getMaxTurns());
+            engine.getSettings().setMaxTurns(options.getMaxTurns());
         }
 
         // ---- allowedTools / disallowedTools（纯工具名）----
@@ -396,7 +397,7 @@ public class PrintMode {
         }
 
         // 禁用 memory
-        engine.setMemoryEnabled(false);
+        engine.getSettings().setMemoryEnabled(false);
         LOG.debug("Bare mode: disabled memory");
     }
 
@@ -447,11 +448,11 @@ public class PrintMode {
         switch (options.getPermissionMode()) {
             case DONT_ASK:
                 // 非交互模式：禁用 HITL，未授权操作自动拒绝
-                engine.setHitlEnabled(false);
+                engine.getSettings().setHitlEnabled(false);
                 break;
             case PLAN:
                 // 仅分析模式：禁用 HITL + DENY 所有写入类工具
-                engine.setHitlEnabled(false);
+                engine.getSettings().setHitlEnabled(false);
                 for (String tool : WRITE_TOOLS) {
                     engine.addPermissionRule(new PermissionRule(tool, PermissionBehavior.DENY, null, 100));
                 }
@@ -459,12 +460,12 @@ public class PrintMode {
                 break;
             case BYPASS_PERMISSIONS:
                 // 跳过所有权限检查
-                engine.setHitlEnabled(false);
-                engine.setSandboxEnabled(false);
+                engine.getSettings().setHitlEnabled(false);
+                engine.getSettings().setSandboxEnabled(false);
                 break;
             case ACCEPT_EDITS:
                 // 接受编辑：自动批准文件编辑工具，其它操作自动拒绝
-                engine.setHitlEnabled(false);
+                engine.getSettings().setHitlEnabled(false);
                 for (String tool : EDIT_TOOLS) {
                     engine.addPermissionRule(new PermissionRule(tool, PermissionBehavior.ALLOW, null, 100));
                 }
@@ -473,7 +474,7 @@ public class PrintMode {
             case DEFAULT:
             default:
                 // 非交互模式默认禁用 HITL（无人值守时不能等待人工批准）
-                engine.setHitlEnabled(false);
+                engine.getSettings().setHitlEnabled(false);
                 break;
         }
     }
@@ -572,7 +573,7 @@ public class PrintMode {
             synchronized (turnStateLock) {
                 currentTurn.set(session);
                 if (turnInterrupted.get()) {
-                    engine.interrupt(session);
+                    engine.interrupt(session, InterruptMode.INTERRUPT);
                 }
             }
 
@@ -617,7 +618,7 @@ public class PrintMode {
             turnInterrupted.set(true);
             AgentSession session = currentTurn.getAndSet(null);
             if (session != null) {
-                engine.interrupt(session);
+                engine.interrupt(session, InterruptMode.INTERRUPT);
             }
             // 会话尚未发布也算成功：runAgent 会在发布后观察中断标志并补做取消。
             return true;

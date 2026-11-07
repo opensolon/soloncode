@@ -7,6 +7,8 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.net.websocket.WebSocket;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
@@ -16,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -56,10 +59,11 @@ class DesktopStreamTurnCancelTest {
         return request;
     }
 
-    /** 引擎替身：停流走真实方法（只依赖核心静态实现），状态查询委托真实快照（否则 mock 会让顶流变成空操作）。 */
+    /** 引擎替身：CANCEL_STREAM 按单机语义委托核心静态实现，状态查询委托真实快照（否则 mock 会让顶流变成空操作）。 */
     private static HarnessEngine stubEngine() {
         HarnessEngine engine = mock(HarnessEngine.class);
-        when(engine.cancelStream(any())).thenCallRealMethod();
+        when(engine.interrupt(any(), eq(InterruptMode.CANCEL_STREAM))).thenAnswer(
+                inv -> HarnessResult.ok(SessionRuns.cancelAll(inv.getArgument(0))));
         when(engine.status(any())).thenAnswer(
                 inv -> org.noear.solon.ai.harness.session.SessionStatus.of(inv.getArgument(0)));
         return engine;

@@ -255,45 +255,45 @@ public class WebSettingsController extends BaseSettingsController {
      */
     private void applyGeneralToEngine(HarnessEngine engine, GeneralGroupDo g, List<String> applied, List<String> warnings) {
         try {
-            engine.setCompressionThreshold(g.getCompressionThresholdMessages(), g.getCompressionThresholdPercent() / 100.0D);
-            engine.setSessionWindowSize(g.getSessionWindowSize());
-            engine.setModelRetries(g.getModelRetries());
-            engine.setMcpRetries(g.getMcpRetries());
-            engine.setApiRetries(g.getApiRetries());
-            engine.setSandboxEnabled(g.isSandboxMode());
-            engine.setSandboxAllowUserHome(g.isSandboxAllowUserHome());
-            engine.setSandboxSystemRestrict(g.isSandboxSystemRestrict());
-            engine.setBashAsyncEnabled(g.isBashAsyncEnabled());
-            engine.setMemoryEnabled(g.isMemoryEnabled());
-            engine.setMemoryRelevanceCount(g.getMemoryRelevanceCount());
-            engine.setMemoryPriorityCount(g.getMemoryPriorityCount());
-            engine.setMemorySummaryLength(g.getMemorySummaryLength());
-            engine.setSubagentEnabled(g.isSubagentEnabled());
-            engine.setMaxTurns(g.getMaxTurns());
-            engine.setHitlEnabled(g.isHitlEnabled());
+            engine.getSettings().setCompressionThreshold(g.getCompressionThresholdMessages(), g.getCompressionThresholdPercent() / 100.0D);
+            engine.getSettings().setSessionWindowSize(g.getSessionWindowSize());
+            engine.getSettings().setModelRetries(g.getModelRetries());
+            engine.getSettings().setMcpRetries(g.getMcpRetries());
+            engine.getSettings().setApiRetries(g.getApiRetries());
+            engine.getSettings().setSandboxEnabled(g.isSandboxMode());
+            engine.getSettings().setSandboxAllowUserHome(g.isSandboxAllowUserHome());
+            engine.getSettings().setSandboxSystemRestrict(g.isSandboxSystemRestrict());
+            engine.getSettings().setBashAsyncEnabled(g.isBashAsyncEnabled());
+            engine.getSettings().setMemoryEnabled(g.isMemoryEnabled());
+            engine.getSettings().setMemoryRelevanceCount(g.getMemoryRelevanceCount());
+            engine.getSettings().setMemoryPriorityCount(g.getMemoryPriorityCount());
+            engine.getSettings().setMemorySummaryLength(g.getMemorySummaryLength());
+            engine.getSettings().setSubagentEnabled(g.isSubagentEnabled());
+            engine.getSettings().setMaxTurns(g.getMaxTurns());
+            engine.getSettings().setHitlEnabled(g.isHitlEnabled());
 
             // ── 模型默认（上下文长度 / 子代理并发数）──
             // 两者都是「模型自己没配时生效」的兜底值，因此直接下发到引擎，
             // 而不是回写到各模型配置（旧实现新建模型时套用，用户改通用默认对已有模型无效）。
             // 无条件下发：清空输入框（0 = 未设置）时必须回退到缺省 1m，
             // 否则引擎会保留上一次的值，与重启后的行为不一致
-            engine.setCompressionDefaultContextLength(
+            engine.getSettings().setCompressionDefaultContextLength(
                     WorkspaceManager.resolveCompressionDefaultContextLength(g.getModelDefaultContextLength()));
 
             // AiConfig.concurrency 的唯一消费方就是子代理并行调度
             //（0 = 未设置，harness 侧会归一到自身缺省值）
             if (g.getModelDefaultConcurrency() >= 0) {
-                engine.setSubagentDefaultConcurrency(g.getModelDefaultConcurrency());
+                engine.getSettings().setSubagentDefaultConcurrency(g.getModelDefaultConcurrency());
             }
 
-            if (engine.getMcpGatewayTalent() != null) {
-                engine.getMcpGatewayTalent().setEnabled(g.isMcpEnabled());
+            if (engine.getTalents().getMcpGateway() != null) {
+                engine.getTalents().getMcpGateway().setEnabled(g.isMcpEnabled());
             }
-            if (engine.getOpenApiGatewayTalent() != null) {
-                engine.getOpenApiGatewayTalent().setEnabled(g.isOpenApiEnabled());
+            if (engine.getTalents().getOpenApiGateway() != null) {
+                engine.getTalents().getOpenApiGateway().setEnabled(g.isOpenApiEnabled());
             }
-            if (engine.getLspTalent() != null) {
-                engine.getLspTalent().setEnabled(g.isLspEnabled());
+            if (engine.getTalents().getLsp() != null) {
+                engine.getTalents().getLsp().setEnabled(g.isLspEnabled());
             }
 
             // goalsEnabled：热更新 goal 插件开关（与启动装配同一入口：工具、/goal 命令与调度一并开关）

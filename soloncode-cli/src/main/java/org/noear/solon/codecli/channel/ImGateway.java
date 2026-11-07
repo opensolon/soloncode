@@ -108,7 +108,7 @@ public class ImGateway implements FeishuTransport.Sink, DingTalkTransport.Sink, 
      * 也不做「按启动目录回收」——否则等于把「位置取决于从哪儿启动」重新装回去。</p>
      */
     public static ImGateway getInstance(HarnessEngine engine) {
-        return getInstance(storePath(engine.getUserHome(), engine.getHarnessChannels()));
+        return getInstance(storePath(engine.getSettings().getUserHome(), engine.getSettings().getHarnessChannels()));
     }
 
     /** 绑定登记表路径：{@code <harnessRoot>/<harnessChannels>/im-bindings.json}。 */

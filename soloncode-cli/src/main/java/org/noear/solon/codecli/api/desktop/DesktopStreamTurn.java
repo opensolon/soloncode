@@ -30,6 +30,7 @@ import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.RunTicket;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -98,11 +99,11 @@ final class DesktopStreamTurn {
         // 同一会话上的上一轮若还在跑（连发输入 / 桌面端重发），先停掉再开新流：
         // 不停会造成两条流的 doOnNext 同时往同一个 streamHub 写，前端两个轮次的输出交错。
         //
-        // 用 cancelStream（推进取消代数）而不是 preemptStream：取消现在以 complete 收尾，
+        // 用 CANCEL_STREAM（推进取消代数）而不是 PREEMPT_STREAM：取消现在以 complete 收尾，
         // 被顶掉的旧流仍会走 doOnComplete。旧流要能据此判定「自己是被取消的」，
         // 否则它会往刚 begin 的新一轮里发一个 done，前端提前收尾并丢弃后续输出。
         // 这里不会“自己拒掉自己”：本调用在 request.stream() 之前，新流的代数基准在之后才取。
-        engine.cancelStream(session);
+        engine.interrupt(session, InterruptMode.CANCEL_STREAM);
 
         if (hitlResume) {
             streamHub.subscribe(sessionId, socket);

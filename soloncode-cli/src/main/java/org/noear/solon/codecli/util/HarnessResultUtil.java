@@ -28,7 +28,8 @@ import org.noear.solon.core.handle.Result;
  *   <li>NOT_OWNER → 409（单机桌面/Web 不做转发，按冲突返回）</li>
  *   <li>DISABLED → 503</li>
  *   <li>FULL → 429</li>
- *   <li>INVALID → 409（状态不允许；参数类错误由控制器在调用门面前自行 400）</li>
+ *   <li>INVALID → 409（参数类错误；控制器需要 400 时在调用门面前自行判定，保持既有应答不变）</li>
+ *   <li>CONFLICT → 409（状态不允许）</li>
  *   <li>FORBIDDEN → 403</li>
  * </ul>
  *
@@ -54,6 +55,7 @@ public final class HarnessResultUtil {
                 return 403;
             case NOT_OWNER:
             case INVALID:
+            case CONFLICT:
             default:
                 return 409;
         }

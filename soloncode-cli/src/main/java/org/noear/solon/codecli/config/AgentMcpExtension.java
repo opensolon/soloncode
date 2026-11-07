@@ -23,8 +23,8 @@ public class AgentMcpExtension implements HarnessExtension {
         if (selected == null || !metadata.getTools().contains("mcp")) return;
         if (metadata.getDisallowedTools().contains("mcp") || engine.getDisallowedTools().contains("mcp")) return;
 
-        McpGatewayTalent scoped = new McpGatewayTalent().retryConfig(engine.getMcpRetries());
-        scoped.setEnabled(engine.getMcpGatewayTalent().isEnabled());
+        McpGatewayTalent scoped = new McpGatewayTalent().retryConfig(engine.getSettings().getMcpRetries());
+        scoped.setEnabled(engine.getTalents().getMcpGateway().isEnabled());
         for (String name : new LinkedHashSet<>(selected)) {
             McpClientProvider provider = engine.getMcpServer(name);
             if (provider != null && provider.isEnabled()) scoped.addMcpServer(name, provider);

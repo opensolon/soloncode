@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.InterruptPlan;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
@@ -27,7 +28,7 @@ import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
-import org.noear.solon.ai.harness.extension.steer.SteerResult;
+import org.noear.solon.ai.harness.extension.steer.SteerReceipt;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -149,10 +150,10 @@ class WebChatInputHandler {
 
             if (outcome.getKind() == InputOutcome.Kind.REJECTED) {
                 gate.emitToClient(wsContext, sessionId,
-                        WebEvent.ofError(outcome.getRejectReason(), outcome.getRejectDetail()));
+                        WebEvent.ofError(outcome.getRejectReason().code(), outcome.getRejectDetail()));
                 // 来源端（IM）也要知道本轮未受理，否则只能盲等。只有 hitl_pending 是「待审批」，
                 // 其余（busy / 附件不能排队 / 积压拒收）按普通拒收回报。
-                ImStatus rejectStatus = InputOutcome.REJECT_HITL_PENDING.equals(outcome.getRejectReason())
+                ImStatus rejectStatus = outcome.getRejectReason() == InputOutcome.RejectReason.HITL_PENDING
                         ? ImStatus.HITL_PENDING : ImStatus.REJECTED;
                 gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, rejectStatus,
                         null, source, sourceUserId, replyTarget, messageId);
@@ -395,7 +396,7 @@ class WebChatInputHandler {
         if (Assert.isNotEmpty(hitlAction)) return true;
         if (input != null && "/resume".equals(input.trim())) return true;
         if (WebQueueDispatcher.isQueueDispatch(session)) return true;
-        return wsContext.getEngine().isRunnableWhenBusy(input);
+        return wsContext.getEngine().isRunnableWhenBusy(HarnessInput.of(session, input));
     }
 
     /**
@@ -440,7 +441,7 @@ class WebChatInputHandler {
                 }
                 // 忙碌穿透：是否允许在任务执行中受理，由命令自描述（runnableWhenBusy）决定，
                 // 不再硬编码 interrupt/exit 白名单。
-                if (wsContext.getEngine().isRunnableWhenBusy(input)) {
+                if (wsContext.getEngine().isRunnableWhenBusy(HarnessInput.of(session, input))) {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
                     onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
                             null, null, null, sourceUserId, replyTarget, messageId);
@@ -455,9 +456,9 @@ class WebChatInputHandler {
                 if (steerExtension != null) {
                     // 忙判定不传回调：内核按 engine.status(session).isBusy() 自算（同一口径），
                     // 宿主少一个与自己无关的 lambda，也少一处口径漂移点。
-                    SteerResult steerResult = steerExtension.steer(session, input,
+                    HarnessResult<SteerReceipt> steerResult = steerExtension.steer(session, input,
                             InputOrigin.of(source, sourceUserId, replyTarget, messageId));
-                    if (steerResult.getCode() == SteerResult.Code.STEERED) {
+                    if (steerResult.isOk()) {
                         // 不回放 ofUserInput：web 端由 steer_applied 就地渲染 steer-note（与 web 发起的插话同一路径），
                         // 提前推 user_input 会与 steer-note 重复上屏。
                         gate.getStreamBuilder().signalOriginChannel(wsContext, sessionId, ImStatus.STEERED,

@@ -17,6 +17,7 @@ package org.noear.solon.codecli.api.web.controller;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
@@ -27,10 +28,8 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.WebGate;
-import org.noear.solon.ai.harness.extension.steer.SteerCancelResult;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
-import org.noear.solon.ai.harness.extension.steer.SteerResult;
-import org.noear.solon.ai.harness.extension.steer.SteerResult;
+import org.noear.solon.ai.harness.extension.steer.SteerReceipt;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.config.entity.GeneralGroupDo;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -533,36 +532,36 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(503, "STEER_UNAVAILABLE");
         }
 
-        SteerResult result = steer.steerOnRun(session, runId, steerId, text);
-
-        return toResult(result);
+        return toSteerResult(steer.steerOnRun(session, runId, steerId, text));
     }
 
     /**
-     * 插话投递结果 → Web 应答。
+     * 插话投递 / 撤销结果 → Web 应答（两个端点共用一张码表）。
      *
-     * <p>按 {@link SteerResult.Code} 枚举分支，不再 switch 字符串 code：枚举新增态会落到
-     * {@code default} 但至少编译期提示过，而字符串拼错只会静默落 409。</p>
+     * <p>粗码决定 HTTP 状态：INVALID（参数非法，前端提示后不再重试）→ 400，其余失败 → 409；
+     * 应答码取细分码（{@code SteerExtension.REASON_*}，与前端约定的 NOT_RUNNING / RUN_CHANGED / BOX_FULL /
+     * NOT_PENDING 等同名），没有细分码时取粗码名（DISABLED / NOT_OWNER）。成功时 {@code status} 为
+     * {@code okStatus}（投递 STEERED、撤销 CANCELED），字段与旧应答一致。</p>
      */
-    private static Result toResult(SteerResult result) {
-        switch (result.getCode()) {
-            case STEERED: {
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", result.getCode().name());
-                data.put("steerId", result.getSteerId());
-                data.put("queued", result.getPendingCount());
-                return Result.succeed(data);
+    private static Result toSteerResult(HarnessResult<SteerReceipt> result, String okStatus) {
+        if (result.isOk()) {
+            SteerReceipt receipt = result.getValue();
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("status", okStatus);
+            if (receipt.getSteerId() != null) {
+                data.put("steerId", receipt.getSteerId());
+            } else {
+                data.put("canceled", receipt.getCanceled());
             }
-            case EMPTY_TEXT:
-            case TEXT_TOO_LONG:
-            case INVALID_STEER_ID:
-                // 参数非法：前端提示后不再重试
-                return Result.failure(400, result.getCode().name());
-            default:
-                // NOT_RUNNING（回落普通发送）/ RUN_CHANGED / BOX_FULL（转排队）/
-                // DUPLICATE_STEER_ID / DISABLED
-                return Result.failure(409, result.getCode().name());
+            data.put("queued", receipt.getPending());
+            return Result.succeed(data);
         }
+        int status = result.getCode() == HarnessResult.Code.INVALID ? 400 : 409;
+        return Result.failure(status, result.getReasonOrCode());
+    }
+
+    private static Result toSteerResult(HarnessResult<SteerReceipt> result) {
+        return toSteerResult(result, "STEERED");
     }
 
     /**
@@ -587,7 +586,7 @@ public class ChatWebController extends AbstractWebController {
             return Result.failure(503, "STEER_UNAVAILABLE");
         }
 
-        return toResult(steer.cancelOnRun(engine().getSession(sessionId), runId, steerId));
+        return toSteerResult(steer.cancelOnRun(engine().getSession(sessionId), runId, steerId), "CANCELED");
     }
 
     /**
@@ -622,33 +621,7 @@ public class ChatWebController extends AbstractWebController {
         // 省略 steerIds = 清空全部；空段与前后空白由内核忽略
         List<String> ids = (steerIds == null || steerIds.trim().isEmpty())
                 ? null : java.util.Arrays.asList(steerIds.split(","));
-        return toResult(steer.cancelPending(session, ids));
-    }
-
-    /**
-     * 插话撤销结果 → Web 应答（与投递侧 {@link #toResult(SteerResult)} 对称）。
-     *
-     * <p>应答字段保持不变：单条带 {@code steerId}，批量带 {@code canceled}，均带剩余条数 {@code queued}。</p>
-     */
-    private static Result toResult(SteerCancelResult result) {
-        switch (result.getCode()) {
-            case CANCELED: {
-                Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", result.getCode().name());
-                if (result.getSteerId() != null) {
-                    data.put("steerId", result.getSteerId());
-                } else {
-                    data.put("canceled", result.getCanceled());
-                }
-                data.put("queued", result.getRemaining());
-                return Result.succeed(data);
-            }
-            case INVALID_STEER_ID:
-                return Result.failure(400, result.getCode().name());
-            default:
-                // NOT_PENDING（等待终态事件）/ RUN_CHANGED
-                return Result.failure(409, result.getCode().name());
-        }
+        return toSteerResult(steer.cancelPending(session, ids), "CANCELED");
     }
 
     /**

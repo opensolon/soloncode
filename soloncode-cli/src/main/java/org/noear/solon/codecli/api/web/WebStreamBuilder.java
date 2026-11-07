@@ -386,20 +386,20 @@ public class WebStreamBuilder {
         return filePath -> {
             try {
                 HarnessEngine engine = wsContext.getEngine();
-                if (engine == null || engine.getLspTalent() == null) {
+                if (engine == null || engine.getTalents().getLsp() == null) {
                     return LspCheckState.NONE;
                 }
-                if (engine.getLspTalent().isEnabled() == false) {
+                if (engine.getTalents().getLsp().isEnabled() == false) {
                     return LspCheckState.NONE;
                 }
 
-                LspCheckState state = engine.getLspTalent().getFileCheckState(filePath);
+                LspCheckState state = engine.getTalents().getLsp().getFileCheckState(filePath);
                 if (state != LspCheckState.NONE) {
                     return state;
                 }
 
                 //没有记录（如诊断钩子未走到）：退回到覆盖判定，有服务器但无结论就是 PENDING
-                boolean covered = engine.getLspTalent().getLspManager().hasClientFor(filePath);
+                boolean covered = engine.getTalents().getLsp().getLspManager().hasClientFor(filePath);
                 return covered ? LspCheckState.PENDING : LspCheckState.NONE;
             } catch (Throwable e) {
                 return LspCheckState.NONE;

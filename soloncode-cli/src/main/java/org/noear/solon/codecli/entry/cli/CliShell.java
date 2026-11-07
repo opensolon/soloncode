@@ -30,6 +30,7 @@ import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.agent.task.TaskTalent;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
@@ -540,7 +541,7 @@ public class CliShell implements Runnable {
                 if (c > 0) {
                     if (c == 27) { //|| c == '\r' || c == '\n'
                         // 停流 + 补写取消消息与快照统一走引擎入口（幂等）
-                        engine.interrupt(session);
+                        engine.interrupt(session, InterruptMode.INTERRUPT);
                         isInterrupted.set(true);
                         latch.countDown();
                         break;

@@ -796,11 +796,11 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 真正的越界（".." 与绝对路径）在 FileMountSource.normalize 中照常拒绝。
         addMountSafely(engine, Mount.builder().alias("@agent-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/.agents/skills/", workspacePath), true)).primary(true).build());
 
-        addMountSafely(engine, Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessSkills(), workspacePath), true)).primary(true).build());
-        addMountSafely(engine, Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessSkills(), workspacePath), true)).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@user-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getSettings().getHarnessSkills(), workspacePath), true)).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@workspace-skills").type(MountType.SKILLS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getSettings().getHarnessSkills(), workspacePath), true)).primary(true).build());
 
-        addMountSafely(engine, Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getHarnessAgents(), workspacePath), true)).primary(true).build());
-        addMountSafely(engine, Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getHarnessAgents(), workspacePath), true)).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@user-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("~/" + engine.getSettings().getHarnessAgents(), workspacePath), true)).primary(true).build());
+        addMountSafely(engine, Mount.builder().alias("@workspace-agents").type(MountType.AGENTS).source(FileMountSource.of(MountPathUtil.resolve("./" + engine.getSettings().getHarnessAgents(), workspacePath), true)).primary(true).build());
 
         // 灌入技能禁用清单
         engine.disallowSkillReset(wsSettings.getPermission().getDisallowedSkills());
@@ -808,8 +808,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // 自定义命令统一经挂载来源加载：用户级命令是本机配置，按命令目录建本地来源（与技能/子代理挂载一致，
         // 允许跟随指到根外的链接）；工作区命令跟随引擎的工作区来源，工作区换成远程来源时无需再改这里。
         // 先用户级、后工作区，注册为 putIfAbsent，同名时用户级优先（与旧行为一致）。
-        engine.getCommandRegistry().load(FileMountSource.of(Paths.get(AgentFlags.getUserHome(), engine.getHarnessCommands()), true), "");
-        engine.getCommandRegistry().load(engine.getWorkspaceSource(), engine.getHarnessCommands());
+        engine.getCommandRegistry().load(FileMountSource.of(Paths.get(AgentFlags.getUserHome(), engine.getSettings().getHarnessCommands()), true), "");
+        engine.getCommandRegistry().load(engine.getWorkspaceSource(), engine.getSettings().getHarnessCommands());
 
         engine.getCommandRegistry().register(new ExitCommand());
         engine.getCommandRegistry().register(new HelpCommand());
@@ -823,7 +823,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new RewindCommand());
         engine.getCommandRegistry().register(new ModelCommand());
 
-        engine.getLspTalent().setEnabled(wsSettings.getGeneral().isLspEnabled());
+        engine.getTalents().getLsp().setEnabled(wsSettings.getGeneral().isLspEnabled());
 
         RunUtil.async(() -> addServers(engine, wsSettings));
 
