@@ -32,7 +32,7 @@ public class LoopTaskAutomationMetaTest {
 
     @Test
     public void plainTaskHasNoAutomationKey() {
-        LoopTask task = loop().schedule("web-1", LoopSpec.of("心跳检查").everyMinutes(5));
+        LoopTask task = loop().schedule("web-1", LoopSpec.of("心跳检查").everyMinutes(5)).getValue();
         assertFalse(task.toONode().hasKey(AutomationMeta.EXTRA_KEY), "普通会话循环任务不应写 automation 键");
         assertNull(AutomationMeta.of(task));
     }
@@ -40,7 +40,7 @@ public class LoopTaskAutomationMetaTest {
     @Test
     public void automationTaskRoundTripKeepsMeta() {
         LoopTask task = loop().schedule("auto-abc123", new AutomationMeta("日报任务", "deepseek-chat", "code_reviewer")
-                .writeTo(LoopSpec.of("每日日报").cron("0 0 22 * * ?")));
+                .writeTo(LoopSpec.of("每日日报").cron("0 0 22 * * ?"))).getValue();
 
         LoopTask restored = roundTrip(task, "auto-abc123");
         AutomationMeta meta = AutomationMeta.of(restored);
@@ -54,7 +54,7 @@ public class LoopTaskAutomationMetaTest {
     /** 历史文件的键名与字段形态必须可读（含已废弃的 automation.enabled，读取时忽略）。 */
     @Test
     public void legacyAutomationJsonIsReadable() {
-        ONode node = loop().schedule("auto-1", LoopSpec.of("旧任务")).toONode();
+        ONode node = loop().schedule("auto-1", LoopSpec.of("旧任务")).getValue().toONode();
         node.getOrNew("automation")
                 .set("id", "abc123def456").set("name", "历史任务").set("enabled", false)
                 .set("createdAt", "2026-01-01T00:00:00Z").set("updatedAt", "2026-01-02T00:00:00Z");
@@ -70,9 +70,9 @@ public class LoopTaskAutomationMetaTest {
     public void patchWithoutMetaKeepsAutomation() {
         LoopExtension loop = loop();
         LoopTask task = loop.schedule("auto-1", new AutomationMeta("名字", null, null)
-                .writeTo(LoopSpec.of("旧任务").everyMinutes(5)));
+                .writeTo(LoopSpec.of("旧任务").everyMinutes(5))).getValue();
 
-        LoopTask updated = loop.update("auto-1", task.getId(), LoopPatch.create().prompt("新提示词").everyMinutes(10));
+        LoopTask updated = loop.update("auto-1", task.getId(), LoopPatch.create().prompt("新提示词").everyMinutes(10)).getValue();
         assertNotNull(AutomationMeta.of(updated), "更新任务定义时必须保留 automation 覆盖层");
         assertEquals("名字", AutomationMeta.of(updated).getName());
         assertEquals("新提示词", updated.getPrompt());
@@ -89,13 +89,13 @@ public class LoopTaskAutomationMetaTest {
     public void metaUpdateRequiresWriteBack() {
         LoopExtension loop = loop();
         AutomationMeta meta = new AutomationMeta("t", null, null);
-        LoopTask task = loop.schedule("auto-1", meta.writeTo(LoopSpec.of("t")));
+        LoopTask task = loop.schedule("auto-1", meta.writeTo(LoopSpec.of("t"))).getValue();
 
         meta.update("新名", "m1", "a1");
         assertEquals("t", AutomationMeta.of(loop.get("auto-1", task.getId())).getName(),
                 "覆盖层是任务定义的一部分：未回写不生效");
 
-        LoopTask updated = loop.update("auto-1", task.getId(), meta.writeTo(LoopPatch.create()));
+        LoopTask updated = loop.update("auto-1", task.getId(), meta.writeTo(LoopPatch.create())).getValue();
         AutomationMeta reread = AutomationMeta.of(updated);
         assertEquals("新名", reread.getName());
         assertEquals("m1", reread.getModelName());

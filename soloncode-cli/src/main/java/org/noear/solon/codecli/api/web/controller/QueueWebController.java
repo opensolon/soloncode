@@ -18,6 +18,8 @@ package org.noear.solon.codecli.api.web.controller;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
@@ -25,6 +27,8 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.api.web.LegacyQueueMigrator;
+import org.noear.solon.codecli.api.web.WebInputAttrs;
+import org.noear.solon.codecli.util.HarnessResultUtil;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.queue.QueueItem;
@@ -210,9 +214,12 @@ public class QueueWebController extends AbstractWebController {
             String selectedAgent = root.get("selectedAgent") == null ? null : safeQueueString(root.get("selectedAgent"), 128);
             boolean hasFiles = root.get("hasFiles") != null && root.get("hasFiles").getBoolean();
             if (hasFiles) return Result.failure(400, "Attachments cannot be queued");
-            int position = queue().enqueue(session, text, InputOrigin.channel("WEB"), id,
-                    model, reasoningEffort, thinkingMode, selectedAgent, false);
-            if (position < 0) return Result.failure(409, "Queue is full or storage failed");
+            HarnessInput input = HarnessInput.of(session, text).origin(InputOrigin.channel("WEB"))
+                    .selectedModel(model).selectedAgent(selectedAgent)
+                    .attr(WebInputAttrs.REASONING_EFFORT, reasoningEffort)
+                    .attr(WebInputAttrs.THINKING_MODE, thinkingMode);
+            HarnessResult<Integer> queued = queue().enqueue(input, id);
+            if (!queued.isOk()) return HarnessResultUtil.failure(queued, "Queue is full or storage failed");
             runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue item"); }
@@ -230,7 +237,8 @@ public class QueueWebController extends AbstractWebController {
             if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) return Result.failure(404, "Session not found");
-            if (!queue().cancelItem(session, itemId)) return Result.failure(404, "Queue item not found");
+            HarnessResult<Void> canceled = queue().cancelItem(session, itemId);
+            if (!canceled.isOk()) return HarnessResultUtil.failure(canceled, "Queue item not found");
             return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
     }
@@ -247,7 +255,8 @@ public class QueueWebController extends AbstractWebController {
             if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) return Result.failure(404, "Session not found");
-            if (!queue().promote(session, itemId)) return Result.failure(404, "Queue item not found");
+            HarnessResult<Void> promoted = queue().promote(session, itemId);
+            if (!promoted.isOk()) return HarnessResultUtil.failure(promoted, "Queue item not found");
             runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }

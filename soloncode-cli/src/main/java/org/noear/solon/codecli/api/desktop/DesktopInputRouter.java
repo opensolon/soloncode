@@ -62,7 +62,7 @@ import java.util.List;
 final class DesktopInputRouter {
     private static final Logger LOG = LoggerFactory.getLogger(DesktopInputRouter.class);
 
-    /** 宿主域输入属性：推理强度（与 QueueItem#getReasoningEffort 约定同名，忙时随积压保存） */
+    /** 宿主域输入属性：推理强度（经 input.attr 随积压保存，续发时从 QueueItem#getAttrs 取回；旧数据的顶层字段由 queue 读入时并入 attrs） */
     static final String ATTR_REASONING_EFFORT = "reasoningEffort";
     /** 宿主域输入属性：运行模式（忙时随积压保存，续发时再写入会话） */
     static final String ATTR_RUN_MODE = "runMode";
@@ -99,7 +99,7 @@ final class DesktopInputRouter {
                 // 而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
                 engine.cancelStream(session);
                 // remove 门面内含「先摘调度再清除」
-                gate.goal.remove(sessionId, null);
+                gate.goal.remove(sessionId);
                 return;
             }
 
@@ -476,7 +476,7 @@ final class DesktopInputRouter {
         queue.drainLoop(session, s -> gate.engine.status(s).isOccupied() == false, claim -> {
             QueueItem item = claim.getItem();
             String cwd = gate.engine.getSessionCwd(session);
-            String effort = item.getReasoningEffort();
+            String effort = item.getAttrs().get(ATTR_REASONING_EFFORT);
             dispatchTurn(socket, session, sessionId, cwd,
                     item.toInput(session).trimContent(true).commandContextFactory(desktopCommandFactory()),
                     effort, gate.engine.getModelOrDefInstance(item.getModel()), false);

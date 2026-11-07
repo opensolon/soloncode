@@ -662,7 +662,7 @@ public class SessionWebController extends AbstractWebController {
         // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
         GoalExtension goal = currentContext().getGoalExtension();
         // pause 门面内含摘调度配对；仅活跃 goal 会被暂停
-        if (goal != null && goal.pause(sessionId, null)) {
+        if (goal != null && goal.pause(sessionId).isOk()) {
             LOG.info("[SessionWebController] Goal of session '{}' paused due to session interrupt", sessionId);
         }
 

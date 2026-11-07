@@ -2,6 +2,7 @@ package org.noear.solon.codecli.loop;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 import org.noear.solon.ai.harness.extension.loop.LoopPatch;
 import org.noear.solon.ai.harness.extension.loop.LoopSpec;
@@ -74,10 +75,10 @@ public class AutomationManager {
                 emptyToNull(modelName), emptyToNull(agentName));
         applySelections(sessionId, meta);
         // 请求参数原样交给规格（null = 未设置），间隔范围与 cron 可触发性由插件统一校验
-        loop.schedule(sessionId, meta.writeTo(LoopSpec.of(prompt)
+        require(loop.schedule(sessionId, meta.writeTo(LoopSpec.of(prompt)
                 .everyMinutes(intervalMinutes)
                 .cron(cron)
-                .runNow(runNow)));
+                .runNow(runNow))));
         sessionManager.markAutomationSession(sessionId, meta.getId());
         return meta.getId();
     }
@@ -109,6 +110,21 @@ public class AutomationManager {
         return null;
     }
 
+    /**
+     * 门面结果转回本类的异常约定（控制器据此映射 HTTP）：NOT_FOUND → IllegalArgumentException（404），
+     * 其余失败 → IllegalStateException（400）。不能忽略返回值，否则失败会被当成成功。
+     */
+    private static <T> T require(HarnessResult<T> result) {
+        if (result.isOk()) {
+            return result.getValue();
+        }
+        String detail = result.getDetail() != null ? result.getDetail() : result.getCode().name();
+        if (result.getCode() == HarnessResult.Code.NOT_FOUND) {
+            throw new IllegalArgumentException(detail);
+        }
+        throw new IllegalStateException(detail);
+    }
+
     private Located locate(String id) {
         Located found = find(id);
         if (found == null) {
@@ -133,27 +149,30 @@ public class AutomationManager {
 
         // 补丁语义：null = 保持原值、cron 空串 = 回到固定间隔；启停与运行状态由插件保留
         meta.update(name, emptyToNull(modelName), emptyToNull(agentName));
-        loop.update(sessionId, old.getId(), meta.writeTo(LoopPatch.create()
+        require(loop.update(sessionId, old.getId(), meta.writeTo(LoopPatch.create()
                 .prompt(prompt)
                 .everyMinutes(intervalMinutes)
                 .cron(cron)
-                .runNow(runNow)));
+                .runNow(runNow))));
         applySelections(sessionId, meta);
     }
 
     public synchronized void toggle(String id) throws IOException {
         Located found = locate(id);
-        loop.toggle(found.sessionId, found.task.getId());
+        // 门面已收敛为 pause / resume：按当前状态二选一
+        require(found.task.isEnabled()
+                ? loop.pause(found.sessionId, found.task.getId())
+                : loop.resume(found.sessionId, found.task.getId()));
     }
 
     public synchronized void trigger(String id) {
         Located found = locate(id);
-        loop.trigger(found.sessionId, found.task.getId());
+        require(loop.trigger(found.sessionId, found.task.getId()));
     }
 
     public synchronized void remove(String id) throws IOException {
         Located found = locate(id);
-        loop.remove(found.sessionId, found.task.getId());
+        require(loop.remove(found.sessionId, found.task.getId()));
         sessionManager.archiveAutomationSession(found.sessionId, id);
     }
 

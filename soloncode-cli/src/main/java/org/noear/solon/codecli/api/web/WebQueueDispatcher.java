@@ -114,7 +114,7 @@ class WebQueueDispatcher {
                     QueueItem item = claim.getItem();
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(item.getId(), item.getText(), item.getOrigin().getChannel()));
                     gate.onChatInput(wsContext, sessionId, null, item.getText(), item.getModel(), null, null, null,
-                            item.getOrigin().getChannel(), item.getReasoningEffort(), item.getThinkingMode(), item.getSelectedAgent(),
+                            item.getOrigin().getChannel(), item.getAttrs().get(WebChatInputHandler.ATTR_REASONING_EFFORT), item.getAttrs().get(WebChatInputHandler.ATTR_THINKING_MODE), item.getSelectedAgent(),
                             item.getOrigin().getSenderId(), item.getOrigin().getReplyTarget(), item.getOrigin().getMessageId());
                     return !isBusy(session);
                 });

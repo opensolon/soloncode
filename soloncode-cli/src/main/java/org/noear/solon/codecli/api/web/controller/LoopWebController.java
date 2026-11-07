@@ -21,13 +21,15 @@ import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
 import org.noear.solon.ai.harness.extension.goal.GoalPatch;
-import org.noear.solon.ai.harness.extension.goal.GoalTask;
+import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
 import org.noear.solon.ai.harness.extension.loop.LoopPatch;
 import org.noear.solon.ai.harness.extension.loop.LoopSpec;
 import org.noear.solon.ai.harness.extension.loop.LoopTask;
+import org.noear.solon.codecli.util.HarnessResultUtil;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 
@@ -113,9 +115,31 @@ public class LoopWebController extends AbstractWebController {
         if (goal == null) {
             return null;
         }
-        GoalTask task = goal.get(sessionId);
-        // 与定时任务同构的展示 Map 由插件统一产出（字段契约单点维护）
-        return task == null ? null : task.toMap();
+        GoalSnapshot task = goal.get(sessionId);
+        if (task == null) {
+            return null;
+        }
+        // goal 自己的字段由插件产出；与 loop 行混排所需的列表字段由宿主补齐
+        Map<String, Object> item = task.toMap();
+        item.put("enabled", task.getStatus().isActive());
+        item.put("cancelled", false);
+        item.put("intervalMinutes", 0);
+        item.put("runNow", true);
+        return item;
+    }
+
+    /**
+     * 列表行分流：这一行是不是本会话的 goal（每个会话只有一个 goal，门面按 sessionId 定位；
+     * 行 id 只用来区分 goal 行与 loop 行）。
+     *
+     * @return 是 goal 行时返回其快照，否则 null
+     */
+    private GoalSnapshot goalRow(GoalExtension goal, String sessionId, String taskId) {
+        if (goal == null || taskId == null) {
+            return null;
+        }
+        GoalSnapshot snapshot = goal.get(sessionId);
+        return snapshot != null && taskId.equals(snapshot.getId()) ? snapshot : null;
     }
 
     /**
@@ -130,13 +154,14 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(503, "Goal service is unavailable");
         }
         try {
-            GoalTask task = goal.create(sessionId, GoalSpec.of(prompt)
+            HarnessResult<GoalSnapshot> created = goal.create(sessionId, GoalSpec.of(prompt)
                     .maxTokens(maxTokens != null ? maxTokens : 0L)
                     .maxDurationMs(maxDurationMs != null ? maxDurationMs : 0L));
-            return Result.succeed(task.getId());
-        } catch (IllegalStateException e) {
-            // 单槽语义：已有活跃/可恢复 goal
-            return Result.failure(409, e.getMessage());
+            if (!created.isOk()) {
+                // 单槽语义：已有活跃/可恢复 goal 时为 INVALID（409）
+                return HarnessResultUtil.failure(created, "Goal cannot be created");
+            }
+            return Result.succeed(created.getValue().getId());
         } catch (IllegalArgumentException e) {
             return Result.failure(400, e.getMessage());
         }
@@ -145,22 +170,18 @@ public class LoopWebController extends AbstractWebController {
     /**
      * Web 端编辑会话 goal（目标正文与预算）。仅非终态可编辑，语义同桌面版 goals/update。
      */
-    private Result updateSessionGoal(GoalExtension goal, String sessionId, String taskId,
+    private Result updateSessionGoal(GoalExtension goal, String sessionId,
                                      String prompt, Long maxTokens, Long maxDurationMs) {
         // 暂停 → 停流 → 停等 → 改写 → 恢复由门面一步完成；停流走 Web 渠道（清积压、推终态帧）
         WorkspaceContext ctx = currentContext();
         Runnable stopper = runtimePort() == null ? null
                 : () -> runtimePort().interruptSession(ctx, sessionId);
-        try {
-            goal.update(sessionId, taskId, GoalPatch.create()
-                    .objective(prompt)
-                    .maxTokens(maxTokens)
-                    .maxDurationMs(maxDurationMs), stopper);
-        } catch (IllegalStateException e) {
-            // 终态不可编辑 / 旧轮次未及时停稳（可重试）
-            return Result.failure(409, e.getMessage());
-        }
-        return Result.succeed();
+        // 终态不可编辑 / 旧轮次未及时停稳（可重试）都是 INVALID（409）
+        HarnessResult<GoalSnapshot> updated = goal.update(sessionId, GoalPatch.create()
+                .objective(prompt)
+                .maxTokens(maxTokens)
+                .maxDurationMs(maxDurationMs), stopper);
+        return HarnessResultUtil.toResult(updated, "Goal cannot be updated");
     }
 
     /**
@@ -186,7 +207,7 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        // goal 行分流：单槽语义，id 即 GoalTask.id
+        // goal 行分流：单槽语义，id 即 GoalSnapshot.id
         Map<String, Object> goalItem = buildGoalMap(sessionId);
         if (goalItem != null && taskId.equals(goalItem.get("id"))) {
             return Result.succeed(goalItem);
@@ -222,15 +243,17 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // 请求参数原样交给规格（null = 未设置），校验由插件统一完成
-        try {
-            LoopTask task = loop().schedule(sessionId, LoopSpec.of(prompt)
-                    .everyMinutes(intervalMinutes)
-                    .cron(cron)
-                    .runNow(runNow));
-            return Result.succeed(task.getId());
-        } catch (IllegalArgumentException | IllegalStateException e) {
-            return Result.failure(400, e.getMessage());
+        HarnessResult<LoopTask> scheduled = loop().schedule(sessionId, LoopSpec.of(prompt)
+                .everyMinutes(intervalMinutes)
+                .cron(cron)
+                .runNow(runNow));
+        if (!scheduled.isOk()) {
+            // 规格不合法历来回 400
+            return scheduled.getCode() == HarnessResult.Code.INVALID
+                    ? Result.failure(400, scheduled.getDetail())
+                    : HarnessResultUtil.failure(scheduled, "Task cannot be scheduled");
         }
+        return Result.succeed(scheduled.getValue().getId());
     }
 
     /**
@@ -254,11 +277,11 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        // goal 行分流：必须在 LoopTask 查找之前，goal 的 taskId 是 GoalTask.id，
+        // goal 行分流：必须在 LoopTask 查找之前，goal 的 taskId 是 GoalSnapshot.id，
         // 不在 loop 任务表中，否则会先返回 404。
         GoalExtension updGoal = currentContext().getGoalExtension();
-        if (updGoal != null && updGoal.get(sessionId, taskId) != null) {
-            return updateSessionGoal(updGoal, sessionId, taskId, prompt, maxTokens, maxDurationMs);
+        if (goalRow(updGoal, sessionId, taskId) != null) {
+            return updateSessionGoal(updGoal, sessionId, prompt, maxTokens, maxDurationMs);
         }
 
         if (type != null && "GOAL".equalsIgnoreCase(type)) {
@@ -266,16 +289,15 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // 补丁语义由插件承担：null = 保持原值（启停、运行状态、身份均保留），宿主不再手工合并
-        try {
-            LoopTask updated = loop().update(sessionId, taskId, LoopPatch.create()
-                    .prompt(prompt)
-                    .everyMinutes(intervalMinutes)
-                    .cron(cron)
-                    .runNow(runNow));
-            return updated == null ? Result.failure(404, "Task not found") : Result.succeed();
-        } catch (IllegalArgumentException e) {
-            return Result.failure(400, e.getMessage());
+        HarnessResult<LoopTask> updated = loop().update(sessionId, taskId, LoopPatch.create()
+                .prompt(prompt)
+                .everyMinutes(intervalMinutes)
+                .cron(cron)
+                .runNow(runNow));
+        if (!updated.isOk() && updated.getCode() == HarnessResult.Code.INVALID) {
+            return Result.failure(400, updated.getDetail());
         }
+        return HarnessResultUtil.toResult(updated, "Task not found");
     }
 
     // ==================== 自动任务内部实现（供 /web/tasks/* 统一门面调用，不单独暴露 HTTP） ====================
@@ -475,12 +497,12 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        GoalTask task = goal == null ? null : goal.get(sessionId, taskId);
+        GoalSnapshot task = goalRow(goal, sessionId, taskId);
         if (task == null) {
             return Result.failure(404, "Task not found");
         }
         // pause 门面内含摘调度配对；仅 PURSUING 可暂停
-        if (!goal.pause(sessionId, taskId)) {
+        if (!goal.pause(sessionId).isOk()) {
             return Result.failure(400, "Goal cannot be paused in state: " + task.getStatus());
         }
         return Result.succeed();
@@ -501,12 +523,12 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        GoalTask task = goal == null ? null : goal.get(sessionId, taskId);
+        GoalSnapshot task = goalRow(goal, sessionId, taskId);
         if (task == null) {
             return Result.failure(404, "Task not found");
         }
         // resume 门面内含挂调度并立即跑一轮；仅 PAUSED/BLOCKED 可恢复
-        if (!goal.resume(sessionId, taskId)) {
+        if (!goal.resume(sessionId).isOk()) {
             return Result.failure(400, "Goal cannot be resumed in state: " + task.getStatus()
                     + " (only PAUSED or BLOCKED can be resumed)");
         }
@@ -529,7 +551,7 @@ public class LoopWebController extends AbstractWebController {
 
         GoalExtension goal = currentContext().getGoalExtension();
         // remove 门面内含「先摘调度再清除」
-        if (goal == null || !goal.remove(sessionId, taskId)) {
+        if (goalRow(goal, sessionId, taskId) == null || !goal.remove(sessionId).isOk()) {
             return Result.failure(404, "Task not found");
         }
         return Result.succeed();
@@ -550,7 +572,7 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        GoalTask gs = goal == null ? null : goal.get(sessionId, taskId);
+        GoalSnapshot gs = goalRow(goal, sessionId, taskId);
         if (gs == null) {
             return Result.failure(404, "Task not found");
         }
@@ -582,16 +604,17 @@ public class LoopWebController extends AbstractWebController {
             return Result.failure(400, "taskId is required");
         }
 
-        // goal 分流：列表中 goal 行的 id 即 GoalTask.id
+        // goal 分流：列表中 goal 行的 id 即 GoalSnapshot.id
         GoalExtension goal = currentContext().getGoalExtension();
-        if (goal != null && goal.remove(sessionId, taskId)) {
+        if (goalRow(goal, sessionId, taskId) != null && goal.remove(sessionId).isOk()) {
             return Result.succeed();
         }
 
-        if (!loop().remove(sessionId, taskId)) {
+        HarnessResult<Void> removed = loop().remove(sessionId, taskId);
+        if (removed.getCode() == HarnessResult.Code.NOT_FOUND) {
             return Result.failure(400, "the task does not exist.");
         }
-        return Result.succeed();
+        return HarnessResultUtil.toResult(removed, "the task does not exist.");
     }
 
     /**
@@ -609,16 +632,16 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        GoalTask gs = goal == null ? null : goal.get(sessionId, taskId);
+        GoalSnapshot gs = goalRow(goal, sessionId, taskId);
         if (gs != null) {
-            if (gs.getStatus() == GoalTask.Status.PURSUING) {
+            if (gs.getStatus() == GoalSnapshot.Status.PURSUING) {
                 // pause 门面内含摘调度配对
-                if (!goal.pause(sessionId, taskId)) {
+                if (!goal.pause(sessionId).isOk()) {
                     return Result.failure(400, "Goal cannot be paused in state: " + gs.getStatus());
                 }
             } else if (gs.getStatus().isResumable()) {
                 // resume 门面内含挂调度并立即跑一轮
-                if (!goal.resume(sessionId, taskId)) {
+                if (!goal.resume(sessionId).isOk()) {
                     return Result.failure(400, "Goal cannot be resumed in state: " + gs.getStatus());
                 }
             } else {
@@ -628,8 +651,15 @@ public class LoopWebController extends AbstractWebController {
             return Result.succeed();
         }
 
-        loop().toggle(sessionId, taskId);
-        return Result.succeed();
+        // 门面已收敛为 pause / resume：按当前状态二选一
+        LoopTask task = loop().get(sessionId, taskId);
+        if (task == null) {
+            return Result.failure(404, "Task not found");
+        }
+        HarnessResult<Void> toggled = task.isEnabled()
+                ? loop().pause(sessionId, taskId)
+                : loop().resume(sessionId, taskId);
+        return HarnessResultUtil.toResult(toggled, "Task cannot be toggled");
     }
 
     /**
@@ -646,15 +676,14 @@ public class LoopWebController extends AbstractWebController {
         }
 
         GoalExtension goal = currentContext().getGoalExtension();
-        GoalTask gs = goal == null ? null : goal.get(sessionId, taskId);
+        GoalSnapshot gs = goalRow(goal, sessionId, taskId);
         if (gs != null) {
-            if (!goal.trigger(sessionId, taskId)) {
+            if (!goal.trigger(sessionId).isOk()) {
                 return Result.failure(400, "Goal is not active: " + gs.getStatus());
             }
             return Result.succeed();
         }
 
-        loop().trigger(sessionId, taskId);
-        return Result.succeed();
+        return HarnessResultUtil.toResult(loop().trigger(sessionId, taskId), "Task not found");
     }
 }

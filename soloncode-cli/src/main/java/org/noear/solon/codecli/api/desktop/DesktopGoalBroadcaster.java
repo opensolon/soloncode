@@ -18,7 +18,7 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.extension.goal.GoalTask;
+import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
 import org.noear.solon.core.util.Assert;
 
 import java.util.Set;
@@ -51,7 +51,7 @@ final class DesktopGoalBroadcaster {
         completedGoalStreams.remove(sessionId);
     }
 
-    void onGoalChanged(String sessionId, GoalTask state, boolean removed) {
+    void onGoalChanged(String sessionId, GoalSnapshot state, boolean removed) {
         if (state == null) {
             return;
         }

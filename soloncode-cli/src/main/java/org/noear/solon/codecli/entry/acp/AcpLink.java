@@ -19,6 +19,7 @@ import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.talents.cli.TerminalTalent;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.agent.task.TaskTalent;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputAttachments;
@@ -336,7 +337,10 @@ public class AcpLink implements Runnable {
         try {
             List<QueueItem> items = queue.list(session);
             if (position <= items.size()) {
-                queue.cancelItem(session, items.get(position - 1).getId());
+                HarnessResult<Void> canceled = queue.cancelItem(session, items.get(position - 1).getId());
+                if (!canceled.isOk()) {
+                    LOG.warn("[ACP] retract deferred input skipped: {}", canceled);
+                }
             }
         } catch (Throwable e) {
             LOG.warn("[ACP] retract deferred input failed: {}", e.toString());

@@ -92,7 +92,7 @@ isBusy(session)?
 ├── 是 + 普通文本
 │      SteerInterceptor.steer（默认插话，与 web 回车一致）
 │      ├── STEERED → ImStatus.STEERED（只投来源端；不回放 user_input，web 端由 steer_applied 落 steer-note）
-│      └── 非 STEERED（TURN_CHANGED / BOX_FULL / 尚未进入推理边界等）→ 降级排队：
+│      └── 非 STEERED（RUN_CHANGED / BOX_FULL / 尚未进入推理边界等）→ 降级排队：
 │              SessionQueue.bindStorage → enqueue
 │              ├── position >= 0 → emitUserInput + ImStatus.QUEUED(position-1) + drainSessionQueue
 │              └── position < 0（队列满/落盘失败，上限 20 条）→ ImStatus.REJECTED
@@ -193,7 +193,7 @@ isBusy(session)?
 | 情形 | 状态 | 处理 |
 |---|---|---|
 | 注入成功 | STEERED | 回 `ImStatus.STEERED`；web 端由 `steer_applied` 落 steer-note |
-| 任务恰在切换（旧 runId 已走） | TURN_CHANGED | 降级排队 |
+| 任务恰在切换（旧 runId 已走） | RUN_CHANGED | 降级排队 |
 | 插话邮箱已满（上限 5 条） | BOX_FULL | 降级排队 |
 | 尚未进入推理边界（`ATTR_ACTIVE_RUN_ID` 未建立） | NOT_RUNNING | 降级排队（**不可**当空闲直发，会与在跑任务并发开流） |
 | 输入是斜杠命令 | — | 直接排队（命令不进插话，与 web 前端“运行中不把命令当插话”一致） |

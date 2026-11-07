@@ -493,7 +493,7 @@ public class ChatWebController extends AbstractWebController {
      * 参考方案：docs/steering-inject-plan.md（对齐 Codex steering 三件套）。</p>
      *
      * <p>应答契约：200 STEERED=已接受（下一步生效）；409 NOT_RUNNING=会话空闲，前端回落为普通发送；
-     * 409 TURN_CHANGED=runId 与当前运行不符，前端转为排队；409 BOX_FULL=邮箱满；
+     * 409 RUN_CHANGED=runId 与当前运行不符，前端转为排队；409 BOX_FULL=邮箱满；
      * 400 EMPTY_TEXT / TEXT_TOO_LONG=参数非法。</p>
      *
      * @param sessionId 会话 ID
@@ -513,7 +513,7 @@ public class ChatWebController extends AbstractWebController {
         }
         if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
         // 忙态预判保留在宿主侧，因为它是协议语义而非内核判定：
-        // 只有「确认在跑」才回 NOT_RUNNING 让前端回落普通发送，与 TURN_CHANGED（转排队）严格区分。
+        // 只有「确认在跑」才回 NOT_RUNNING 让前端回落普通发送，与 RUN_CHANGED（转排队）严格区分。
         // 这已经不是"重复判定"——内核的 isBusy 才决定投递是否算数（见下方 steerOnRun 的 offer 后复查）。
         if (!runtimePort().isSessionBusy(engine(), sessionId)) {
             return Result.failure(409, "NOT_RUNNING");
@@ -548,7 +548,7 @@ public class ChatWebController extends AbstractWebController {
         switch (result.getCode()) {
             case STEERED: {
                 Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", result.getCodeName());
+                data.put("status", result.getCode().name());
                 data.put("steerId", result.getSteerId());
                 data.put("queued", result.getPendingCount());
                 return Result.succeed(data);
@@ -557,11 +557,11 @@ public class ChatWebController extends AbstractWebController {
             case TEXT_TOO_LONG:
             case INVALID_STEER_ID:
                 // 参数非法：前端提示后不再重试
-                return Result.failure(400, result.getCodeName());
+                return Result.failure(400, result.getCode().name());
             default:
-                // NOT_RUNNING（回落普通发送）/ TURN_CHANGED / BOX_FULL（转排队）/
+                // NOT_RUNNING（回落普通发送）/ RUN_CHANGED / BOX_FULL（转排队）/
                 // DUPLICATE_STEER_ID / DISABLED
-                return Result.failure(409, result.getCodeName());
+                return Result.failure(409, result.getCode().name());
         }
     }
 
@@ -634,7 +634,7 @@ public class ChatWebController extends AbstractWebController {
         switch (result.getCode()) {
             case CANCELED: {
                 Map<String, Object> data = new LinkedHashMap<>();
-                data.put("status", result.getCodeName());
+                data.put("status", result.getCode().name());
                 if (result.getSteerId() != null) {
                     data.put("steerId", result.getSteerId());
                 } else {
@@ -644,10 +644,10 @@ public class ChatWebController extends AbstractWebController {
                 return Result.succeed(data);
             }
             case INVALID_STEER_ID:
-                return Result.failure(400, result.getCodeName());
+                return Result.failure(400, result.getCode().name());
             default:
-                // NOT_PENDING（等待终态事件）/ TURN_CHANGED
-                return Result.failure(409, result.getCodeName());
+                // NOT_PENDING（等待终态事件）/ RUN_CHANGED
+                return Result.failure(409, result.getCode().name());
         }
     }
 

@@ -5,6 +5,7 @@
 package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -44,7 +45,13 @@ public final class LegacyQueueMigrator {
             List<Map<String, Object>> rows = readRows(sessionDir.resolve("queue-tasks.json"));
             if (rows == null) return; // 无旧文件
             rows.addAll(readRowsOrEmpty(sessionDir.resolve("queue.json")));
-            int imported = queue.importItems(session, rows);
+            HarnessResult<Integer> result = queue.importItems(session, rows);
+            if (!result.isOk()) {
+                // 非持有节点等：保留旧文件，交给持有者迁移
+                LOG.info("[WebGate] legacy queue migration skipped for session {}: {}", session.getSessionId(), result);
+                return;
+            }
+            int imported = result.getValue();
             Files.deleteIfExists(sessionDir.resolve("queue-tasks.json"));
             Files.deleteIfExists(sessionDir.resolve("queue.json"));
             if (imported > 0) {

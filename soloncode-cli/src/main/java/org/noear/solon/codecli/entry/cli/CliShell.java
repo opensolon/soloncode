@@ -198,7 +198,7 @@ public class CliShell implements Runnable {
             // 此前只有 Web 入口恢复，CLI 重启后进行中的 goal 不再推进。须在执行器注册之后。
             try {
                 goal.recover(java.util.Collections.singletonList(session.getSessionId()), sid -> {
-                    org.noear.solon.ai.harness.extension.goal.GoalTask task = goal.get(sid);
+                    org.noear.solon.ai.harness.extension.goal.GoalSnapshot task = goal.get(sid);
                     return task == null ? null : task.getStatus();
                 });
             } catch (Throwable e) {

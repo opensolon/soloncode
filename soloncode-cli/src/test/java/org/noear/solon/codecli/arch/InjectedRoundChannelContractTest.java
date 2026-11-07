@@ -83,7 +83,7 @@ public class InjectedRoundChannelContractTest {
      *   <li>{@code Math.multiplyExact(x, 60_000L)} → 用 {@code GoalSpec.maxDuration(Duration.ofMinutes(x))}；</li>
      *   <li>先解析会话再操作（{@code goal.sessionOf}/{@code goal.state(session)}）→ 门面一律按 sessionId 定位；</li>
      *   <li>手工「暂停 → 停流 → 停等 → 改写 → 恢复」→ 用 {@code goal.update(sid, taskId, patch, stopper)}；</li>
-     *   <li>补齐展示 Map 字段 → 用 {@code GoalTask.toMap()}。</li>
+     *   <li>补齐展示 Map 字段 → 用 {@code GoalSnapshot.toMap()}。</li>
      * </ul>
      */
     @Test

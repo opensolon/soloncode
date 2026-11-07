@@ -59,10 +59,10 @@ import java.nio.file.Path;
 class WebChatInputHandler {
     private static final Logger LOG = LoggerFactory.getLogger(WebChatInputHandler.class);
 
-    /** 宿主域输入属性：推理强度（与 QueueItem#getReasoningEffort 约定同名，忙时随积压保存） */
-    static final String ATTR_REASONING_EFFORT = "reasoningEffort";
-    /** 宿主域输入属性：思考模式（与 QueueItem#getThinkingMode 约定同名） */
-    static final String ATTR_THINKING_MODE = "thinkingMode";
+    /** 宿主域输入属性：推理强度（经 input.attr 随积压保存，续发时从 QueueItem#getAttrs 取回；旧数据的顶层字段由 queue 读入时并入 attrs） */
+    static final String ATTR_REASONING_EFFORT = WebInputAttrs.REASONING_EFFORT;
+    /** 宿主域输入属性：思考模式（经 input.attr 随积压保存，续发时从 QueueItem#getAttrs 取回） */
+    static final String ATTR_THINKING_MODE = WebInputAttrs.THINKING_MODE;
 
     private final WebGate gate;
 
@@ -395,7 +395,7 @@ class WebChatInputHandler {
         if (Assert.isNotEmpty(hitlAction)) return true;
         if (input != null && "/resume".equals(input.trim())) return true;
         if (WebQueueDispatcher.isQueueDispatch(session)) return true;
-        return wsContext.getEngine().isBusyBypassCommand(input);
+        return wsContext.getEngine().isRunnableWhenBusy(input);
     }
 
     /**
@@ -440,7 +440,7 @@ class WebChatInputHandler {
                 }
                 // 忙碌穿透：是否允许在任务执行中受理，由命令自描述（runnableWhenBusy）决定，
                 // 不再硬编码 interrupt/exit 白名单。
-                if (wsContext.getEngine().isBusyBypassCommand(input)) {
+                if (wsContext.getEngine().isRunnableWhenBusy(input)) {
                     gate.emitToClient(wsContext, sessionId, WebEvent.ofUserInput(input, source));
                     onChatInput(wsContext, sessionId, null, input, null, null, null, null, source,
                             null, null, null, sourceUserId, replyTarget, messageId);
@@ -621,7 +621,7 @@ class WebChatInputHandler {
             }
             // 两段式第一段：清队列（保存失败时 prepareInterrupt 不会发生）→ 原子认领运行句柄。
             // 清队列保存失败时不终止当前流：否则 doFinally 会续发原队列，Stop 不能报告成功。
-            if (!queue(wsContext).cancelPending(session)) {
+            if (!queue(wsContext).cancelPending(session).isOk()) {
                 LOG.warn("[WebGate] Stop rejected: could not persist queue cancellation for session {}", sessionId);
                 return false;
             }

@@ -126,7 +126,7 @@ class ImBusySteerContractTest {
                 "审批决策本身必须豁免，否则审批永远提不了");
         assertTrue(method.contains("/resume"), "显式续流必须豁免，它就是处理审批的手段");
         assertTrue(method.contains("isQueueDispatch"),
-                "队列派发的一轮已过 isNotOccupied 闸门，不能二次拦截");        assertTrue(method.contains("isBusyBypassCommand"),
+                "队列派发的一轮已过 isNotOccupied 闸门，不能二次拦截");        assertTrue(method.contains("isRunnableWhenBusy"),
                 "忙态旁路命令由命令自描述决定，闸门不得否定它");
 
         // 两个入口都必须覆盖同一口径，不能各写一份。

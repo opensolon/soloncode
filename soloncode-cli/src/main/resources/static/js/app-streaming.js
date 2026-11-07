@@ -407,7 +407,7 @@ function steerMessage(sess, text) {
             sendMessageCore(sess, text, [], {displayText: text});
             return;
         }
-        if (msg === 'TURN_CHANGED' || msg === 'BOX_FULL') {
+        if (msg === 'RUN_CHANGED' || msg === 'BOX_FULL') {
             // 任务已切换/邮箱满：转排队，本轮结束后发送
             var demoted = msg === 'BOX_FULL'
                 ? I18n.t('streaming.steerBoxFull') : I18n.t('streaming.steerTurnChanged');

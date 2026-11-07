@@ -26,9 +26,11 @@ import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
@@ -216,13 +218,17 @@ public class WsGate extends SimpleWebSocketListener {
         // create 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径。
         // 执行正文（含附件）与展示正文分离：一次成型、只广播一次，不会把附件全文推送成中间态。
         // runNow(false)：只挂 job 不立即跑（首轮由本方法的会话流自己驱动，与 Web 端创建不同）
-        goal.create(sessionId, GoalSpec.of(effectiveObjective)
+        HarnessResult<GoalSnapshot> created = goal.create(sessionId, GoalSpec.of(effectiveObjective)
                 .displayObjective(displayedObjective)
                 .maxTokens(maxTokens != null ? maxTokens : 0L)
                 .maxDuration(maxDurationMinutes != null
                         ? Duration.ofMinutes(maxDurationMinutes) : null)
                 .maxIterations(maxIterations != null ? maxIterations : 0)
                 .runNow(false));
+        if (!created.isOk()) {
+            // 门面不再抛业务异常：按原约定转回 IllegalStateException（调用方据此回执失败）
+            throw new IllegalStateException(created.getDetail() != null ? created.getDetail() : "Goal cannot be created");
+        }
     }
 
     private Long normalizeGoalBudget(Long value, long maximum, String label) {
