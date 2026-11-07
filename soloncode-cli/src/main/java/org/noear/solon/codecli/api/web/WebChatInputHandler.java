@@ -17,7 +17,7 @@ package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.harness.turn.InterruptPlan;
+import org.noear.solon.ai.harness.InterruptPlan;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
@@ -34,7 +34,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
-import org.noear.solon.ai.harness.spi.TurnDispatch;
+import org.noear.solon.ai.harness.spi.RunDispatch;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
@@ -172,9 +172,9 @@ class WebChatInputHandler {
             // 忙时可执行命令在运行中的任务旁边执行：不能改写正在运行任务的回复目标。
             if (!outcome.isBesideRunning()) {
                 // 派发轮次沿用派发事务的来源（NONE = 没有可用来源）
-                TurnDispatch turn = outcome.getDispatch();
-                if (turn != null && turn.getOrigin() != InputOrigin.NONE) {
-                    setReplyRoute(session, turn.getOrigin());
+                RunDispatch dispatch = outcome.getDispatch();
+                if (dispatch != null && dispatch.getOrigin() != InputOrigin.NONE) {
+                    setReplyRoute(session, dispatch.getOrigin());
                 } else {
                     setReplyRoute(session, InputOrigin.of(source, sourceUserId, replyTarget, messageId));
                 }

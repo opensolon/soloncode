@@ -23,7 +23,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.SystemTracePayload;
 import org.noear.solon.codecli.api.web.pipeline.ToolViewUtil;
-import org.noear.solon.ai.harness.turn.SessionTurn;
+import org.noear.solon.ai.harness.RunTicket;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.codecli.util.LogDirUtil;
@@ -80,16 +80,37 @@ class WebSessionRunner {
     /**
      * 收口本轮所属的队列派发事务（幂等，非队列输入时为空操作）。
      *
-     * <p>由 {@link SessionTurn#settle(boolean)} 承担：它在 {@code begin} 时已捕获
+     * <p>由 {@link RunTicket#settle(boolean)} 承担：它在 {@code begin} 时已捕获
      * 「这一条流自己的」派发事务（有身份保证），拿不到时退回“收口会话当前的派发”——
      * 与改造前行为一致，不存在回退风险。</p>
+     *
+     * @return true = 确实收口了一条派发（含兜底路径收到的「会话当前派发」）
      */
-    private void settleTurn(WorkspaceContext wsContext, AgentSession session, SessionTurn turn, boolean started) {
-        if (turn != null) {
-            turn.settle(started);
+    private boolean settleTurn(WorkspaceContext wsContext, AgentSession session, RunTicket ticket, boolean started) {
+        if (ticket != null) {
+            return ticket.settle(started);
         } else {
-            gate.getQueueDispatcher().finishQueuedTurn(session, started);
+            return gate.getQueueDispatcher().finishQueuedTurn(session, started);
         }
+    }
+
+    /**
+     * 启动失败后是否要由宿主续发积压。
+     *
+     * <p>只有「不属于任何程序派发」的一条流才续发：</p>
+     * <ul>
+     *   <li>{@code ticket.dispatch() != null}：队列派发的一条流，claim 已回滚到队首，
+     *       立即 drain 会领回同一条形成无限循环（「不重试」由 drainLoop 的 START_FAILED 保证）；</li>
+     *   <li>{@code rolledBack}：凭据没捕获到派发，但兜底路径回滚了会话当前的派发——
+     *       同样不能立即领回。</li>
+     * </ul>
+     *
+     * <p>旧写法用 {@code ticket == null} 判定「非队列输入」，但 {@link RunTicket#begin} 从不返回 null，
+     * 导致普通输入启动失败后积压不再自动续发。</p>
+     */
+    static boolean shouldDrainAfterStartFailure(RunTicket ticket, boolean rolledBack) {
+        if (rolledBack) return false;
+        return ticket == null || ticket.dispatch() == null;
     }
 
     /**
@@ -101,23 +122,25 @@ class WebSessionRunner {
      * 且前端收不到任何终态包。</p>
      *
      * <p>「这是队列派发的一轮」不再用会话态判定（旧写法读 hasQueuedDispatch，历史上还
-     * 误用过线程判定引发无限循环）：{@code turn} 是订阅前捕获的本轮派发事务，有身份保证，
-     * 异步线程上同样可靠。非队列输入 turn 为 null，自然落到 drain 续发分支。</p>
+     * 误用过线程判定引发无限循环）：{@code ticket.dispatch()} 是订阅前捕获的本轮派发事务，
+     * 有身份保证，异步线程上同样可靠。非队列输入它为 null，落到 drain 续发分支（见
+     * {@link #shouldDrainAfterStartFailure}）。</p>
      */
-    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, SessionTurn turn, Throwable e) {
+    void failStreamTurn(WorkspaceContext wsContext, AgentSession session, RunTicket ticket, Throwable e) {
         LOG.error("Task fail: {}", e.getMessage(), e);
         // 队列派发的启动失败：交给队列派发侧收口（claim 回滚），
         // 「不重试」由 drainLoop 的 START_FAILED 语义保证，宿主不再自己维护标记。
-        settleTurn(wsContext, session, turn, false);
+        boolean rolledBack = settleTurn(wsContext, session, ticket, false);
 
         gate.emitToClient(wsContext, session.getSessionId(), WebEvent.ofError(e));
         // 失败终态同步到 IM（与 web 一致），避免 IM 端停在「已读不回」
         gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
 
         gate.getEventPublisher().emitDoneGuarded(wsContext, session);
-        // 启动失败的任务已回队首；不要立即重试同一失败任务形成无限循环。
-        // turn 非空 = 本轮属于队列派发：claim 已回滚回队首，立即 drain 会领回同一条。
-        if (turn == null) gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
+        // 队列派发的启动失败已回队首，不要立即重试；普通输入失败则续发积压
+        if (shouldDrainAfterStartFailure(ticket, rolledBack)) {
+            gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
+        }
     }
 
     /**
@@ -133,8 +156,8 @@ class WebSessionRunner {
         // 订阅前（调用线程内）开一轮：捕获取消代数基准与本轮派发事务。
         // 订阅动作被调度到别的线程异步执行，这段窗口内若发生 interrupt，本流到订阅时应立即放弃，
         // 而不是成为一条取消不掉的幽灵流；终态也必须收「这一条流自己的」派发事务。
-        // 两件事均收归 harness（SessionTurn），宿主不再接触 SessionRuns / QueueDispatch。
-        final SessionTurn turn = SessionTurn.begin(session);
+        // 两件事均收归 harness（RunTicket），宿主不再接触 SessionRuns / QueueDispatch。
+        final RunTicket ticket = RunTicket.begin(session);
 
         //agent 执行主体在 boundedElastic 线程上跑，订阅动作包在工作区日志作用域里：
         //同步源的整个管道执行发生在 subscribe() 调用栈内，故管道主体线程携带工作区标记
@@ -142,11 +165,11 @@ class WebSessionRunner {
         Runnable subscribeAction = () -> {
             Object logScope = WorkspaceLogRouter.beginScopeByKey(wsLogKey);
             try {
-                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, turn);
+                doSubscribeAgentTask(wsContext, session, sessionCwd, outcome, ticket);
             } catch (Throwable e) {
                 //调度线程内的异常不会回到 onChatInput 的 catch，必须自行收尾（含释放本轮受理占位）
                 outcome.discard();
-                failStreamTurn(wsContext, session, turn, e);
+                failStreamTurn(wsContext, session, ticket, e);
             } finally {
                 WorkspaceLogRouter.endScope(logScope);
             }
@@ -159,13 +182,13 @@ class WebSessionRunner {
         }
     }
 
-    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, SessionTurn turn) {
+    private void doSubscribeAgentTask(WorkspaceContext wsContext, AgentSession session, String sessionCwd, InputOutcome outcome, RunTicket ticket) {
         String sessionId = session.getSessionId();
 
         //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）。
         //与 sync 路径对称地补发终态：若 interrupt 已发过 done，会被 emitDoneOnce 的去重门
         //静默吞掉（无害）；若上游异常路径未发过，则前端不至因收不到任何事件而卡在等待态
-        if (turn.isCancelled()) {
+        if (ticket.isCancelled()) {
             LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
             outcome.discard();
             gate.getEventPublisher().emitDoneOnce(wsContext, session);
@@ -202,7 +225,7 @@ class WebSessionRunner {
                     gate.getStreamBuilder().replyErrorToBoundChannels(wsContext, session, e);
                 })
                 .doFinally(s -> {
-                    settleTurn(wsContext, session, turn, true);
+                    settleTurn(wsContext, session, ticket, true);
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
@@ -259,7 +282,7 @@ class WebSessionRunner {
 
         // 开一轮（早于任何开流动作）：同步等待方（Loop）依赖它判定本轮是否已被取消；
         // 同步路径（Loop 等）通常不经过队列派发，dispatch 为 null，收口落到空操作。
-        final SessionTurn turn = SessionTurn.begin(session);
+        final RunTicket ticket = RunTicket.begin(session);
 
         final String wsLogKey = wsLogKey(wsContext);
         Runnable subscribeAction = () -> {
@@ -267,7 +290,7 @@ class WebSessionRunner {
             try {
                 //调度窗口期内已被 interrupt：不开流、不发 reset（否则刚收尾的前端会被解封成幽灵流）；
                 //但必须释放闩锁，否则同步等待方（Loop）永久阻塞
-                if (turn.isCancelled()) {
+                if (ticket.isCancelled()) {
                     LOG.info("[WebGate] Session {} task aborted before subscribe (interrupted)", sessionId);
                     outcome.discard();
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
@@ -315,8 +338,8 @@ class WebSessionRunner {
                 })
                 .doFinally(s -> {
                     // 与 async 路径同构地收口派发事务（旧实现在此漏了 settle：
-                    // 同一不变量写两遍必然漏一遍，收归 SessionTurn 后不再依赖人工对称）
-                    settleTurn(wsContext, session, turn, true);
+                    // 同一不变量写两遍必然漏一遍，收归 RunTicket 后不再依赖人工对称）
+                    settleTurn(wsContext, session, ticket, true);
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
@@ -332,7 +355,7 @@ class WebSessionRunner {
                     errorSink.compareAndSet(null, e);
                 }
                 outcome.discard();
-                failStreamTurn(wsContext, session, turn, e);
+                failStreamTurn(wsContext, session, ticket, e);
                 countDownLatch.countDown();
             } finally {
                 WorkspaceLogRouter.endScope(logScope);

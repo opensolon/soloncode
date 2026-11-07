@@ -354,11 +354,11 @@ class PackageBoundaryTest {
      *
      * <p>异步队列任务必须回答两件事：本轮是否队列派发、该用哪个 claim 收口。
      * 此前宿主只能自建内部类 + 宿主私有键 + 两处 synchronized 来重新记一份，换一端就要重写。
-     * 现在统一由 harness 持有（{@code QueueClaim} 即核心的 {@code TurnDispatch}）：</p>
+     * 现在统一由 harness 持有（{@code QueueClaim} 即核心的 {@code RunDispatch}）：</p>
      * <ul>
      *   <li>读：{@code QueueClaim#current(session)}（静态入口，与是否有扩展实例无关）；</li>
-     *   <li>收口只有两条路：同步任务由领取回调返回 true，异步任务在流终态调 {@code SessionTurn#settle}
-     *       （无 turn 时兜底用核心的 {@code TurnDispatch.current(session).settle}）。</li>
+     *   <li>收口只有两条路：同步任务由领取回调返回 true，异步任务在流终态调 {@code RunTicket#settle}
+     *       （没有凭据时兜底用核心的 {@code RunDispatch.current(session).settle}）。</li>
      * </ul>
      */
     @Test
@@ -385,9 +385,9 @@ class PackageBoundaryTest {
                     violations.add(name + " 在领取回调里手写 claim 收口（应返回 true/false，收口归内核）");
                 }
             }
-            // 已删除的会话态判定不得回潮：流终态归属看订阅前捕获的 turn，不看会话当前派发
+            // 已删除的会话态判定不得回潮：流终态归属看订阅前捕获的 RunTicket，不看会话当前派发
             if (name.equals("WebQueueDispatcher.java") && content.contains("hasQueuedDispatch")) {
-                violations.add(name + " 仍引用已删除的 hasQueuedDispatch（流终态应用订阅前捕获的 turn）");
+                violations.add(name + " 仍引用已删除的 hasQueuedDispatch（流终态应用订阅前捕获的 RunTicket）");
             }
         }
         assertTrue(violations.isEmpty(), "队列派发状态必须由 harness 持有：" + violations);
@@ -427,7 +427,7 @@ class PackageBoundaryTest {
     }
 
     /**
-     * 宿主不得自己维护取消代数 / 派发身份：一轮流的生命周期凭据归 harness（{@code SessionTurn}）。
+     * 宿主不得自己维护取消代数 / 派发身份：一条流（run）的生命周期凭据归 harness（{@code RunTicket}）。
      *
      * <p>此前同一段「订阅前取代数基准 + 流终态判取消」的代码在 Web 的 async/sync 两条路径
      * 与桌面端各写一遍，三处必然漏一处（sync 路径曾漏掉派发事务收口）。
@@ -442,7 +442,7 @@ class PackageBoundaryTest {
 
             // 取消代数基准：任何宿主文件都不得自己取（这是「取消以 complete 收尾」不变量的入口）
             if (content.contains("SessionRuns.cancelCount") || content.contains("SessionRuns.isCancelledSince")) {
-                violations.add(name + " 自行捕获取消代数（应用 SessionTurn）");
+                violations.add(name + " 自行捕获取消代数（应用 RunTicket）");
             }
         }
         // 派发事务身份：流生命周期路径不得自己捕获，只有队列适配器可读取派发线程身份
@@ -454,11 +454,11 @@ class PackageBoundaryTest {
             Path file = SRC.resolve(rel);
             if (!Files.exists(file)) continue;
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
-            if (content.contains("QueueClaim.current") || content.contains("TurnDispatch.current")) {
-                violations.add(file.getFileName() + " 自行捕获派发事务（应用 SessionTurn#begin/dispatch）");
+            if (content.contains("QueueClaim.current") || content.contains("RunDispatch.current")) {
+                violations.add(file.getFileName() + " 自行捕获派发事务（应用 RunTicket#begin/dispatch）");
             }
         }
-        assertTrue(violations.isEmpty(), "一轮流的生命周期凭据必须由 SessionTurn 持有：" + violations);
+        assertTrue(violations.isEmpty(), "一条流（run）的生命周期凭据必须由 RunTicket 持有：" + violations);
     }
 
     /**
@@ -539,6 +539,9 @@ class PackageBoundaryTest {
                     if (text.contains("engine.admit(") || text.contains("getEngine().admit(")
                             || text.contains("turn.AdmitDecision") || text.contains("turn.InputGate")) {
                         violations.add(SRC.relativize(p) + " 调用了已删除的独立受理入口");
+                    }
+                    if (text.contains("org.noear.solon.ai.harness.turn.")) {
+                        violations.add(SRC.relativize(p) + " 引用了已更名的 harness.turn 包（RunTicket、InterruptPlan 已并入 harness 根包）");
                     }
                 } catch (IOException e) {
                     throw new java.io.UncheckedIOException(e);

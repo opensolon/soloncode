@@ -31,7 +31,7 @@ import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.hitl.HitlCard;
-import org.noear.solon.ai.harness.turn.SessionTurn;
+import org.noear.solon.ai.harness.RunTicket;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -113,7 +113,7 @@ final class DesktopStreamTurn {
         // 开一轮（须在 stream() 之前）：取消后框架以 complete 收尾，会触发下面的
         // doOnComplete。但取消路径（DesktopInputRouter 的 interrupt 分支）已经自己发过
         // reason + done，若这里再发一个 done，前端会收到两个终态帧。
-        final SessionTurn turn = SessionTurn.begin(session);
+        final RunTicket ticket = RunTicket.begin(session);
 
         request.options(o -> {
                     // 模型已由 handle 装配；这里仅在宿主显式解析出模型时覆盖（幂等，零差异）
@@ -148,7 +148,7 @@ final class DesktopStreamTurn {
                     }
                 })
                 .doOnComplete(() -> {
-                    if (turn.isCancelled()) {
+                    if (ticket.isCancelled()) {
                         // 本轮是被取消的：中断入口已同步发过 reason + done，不再重复终态
                         return;
                     }
@@ -158,7 +158,7 @@ final class DesktopStreamTurn {
                 .doOnError(err -> sendErrorIfNeeded(terminalSent, sessionId, err))
                 .doFinally(signal -> {
                     // 收口本轮所属的程序派发（积压续发的那一轮；非派发为空操作，幂等）
-                    turn.settle(true);
+                    ticket.settle(true);
                     // 不在这里续发积压：此时运行句柄尚未注销（见 InputOutcome#afterRun）
                 })
                 .subscribe();

@@ -17,7 +17,7 @@ package org.noear.solon.codecli.api.web;
 
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.extension.queue.QueueClaim;
-import org.noear.solon.ai.harness.spi.TurnDispatch;
+import org.noear.solon.ai.harness.spi.RunDispatch;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.queue.QueueItem;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -141,21 +141,23 @@ class WebQueueDispatcher {
     }
 
     /**
-     * 兜底收口：没有捕获到 {@code SessionTurn} 时，收口会话当前未收口的程序派发（无则空操作）。
+     * 兜底收口：没有捕获到 {@code RunTicket} 时，收口会话当前未收口的程序派发（无则空操作）。
      *
-     * <p>只经核心契约 {@link TurnDispatch}：登记与注销、身份校验、代际判定全部由派发方
+     * <p>只经核心契约 {@link RunDispatch}：登记与注销、身份校验、代际判定全部由派发方
      * （队列的 {@code QueueClaim}）负责，Stop 之后的回滚必然被拒。</p>
+     *
+     * @return true = 确实收口了一条派发
      */
-    void finishQueuedTurn(AgentSession session, boolean started) {
-        TurnDispatch dispatch = TurnDispatch.current(session);
-        if (dispatch != null) dispatch.settle(started);
+    boolean finishQueuedTurn(AgentSession session, boolean started) {
+        RunDispatch dispatch = RunDispatch.current(session);
+        return dispatch != null && dispatch.settle(started);
     }
 
     /**
      * 本轮输入是否由队列派发而来（且就在当前线程）。
      *
      * <p>只在输入入口使用：判断「这是一轮队列派发，不要再占受理位」。
-     * 流终态不要用会话态判定，应用订阅前捕获的 {@code turn != null}（身份化，见
+     * 流终态不要用会话态判定，应用订阅前捕获的 {@code ticket.dispatch() != null}（身份化，见
      * {@code WebSessionRunner#failStreamTurn}）——异步线程上会话态可能已被下一轮派发覆盖。</p>
      */
     static boolean isQueueDispatch(AgentSession session) {
