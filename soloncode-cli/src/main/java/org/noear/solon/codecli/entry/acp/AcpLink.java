@@ -2,6 +2,7 @@ package org.noear.solon.codecli.entry.acp;
 
 import com.agentclientprotocol.sdk.agent.AcpAgent;
 import com.agentclientprotocol.sdk.agent.AcpAsyncAgent;
+import com.agentclientprotocol.sdk.agent.PromptContext;
 import com.agentclientprotocol.sdk.error.AcpErrorCodes;
 import com.agentclientprotocol.sdk.error.AcpProtocolException;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
@@ -22,11 +23,15 @@ import org.noear.solon.ai.harness.agent.task.TaskTalent;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.extension.queue.QueueExtension;
+import org.noear.solon.ai.harness.extension.queue.QueueItem;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.core.util.Assert;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
@@ -45,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class AcpLink implements Runnable {
+    private static final Logger LOG = LoggerFactory.getLogger(AcpLink.class);
     private final HarnessEngine agentRuntime;
     private final AcpAgentTransport agentTransport;
     private final AgentSettings agentSettings;
@@ -149,7 +155,7 @@ public class AcpLink implements Runnable {
                             .commandAware(false)
                             .agentAware(false));
                     if (outcome.hasRequest() == false) {
-                        return Mono.empty();
+                        return notAdmitted(outcome, session, acpContext);
                     }
 
                     final long startTime = System.currentTimeMillis();
@@ -295,6 +301,46 @@ public class AcpLink implements Runnable {
                             .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN)));
                 })
                 .build();
+    }
+
+    /**
+     * 未得到任务的结局：明确告诉客户端，不再静默结束（客户端分不清「没受理」与「空回复」）。
+     *
+     * <p>ACP 是一问一答：本次 prompt 的响应一旦返回，就没有通道承载「稍后续发」的那一轮输出，
+     * 且 ACP 入口没有积压续发点。引擎忙时把输入放进积压（DEFERRED）的话，这里撤回并拒绝，
+     * 否则这条消息会在队列里等一个永远不会来的续发。</p>
+     */
+    private Mono<AcpSchema.PromptResponse> notAdmitted(InputOutcome outcome, AgentSession session,
+                                                       PromptContext acpContext) {
+        switch (outcome.getKind()) {
+            case DEFERRED:
+                retractDeferred(session, outcome.getBacklogPosition());
+                return acpContext.sendMessage("当前会话正在执行任务，请稍后再发")
+                        .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
+            case REJECTED:
+                String detail = outcome.getRejectDetail();
+                return acpContext.sendMessage(Assert.isEmpty(detail) ? "本次输入未被受理" : detail)
+                        .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
+            default:
+                // IGNORED 等：无事可做，正常结束本轮
+                return Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN));
+        }
+    }
+
+    /** 撤回刚进积压的那一条（按引擎给出的位置，从 1 计）。 */
+    private void retractDeferred(AgentSession session, int position) {
+        QueueExtension queue = agentRuntime.getExtension(QueueExtension.class).orElse(null);
+        if (queue == null || session == null || position < 1) {
+            return;
+        }
+        try {
+            List<QueueItem> items = queue.list(session);
+            if (position <= items.size()) {
+                queue.cancelItem(session, items.get(position - 1).getId());
+            }
+        } catch (Throwable e) {
+            LOG.warn("[ACP] retract deferred input failed: {}", e.toString());
+        }
     }
 
     /**

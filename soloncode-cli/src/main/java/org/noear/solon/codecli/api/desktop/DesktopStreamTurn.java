@@ -68,8 +68,6 @@ final class DesktopStreamTurn {
     private final HarnessEngine engine;
     private final DesktopStreamHub streamHub;
     private final DesktopEventConverter converter;
-    /** 一轮结束（含取消 / 出错）后的回调：用于续发会话积压（忙时进积压的输入） */
-    private volatile java.util.function.BiConsumer<AgentSession, WebSocket> turnFinishedListener;
 
     DesktopStreamTurn(HarnessEngine engine, DesktopStreamHub streamHub, DesktopEventConverter converter) {
         this.engine = engine;
@@ -86,13 +84,11 @@ final class DesktopStreamTurn {
      * <p>请求装配（session/模型/retry/maxTurns）由 {@code engine.handle} 在调用前完成，
      * 本方法只做桌面端请求级补充：运行模式、HITL 拦截器、cwd、推理强度。</p>
      *
+     * <p>本方法不负责续发积压：那要等运行句柄注销后才判得到空闲，
+     * 由调用方在开流前经 {@code InputOutcome#afterRun} 登记（本方法的 doFinally 里会话仍算忙）。</p>
+     *
      * @param hitlResume true 表示 HITL 审批后的续跑（复用既有流状态 subscribe，不再 begin）
      */
-    /** 设置一轮结束后的回调（续发积压）。 */
-    void setTurnFinishedListener(java.util.function.BiConsumer<AgentSession, WebSocket> listener) {
-        this.turnFinishedListener = listener;
-    }
-
     void run(AgentSession session, ReActRequest request, ChatModel chatModel,
              String sessionId, String cwd, String reasoningEffort,
              WebSocket socket, boolean hitlResume,
@@ -163,15 +159,7 @@ final class DesktopStreamTurn {
                 .doFinally(signal -> {
                     // 收口本轮所属的程序派发（积压续发的那一轮；非派发为空操作，幂等）
                     turn.settle(true);
-                    java.util.function.BiConsumer<AgentSession, WebSocket> listener = turnFinishedListener;
-                    if (listener != null) {
-                        try {
-                            listener.accept(session, socket);
-                        } catch (Throwable e) {
-                            org.slf4j.LoggerFactory.getLogger(DesktopStreamTurn.class)
-                                    .warn("[Desktop] turn finished listener failed: {}", e.toString());
-                        }
-                    }
+                    // 不在这里续发积压：此时运行句柄尚未注销（见 InputOutcome#afterRun）
                 })
                 .subscribe();
     }

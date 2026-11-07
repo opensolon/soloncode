@@ -98,6 +98,17 @@ final class DesktopAttachmentSupport {
         return WorkspaceFiles.UPLOADS_DIR + "/" + safeName;
     }
 
+    /**
+     * 附件将落盘的目标路径（不创建目录、不解析链接）。用于在保存前判定是否会覆盖已有文件——
+     * 本轮未受理时只删除本轮新建的文件，不删上一轮同名附件。
+     */
+    static Path targetOf(Path workspace, String fileName) {
+        return workspace.toAbsolutePath().normalize()
+                .resolve(WorkspaceFiles.UPLOADS_DIR)
+                .resolve(validateFileName(fileName))
+                .normalize();
+    }
+
     static boolean isMultimodalImage(WsMessage.WsAttachment attachment) {
         if (attachment == null || !"image".equals(attachment.getType())) {
             return false;

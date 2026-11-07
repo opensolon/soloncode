@@ -216,6 +216,13 @@ class WebChatInputHandler {
                     break;
                 default:
                     // HITL / IGNORED：决策已写入但未续流，或无事可做
+                    if (outcome.getKind() == InputOutcome.Kind.HITL && outcome.isHitlApplied() == Boolean.FALSE) {
+                        // 过期审批卡（任务已结束，前端残留的卡仍可点击）：告诉前端并补发终态包，
+                        // 否则前端停在等待态。与桌面端「No pending HITL task」同口径。
+                        gate.emitToClient(wsContext, sessionId,
+                                WebEvent.ofError("hitl_stale", "审批卡已失效（任务已结束）"));
+                        gate.getEventPublisher().emitDoneGuarded(wsContext, session);
+                    }
                     drainAfter = true;
                     break;
             }

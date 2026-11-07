@@ -183,6 +183,11 @@ class WebSessionRunner {
         // 新开流前重置：后端 done 门 + 前端流门（否则上一轮 done 会让本轮输出被前端丢弃）
         beginStreamTurn(wsContext, session);
 
+        // 任务结束后续发排队消息（IM 排队的后端调度点）：登记在「运行句柄注销之后」。
+        // 不能写在下方 doFinally：那里会话仍算忙，drainSessionQueue 会直接返回。
+        // 中断路径已先清空队列，此处 drain 无残留；正常结束则取队头续发。
+        outcome.afterRun(() -> gate.getQueueDispatcher().drainSessionQueue(wsContext, session));
+
         // 运行句柄由 ReActRequest 自行登记到 SessionRuns，宿主只持有订阅句柄用于本地收尾
         gate.getStreamBuilder()
                 .buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
@@ -201,10 +206,7 @@ class WebSessionRunner {
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
-
-                    // 任务结束后续发排队消息（IM 排队的后端调度点）：
-                    // 中断路径已先清空队列，此处 drain 无残留；正常结束则取队头续发。
-                    gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
+                    // 续发见上方 afterRun（此时运行句柄尚未注销）
 
                     //MDC 不在此处清理：Reactor 调度钩子会在任务结束时自动还原线程现场，
                     //提前 remove 反而会让同一任务后续日志丢掉工作区归属
@@ -276,6 +278,8 @@ class WebSessionRunner {
                 // 新开流前重置：后端 done 门 + 前端流门（与 async 路径对称，放在 isDisposed 之后，
                 // 避免为一个已取消的轮次解封前端）
                 beginStreamTurn(wsContext, session);
+                // 续发与 async 路径同口径：登记在运行句柄注销之后
+                outcome.afterRun(() -> gate.getQueueDispatcher().drainSessionQueue(wsContext, session));
 
                 gate.getStreamBuilder().buildStreamFlux(wsContext, session, outcome, chatModel, sessionCwd)
                 .subscribeOn(Schedulers.boundedElastic())
@@ -316,7 +320,6 @@ class WebSessionRunner {
 
                     // 流级终态只发一次（含 dispose / 正常 complete / error）
                     gate.getEventPublisher().emitDoneOnce(wsContext, session);
-                    gate.getQueueDispatcher().drainSessionQueue(wsContext, session);
                     countDownLatch.countDown();
 
                     //MDC 不在此处清理：Reactor 调度钩子会在任务结束时自动还原线程现场，

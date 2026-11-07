@@ -43,13 +43,16 @@ public class LoopDataMigratorTest {
     }
 
     @Test
-    public void writesEmptyMarkerWhenNothingToMigrate() throws Exception {
+    public void createsLoopDirMarkerWhenNothingToMigrate() throws Exception {
         Files.createDirectories(sessions().resolve("web-1"));
 
         assertEquals(0, LoopDataMigrator.migrate(tasksFile(), sessions()));
-        assertTrue(Files.isRegularFile(tasksFile()), "没有旧数据也要落空文件，作为「已迁移」标记，避免每次启动重扫");
-        ONode root = ONode.ofJson(new String(Files.readAllBytes(tasksFile()), StandardCharsets.UTF_8));
-        assertEquals(0, root.get("tasks").getArray().size());
+        assertFalse(Files.exists(tasksFile()), "没有旧数据不写 tasks.json（否则插件每次启动都要迁移一个空文件）");
+        assertTrue(Files.isDirectory(dir.resolve(LoopDataMigrator.LOOP_DIR)), "loop/ 目录即「已迁移」标记，避免每次启动重扫");
+
+        Path s1 = sessions().resolve("web-1");
+        Files.write(s1.resolve("loop-tasks.json"), "[{\"id\":\"a1\"}]".getBytes(StandardCharsets.UTF_8));
+        assertEquals(0, LoopDataMigrator.migrate(tasksFile(), sessions()), "已迁移后不再扫描");
     }
 
     @Test

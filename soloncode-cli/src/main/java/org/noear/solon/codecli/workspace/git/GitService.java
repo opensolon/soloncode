@@ -318,6 +318,7 @@ public class GitService {
                     ".git/",
                     ".idea/",
                     ".soloncode/",
+                    ".uploads/",
                     ".gradle/",
                     ".mvn/",
                     "node_modules/",

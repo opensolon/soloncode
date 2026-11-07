@@ -32,13 +32,14 @@ import java.nio.file.StandardOpenOption;
 /**
  * 一次性数据迁移：旧版每会话 {@code sessions/<id>/loop-tasks.json} → 工作区统一存储 {@code tasks.json}。
  *
- * <p>这是 soloncode 的存储历史，不属于 loop 插件：插件只认 tasks.json。</p>
+ * <p>这是 soloncode 的存储历史，不属于 loop 插件。写出的 tasks.json 在 {@code LoopExtension} 挂接时
+ * 由插件再拆成按会话分存的 {@code loop/<sid>.json}（旧文件改名备份或删除）。</p>
  *
- * <p><b>执行时机</b>：工作区装配期、{@code LoopExtension} 挂接之前（挂接即加载 tasks.json）。
- * 仅当 tasks.json 尚不存在时执行；条目按原始 JSON 搬运（补 sessionId），不经任务模型解析，
- * 因此不认识的字段也不会丢。任一步失败保留现场，下次启动重试。</p>
+ * <p><b>执行时机</b>：工作区装配期、{@code LoopExtension} 挂接之前。仅当 tasks.json 与 {@code loop/} 目录
+ * 都不存在时执行；条目按原始 JSON 搬运（补 sessionId），不经任务模型解析，因此不认识的字段也不会丢。
+ * 任一步失败保留现场，下次启动重试。</p>
  *
- * <p>扫完没有任何旧文件时也写一个空的 tasks.json：它就是「已迁移」的标记，
+ * <p>扫完没有任何旧文件时只建空的 {@code loop/} 目录：它就是「已迁移」的标记，
  * 否则没有定时任务的工作区每次启动都会重新扫一遍会话目录。</p>
  *
  * @author noear
@@ -47,6 +48,8 @@ import java.nio.file.StandardOpenOption;
 public final class LoopDataMigrator {
     private static final Logger LOG = LoggerFactory.getLogger(LoopDataMigrator.class);
     private static final String LEGACY_TASKS_FILE = "loop-tasks.json";
+    /** loop 插件按会话分存的目录（与 WorkspaceManager 装配一致） */
+    public static final String LOOP_DIR = "loop";
 
     private LoopDataMigrator() {
     }
@@ -60,7 +63,8 @@ public final class LoopDataMigrator {
         if (tasksFile == null || sessionsDir == null) {
             return 0;
         }
-        if (Files.isRegularFile(tasksFile) || !Files.isDirectory(sessionsDir)) {
+        Path loopDir = tasksFile.resolveSibling(LOOP_DIR);
+        if (Files.isRegularFile(tasksFile) || Files.isDirectory(loopDir) || !Files.isDirectory(sessionsDir)) {
             return 0;
         }
 
@@ -80,11 +84,12 @@ public final class LoopDataMigrator {
                     }
                 }
             }
-            // 没有旧数据也落一个空文件：以文件存在表示「已迁移」，下次启动不再扫描
-            atomicWrite(tasksFile, root.toJson());
             if (sessionFiles == 0) {
+                // 没有旧数据：只建 loop/ 目录作「已迁移」标记，下次启动不再扫描
+                Files.createDirectories(loopDir);
                 return 0;
             }
+            atomicWrite(tasksFile, root.toJson());
 
             // 迁移成功后删除旧文件（删除失败不影响结果，残留会被下次扫描忽略：tasks.json 已存在）
             try (DirectoryStream<Path> stream = Files.newDirectoryStream(sessionsDir)) {

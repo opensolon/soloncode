@@ -831,13 +831,18 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // （旧的 ExecutionBridge 已删除：它同时挂载「执行投递」「忙判定」「轮次度量」三件不相干的事，
         //   而 busy 判定与轮次度量本可（且已）由会话快照与返回值直接得出）
 
-        // 两步一次性迁移（顺序承载语义：必须先于 LoopExtension 挂接——挂接即加载 tasks.json）：
-        // ① tasks.json 的历史 GOAL 条目 → 各会话快照 session.goal（必须在任何会话实例化之前，绕过会话锁直写快照）；
-        // ② 旧版每会话 loop-tasks.json → tasks.json（仅 tasks.json 尚不存在时）。
-        // 即便顺序被打乱也不会丢数据：loop 插件对不认识的条目（如 GOAL）原样写回，只是迁移推迟。
+        // 两步一次性迁移（顺序承载语义：必须先于 LoopExtension 挂接——挂接即加载并拆分 tasks.json）：
+        // ① tasks.json 的历史 GOAL 条目先摘到 goal-legacy.json，再逐会话写入快照 session.goal
+        //   （必须在任何会话实例化之前，绕过会话锁直写快照）。摘出后 loop 插件拿到的 tasks.json 里已无 GOAL，
+        //   失败的会话留在 goal-legacy.json 下次启动重试（loop 拆分会把外来条目只留在 .migrated-* 备份里，
+        //   不能指望它原样写回）；已被拆进备份的 GOAL 条目也会被补救。
+        // ② 旧版每会话 loop-tasks.json → tasks.json（仅 tasks.json 与 loop/ 都不存在时），挂接时再由插件拆成按会话分存。
         Path tasksFile = WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json");
         Path sessionsRoot = WorkspaceDataUtil.sessionsPath(workspacePath);
-        GoalDataMigrator.migrate(tasksFile, sessionsRoot);
+        GoalDataMigrator.Result goalMigration = GoalDataMigrator.migrate(tasksFile, sessionsRoot);
+        if (goalMigration == GoalDataMigrator.Result.PARTIAL) {
+            LOG.warn("[Workspace] some legacy goals failed to migrate, kept in {} for retry", GoalDataMigrator.LEGACY_FILE);
+        }
         LoopDataMigrator.migrate(tasksFile, sessionsRoot);
 
         // harness 三个插件（steer / queue / goal，各自独立模块）集中在此装配：
@@ -856,10 +861,11 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // loop（会话定时任务）：宿主只提供存储位置、孤儿判定、阈值（实时读，支持热更新）与
         // 调度线程日志归属；调度/持久化/命令/工具全部在插件内。执行通道在挂接后注册（与 goal、CLI 同形）。
         // 没人认领时只记日志跳过（关闭插件缺省执行器，桌面会话等保持既有行为）。
-        // 任务存储跟随引擎的数据来源（与 TODO 清单同一来源）：本地时即 <dataDir>/tasks.json，与上方迁移器操作的文件相同；
-        // 数据来源换成 db / http 时 loop 一并跟随（上方两个迁移器只处理本地旧数据，届时应改为一次性导入）。
+        // 任务存储跟随引擎的数据来源（与 TODO 清单同一来源）：按会话分存在 <dataDir>/loop/，
+        // 首次加载时把上方迁移器产出的 tasks.json 拆开迁移；数据来源换成 db / http 时 loop 一并跟随
+        // （上方两个迁移器只处理本地旧数据，届时应改为一次性导入）。
         LoopExtension loopExtension = LoopExtension.builder()
-                .store(engine.getStateSource(), "tasks.json")
+                .store(engine.getStateSource(), LoopDataMigrator.LOOP_DIR, "tasks.json")
                 .sessionAlive(id -> id.startsWith(AutomationManager.SESSION_PREFIX)
                         || Files.isDirectory(sessionsRoot.resolve(id)))
                 .maxErrors(() -> wsSettings.getLoop().getMaxConsecutiveErrorsOrDefault())

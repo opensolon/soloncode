@@ -96,7 +96,7 @@ public class GeneralGroupDo implements Serializable {
     private String defaultReasoningEffort;
 
     //模型默认-上下文长度（0 = 未设置；作为压缩拦截器的默认上下文窗口热更新到引擎）
-    private long modelDefaultContextLength = 1024_100L;
+    private long modelDefaultContextLength = 1024_1000L;
     //模型默认-并发数（0 = 未设置，回退引擎默认；同时作为子代理并行上限热更新到引擎）
     private int modelDefaultConcurrency = 5;
 

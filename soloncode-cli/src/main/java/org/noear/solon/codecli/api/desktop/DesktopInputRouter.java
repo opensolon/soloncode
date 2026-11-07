@@ -38,8 +38,13 @@ import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 
@@ -59,12 +64,12 @@ final class DesktopInputRouter {
 
     /** 宿主域输入属性：推理强度（与 QueueItem#getReasoningEffort 约定同名，忙时随积压保存） */
     static final String ATTR_REASONING_EFFORT = "reasoningEffort";
+    /** 宿主域输入属性：运行模式（忙时随积压保存，续发时再写入会话） */
+    static final String ATTR_RUN_MODE = "runMode";
 
     private final WsGate gate;
 
     DesktopInputRouter(WsGate gate) {
-        // 忙时进积压的输入（handle → DEFERRED）在本会话一轮结束后续发
-        gate.streamTurn.setTurnFinishedListener(this::drainBacklog);
         this.gate = gate;
     }
 
@@ -200,15 +205,9 @@ final class DesktopInputRouter {
         String modelName = req.getModel();
         ChatModel chatModel = engine.getModelOrDefInstance(modelName);
 
-        // 会话级模型选择只记录显式指定的值：桌面端未携带 model 时保持已有选择，
-        // 否则 HITL 恢复等后续轮次会因 null 覆盖回落默认模型（与 WebChatInputHandler 守卫一致）。
-        if (Assert.isNotEmpty(modelName)) {
-            engine.setSessionModel(session, modelName);
-        }
-        if (req.getReasoningEffort() != null) {
-            ReasoningSupportUtil.putSessionEffort(session,
-                    req.getReasoningEffort(), true);
-        }
+        // 会话级选择（模型 / 推理强度 / 运行模式 / 子代理）受理后才写（见 dispatchTurn 的 applySelection）：
+        // 被排队或拒绝的输入不得改写正在运行会话的选择（与 WebChatInputHandler 同口径）。
+        // 排队的条目把这些选择存进积压（selectedModel / explicitAgent / attrs），续发时再生效。
         // 请求显式 effort 优先；否则用会话 context
         final String reasoningEffort = ReasoningSupportUtil.resolveEffectiveEffort(
                 req.getReasoningEffort(),
@@ -216,9 +215,8 @@ final class DesktopInputRouter {
                 null,
                 req.getReasoningEffort() != null);
 
-        // 模式处理：根据前端 mode 字段配置 session 行为
+        // 模式处理：根据前端 mode 字段配置 session 行为（受理后写入）
         String mode = DesktopRunModes.normalize(req.getMode());
-        session.attrs().put(DesktopStreamTurn.SESSION_ATTR_RUN_MODE, mode);
         if ("plan".equals(mode)) {
             // 规划模式：只读分析，不执行文件/命令操作
             if (!currentInput.contains("不要执行") && !currentInput.contains("只分析")) {
@@ -229,11 +227,12 @@ final class DesktopInputRouter {
 
         // 与 WebStreamBuilder 保持一致：记录本轮真正的源 Agent，供 HITL 恢复继续使用。
         final String resolvedAgentName = engine.getAgentOrMain(agentName).name();
-        engine.setSessionAgent(session, resolvedAgentName);
 
         // Goal 是对话持续流，不再交给斜杠命令返回“任务已注册”回执。
+        // Goal 不经 handle 受理：选择照旧在创建前写入
         String goalObjective = WsGate.extractGoalObjective(currentInput, mode);
         if (goalObjective != null) {
+            applySelection(session, modelName, req.getReasoningEffort(), mode, agentName);
             gate.startGoalStream(socket, sessionId, req, goalObjective, cwd, resolvedAgentName);
             return;
         }
@@ -244,6 +243,8 @@ final class DesktopInputRouter {
         // 处理附件：图片构建 ImageBlock，文件作为引用拼入文本前缀
         List<WsMessage.WsAttachment> attachments = req.getAttachments();
         InputAttachments attachResult = InputAttachments.of();
+        // 本轮新建的附件文件（未受理时删除；覆盖了已有同名文件的不计入，避免删掉上一轮的附件）
+        List<Path> createdFiles = new ArrayList<>();
 
         if (attachments != null && !attachments.isEmpty()) {
             if (attachments.size() > DesktopAttachmentSupport.MAX_ATTACHMENTS) {
@@ -259,7 +260,12 @@ final class DesktopInputRouter {
                 if (totalAttachmentBytes > DesktopAttachmentSupport.MAX_TOTAL_ATTACHMENT_BYTES) {
                     throw new IllegalArgumentException("附件总大小不能超过 50 MB");
                 }
-                String savedName = DesktopAttachmentSupport.save(java.nio.file.Paths.get(cwd), att.getName(), bytes);
+                Path target = DesktopAttachmentSupport.targetOf(Paths.get(cwd), att.getName());
+                boolean existed = Files.exists(target);
+                String savedName = DesktopAttachmentSupport.save(Paths.get(cwd), att.getName(), bytes);
+                if (!existed) {
+                    createdFiles.add(target);
+                }
                 if (DesktopAttachmentSupport.isMultimodalImage(att)) {
                     attachResult.media(ImageBlock.ofBase64(
                             Base64.getEncoder().encodeToString(bytes), att.getMimeType()).filePath(savedName));
@@ -272,14 +278,57 @@ final class DesktopInputRouter {
         // 命令识别、附件前缀拼装、Prompt 构建统一交给引擎。
         // agent 已在此前解析（桌面端需先做 Goal 拦截与格式校验），用 explicitAgent 透传避免二次判断。
         // 正文路径不传 resume：审批后的续跑走 handleHitlAction（hitlResume=true）。
-        dispatchTurn(socket, session, finalSessionId, cwd,
-                HarnessInput.of(session, currentInput)
-                        .explicitAgent(agentName)
-                        .selectedModel(modelName)
-                        .attachments(attachResult)
-                        .attr(ATTR_REASONING_EFFORT, reasoningEffort)
-                        .commandContextFactory(desktopCommandFactory()),
-                reasoningEffort, chatModel, false);
+        InputOutcome.Kind kind;
+        try {
+            kind = dispatchTurn(socket, session, finalSessionId, cwd,
+                    HarnessInput.of(session, currentInput)
+                            .explicitAgent(agentName)
+                            .selectedModel(modelName)
+                            .attachments(attachResult)
+                            .attr(ATTR_REASONING_EFFORT, reasoningEffort)
+                            .attr(ATTR_RUN_MODE, mode)
+                            .commandContextFactory(desktopCommandFactory()),
+                    reasoningEffort, chatModel, false);
+        } catch (RuntimeException e) {
+            deleteQuietly(createdFiles);
+            throw e;
+        }
+        if (kind != InputOutcome.Kind.TASK) {
+            // 未受理（如忙时带附件被拒）：附件不会被任何一轮引用，删掉本轮新建的文件
+            deleteQuietly(createdFiles);
+        }
+    }
+
+    /**
+     * 写入会话级选择（受理后调用）。
+     *
+     * @param modelName 显式指定的模型；空时保持已有选择（否则 HITL 恢复等后续轮次会回落默认模型）
+     * @param effort    显式指定的推理强度；null 时不改
+     * @param mode      运行模式；null 时不改
+     * @param agentName 子代理（null = 主代理）
+     */
+    private void applySelection(AgentSession session, String modelName, String effort, String mode, String agentName) {
+        HarnessEngine engine = gate.engine;
+        if (Assert.isNotEmpty(modelName)) {
+            engine.setSessionModel(session, modelName);
+        }
+        if (effort != null) {
+            ReasoningSupportUtil.putSessionEffort(session, effort, true);
+        }
+        if (mode != null) {
+            session.attrs().put(DesktopStreamTurn.SESSION_ATTR_RUN_MODE, mode);
+        }
+        engine.setSessionAgent(session, engine.getAgentOrMain(agentName).name());
+    }
+
+    private static void deleteQuietly(List<Path> files) {
+        for (Path file : files) {
+            try {
+                Files.deleteIfExists(file);
+            } catch (Exception e) {
+                LOG.warn("[Desktop] delete unused attachment failed: {}", e.toString());
+            }
+        }
     }
 
     /**
@@ -297,12 +346,28 @@ final class DesktopInputRouter {
      *       false 走 begin。传错会导致审批续跑时占屏或漏帧。</li>
      * </ul>
      */
-    private void dispatchTurn(WebSocket socket, AgentSession session, String sessionId, String cwd,
-                              HarnessInput hin, String reasoningEffort, ChatModel fallbackModel,
-                              boolean hitlResume) {
+    private InputOutcome.Kind dispatchTurn(WebSocket socket, AgentSession session, String sessionId, String cwd,
+                                           HarnessInput hin, String reasoningEffort, ChatModel fallbackModel,
+                                           boolean hitlResume) {
         InputOutcome outcome = gate.engine.handle(hin);
+        doDispatch(socket, session, sessionId, cwd, hin, outcome, reasoningEffort, fallbackModel, hitlResume);
+        return outcome.getKind();
+    }
 
-        switch (outcome.getKind()) {
+    private void doDispatch(WebSocket socket, AgentSession session, String sessionId, String cwd,
+                            HarnessInput hin, InputOutcome outcome, String reasoningEffort, ChatModel fallbackModel,
+                            boolean hitlResume) {
+        // 受理后才写会话级选择（与 Web 同口径：TASK / REPLY 写，排队 / 拒绝 / 在运行任务旁边执行的命令不写）。
+        // 审批续流沿用会话已有选择，不重写；续发的排队条目：选择来自积压保存的 selectedModel / selectedAgent / attrs。
+        InputOutcome.Kind kind = outcome.getKind();
+        if (!hitlResume && !outcome.isBesideRunning()
+                && (kind == InputOutcome.Kind.TASK || kind == InputOutcome.Kind.REPLY)) {
+            applySelection(session, hin.getSelectedModel(), hin.getAttr(ATTR_REASONING_EFFORT),
+                    hin.getAttr(ATTR_RUN_MODE),
+                    hin.getExplicitAgent() != null ? hin.getExplicitAgent() : hin.getSelectedAgent());
+        }
+
+        switch (kind) {
             case REJECTED:
                 // 未受理：待审批卡 / 忙且无处可延 / 附件不能排队（不发 done：正在运行的那一轮自己会发）
                 socket.send(new ONode().set("type", "error")
@@ -335,6 +400,11 @@ final class DesktopInputRouter {
                     prompt.attrPut("start_time", System.currentTimeMillis());
                     gate.applyReasoningEffort(prompt, reasoningEffort);
                 }
+
+                // 忙时进积压的输入（DEFERRED）在本轮结束后续发：必须登记在「运行句柄注销之后」，
+                // 流的 doFinally 里会话仍算忙、drainLoop 会直接返回。换线程续发：本轮流是同步订阅的，
+                // 就地续发会把下一轮嵌套在上一轮的终止回调里（新输入插入空档无害：有积压时引擎一律排到后面）
+                outcome.afterRun(() -> scheduleDrainBacklog(session, socket));
 
                 // 命令触发的任务不发独立回执（与迁移前一致）：命令输出由任务流自身携带，
                 // 若在此先发回执，会绕过 DesktopStreamHub 的序号/回放缓冲
@@ -370,6 +440,21 @@ final class DesktopInputRouter {
             default:
                 // IGNORED
                 return;
+        }
+    }
+
+    /** 在别的线程上续发会话积压（本轮运行句柄注销后由 afterRun 触发）。 */
+    private void scheduleDrainBacklog(AgentSession session, WebSocket socket) {
+        try {
+            Schedulers.boundedElastic().schedule(() -> {
+                try {
+                    drainBacklog(session, socket);
+                } catch (Throwable e) {
+                    LOG.warn("[Desktop] drain backlog failed: {}", e.toString());
+                }
+            });
+        } catch (Throwable e) {
+            LOG.warn("[Desktop] schedule backlog drain failed: {}", e.toString());
         }
     }
 

@@ -193,6 +193,17 @@ public class CliShell implements Runnable {
         if (goal != null) {
             goal.addExecutor("cli", SessionIdOwnership::isCli,
                     (sessionId, prompt) -> runInjectedRound(session, prompt));
+
+            // 重启后恢复本会话的活跃 goal 调度（只挂 job、不立即跑；PAUSED/BLOCKED/终态不挂，已调度幂等跳过）。
+            // 此前只有 Web 入口恢复，CLI 重启后进行中的 goal 不再推进。须在执行器注册之后。
+            try {
+                goal.recover(java.util.Collections.singletonList(session.getSessionId()), sid -> {
+                    org.noear.solon.ai.harness.extension.goal.GoalTask task = goal.get(sid);
+                    return task == null ? null : task.getStatus();
+                });
+            } catch (Throwable e) {
+                LOG.warn("[CLI] recover goal failed: {}", e.toString());
+            }
         }
 
         // 2. 主循环

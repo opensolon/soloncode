@@ -462,6 +462,49 @@ class PackageBoundaryTest {
     }
 
     /**
+     * 续发积压不得写在流的 {@code doFinally} 里，必须经 {@code InputOutcome#afterRun} 登记。
+     *
+     * <p>Reactor 正常终止时下游的 doFinally 先于上游执行，而运行句柄在请求内部最上游才注销：
+     * 宿主 doFinally 里会话仍算忙，续发会被忙判定挡掉，排队消息要等下一次外部触发才发出。</p>
+     */
+    @Test
+    void backlogDrainMustNotRunInStreamDoFinally() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path file : javaFiles(SRC)) {
+            String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+            if (content.contains("setTurnFinishedListener")) {
+                violations.add(file.getFileName() + " 用回合结束监听续发（应用 outcome.afterRun）");
+            }
+            int from = 0;
+            while ((from = content.indexOf(".doFinally(", from)) >= 0) {
+                String body = parenBody(content, from + ".doFinally".length());
+                if (body.contains("drainSessionQueue") || body.contains("drainBacklog") || body.contains("drainLoop")) {
+                    violations.add(file.getFileName() + " 在 doFinally 里续发积压");
+                }
+                from += ".doFinally(".length();
+            }
+        }
+        assertTrue(violations.isEmpty(), "续发须在运行句柄注销后（InputOutcome#afterRun）：" + violations);
+    }
+
+    /** 取 {@code start} 处左括号到匹配右括号之间的文本（粗略计数，忽略字符串内括号）。 */
+    private static String parenBody(String content, int start) {
+        int depth = 0;
+        for (int i = start; i < content.length(); i++) {
+            char c = content.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')') {
+                depth--;
+                if (depth == 0) {
+                    return content.substring(start, i + 1);
+                }
+            }
+        }
+        return content.substring(start);
+    }
+
+    /**
      * 宿主不得自己组合受理判定：能不能接、该走哪条路归 harness 的唯一执行入口（{@code engine.handle} 第 0 步）。
      *
      * <p>受限文件：Web 输入入口与队列派发器。这两处曾用 50 余行 {@code synchronized} 块
