@@ -96,7 +96,7 @@ final class DesktopInputRouter {
         if ("[(sec)interrupt]".equals(req.getInput())) {
             if (gate.goal != null && gate.goal.get(sessionId) != null) {
                 // goal 轮次：只停流，不落取消消息（历史由 goal.remove 收尾）。
-                // 这里不能用 InterruptMode.INTERRUPT：它会补写取消消息，
+                // 这里不能用 InterruptMode.INTERRUPT_ALL：它会补写取消消息，
                 // 而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
                 engine.interrupt(session, InterruptMode.CANCEL_STREAM);
                 // remove 门面内含「先摘调度再清除」
@@ -107,7 +107,7 @@ final class DesktopInputRouter {
             // 普通轮次：清队列 + 停流 + 幂等补写取消消息与快照。
             // 此处曾再手写一遍取消消息与快照：迁移后 interrupt() 已无条件补写，
             // 继续手写会让同一条取消消息入库两次。
-            engine.interrupt(session, InterruptMode.INTERRUPT);
+            engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
             LOG.info("用户已取消任务.");
 
             String interruptModelName = req.getModel();

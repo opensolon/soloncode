@@ -573,7 +573,7 @@ public class PrintMode {
             synchronized (turnStateLock) {
                 currentTurn.set(session);
                 if (turnInterrupted.get()) {
-                    engine.interrupt(session, InterruptMode.INTERRUPT);
+                    engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
                 }
             }
 
@@ -618,7 +618,7 @@ public class PrintMode {
             turnInterrupted.set(true);
             AgentSession session = currentTurn.getAndSet(null);
             if (session != null) {
-                engine.interrupt(session, InterruptMode.INTERRUPT);
+                engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
             }
             // 会话尚未发布也算成功：runAgent 会在发布后观察中断标志并补做取消。
             return true;

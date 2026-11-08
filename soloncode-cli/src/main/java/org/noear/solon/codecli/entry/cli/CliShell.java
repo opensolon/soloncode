@@ -541,7 +541,7 @@ public class CliShell implements Runnable {
                 if (c > 0) {
                     if (c == 27) { //|| c == '\r' || c == '\n'
                         // 停流 + 补写取消消息与快照统一走引擎入口（幂等）
-                        engine.interrupt(session, InterruptMode.INTERRUPT);
+                        engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
                         isInterrupted.set(true);
                         latch.countDown();
                         break;
