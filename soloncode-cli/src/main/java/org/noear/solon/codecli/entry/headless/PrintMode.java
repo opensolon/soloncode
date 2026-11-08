@@ -27,6 +27,7 @@ import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.RunOutcome;
 import org.noear.solon.ai.harness.host.RunPrep;
 import org.noear.solon.ai.harness.host.RunSink;
+import org.noear.solon.ai.harness.host.Disposition;
 import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.input.BusyPolicy;
 import org.noear.solon.ai.harness.input.HarnessInput;
@@ -537,10 +538,10 @@ public class PrintMode {
                             handleChunk(session, event, result);
                         }
                     });
-            if (submitted.getKind() != SubmitResult.Kind.STARTED) {
+            if (submitted.getDisposition() != Disposition.STARTED) {
                 // 未受理（会话正被其它入口占用 / 待审批）或空输入：不能当作成功静默退出
                 throw new IllegalStateException(submitted.getRejectDetail() != null
-                        ? submitted.getRejectDetail() : "Input not admitted: " + submitted.getKind());
+                        ? submitted.getRejectDetail() : "Input not admitted: " + submitted.getDisposition());
             }
 
             // 受理期间的停止由框架接住；只剩「进入 submit 之前」的极短窗口，这里补一次（重复停止是幂等的）

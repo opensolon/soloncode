@@ -6,7 +6,7 @@ package org.noear.solon.codecli.session;
 
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalProjection;
-import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
+import org.noear.solon.ai.harness.extension.goal.GoalStatus;
 import org.noear.solon.flow.FlowContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +67,7 @@ public final class SessionSnapshots {
      * <p>只读探测专用（启动恢复）：字段名解析完全由 harness 的 {@link GoalProjection} 负责，
      * 宿主不硬编码任何投影键名；无有效投影返回 null。</p>
      */
-    public static GoalSnapshot.Status readGoalStatus(Path sessionDir, String sessionId) {
+    public static GoalStatus readGoalStatus(Path sessionDir, String sessionId) {
         return GoalProjection.statusOf(readSnapshot(sessionDir, sessionId));
     }
 

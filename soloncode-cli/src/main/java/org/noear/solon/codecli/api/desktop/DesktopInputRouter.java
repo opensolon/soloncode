@@ -22,6 +22,7 @@ import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.harness.host.Disposition;
 import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.input.AgentMentions;
 import org.noear.solon.ai.harness.input.InputAttachments;
@@ -263,7 +264,7 @@ final class DesktopInputRouter {
             deleteQuietly(createdFiles);
             throw e;
         }
-        if (result.getKind() != SubmitResult.Kind.STARTED) {
+        if (result.getDisposition() != Disposition.STARTED) {
             // 未开流（如忙时带附件被拒）：附件不会被任何一轮引用，删掉本轮新建的文件
             deleteQuietly(createdFiles);
         }

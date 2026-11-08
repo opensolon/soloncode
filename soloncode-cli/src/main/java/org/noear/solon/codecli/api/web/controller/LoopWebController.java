@@ -25,6 +25,7 @@ import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
 import org.noear.solon.ai.harness.extension.goal.GoalPatch;
+import org.noear.solon.ai.harness.extension.goal.GoalStatus;
 import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
 import org.noear.solon.ai.harness.extension.loop.LoopPatch;
 import org.noear.solon.ai.harness.extension.loop.LoopSpec;
@@ -634,7 +635,7 @@ public class LoopWebController extends AbstractWebController {
         GoalExtension goal = currentContext().getGoalExtension();
         GoalSnapshot gs = goalRow(goal, sessionId, taskId);
         if (gs != null) {
-            if (gs.getStatus() == GoalSnapshot.Status.PURSUING) {
+            if (gs.getStatus() == GoalStatus.PURSUING) {
                 // pause 门面内含摘调度配对
                 if (!goal.pause(sessionId).isOk()) {
                     return Result.failure(400, "Goal cannot be paused in state: " + gs.getStatus());

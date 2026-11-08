@@ -138,7 +138,7 @@
         return mins + 'm';
     }
 
-    // Goal 状态映射（与 GoalState.Status 对齐）
+    // Goal 状态映射（与 harness 的 GoalStatus 对齐）
     function getGoalStatusLabel() {
         return {
             PURSUING: I18n.t('loop.status.pursuing'),

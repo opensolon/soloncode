@@ -24,6 +24,7 @@ import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.SessionAdmin;
+import org.noear.solon.ai.harness.host.Disposition;
 import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.input.BusyPolicy;
 import org.noear.solon.ai.harness.input.HarnessInput;
@@ -518,7 +519,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         if (r == null) {
             return false;
         }
-        if (r.getKind() == SubmitResult.Kind.REJECTED) {
+        if (r.getDisposition() == Disposition.REJECTED) {
             // 含非持有节点（原因 NOT_OWNER）；来源端已由 WebHostSink#rejected 回报
             LOG.warn("[WebGate] {} event not accepted for session {}: {}", source, sessionId, r);
             return false;

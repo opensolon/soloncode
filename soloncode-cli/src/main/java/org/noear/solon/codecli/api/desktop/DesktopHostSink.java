@@ -24,7 +24,7 @@ import org.noear.solon.ai.harness.host.HostInput;
 import org.noear.solon.ai.harness.host.HostRun;
 import org.noear.solon.ai.harness.host.HostSink;
 import org.noear.solon.ai.harness.host.RunSink;
-import org.noear.solon.ai.harness.host.SubmitResult;
+import org.noear.solon.ai.harness.host.Disposition;
 import org.noear.solon.ai.harness.input.RejectReason;
 import org.noear.solon.codecli.session.SessionRewindService;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
@@ -80,14 +80,15 @@ final class DesktopHostSink implements HostSink {
         if (session == null || input.isResume() || input.isBesideRunning()) {
             return;
         }
-        SubmitResult.Kind kind = input.getKind();
-        if (kind == SubmitResult.Kind.STARTED || kind == SubmitResult.Kind.REPLY) {
+        Disposition disposition = input.getDisposition();
+        if (disposition == Disposition.STARTED || disposition == Disposition.REPLY) {
             applySelection(gate.engine, session, input.getSelectedModel(),
                     input.getAttr(DesktopInputRouter.ATTR_REASONING_EFFORT),
                     input.getAttr(DesktopInputRouter.ATTR_RUN_MODE),
                     input.getAttr(DesktopInputRouter.ATTR_AGENT));
         }
-        if (kind == SubmitResult.Kind.REPLY && input.hasReply() == false) {
+
+        if (disposition == Disposition.REPLY && input.hasReply() == false) {
             receipt(input, null);
         }
     }
@@ -155,7 +156,7 @@ final class DesktopHostSink implements HostSink {
     @Override
     public void hitl(HostInput input, List<HitlCard> cards) {
         // 运行挂起时的卡由本轮的 RunEnd 推送；这里只处理「一次审批后本批仍有未决卡」：推下一张
-        if (input.getKind() != SubmitResult.Kind.HITL || input.getSession() == null) {
+        if (input.getDisposition() != Disposition.HITL || input.getSession() == null) {
             return;
         }
         HitlCard next = HitlCard.next(input.getSession());

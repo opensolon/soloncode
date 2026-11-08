@@ -22,7 +22,7 @@ import org.noear.solon.ai.harness.host.HostRun;
 import org.noear.solon.ai.harness.host.HostSink;
 import org.noear.solon.ai.harness.host.HostInput;
 import org.noear.solon.ai.harness.host.RunSink;
-import org.noear.solon.ai.harness.host.SubmitResult;
+import org.noear.solon.ai.harness.host.Disposition;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.input.RejectReason;
 import org.noear.solon.codecli.api.web.event.WebEvent;
@@ -88,7 +88,7 @@ final class WebHostSink implements HostSink {
         } else if (WebInputAttrs.isEcho(input)) {
             gate.emitToClient(ctx, input.getSessionId(), WebEvent.ofUserInput(input.getText(), input.getOrigin().getChannel()));
             // IM 侧感知补齐：受理后给来源端一条「已收到」；斜杠命令自带回执，不重复提示
-            if (input.getKind() == SubmitResult.Kind.STARTED && input.isCommand() == false) {
+            if (input.getDisposition() == Disposition.STARTED && input.isCommand() == false) {
                 signal(ctx, input, ImStatus.ACCEPTED, null);
             }
         }
@@ -111,7 +111,7 @@ final class WebHostSink implements HostSink {
         }
 
         // 命令执行了但没有回执：给一个兜底提示（有回执的走 reply）
-        if (input.getKind() == SubmitResult.Kind.REPLY && input.hasReply() == false) {
+        if (input.getDisposition() == Disposition.REPLY && input.hasReply() == false) {
             renderReply(ctx, input, COMMAND_DONE_TEXT);
         }
     }

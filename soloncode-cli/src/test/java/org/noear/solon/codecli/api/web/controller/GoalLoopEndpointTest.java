@@ -9,6 +9,7 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.ai.harness.extension.goal.GoalProjection;
+import org.noear.solon.ai.harness.extension.goal.GoalStatus;
 import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -59,7 +60,7 @@ class GoalLoopEndpointTest {
     }
 
     /** 预置一条指定状态的 goal（经快照投影，首次访问时 hydrate）。 */
-    private void seed(GoalSnapshot.Status status) {
+    private void seed(GoalStatus status) {
         AgentSession session = sessions.computeIfAbsent(SESSION, InMemoryAgentSession::of);
         GoalProjection.builder()
                 .goalId(TASK_ID)
@@ -70,56 +71,56 @@ class GoalLoopEndpointTest {
                 .writeTo(session.getContext());
     }
 
-    private GoalSnapshot.Status statusNow() {
+    private GoalStatus statusNow() {
         GoalSnapshot task = goal.get(SESSION);
         return task == null ? null : task.getStatus();
     }
 
     @Test
     void pauseEndpointPausesPursuingGoal() {
-        seed(GoalSnapshot.Status.PURSUING);
+        seed(GoalStatus.PURSUING);
 
         Result result = controller.loopGoalPause(SESSION, TASK_ID);
 
         assertEquals(Result.SUCCEED_CODE, result.getCode());
-        assertEquals(GoalSnapshot.Status.PAUSED, statusNow());
+        assertEquals(GoalStatus.PAUSED, statusNow());
     }
 
     @Test
     void pauseEndpointRejectsNonPursuingGoal() {
-        seed(GoalSnapshot.Status.PAUSED);
+        seed(GoalStatus.PAUSED);
 
         assertEquals(400, controller.loopGoalPause(SESSION, TASK_ID).getCode());
-        assertEquals(GoalSnapshot.Status.PAUSED, statusNow());
+        assertEquals(GoalStatus.PAUSED, statusNow());
     }
 
     @Test
     void pauseEndpointReturns404ForForeignTaskId() {
-        seed(GoalSnapshot.Status.PURSUING);
+        seed(GoalStatus.PURSUING);
 
         assertEquals(404, controller.loopGoalPause(SESSION, "not-mine").getCode());
-        assertEquals(GoalSnapshot.Status.PURSUING, statusNow());
+        assertEquals(GoalStatus.PURSUING, statusNow());
     }
 
     @Test
     void resumeEndpointResumesPausedGoal() {
-        seed(GoalSnapshot.Status.PAUSED);
+        seed(GoalStatus.PAUSED);
 
         assertEquals(Result.SUCCEED_CODE, controller.loopGoalResume(SESSION, TASK_ID).getCode());
-        assertEquals(GoalSnapshot.Status.PURSUING, statusNow());
+        assertEquals(GoalStatus.PURSUING, statusNow());
     }
 
     @Test
     void resumeEndpointRejectsTerminalGoal() {
-        seed(GoalSnapshot.Status.ACHIEVED);
+        seed(GoalStatus.ACHIEVED);
 
         assertEquals(400, controller.loopGoalResume(SESSION, TASK_ID).getCode());
-        assertEquals(GoalSnapshot.Status.ACHIEVED, statusNow());
+        assertEquals(GoalStatus.ACHIEVED, statusNow());
     }
 
     @Test
     void clearEndpointRemovesGoal() {
-        seed(GoalSnapshot.Status.PURSUING);
+        seed(GoalStatus.PURSUING);
 
         assertEquals(Result.SUCCEED_CODE, controller.loopGoalClear(SESSION, TASK_ID).getCode());
         assertNull(goal.get(SESSION));
@@ -132,43 +133,43 @@ class GoalLoopEndpointTest {
 
     @Test
     void togglePausesPursuingGoal() {
-        seed(GoalSnapshot.Status.PURSUING);
+        seed(GoalStatus.PURSUING);
 
         assertEquals(Result.SUCCEED_CODE, controller.loopToggle(SESSION, TASK_ID).getCode());
-        assertEquals(GoalSnapshot.Status.PAUSED, statusNow());
+        assertEquals(GoalStatus.PAUSED, statusNow());
     }
 
     @Test
     void toggleResumesResumableGoal() {
-        seed(GoalSnapshot.Status.BLOCKED);
+        seed(GoalStatus.BLOCKED);
 
         assertEquals(Result.SUCCEED_CODE, controller.loopToggle(SESSION, TASK_ID).getCode());
-        assertEquals(GoalSnapshot.Status.PURSUING, statusNow());
+        assertEquals(GoalStatus.PURSUING, statusNow());
     }
 
     @Test
     void toggleRejectsTerminalGoal() {
-        seed(GoalSnapshot.Status.ACHIEVED);
+        seed(GoalStatus.ACHIEVED);
 
         assertEquals(400, controller.loopToggle(SESSION, TASK_ID).getCode());
-        assertEquals(GoalSnapshot.Status.ACHIEVED, statusNow());
+        assertEquals(GoalStatus.ACHIEVED, statusNow());
     }
 
     @Test
     void triggerRunsRoundOnlyForActiveGoal() {
-        seed(GoalSnapshot.Status.PURSUING);
+        seed(GoalStatus.PURSUING);
         assertEquals(Result.SUCCEED_CODE, controller.loopTrigger(SESSION, TASK_ID).getCode());
     }
 
     @Test
     void triggerRejectsInactiveGoal() {
-        seed(GoalSnapshot.Status.PAUSED);
+        seed(GoalStatus.PAUSED);
         assertEquals(400, controller.loopTrigger(SESSION, TASK_ID).getCode());
     }
 
     @Test
     void listRowUsesPluginStandardView() {
-        seed(GoalSnapshot.Status.PAUSED);
+        seed(GoalStatus.PAUSED);
 
         @SuppressWarnings("unchecked")
         Map<String, Object> row = (Map<String, Object>) controller.loopGet(SESSION, TASK_ID).getData();
