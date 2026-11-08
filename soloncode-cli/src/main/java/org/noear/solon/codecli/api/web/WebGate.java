@@ -21,14 +21,12 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
-import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.SessionAdmin;
 import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.host.SubmitSpec;
 import org.noear.solon.ai.harness.input.InputOrigin;
-import org.noear.solon.ai.harness.session.HarnessAttrs;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.auth.UserAuthConfig;
 import org.noear.solon.codecli.auth.UserLoginController;
@@ -76,15 +74,6 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
 
     /** HITL 审批时前端回传的 callUuid（通过 session context 透传） */
     public static final String CTX_HITL_CALL_ID = "hitl.callId";
-
-    /**
-     * 会话属性：输入已被接纳但 Agent 流尚未完成注册，用于防止并发启动竞态。
-     *
-     * @deprecated 运行态标记已收归 harness 的受理闸门（engine.handle），宿主不应再读写该键；
-     *             本常量仅保留给尚未迁移的测试。
-     */
-    @Deprecated
-    public static final String ATTR_INPUT_ADMITTING = HarnessAttrs.INPUT_ADMITTING;
 
     private final WorkspaceRegistry workspaceRegistry;
 
@@ -218,7 +207,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
      * 然后做一次性的旧数据迁移（索引上线前的存量 goal / 积压补登记、旧版队列文件）。
      */
     @Override
-    public void recoverSessionQueues(WorkspaceContext wsContext) {
+    public void onWorkspaceReady(WorkspaceContext wsContext) {
         if (wsContext == null) {
             return;
         }
@@ -431,18 +420,6 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         eventPublisher.emitDoneGuarded(wsContext, session);
     }
 
-    /** 兼容入口：流状态属于 session 运行时，不属于 WebGate。 */
-    @Deprecated
-    public static boolean hasActiveStream(AgentSession session) {
-        return SessionActivity.hasActiveStream(session);
-    }
-
-    /** 兼容入口：输入受理状态属于 session 运行时，不属于 WebGate。 */
-    @Deprecated
-    public static boolean isInputAdmitting(AgentSession session) {
-        return SessionActivity.isInputAdmitting(session);
-    }
-
     // ═══════════════════════════════════════════════════════════════
     //  输入端口 —— 接收并处理用户请求
     // ═══════════════════════════════════════════════════════════════
@@ -570,7 +547,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
             // 推理强度 / 思考模式 / cwd 是宿主域参数：作为属性交给引擎，忙时原样进积压、续发时原样带回
             SubmitSpec spec = SubmitSpec.of(resume ? null : input)
                     .origin(isHitl ? InputOrigin.NONE : origin)
-                    .steerWhenBusy(steerWhenBusy)
+                    .whenBusy(steerWhenBusy ? SubmitSpec.BusyPolicy.STEER : SubmitSpec.BusyPolicy.QUEUE)
                     .customize(in -> {
                         in.resume(resume)
                                 .selectedAgent(selectedAgent)
@@ -637,7 +614,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     @Override
     public boolean interruptSession(WorkspaceContext wsContext, String sessionId) {
         try {
-            HarnessResult<Boolean> r = host.interrupt(tenantOf(wsContext), sessionId, InterruptMode.INTERRUPT_ALL);
+            HarnessResult<Boolean> r = host.interrupt(tenantOf(wsContext), sessionId);
             if (r.isOk() == false) {
                 LOG.info("[WebGate] Session {} interrupt rejected: {}", sessionId, r);
                 return false;

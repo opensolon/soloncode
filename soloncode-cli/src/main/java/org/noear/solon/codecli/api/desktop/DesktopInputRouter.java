@@ -18,28 +18,19 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.InterruptMode;
-import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.content.ImageBlock;
-import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.host.SubmitResult;
+import org.noear.solon.ai.harness.host.SubmitSpec;
 import org.noear.solon.ai.harness.input.AgentMentions;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.HarnessInput;
-import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
-import org.noear.solon.ai.harness.command.CommandContextFactory;
-import org.noear.solon.ai.harness.input.InputOutcome;
-import org.noear.solon.ai.harness.extension.queue.QueueExtension;
-import org.noear.solon.ai.harness.extension.queue.QueueItem;
-import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
-import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import reactor.core.scheduler.Schedulers;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,9 +44,9 @@ import java.util.List;
  * 桌面端聊天输入路由：解析 WsMessage、会话与 Agent 归一、模式配置、
  * 附件落盘、命令分发与流回合触发。
  *
- * <p>从原 {@code WsGate.onMessage} 的主体拆出；校验规则、错误文案、
- * 事件时序与 session attrs 键名均逐字保留。真正的流订阅统一经
- * {@link DesktopStreamTurn}，Goal 启动经 {@code WsGate.startGoalStream}。</p>
+ * <p>本类只做协议适配：把 WS 消息组装成输入交给 HarnessHost（{@code host.submit / decide / interrupt}）。
+ * 结局分派、开流、终态、续发积压、停止屏障都在框架；呈现在 {@link DesktopHostSink}（会话级）与
+ * {@link DesktopRunSink}（每轮）。Goal 启动经 {@code WsGate.startGoalStream}。</p>
  *
  * @author bai
  * @since 3.9.1
@@ -67,6 +58,8 @@ final class DesktopInputRouter {
     static final String ATTR_REASONING_EFFORT = "reasoningEffort";
     /** 宿主域输入属性：运行模式（忙时随积压保存，续发时再写入会话） */
     static final String ATTR_RUN_MODE = "runMode";
+    /** 宿主域输入属性：子代理（受理后写入会话；null = 主代理） */
+    static final String ATTR_AGENT = "agent";
 
     private final WsGate gate;
 
@@ -96,18 +89,16 @@ final class DesktopInputRouter {
         if ("[(sec)interrupt]".equals(req.getInput())) {
             if (gate.goal != null && gate.goal.get(sessionId) != null) {
                 // goal 轮次：只停流，不落取消消息（历史由 goal.remove 收尾）。
-                // 这里不能用 InterruptMode.INTERRUPT_ALL：它会补写取消消息，
-                // 而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
-                engine.interrupt(session, InterruptMode.CANCEL_STREAM);
+                // 不能用用户停止（INTERRUPT_ALL）：它会补写取消消息，而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
+                gate.host.admin(WsGate.TENANT).interrupt(sessionId, InterruptMode.CANCEL_STREAM);
                 // remove 门面内含「先摘调度再清除」
                 gate.goal.remove(sessionId);
                 return;
             }
 
-            // 普通轮次：清队列 + 停流 + 幂等补写取消消息与快照。
-            // 此处曾再手写一遍取消消息与快照：迁移后 interrupt() 已无条件补写，
-            // 继续手写会让同一条取消消息入库两次。
-            engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
+            // 普通轮次：用户停止（清积压 + 落取消消息 + 停流）。停止之后框架不再投递本轮事件、本轮不发终态，
+            // reason + done 在这里同步发出（每轮恰好一个终态）
+            gate.host.interrupt(WsGate.TENANT, sessionId);
             LOG.info("用户已取消任务.");
 
             String interruptModelName = req.getModel();
@@ -202,13 +193,9 @@ final class DesktopInputRouter {
             return;
         }
 
-        // 根据前端指定的 model 选择对应 ChatModel
-        String modelName = req.getModel();
-        ChatModel chatModel = engine.getModelOrDefInstance(modelName);
+        // 前端指定的 model（受理后才写进会话，见 DesktopHostSink#admitted）
+        final String modelName = req.getModel();
 
-        // 会话级选择（模型 / 推理强度 / 运行模式 / 子代理）受理后才写（见 dispatchTurn 的 applySelection）：
-        // 被排队或拒绝的输入不得改写正在运行会话的选择（与 WebChatInputHandler 同口径）。
-        // 排队的条目把这些选择存进积压（selectedModel / explicitAgent / attrs），续发时再生效。
         // 请求显式 effort 优先；否则用会话 context
         final String reasoningEffort = ReasoningSupportUtil.resolveEffectiveEffort(
                 req.getReasoningEffort(),
@@ -217,7 +204,7 @@ final class DesktopInputRouter {
                 req.getReasoningEffort() != null);
 
         // 模式处理：根据前端 mode 字段配置 session 行为（受理后写入）
-        String mode = DesktopRunModes.normalize(req.getMode());
+        final String mode = DesktopRunModes.normalize(req.getMode());
         if ("plan".equals(mode)) {
             // 规划模式：只读分析，不执行文件/命令操作
             if (!currentInput.contains("不要执行") && !currentInput.contains("只分析")) {
@@ -237,9 +224,6 @@ final class DesktopInputRouter {
             gate.startGoalStream(socket, sessionId, req, goalObjective, cwd, resolvedAgentName);
             return;
         }
-
-        // 流式处理
-        final String finalSessionId = sessionId;
 
         // 处理附件：图片构建 ImageBlock，文件作为引用拼入文本前缀
         List<WsMessage.WsAttachment> attachments = req.getAttachments();
@@ -276,50 +260,30 @@ final class DesktopInputRouter {
             }
         }
 
-        // 命令识别、附件前缀拼装、Prompt 构建统一交给引擎。
+        // 受理、命令识别、附件前缀拼装、Prompt 构建在引擎；结局分派、开流、终态、续发积压在 HarnessHost。
+        // 会话级选择（模型 / 推理强度 / 运行模式 / 子代理）作为输入属性交出去，受理后才写进会话（DesktopHostSink#admitted）：
+        // 被排队或拒绝的输入不得改写正在运行会话的选择；排队的条目带着这些属性，续发时再生效。
         // agent 已在此前解析（桌面端需先做 Goal 拦截与格式校验），用 explicitAgent 透传避免二次判断。
-        // 正文路径不传 resume：审批后的续跑走 handleHitlAction（hitlResume=true）。
-        InputOutcome.Kind kind;
+        final String agent = agentName;
+        final String text = currentInput;
+        gate.hostSink.bind(sessionId, socket);
+        SubmitResult result;
         try {
-            kind = dispatchTurn(socket, session, finalSessionId, cwd,
-                    HarnessInput.of(session, currentInput)
-                            .explicitAgent(agentName)
-                            .selectedModel(modelName)
-                            .attachments(attachResult)
-                            .attr(ATTR_REASONING_EFFORT, reasoningEffort)
-                            .attr(ATTR_RUN_MODE, mode)
-                            .commandContextFactory(desktopCommandFactory()),
-                    reasoningEffort, chatModel, false);
+            result = gate.host.submit(WsGate.TENANT, sessionId, SubmitSpec.of(text).customize(in -> in
+                    .explicitAgent(agent)
+                    .selectedModel(modelName)
+                    .attachments(attachResult)
+                    .attr(ATTR_REASONING_EFFORT, reasoningEffort)
+                    .attr(ATTR_RUN_MODE, mode)
+                    .attr(ATTR_AGENT, agent)));
         } catch (RuntimeException e) {
             deleteQuietly(createdFiles);
             throw e;
         }
-        if (kind != InputOutcome.Kind.TASK) {
-            // 未受理（如忙时带附件被拒）：附件不会被任何一轮引用，删掉本轮新建的文件
+        if (result.getKind() != SubmitResult.Kind.STARTED) {
+            // 未开流（如忙时带附件被拒）：附件不会被任何一轮引用，删掉本轮新建的文件
             deleteQuietly(createdFiles);
         }
-    }
-
-    /**
-     * 写入会话级选择（受理后调用）。
-     *
-     * @param modelName 显式指定的模型；空时保持已有选择（否则 HITL 恢复等后续轮次会回落默认模型）
-     * @param effort    显式指定的推理强度；null 时不改
-     * @param mode      运行模式；null 时不改
-     * @param agentName 子代理（null = 主代理）
-     */
-    private void applySelection(AgentSession session, String modelName, String effort, String mode, String agentName) {
-        HarnessEngine engine = gate.engine;
-        if (Assert.isNotEmpty(modelName)) {
-            engine.setSessionModel(session, modelName);
-        }
-        if (effort != null) {
-            ReasoningSupportUtil.putSessionEffort(session, effort, true);
-        }
-        if (mode != null) {
-            session.attrs().put(DesktopStreamTurn.SESSION_ATTR_RUN_MODE, mode);
-        }
-        engine.setSessionAgent(session, engine.getAgentOrMain(agentName).name());
     }
 
     private static void deleteQuietly(List<Path> files) {
@@ -333,208 +297,20 @@ final class DesktopInputRouter {
     }
 
     /**
-     * 桌面端唯一的处置核心：一次 handle，一个 switch，一处起流。
-     * <p>
-     * 协议层（chat 消息 / hitl_action）只负责构造 {@link HarnessInput}：两者的前置逻辑差异很大
-     * （空输入校验、计划模式改写、Goal 拦截、附件落盘、代理校验与 attrs 覆盖），强行合并会让
-     * 审批卡被消息前置污染，因此保留两个适配器，只把「处置」这一段收成单一实现。
-     * <p>
-     * 两个参数不能省：
-     * <ul>
-     *   <li>{@code fallbackModel} —— {@code REPLY} 分支的 done 报的是<b>受理时</b>的模型名
-     *       （与迁移前一致），不是 outcome 里的生效值；</li>
-     *   <li>{@code hitlResume} —— 决定流生命周期：true 走 subscribe 复用既有流状态，
-     *       false 走 begin。传错会导致审批续跑时占屏或漏帧。</li>
-     * </ul>
+     * 写入会话级选择（Goal 不经受理，选择照旧在创建前写入）。
      */
-    private InputOutcome.Kind dispatchTurn(WebSocket socket, AgentSession session, String sessionId, String cwd,
-                                           HarnessInput hin, String reasoningEffort, ChatModel fallbackModel,
-                                           boolean hitlResume) {
-        InputOutcome outcome = gate.engine.handle(hin);
-        doDispatch(socket, session, sessionId, cwd, hin, outcome, reasoningEffort, fallbackModel, hitlResume);
-        return outcome.getKind();
-    }
-
-    private void doDispatch(WebSocket socket, AgentSession session, String sessionId, String cwd,
-                            HarnessInput hin, InputOutcome outcome, String reasoningEffort, ChatModel fallbackModel,
-                            boolean hitlResume) {
-        // 受理后才写会话级选择（与 Web 同口径：TASK / REPLY 写，排队 / 拒绝 / 在运行任务旁边执行的命令不写）。
-        // 审批续流沿用会话已有选择，不重写；续发的排队条目：选择来自积压保存的 selectedModel / selectedAgent / attrs。
-        InputOutcome.Kind kind = outcome.getKind();
-        if (!hitlResume && !outcome.isBesideRunning()
-                && (kind == InputOutcome.Kind.TASK || kind == InputOutcome.Kind.REPLY)) {
-            applySelection(session, hin.getSelectedModel(), hin.getAttr(ATTR_REASONING_EFFORT),
-                    hin.getAttr(ATTR_RUN_MODE),
-                    hin.getExplicitAgent() != null ? hin.getExplicitAgent() : hin.getSelectedAgent());
+    private void applySelection(AgentSession session, String modelName, String effort, String mode, String agentName) {
+        HarnessEngine engine = gate.engine;
+        if (Assert.isNotEmpty(modelName)) {
+            engine.setSessionModel(session, modelName);
         }
-
-        switch (kind) {
-            case REJECTED:
-                // 未受理：待审批卡 / 忙且无处可延 / 附件不能排队（不发 done：正在运行的那一轮自己会发）
-                socket.send(new ONode().set("type", "error")
-                        .set("sessionId", sessionId)
-                        .set("code", outcome.getRejectReason().code())
-                        .set("text", outcome.getRejectDetail())
-                        .toJson());
-                return;
-            case DEFERRED:
-                // 会话忙，引擎已入积压：只回执排队位置，当前一轮结束后续发（drainBacklog）
-                socket.send(new ONode().set("type", "command")
-                        .set("sessionId", sessionId)
-                        .set("text", "当前任务正在执行，已加入队列（第 " + outcome.getBacklogPosition() + " 位）")
-                        .toJson());
-                return;
-            case TASK:
-                if (outcome.hasRequest() == false) {
-                    // 仅续流路径可能出现：无可续的挂起任务
-                    socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
-                    return;
-                }
-                // 模型/子代理一律用引擎生效值（命令声明 → 会话选择 → 默认），与普通消息同口径。
-                // 请求主体（session/retry/maxTurns）已由 handle 装配，此处仅解析桌面端展示所需的模型句柄。
-                ChatModel turnModel = Assert.isEmpty(outcome.getModelName())
-                        ? fallbackModel : gate.engine.getModelOrDefInstance(outcome.getModelName());
-
-                // 续流（如 /continue）：正文为空，靠会话挂起的 trace 继续（不能传空 Prompt，否则会命中空提示分支）
-                Prompt prompt = outcome.getPrompt();
-                if (prompt != null) {
-                    prompt.attrPut("start_time", System.currentTimeMillis());
-                    gate.applyReasoningEffort(prompt, reasoningEffort);
-                }
-
-                // 忙时进积压的输入（DEFERRED）在本轮结束后续发：必须登记在「运行句柄注销之后」，
-                // 流的 doFinally 里会话仍算忙、drainLoop 会直接返回。换线程续发：本轮流是同步订阅的，
-                // 就地续发会把下一轮嵌套在上一轮的终止回调里（新输入插入空档无害：有积压时引擎一律排到后面）
-                outcome.afterRun(() -> scheduleDrainBacklog(session, socket));
-
-                // 命令触发的任务不发独立回执（与迁移前一致）：命令输出由任务流自身携带，
-                // 若在此先发回执，会绕过 DesktopStreamHub 的序号/回放缓冲
-                try {
-                    gate.streamTurn.run(session, outcome.getRequest(), turnModel, sessionId, cwd,
-                            reasoningEffort, socket, hitlResume, gate.desktopHitlInterceptor);
-                } catch (RuntimeException e) {
-                    // 开流前失败：放弃本轮，立即释放受理占位
-                    outcome.discard();
-                    throw e;
-                }
-                return;
-            case REPLY:
-                // 命令已执行，或命令在本渠道不可用：回执后结束本轮
-                handleCommandReceipt(socket, outcome, sessionId);
-                sendDone(socket, fallbackModel, sessionId);
-                return;
-            case HITL:
-                if (outcome.isHitlApplied() == Boolean.FALSE) {
-                    // 过期审批卡：任务已结束，前端残留的卡仍可点击。与迁移前同口径报错。
-                    socket.send(new ONode().set("type", "error").set("text", "No pending HITL task").toJson());
-                    return;
-                }
-                // 本批尚有未决卡：推送下一张（跳过已决策项），等宿主再次点击
-                // 也可以直接用 outcome.getNextHitl()，本处保留 session 查询口径以兼容无 outcome 的调用点
-                HitlCard next = DesktopStreamTurn.nextPendingHitlTask(session);
-                if (next != null) {
-                    socket.send(DesktopStreamTurn.hitlEvent(sessionId, next).toJson());
-                } else {
-                    socket.send(new ONode().set("type", "error").set("text", "No pending task to resume").toJson());
-                }
-                return;
-            default:
-                // IGNORED
-                return;
+        if (effort != null) {
+            ReasoningSupportUtil.putSessionEffort(session, effort, true);
         }
-    }
-
-    /** 在别的线程上续发会话积压（本轮运行句柄注销后由 afterRun 触发）。 */
-    private void scheduleDrainBacklog(AgentSession session, WebSocket socket) {
-        try {
-            Schedulers.boundedElastic().schedule(() -> {
-                try {
-                    drainBacklog(session, socket);
-                } catch (Throwable e) {
-                    LOG.warn("[Desktop] drain backlog failed: {}", e.toString());
-                }
-            });
-        } catch (Throwable e) {
-            LOG.warn("[Desktop] schedule backlog drain failed: {}", e.toString());
+        if (mode != null) {
+            session.attrs().put(DesktopRunSink.SESSION_ATTR_RUN_MODE, mode);
         }
-    }
-
-    /**
-     * 续发会话积压：忙时进积压的输入在一轮结束后逐条交回唯一入口 {@code handle}。
-     *
-     * <p>领取循环、终止条件与「能不能接」的原子判定归 queue 插件（{@code drainLoop}）；
-     * 本方法只表达「把这条交给处置核心」与「返回时它是否已同步跑完」。</p>
-     */
-    void drainBacklog(AgentSession session, WebSocket socket) {
-        if (session == null || socket == null) {
-            return;
-        }
-        QueueExtension queue = gate.engine.getExtension(QueueExtension.class).orElse(null);
-        if (queue == null || queue.hasItems(session) == false) {
-            return;
-        }
-        String sessionId = session.getSessionId();
-        queue.drainLoop(session, s -> gate.engine.status(s).isOccupied() == false, claim -> {
-            QueueItem item = claim.getItem();
-            String cwd = gate.engine.getSessionCwd(session);
-            String effort = item.getAttrs().get(ATTR_REASONING_EFFORT);
-            dispatchTurn(socket, session, sessionId, cwd,
-                    item.toInput(session).trimContent(true).commandContextFactory(desktopCommandFactory()),
-                    effort, gate.engine.getModelOrDefInstance(item.getModel()), false);
-            // 同步跑完（命令回执 / 流已结束）= true；仍在跑 = false（终态由本轮 doFinally 的 settle 收口）
-            return SessionActivity.isBusy(session) == false;
-        });
-    }
-
-    /**
-     * 桌面端命令上下文工厂：只保留回执缓冲。
-     * <p>
-     * 桌面进程虽在本地，但没有命令行终端交互能力，故保持默认 terminal=false。
-     * 命令内部触发的任务只记录意图（分发器交给引擎二段装配），
-     * 流由主路径根据 outcome 的生效字段统一发起。
-     */
-    private CommandContextFactory desktopCommandFactory() {
-        return new BufferedCommandContextFactory();
-    }
-
-    /**
-     * 命令回执渲染（含 rewind 特殊通道），<b>不发 done</b>
-     * <p>
-     * 仅用于 {@code REPLY}（命令已执行或本渠道不可用）：命令输出自成一轮。
-     * 命令触发任务（{@code TASK}）不发独立回执，与原实现一致。
-     */
-    private void handleCommandReceipt(WebSocket socket, InputOutcome outcome, String finalSessionId) {
-        if ("rewind".equals(outcome.getCommandName())) {
-            ParsedCommand cmd = outcome.getCommand();
-            int rewindCount = 1;
-            if (cmd != null && cmd.argCount() > 0) {
-                try {
-                    rewindCount = Integer.parseInt(cmd.argAt(0));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            socket.send(new ONode().set("type", "rewind")
-                    .set("sessionId", finalSessionId)
-                    .set("count", rewindCount + 1)
-                    .toJson());
-        } else {
-            String text = outcome.hasReply() ? outcome.getCommandOutput() : "命令执行完成";
-            socket.send(new ONode().set("type", "command")
-                    .set("sessionId", finalSessionId)
-                    .set("text", text)
-                    .toJson());
-        }
-    }
-
-    /**
-     * 本轮收尾
-     */
-    private void sendDone(WebSocket socket, ChatModel chatModel, String finalSessionId) {
-        socket.send(new ONode().set("type", "done")
-                .set("sessionId", finalSessionId)
-                .set("modelName", chatModel.getConfig().getNameOrModel())
-                .set("totalTokens", 0)
-                .set("elapsedMs", 0).toJson());
+        engine.setSessionAgent(session, engine.getAgentOrMain(agentName).name());
     }
 
     /**
@@ -554,28 +330,12 @@ final class DesktopInputRouter {
                 return;
             }
 
-            AgentSession session = engine.getSession(sessionId);
-
-            String modelName = engine.getSessionModel(session);
-            ChatModel chatModel = engine.getModelOrDefInstance(modelName);
-            String selectedAgentName = engine.getSessionAgent(session);
-            String cwd = engine.getSessionCwd(session);
-            String reasoningEffort = ReasoningSupportUtil.getSessionEffort(session);
-
-            // 一次调用完成「写决策 + 必要时的续流装配」，处置交给统一的 dispatchTurn：
-            //   TASK —— 决策已写入且本批已齐备，直接执行续流（hitlResume=true 复用既有流状态）；
-            //   HITL —— 未续流：过期审批卡（isHitlApplied()==false，与迁移前「task == null → 报错」同口径）
-            //            或本批尚有未决卡（推下一张卡，保持迁移前逐卡交互的观察结果）。
-            // 决策应用与续流判定统一交给引擎（input 唯一入口）；
+            // 写决策 + 本批齐备时续流，一次完成（模型 / 子代理沿用会话选择）：
+            //   开流 —— 审批续跑，续用原来的流（DesktopRunSink 按 isResume 续用序号）；
+            //   未续流 —— 过期审批卡（hitlExpired）或本批尚有未决卡（推下一张，DesktopHostSink#hitl）。
             // 协议字符串在边界解析为枚举（脏值抛 IllegalArgumentException，落入下方 catch 回错误，不再静默当拒绝）
-            dispatchTurn(socket, session, sessionId, cwd,
-                    HarnessInput.of(session, null)
-                            .hitl(HITLAction.of(action), callId)
-                            .hitlOutput(output)
-                            .selectedAgent(selectedAgentName)
-                            .selectedModel(modelName)
-                            .resume(true),
-                    reasoningEffort, chatModel, true);
+            gate.hostSink.bind(sessionId, socket);
+            gate.host.decide(WsGate.TENANT, sessionId, callId, HITLAction.of(action), output, null);
         } catch (Exception e) {
             LOG.error("[WS] HITL action failed", e);
             socket.send(new ONode().set("type", "error").set("text", e.getMessage()).toJson());

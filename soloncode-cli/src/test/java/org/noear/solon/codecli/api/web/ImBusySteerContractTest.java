@@ -52,7 +52,7 @@ class ImBusySteerContractTest {
         String safe = safeInput(gate);
         assertTrue(safe.contains("true, true)"),
                 "IM 入口必须以 echo=true、steerWhenBusy=true 提交（忙态普通输入默认插话）");
-        assertTrue(gate.contains(".steerWhenBusy(steerWhenBusy)"), "忙时插话必须交给骨架的 steerWhenBusy，而不是宿主自己判忙");
+        assertTrue(gate.contains(".whenBusy(steerWhenBusy ? SubmitSpec.BusyPolicy.STEER"), "忙时插话必须交给骨架的 steerWhenBusy，而不是宿主自己判忙");
         assertFalse(gate.contains("steerExtension.steer(") || gate.contains("SteerExtension.class"),
                 "宿主不得再自己调插话门面（判忙、排除命令、回落排队都在骨架里）");
 

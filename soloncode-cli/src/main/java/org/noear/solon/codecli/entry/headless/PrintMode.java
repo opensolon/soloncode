@@ -22,10 +22,15 @@ import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
 import org.noear.solon.ai.chat.ChatModel;
+import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.InterruptMode;
-import org.noear.solon.ai.harness.input.HarnessInput;
-import org.noear.solon.ai.harness.input.InputOutcome;
+import org.noear.solon.ai.harness.host.HarnessHost;
+import org.noear.solon.ai.harness.host.RunHandle;
+import org.noear.solon.ai.harness.host.RunOutcome;
+import org.noear.solon.ai.harness.host.RunPrep;
+import org.noear.solon.ai.harness.host.RunSink;
+import org.noear.solon.ai.harness.host.SubmitResult;
+import org.noear.solon.ai.harness.host.SubmitSpec;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
 import org.noear.solon.ai.mount.source.FileMountSource;
@@ -37,8 +42,6 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import reactor.core.scheduler.Schedulers;
-
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -47,9 +50,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Print / Headless 模式执行器
@@ -134,28 +134,23 @@ public class PrintMode {
     private final PrintModeOptions options;
     private final PrintStream out;
 
-    /**
-     * 当前进行中轮次的订阅句柄。
-     *
-     * <p>单轮模式下只用于承接 dispose；常驻模式（{@code soloncode stream}）下
-     * 由输入泵线程调用 {@link #interruptCurrentTurn()} 取消在跑的轮次。</p>
-     */
-    private final AtomicReference<AgentSession> currentTurn = new AtomicReference<>();
+    /** 宿主骨架的租户键（无头模式只有一个引擎） */
+    static final String TENANT = "headless";
 
     /**
-     * 保护“轮次已开始但订阅句柄尚未就绪”的短暂窗口
+     * 宿主骨架：受理、开流、终态、停止（含「受理了还没开流」的窗口）。不接管后台工作（programRuns(false)）：
+     * 无头进程与 Web / 桌面共用会话存储时，不能在这里恢复 goal、续发别的入口的积压。
      */
-    private final Object turnStateLock = new Object();
+    private final HarnessHost host;
 
-    /**
-     * 当前是否存在可中断的轮次；必须与 currentTurn 在 turnStateLock 下更新
-     */
-    private boolean turnRunning;
+    /** 是否有轮次在进行（含「已开始受理、句柄还没发布」的窗口） */
+    private volatile boolean turnRunning;
 
-    /**
-     * 当前轮次是否被显式中断（每轮开始时重置）
-     */
-    private final AtomicBoolean turnInterrupted = new AtomicBoolean(false);
+    /** 当前轮次（常驻模式下输入泵线程据此中断；受理期间为 null） */
+    private volatile RunHandle currentRun;
+
+    /** 当前轮次是否被显式中断（每轮开始时重置） */
+    private volatile boolean turnInterrupted;
 
     public PrintMode(HarnessEngine engine, AgentSettings agentSettings, PrintModeOptions options) {
         this(engine, agentSettings, options, System.out);
@@ -169,6 +164,10 @@ public class PrintMode {
         this.agentSettings = agentSettings;
         this.options = options;
         this.out = out;
+        this.host = HarnessHost.builder()
+                .engines(tenant -> engine)
+                .programRuns(false)
+                .build();
     }
 
     /**
@@ -507,15 +506,8 @@ public class PrintMode {
     PrintResult runAgent(AgentSession session, String prompt) {
         PrintResult result = new PrintResult();
         result.sessionId = session.getSessionId();
-        CountDownLatch latch = new CountDownLatch(1);
-        AtomicReference<Throwable> errorRef = new AtomicReference<>();
-        
-
-        synchronized (turnStateLock) {
-            turnInterrupted.set(false);
-            turnRunning = true;
-            currentTurn.set(null);
-        }
+        turnInterrupted = false;
+        turnRunning = true;
 
         String modelSelected = options.getModel();
         if (modelSelected == null) {
@@ -530,99 +522,80 @@ public class PrintMode {
             }
         }
 
+        final String model = modelSelected;
         try {
-            InputOutcome outcome = engine.handle(HarnessInput.of(session, prompt)
-                                    .selectedModel(modelSelected)
-                                    //headless 一律用主代理：原实现直接取 getMainAgent()，不解析输入里的 @提及
-                                    //（子代理选择走 --agent 参数，由调用方自行拼接，不经此处解析）
-                                    .commandAware(false)
-                                    .agentAware(false));
-            if (outcome.hasRequest() == false) {
+            SubmitResult submitted = host.submit(TENANT, session.getSessionId(), SubmitSpec.of(prompt)
+                    // 会话忙（被其它入口占用）时直接拒绝：无头模式没有人接排队的那一轮
+                    .whenBusy(SubmitSpec.BusyPolicy.REJECT)
+                    //headless 一律用主代理、不识别命令：子代理选择走 --agent 参数，由调用方自行拼接
+                    .customize(in -> in.selectedModel(model).commandAware(false).agentAware(false))
+                    .observe(new RunSink() {
+                        @Override
+                        public void prepare(RunPrep prep) {
+                            if (options.getMaxTurns() != null) {
+                                prep.request().options(o -> o.maxTurns(options.getMaxTurns()));
+                            }
+                        }
+
+                        @Override
+                        public void event(AgentEvent event) {
+                            handleChunk(session, event, result);
+                        }
+                    }));
+            if (submitted.getKind() != SubmitResult.Kind.STARTED) {
                 // 未受理（会话正被其它入口占用 / 待审批）或空输入：不能当作成功静默退出
-                throw new IllegalStateException(outcome.getRejectDetail() != null
-                        ? outcome.getRejectDetail() : "Input not admitted: " + outcome.getKind());
-            }
-            outcome
-                            //输入装配统一走 input，宿主只补 CLI 侧选项
-                            .getRequest()
-                            .options(o -> {
-                                if (options.getMaxTurns() != null) {
-                                    o.maxTurns(options.getMaxTurns());
-                                }
-                            })
-                            .stream()
-                            .subscribeOn(Schedulers.boundedElastic())
-                            .doOnNext(chunk -> {
-                                handleChunk(session, chunk, result);
-                            })
-                            .doOnError(e -> {
-                                errorRef.set(e);
-                                LOG.error("Print mode task failed: {}", e.getMessage(), e);
-                            })
-                            .doFinally(signal -> {
-                                synchronized (turnStateLock) {
-                                    currentTurn.set(null);
-                                    turnRunning = false;
-                                }
-                                latch.countDown();
-                            })
-                            .subscribe();
-
-            // 在同一把锁下发布会话句柄。若中断帧在句柄就绪前到达，
-            // interruptCurrentTurn() 已返回 success 并留下中断标志，这里补做取消。
-            synchronized (turnStateLock) {
-                currentTurn.set(session);
-                if (turnInterrupted.get()) {
-                    engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
-                }
+                throw new IllegalStateException(submitted.getRejectDetail() != null
+                        ? submitted.getRejectDetail() : "Input not admitted: " + submitted.getKind());
             }
 
-            latch.await();
+            // 发布本轮句柄；中断帧若在发布前到达（已留下标志），这里补做停止。
+            // 两边都是「先写自己的 volatile、再读对方的」：至少有一边看得到对方，重复停止是幂等的
+            currentRun = submitted.getRun();
+            if (turnInterrupted) {
+                host.interrupt(TENANT, session.getSessionId());
+            }
 
-            result.error = errorRef.get();
-            result.interrupted = turnInterrupted.get();
+            RunOutcome outcome = submitted.getRun().future().get();
+            if (outcome.isFailed()) {
+                result.error = outcome.getError();
+                LOG.error("Print mode task failed: {}", result.error == null ? null : result.error.getMessage(), result.error);
+            }
+            result.interrupted = turnInterrupted;
 
             // 检查是否超过最大轮次
             if (result.trace != null && result.trace.isAbnormal()) {
                 result.maxTurnsExceeded = true;
             }
-
         } catch (Exception e) {
             result.error = e;
             LOG.error("Print mode execution error: {}", e.getMessage(), e);
         } finally {
-            synchronized (turnStateLock) {
-                currentTurn.set(null);
-                turnRunning = false;
-            }
+            currentRun = null;
+            turnRunning = false;
         }
 
         return result;
     }
 
     /**
-     * 中断当前进行中的轮次。
+     * 中断当前进行中的轮次（用户停止：落取消消息、停流）。
      *
-     * <p>由常驻模式的输入泵线程调用（收到 {@code control_request/interrupt}），
-     * 与执行线程并发。dispose 会触发 doFinally(CANCEL)，执行线程的
-     * {@code latch.await()} 随之返回。</p>
+     * <p>由常驻模式的输入泵线程调用（收到 {@code control_request/interrupt}），与执行线程并发。
+     * 还在调度窗口里、尚未开流的那一轮也会被停掉（框架保证以 CANCELLED 收尾）。</p>
      *
      * @return true 表示确实有一个在跑的轮次被取消；false 表示当前无进行中轮次
      */
     boolean interruptCurrentTurn() {
-        synchronized (turnStateLock) {
-            if (!turnRunning) {
-                return false;
-            }
-
-            turnInterrupted.set(true);
-            AgentSession session = currentTurn.getAndSet(null);
-            if (session != null) {
-                engine.interrupt(session, InterruptMode.INTERRUPT_ALL);
-            }
-            // 会话尚未发布也算成功：runAgent 会在发布后观察中断标志并补做取消。
-            return true;
+        if (turnRunning == false) {
+            return false;
         }
+        turnInterrupted = true;
+        RunHandle run = currentRun;
+        if (run != null) {
+            host.interrupt(TENANT, run.getRun().getSessionId());
+        }
+        // 句柄尚未发布也算成功：runAgent 发布后会看到中断标志并补做停止
+        return true;
     }
 
     /**

@@ -26,7 +26,7 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
     /**
      * 工作区初始化完成后：登记后台轮次执行器，并恢复持久化的 goal 调度与 Session 队列。
      */
-    void recoverSessionQueues(WorkspaceContext workspaceContext);
+    void onWorkspaceReady(WorkspaceContext workspaceContext);
 
     /**
      * 会话管理态（队列等管理接口）：对扩展门面的操作统一返回结果码，成功后自动续发积压。

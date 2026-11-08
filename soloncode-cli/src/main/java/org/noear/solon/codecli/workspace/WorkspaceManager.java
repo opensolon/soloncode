@@ -877,7 +877,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         goalExtension = engine.addExtensionIfAbsent(goalExtension);
         loopExtension = engine.addExtensionIfAbsent(loopExtension);
         // web / 自动化会话的 goal / loop 后台轮次由入口的宿主骨架（WebGate 内的 HarnessHost）在
-        // recoverSessionQueues 预热时登记执行器（认领谓词 SessionIdOwnership::isWeb），与用户轮次同一条链
+        // onWorkspaceReady 预热时登记执行器（认领谓词 SessionIdOwnership::isWeb），与用户轮次同一条链
 
         // Goal / Loop 模式开关：loop 只关模型工具（/loop 命令与已有定时任务照常）；
         // goal 关闭时一并关闭 /goal 与调度（goal 依赖 goal_update 声明完成，工具关了继续跑只会空耗预算）
@@ -980,7 +980,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
     private void notifyContextReady(WorkspaceContext context) {
         WorkspaceRuntimePort runtime = getRuntimePort();
         if (runtime != null && context != null) {
-            runtime.recoverSessionQueues(context);
+            runtime.onWorkspaceReady(context);
         }
     }
 

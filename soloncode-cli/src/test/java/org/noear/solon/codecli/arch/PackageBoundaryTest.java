@@ -449,7 +449,7 @@ class PackageBoundaryTest {
         for (String rel : new String[]{
                 "api/web/WebRunSink.java",
                 "api/web/WebGate.java",
-                "api/desktop/DesktopStreamTurn.java",
+                "api/desktop/DesktopRunSink.java",
                 "entry/cli/CliShell.java",
                 "entry/headless/PrintMode.java"}) {
             Path file = SRC.resolve(rel);

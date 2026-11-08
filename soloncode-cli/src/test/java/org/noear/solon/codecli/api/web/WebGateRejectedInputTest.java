@@ -67,12 +67,12 @@ class WebGateRejectedInputTest {
     @Test
     void admittingInputAloneIsNotAnActiveStream() {
         AgentSession session = InMemoryAgentSession.of();
-        session.attrs().put(WebGate.ATTR_INPUT_ADMITTING, Boolean.TRUE);
-        assertTrue(WebGate.isInputAdmitting(session));
-        assertFalse(WebGate.hasActiveStream(session));
+        session.attrs().put(HarnessAttrs.INPUT_ADMITTING, Boolean.TRUE);
+        assertTrue(SessionActivity.isInputAdmitting(session));
+        assertFalse(SessionActivity.hasActiveStream(session));
 
         SessionRuns.attach(session, newHandle());
-        assertTrue(WebGate.hasActiveStream(session));
+        assertTrue(SessionActivity.hasActiveStream(session));
     }
 
     @Test
@@ -80,11 +80,11 @@ class WebGateRejectedInputTest {
         AgentSession session = InMemoryAgentSession.of();
         reactor.core.Disposable handle = newHandle();
         SessionRuns.attach(session, handle);
-        assertTrue(WebGate.hasActiveStream(session));
+        assertTrue(SessionActivity.hasActiveStream(session));
 
         SessionRuns.detach(session, handle);
 
-        assertFalse(WebGate.hasActiveStream(session));
+        assertFalse(SessionActivity.hasActiveStream(session));
         assertFalse(SessionRuns.isBusy(session));
         // 会话 attrs 不再承载任何句柄
         assertTrue(session.attrs().keySet().stream().noneMatch(k -> k.contains("disposable")));

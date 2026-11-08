@@ -71,8 +71,8 @@ public class InjectedRoundChannelContractTest {
                 "Web 未把后台轮次交给宿主骨架（/goal 将没有过程输出）");
 
         assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
-                "goal.addExecutor(\"desktop\", SessionIdOwnership::isDesktop",
-                "桌面未向 GoalRuntime 注册通道化执行器（goal 轮次将不再推流）");
+                ".programRuns(SessionIdOwnership::isDesktop)",
+                "桌面未把后台轮次交给宿主骨架（goal 轮次将不再推流）");
     }
 
     /**
