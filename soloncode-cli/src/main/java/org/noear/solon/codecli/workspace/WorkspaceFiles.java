@@ -20,7 +20,7 @@ package org.noear.solon.codecli.workspace;
  *
  * <p>{@code .files} 是宿主与引擎共享的 workspace 级文件根（运行期产物，随工作区走但 gitignore）：
  * 附件落 {@code .files/uploads}，harness 子代理超长结果落 {@code .files/task}
- * （{@code org.noear.solon.ai.harness.agent.task.TaskTalent} 自持同名约定，两仓需同步改）。
+ * （{@code org.noear.solon.ai.harness.agent.TaskTalent} 自持同名约定，两仓需同步改）。
  * 文件面板隐藏目录白名单按 {@link #FILES_ROOT} 入口粒度放行。</p>
  *
  * <p>纯常量、无 IO：具体落盘职责在各落盘方（Web/桌面附件、harness spill）。</p>

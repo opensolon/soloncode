@@ -31,7 +31,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.InterruptMode;
-import org.noear.solon.ai.harness.agent.task.TaskTalent;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.CommandContext;
 import org.noear.solon.ai.harness.command.CommandContextFactory;
 import org.noear.solon.ai.harness.input.InputOrigin;
@@ -392,7 +392,7 @@ public class CliShell implements Runnable {
             // 同步语义：回调返回 true = 任务已同步跑完，收口由内核当场完成（ack 被拒自动转回滚 +
             // START_FAILED，循环终止）；启动异常同样由内核回滚到队首。
             // ack 一词在宿主代码中消失——不再存在「丢弃 acknowledge 返回值、Stop 被静默击败」的写法。
-            while (queue.claimNext(session, claim -> {
+            while (queue.claimNext(session, null, claim -> {
                 handleInput(session, claim.getItem().getText(), claim.getItem().getModel(), false);
                 return true;
             }) == QueueClaimStatus.STARTED) {

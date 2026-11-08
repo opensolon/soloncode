@@ -36,7 +36,6 @@ import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionActivity;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.ai.harness.spi.RunDispatch;
-import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.ai.harness.extension.steer.SteerExtension;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -606,9 +605,9 @@ class WebChatInputHandler {
     /**
      * 中断指定会话的当前 AI 任务。
      *
-     * <p>停流、补写取消消息（含快照）与原子认领统一走引擎的两段式中断（{@code prepareInterrupt}），
-     * 本方法只负责 Web/IM 侧的<b>事件出口</b>编排：清队列失败则拒绝（否则 doFinally 会续发原队列，
-     * Stop 不能报告成功）；无活跃流时不写历史、不发取消语义，仅在尚未发过 done 时兜底
+     * <p>清队列（引擎先回调扩展 {@code onSessionInterrupt}）、停流、补写取消消息（含快照）与原子认领
+     * 统一走引擎的两段式中断（{@code prepareInterrupt}），本方法只负责 Web/IM 侧的<b>事件出口</b>编排：
+     * 非持有节点拒绝（什么都没做）；无活跃流时不写历史、不发取消语义，仅在尚未发过 done 时兜底
      * emitDoneOnce；有活跃流时同线程保证包序 error → 可选 trace → done，最后才停流
      * （commit 触发的 doFinally 中 emitDoneOnce 因 CAS 跳过，不会双发 done）。</p>
      */
@@ -620,14 +619,12 @@ class WebChatInputHandler {
                 LOG.info("[WebGate] Session {} interrupt ignored (session not found)", sessionId);
                 return false;
             }
-            // 两段式第一段：清队列（保存失败时 prepareInterrupt 不会发生）→ 原子认领运行句柄。
-            // 清队列保存失败时不终止当前流：否则 doFinally 会续发原队列，Stop 不能报告成功。
-            if (!queue(wsContext).cancelPending(session).isOk()) {
-                LOG.warn("[WebGate] Stop rejected: could not persist queue cancellation for session {}", sessionId);
-                return false;
-            }
-
+            // 两段式第一段：引擎先让扩展清队列（递增代际，被停的任务不会复活）→ 原子认领运行句柄。
             try (InterruptPlan plan = wsContext.getEngine().prepareInterrupt(session)) {
+                if (plan != null && plan.isNotOwner()) {
+                    LOG.warn("[WebGate] Stop rejected: session {} is owned by {}", sessionId, plan.getOwner());
+                    return false;
+                }
                 if (plan == null || !plan.hasActiveRun()) {
                     boolean sent = gate.getEventPublisher().emitDoneOnce(wsContext, session);
                     if (sent) {
@@ -724,13 +721,6 @@ class WebChatInputHandler {
             return;
         }
         session.attrs().put(HostAttrs.ATTR_REPLY_ROUTE, origin.toMap());
-    }
-
-    /**
-     * 会话队列门面（统一入口，不再直调静态实现）
-     */
-    private static QueueExtension queue(WorkspaceContext wsContext) {
-        return wsContext.getEngine().getExtension(QueueExtension.class).get();
     }
 
     /**

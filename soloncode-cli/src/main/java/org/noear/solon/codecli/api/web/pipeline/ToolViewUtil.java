@@ -15,7 +15,7 @@
  */
 package org.noear.solon.codecli.api.web.pipeline;
 
-import org.noear.solon.ai.harness.agent.task.TaskTalent;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.core.util.Assert;
