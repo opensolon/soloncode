@@ -105,6 +105,6 @@ public class UiStateController extends AbstractWebController {
 
     private UiStateStore store() {
         return new UiStateStore(UiStateStore.storePath(
-                engine().getSettings().getUserHome(), engine().getSettings().getHarnessHome()));
+                engine().getUserHome(), engine().getHarnessHome()));
     }
 }

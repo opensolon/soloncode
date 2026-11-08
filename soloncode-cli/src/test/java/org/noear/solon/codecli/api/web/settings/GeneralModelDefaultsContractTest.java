@@ -87,11 +87,11 @@ public class GeneralModelDefaultsContractTest {
     void modelDefaultsWiredToEngine() throws IOException {
         String controller = javaSource("api/web/settings/WebSettingsController.java");
 
-        assertTrue(controller.contains("engine.getSettings().setCompressionDefaultContextLength("),
+        assertTrue(controller.contains("engine.setCompressionDefaultContextLength("),
                 "保存通用设置时必须把上下文长度推给引擎压缩拦截器");
         assertTrue(controller.contains("WorkspaceManager.resolveCompressionDefaultContextLength("),
                 "上下文长度 0 = 未设置时必须回退 CLI 缺省值（拦截器要求正值）");
-        assertTrue(controller.contains("engine.getSettings().setSubagentDefaultConcurrency(g.getModelDefaultConcurrency())"),
+        assertTrue(controller.contains("engine.setSubagentDefaultConcurrency(g.getModelDefaultConcurrency())"),
                 "保存通用设置时必须把并发数推给引擎，否则配置不生效");
         assertFalse(controller.contains("setModelDefaultTimeoutSeconds"),
                 "默认超时已撤掉：AiConfig.timeout 恒非空，无法表达「未设置」");

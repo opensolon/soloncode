@@ -73,7 +73,7 @@ public class QueueWebController extends AbstractWebController {
         // 经 TodoTalent 的存储口径读取（数据来源可能不是本地文件）
         String raw;
         try {
-            raw = currentEngine.getTalents().getTodo().readTodo(currentEngine.getWorkspace(), sessionId);
+            raw = currentEngine.getTodoTalent().readTodo(currentEngine.getWorkspace(), sessionId);
         } catch (IllegalArgumentException e) {
             return Result.failure(400, "Invalid sessionId");
         } catch (Exception e) {

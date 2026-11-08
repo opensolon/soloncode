@@ -140,7 +140,7 @@ public class UiStateStore {
      * 状态文件路径：{@code <harnessRoot>/<harnessHome>/ui-state.json}。
      *
      * @param harnessRoot 用户主目录（{@code HarnessEngine.getUserHome()}）
-     * @param harnessHome 用户级 harness 目录（{@code HarnessEngine.getSettings().getHarnessHome()}，形如 {@code .soloncode/}）
+     * @param harnessHome 用户级 harness 目录（{@code HarnessEngine.getHarnessHome()}，形如 {@code .soloncode/}）
      */
     public static Path storePath(String harnessRoot, String harnessHome) {
         return Paths.get(harnessRoot, harnessHome, STORE_FILE).toAbsolutePath();

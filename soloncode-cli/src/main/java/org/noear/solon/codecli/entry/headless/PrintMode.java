@@ -356,7 +356,7 @@ public class PrintMode {
 
         // ---- max-turns ----
         if (options.getMaxTurns() != null) {
-            engine.getSettings().setMaxTurns(options.getMaxTurns());
+            engine.setMaxTurns(options.getMaxTurns());
         }
 
         // ---- allowedTools / disallowedTools（纯工具名）----
@@ -393,7 +393,7 @@ public class PrintMode {
         }
 
         // 禁用 memory
-        engine.getSettings().setMemoryEnabled(false);
+        engine.setMemoryEnabled(false);
         LOG.debug("Bare mode: disabled memory");
     }
 
@@ -444,11 +444,11 @@ public class PrintMode {
         switch (options.getPermissionMode()) {
             case DONT_ASK:
                 // 非交互模式：禁用 HITL，未授权操作自动拒绝
-                engine.getSettings().setHitlEnabled(false);
+                engine.setHitlEnabled(false);
                 break;
             case PLAN:
                 // 仅分析模式：禁用 HITL + DENY 所有写入类工具
-                engine.getSettings().setHitlEnabled(false);
+                engine.setHitlEnabled(false);
                 for (String tool : WRITE_TOOLS) {
                     engine.addPermissionRule(new PermissionRule(tool, PermissionBehavior.DENY, null, 100));
                 }
@@ -456,12 +456,12 @@ public class PrintMode {
                 break;
             case BYPASS_PERMISSIONS:
                 // 跳过所有权限检查
-                engine.getSettings().setHitlEnabled(false);
-                engine.getSettings().setSandboxEnabled(false);
+                engine.setHitlEnabled(false);
+                engine.setSandboxEnabled(false);
                 break;
             case ACCEPT_EDITS:
                 // 接受编辑：自动批准文件编辑工具，其它操作自动拒绝
-                engine.getSettings().setHitlEnabled(false);
+                engine.setHitlEnabled(false);
                 for (String tool : EDIT_TOOLS) {
                     engine.addPermissionRule(new PermissionRule(tool, PermissionBehavior.ALLOW, null, 100));
                 }
@@ -470,7 +470,7 @@ public class PrintMode {
             case DEFAULT:
             default:
                 // 非交互模式默认禁用 HITL（无人值守时不能等待人工批准）
-                engine.getSettings().setHitlEnabled(false);
+                engine.setHitlEnabled(false);
                 break;
         }
     }
