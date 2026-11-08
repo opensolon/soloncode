@@ -19,8 +19,6 @@ import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActOptionsAmend;
-import org.noear.solon.ai.agent.react.ReActTrace;
-import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
@@ -47,8 +45,9 @@ import org.noear.solon.net.websocket.WebSocket;
  * 所以字段都是普通字段。</p>
  * <ul>
  *   <li>用户轮次：prepare 时开流（审批续跑 {@code isResume} 续用原来的流与序号，否则新开一段），
- *       装配桌面请求选项（模型、协作提示、运行模式 / 审批拦截、cwd、推理强度）；
- *       终态 = RunEnd 时的 hitl 卡或 done，出错发 error，被停止什么都不发（停止入口已同步发过 reason + done）；</li>
+ *       装配桌面请求选项（模型、协作提示、运行模式 / 审批拦截、cwd、推理强度）；</li>
+ *   <li>终态只在 finished 里、只看 {@link RunOutcome}（不解析 RunEnd）：挂起 → 第一张 hitl 卡；完成 → done（模型、用量）；
+ *       出错 → error；用户停止 → reason + done（与 Web 同一写法：停止入口只在没有在跑的轮次时兜底）；</li>
  *   <li>goal 轮次：沿用 {@code startGoalStream} 开的流，先发 {@code goal_round}，只推过程事件、不发终态
  *       （goal 生命周期由 {@link DesktopGoalBroadcaster} 广播）。</li>
  * </ul>
@@ -66,7 +65,6 @@ final class DesktopRunSink implements RunSink {
     private final WebSocket socket;
     private final boolean goal;
     private boolean begun;
-    private boolean terminalSent;
     private String modelName;
 
     DesktopRunSink(WsGate gate, HostRun run, WebSocket socket) {
@@ -113,7 +111,6 @@ final class DesktopRunSink implements RunSink {
         Prompt prompt = prep.prompt();
         if (prompt != null) {
             // 续流（如 /continue）正文为空，靠会话挂起的 trace 继续，此时没有 prompt
-            prompt.attrPut("start_time", System.currentTimeMillis());
             ReasoningSupportUtil.applyToPrompt(prompt, effort);
         }
 
@@ -153,12 +150,6 @@ final class DesktopRunSink implements RunSink {
 
     @Override
     public void event(AgentEvent event) {
-        if (event instanceof RunEndEvent) {
-            if (goal == false) {
-                onRunEnd((RunEndEvent) event);
-            }
-            return;
-        }
         DesktopEventConverter converter = gate.eventConverter;
         String msg = null;
         if (event instanceof ReasonDeltaEvent) {
@@ -175,57 +166,64 @@ final class DesktopRunSink implements RunSink {
         }
     }
 
-    private void onRunEnd(RunEndEvent runEndEvent) {
-        ReActTrace trace = runEndEvent.getTrace();
-        Long startTime = trace.getOriginalPrompt().attrAs("start_time");
-        long elapsed = startTime != null ? System.currentTimeMillis() - startTime : 0;
-        long totalTokens = trace.getMetrics() != null ? trace.getMetrics().getTotalTokens() : 0;
-
-        // 判据用 next() 而非 hasPendingHitl()：残留决策（整批已决策但续流未发生）
-        // 也要推卡给前端重批/透传，否则残留决策永远等不到续流（next 含回退首项语义）
-        HitlCard card = HitlCard.next(session);
-        if (card != null) {
-            terminal(hitlEvent(sessionId, card));
-            return;
-        }
-        done(trace.getOptions().getChatModel().getNameOrModel(), totalTokens, elapsed);
-    }
-
     @Override
     public void finished(RunOutcome outcome) {
-        if (goal || outcome.isCancelled()) {
-            // goal 轮次不发终态；被停止的一轮由停止入口同步发过 reason + done
-            return;
+        if (goal) {
+            return; // goal 轮次不发终态（生命周期由 DesktopGoalBroadcaster 广播）
+        }
+        if (outcome.isCancelled()) {
+            if (outcome.getCancelCause() == RunOutcome.CancelCause.INTERRUPT_ALL) {
+                stopped(gate, socket, sessionId, modelName != null ? modelName
+                        : gate.engine.getMainModel().getConfig().getNameOrModel());
+            }
+            return; // 其它取消（程序取消、腾位）不发终态，与迁移前一致
         }
         if (outcome.isFailed()) {
             begin(); // 开流前失败也要让前端看得见
             Throwable e = outcome.getError();
             String text = e == null ? "任务执行失败" : (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
-            terminal(new ONode().set("type", "error").set("sessionId", sessionId).set("text", text));
+            emit(new ONode().set("type", "error").set("sessionId", sessionId).set("text", text));
             return;
         }
-        done(modelName, 0, 0);
-    }
-
-    private void done(String model, long totalTokens, long elapsedMs) {
-        terminal(new ONode().set("type", "done")
-                .set("sessionId", sessionId)
-                .set("modelName", model)
-                .set("totalTokens", totalTokens)
-                .set("elapsedMs", elapsedMs));
-    }
-
-    /** 终态每轮只发一次（RunEnd 已发 hitl / done 时，流的正常结束不再补 done） */
-    private void terminal(ONode node) {
-        if (terminalSent) {
+        if (outcome.getHitlCards().isEmpty() == false) {
+            // 审批挂起：逐张提问，先推第一张（其余的在每次决策后由 DesktopHostSink#hitl 推）
+            emit(hitlEvent(sessionId, outcome.getHitlCards().get(0)));
             return;
         }
-        terminalSent = true;
-        emit(node);
+        emit(doneEvent(sessionId, modelName, outcome.getUsage().getTotalTokens(), outcome.getUsage().getElapsedMs()));
     }
 
     private void emit(ONode node) {
         gate.streamHub.emit(sessionId, node.toJson());
+    }
+
+    static ONode doneEvent(String sessionId, String model, long totalTokens, long elapsedMs) {
+        return new ONode().set("type", "done")
+                .set("sessionId", sessionId)
+                .set("modelName", model)
+                .set("totalTokens", totalTokens)
+                .set("elapsedMs", elapsedMs);
+    }
+
+    /**
+     * 用户停止的终态：reason + done。本轮的流还在就进流（带序号），否则直接发给请求连接。
+     * 停止入口在没有在跑的轮次时也用它兜底。
+     */
+    static void stopped(WsGate gate, WebSocket socket, String sessionId, String model) {
+        String reason = new ONode().set("type", "reason")
+                .set("sessionId", sessionId)
+                .set("text", "[Task interrupted]")
+                .toJson();
+        String done = doneEvent(sessionId, model, 0, 0).toJson();
+        for (String json : new String[]{reason, done}) {
+            if (gate.streamHub.emit(sessionId, json) == false && socket != null) {
+                try {
+                    socket.send(json);
+                } catch (Throwable e) {
+                    // 连接已断：前端重连后以会话状态为准
+                }
+            }
+        }
     }
 
     private void applyRunMode(ReActOptionsAmend options) {

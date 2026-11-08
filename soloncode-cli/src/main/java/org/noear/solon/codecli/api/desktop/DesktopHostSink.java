@@ -26,6 +26,7 @@ import org.noear.solon.ai.harness.host.HostSink;
 import org.noear.solon.ai.harness.host.RunSink;
 import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.harness.input.InputOutcome.RejectReason;
+import org.noear.solon.codecli.session.SessionRewindService;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -81,28 +82,33 @@ final class DesktopHostSink implements HostSink {
         }
         InputOutcome.Kind kind = input.getKind();
         if (kind == InputOutcome.Kind.TASK || kind == InputOutcome.Kind.REPLY) {
-            applySelection(session, input);
+            applySelection(gate.engine, session, input.getSelectedModel(),
+                    input.getAttr(DesktopInputRouter.ATTR_REASONING_EFFORT),
+                    input.getAttr(DesktopInputRouter.ATTR_RUN_MODE),
+                    input.getAttr(DesktopInputRouter.ATTR_AGENT));
         }
         if (kind == InputOutcome.Kind.REPLY && input.hasReply() == false) {
             receipt(input, null);
         }
     }
 
-    private void applySelection(AgentSession session, HostInput input) {
-        HarnessEngine engine = gate.engine;
-        if (Assert.isNotEmpty(input.getSelectedModel())) {
+    /**
+     * 写入桌面会话级选择（唯一实现）：普通输入在受理后写（{@link #admitted}），goal 不经受理、创建前写。
+     * 桌面端的子代理是「每条消息显式」语义：没带就是主代理（与 Web 的「没带就保持」不同）。
+     */
+    static void applySelection(HarnessEngine engine, AgentSession session, String model, String effort, String mode,
+                               String agent) {
+        if (Assert.isNotEmpty(model)) {
             // 空时保持已有选择（否则审批续跑等后续轮次会回落默认模型）
-            engine.setSessionModel(session, input.getSelectedModel());
+            engine.setSessionModel(session, model);
         }
-        String effort = input.getAttr(DesktopInputRouter.ATTR_REASONING_EFFORT);
         if (effort != null) {
             ReasoningSupportUtil.putSessionEffort(session, effort, true);
         }
-        String mode = input.getAttr(DesktopInputRouter.ATTR_RUN_MODE);
         if (mode != null) {
             session.attrs().put(DesktopRunSink.SESSION_ATTR_RUN_MODE, mode);
         }
-        engine.setSessionAgent(session, engine.getAgentOrMain(input.getAttr(DesktopInputRouter.ATTR_AGENT)).name());
+        engine.setSessionAgent(session, engine.getAgentOrMain(agent).name());
     }
 
     @Override
@@ -115,14 +121,8 @@ final class DesktopHostSink implements HostSink {
         String sid = input.getSessionId();
         if ("rewind".equals(input.getCommandName())) {
             ParsedCommand cmd = input.getCommand();
-            int rewindCount = 1;
-            if (cmd != null && cmd.argCount() > 0) {
-                try {
-                    rewindCount = Integer.parseInt(cmd.argAt(0));
-                } catch (NumberFormatException ignored) {
-                }
-            }
-            send(input, new ONode().set("type", "rewind").set("sessionId", sid).set("count", rewindCount + 1));
+            int count = SessionRewindService.rewindReceiptCount(cmd != null && cmd.argCount() > 0 ? cmd.argAt(0) : null);
+            send(input, new ONode().set("type", "rewind").set("sessionId", sid).set("count", count));
         } else {
             send(input, new ONode().set("type", "command").set("sessionId", sid)
                     .set("text", text != null ? text : "命令执行完成"));

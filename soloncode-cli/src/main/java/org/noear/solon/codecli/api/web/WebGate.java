@@ -235,6 +235,17 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         }
     }
 
+    @Override
+    public boolean isSessionOccupied(HarnessEngine engine, String sessionId) {
+        try {
+            AgentSession session = engine.getSessionOrNull(sessionId);
+            return session != null && engine.status(session).isOccupied();
+        } catch (Exception e) {
+            LOG.warn("[WebGate] occupied check failed for session {}: {}", sessionId, e.getMessage());
+            return false;
+        }
+    }
+
     /**
      * 广播原始 JSON 字符串到指定工作区的所有 WebSocket 连接（不注入 sessionId，系统级事件用）。
      */
@@ -354,25 +365,16 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
             return;
         }
 
-        // 推送严格按 socket 所属工作区分组；对话隔离开启时只推送给拥有该会话的用户连接
-        String sessionOwnerId = null;
-        try {
-            Path sessionDir = wsContext.getSessionPath(sessionId);
-            if (Files.isDirectory(sessionDir)) {
-                SessionMeta meta = SessionMeta.load(sessionDir);
-                sessionOwnerId = meta.getOwnerUserId();
-            }
-        } catch (Exception e) {
-            // 忽略异常
-        }
+        // 推送严格按 socket 所属工作区分组；对话隔离开启时只推送给拥有该会话的用户连接。
+        // 会话主人要读盘（_meta）：只在隔离开启时读，不让每个流式分片都碰一次磁盘
+        UserAuthConfig authConfig = wsContext.getSettings() == null ? null : wsContext.getSettings().getUserAuth();
+        boolean isolate = authConfig != null && authConfig.isEnabled()
+                && authConfig.isConversationIsolationEnabled() && !socketUserMap.isEmpty();
+        String sessionOwnerId = isolate ? loadSessionOwner(wsContext, sessionId) : null;
         for (WebSocket socket : wsContext.getConnections()) {
             if (socket != null) {
                 try {
-                    UserAuthConfig authConfig = wsContext.getSettings() == null
-                            ? null : wsContext.getSettings().getUserAuth();
-                    boolean isolate = authConfig != null && authConfig.isEnabled()
-                            && authConfig.isConversationIsolationEnabled();
-                    if (isolate && !socketUserMap.isEmpty()) {
+                    if (isolate) {
                         String socketUserId = socketUserMap.get(socket.id());
                         if (socketUserId == null) {
                             continue;
@@ -389,6 +391,19 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
                 }
             }
         }
+    }
+
+    /** 会话主人（对话隔离用；会话目录不存在或读取失败时为 null） */
+    private static String loadSessionOwner(WorkspaceContext wsContext, String sessionId) {
+        try {
+            Path sessionDir = wsContext.getSessionPath(sessionId);
+            if (Files.isDirectory(sessionDir)) {
+                return SessionMeta.load(sessionDir).getOwnerUserId();
+            }
+        } catch (Exception e) {
+            // 忽略异常
+        }
+        return null;
     }
 
     /**

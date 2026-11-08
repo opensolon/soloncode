@@ -21,6 +21,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.host.SubmitSpec;
 import org.noear.solon.ai.harness.input.AgentMentions;
@@ -96,31 +97,14 @@ final class DesktopInputRouter {
                 return;
             }
 
-            // 普通轮次：用户停止（清积压 + 落取消消息 + 停流）。停止之后框架不再投递本轮事件、本轮不发终态，
-            // reason + done 在这里同步发出（每轮恰好一个终态）
-            gate.host.interrupt(WsGate.TENANT, sessionId);
-            LOG.info("用户已取消任务.");
-
-            String interruptModelName = req.getModel();
-            if (interruptModelName == null || interruptModelName.isEmpty()) {
-                interruptModelName = engine.getMainModel().getConfig().getNameOrModel();
-            }
-
-            String interruptReason = new ONode().set("type", "reason")
-                    .set("sessionId", session.getSessionId())
-                    .set("text", "[Task interrupted]")
-                    .toJson();
-            if (!gate.streamHub.emit(sessionId, interruptReason)) {
-                socket.send(interruptReason);
-            }
-
-            String interruptDone = new ONode().set("type", "done")
-                    .set("sessionId", session.getSessionId())
-                    .set("modelName", interruptModelName)
-                    .set("totalTokens", 0)
-                    .set("elapsedMs", 0).toJson();
-            if (!gate.streamHub.emit(sessionId, interruptDone)) {
-                socket.send(interruptDone);
+            // 普通轮次：用户停止（清积压 + 落取消消息 + 停流）。与 Web 同一写法：有轮次被停掉时，
+            // reason + done 由本轮的 DesktopRunSink#finished 发；没有在跑的轮次时这里兜底（前端可能仍停在流式态）
+            HarnessResult<Boolean> r = gate.host.interrupt(WsGate.TENANT, sessionId);
+            LOG.info("用户已取消任务: {}", r);
+            if (Boolean.TRUE.equals(r.getValue()) == false) {
+                String model = Assert.isNotEmpty(req.getModel()) ? req.getModel()
+                        : engine.getMainModel().getConfig().getNameOrModel();
+                DesktopRunSink.stopped(gate, socket, sessionId, model);
             }
             return;
         }
@@ -220,7 +204,7 @@ final class DesktopInputRouter {
         // Goal 不经 handle 受理：选择照旧在创建前写入
         String goalObjective = WsGate.extractGoalObjective(currentInput, mode);
         if (goalObjective != null) {
-            applySelection(session, modelName, req.getReasoningEffort(), mode, agentName);
+            DesktopHostSink.applySelection(engine, session, modelName, req.getReasoningEffort(), mode, agentName);
             gate.startGoalStream(socket, sessionId, req, goalObjective, cwd, resolvedAgentName);
             return;
         }
@@ -294,23 +278,6 @@ final class DesktopInputRouter {
                 LOG.warn("[Desktop] delete unused attachment failed: {}", e.toString());
             }
         }
-    }
-
-    /**
-     * 写入会话级选择（Goal 不经受理，选择照旧在创建前写入）。
-     */
-    private void applySelection(AgentSession session, String modelName, String effort, String mode, String agentName) {
-        HarnessEngine engine = gate.engine;
-        if (Assert.isNotEmpty(modelName)) {
-            engine.setSessionModel(session, modelName);
-        }
-        if (effort != null) {
-            ReasoningSupportUtil.putSessionEffort(session, effort, true);
-        }
-        if (mode != null) {
-            session.attrs().put(DesktopRunSink.SESSION_ATTR_RUN_MODE, mode);
-        }
-        engine.setSessionAgent(session, engine.getAgentOrMain(agentName).name());
     }
 
     /**

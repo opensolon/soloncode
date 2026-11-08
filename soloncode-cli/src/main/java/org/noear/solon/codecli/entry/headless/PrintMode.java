@@ -17,7 +17,6 @@ package org.noear.solon.codecli.entry.headless;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
-import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.*;
 import org.noear.solon.ai.agent.trace.Metrics;
@@ -25,7 +24,6 @@ import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.host.HarnessHost;
-import org.noear.solon.ai.harness.host.RunHandle;
 import org.noear.solon.ai.harness.host.RunOutcome;
 import org.noear.solon.ai.harness.host.RunPrep;
 import org.noear.solon.ai.harness.host.RunSink;
@@ -143,11 +141,8 @@ public class PrintMode {
      */
     private final HarnessHost host;
 
-    /** 是否有轮次在进行（含「已开始受理、句柄还没发布」的窗口） */
-    private volatile boolean turnRunning;
-
-    /** 当前轮次（常驻模式下输入泵线程据此中断；受理期间为 null） */
-    private volatile RunHandle currentRun;
+    /** 进行中的轮次所在会话（null = 没有）。停止只需会话：受理中的那一轮由框架保证以 CANCELLED 收尾 */
+    private volatile String turnSessionId;
 
     /** 当前轮次是否被显式中断（每轮开始时重置） */
     private volatile boolean turnInterrupted;
@@ -507,7 +502,7 @@ public class PrintMode {
         PrintResult result = new PrintResult();
         result.sessionId = session.getSessionId();
         turnInterrupted = false;
-        turnRunning = true;
+        turnSessionId = session.getSessionId();
 
         String modelSelected = options.getModel();
         if (modelSelected == null) {
@@ -548,9 +543,7 @@ public class PrintMode {
                         ? submitted.getRejectDetail() : "Input not admitted: " + submitted.getKind());
             }
 
-            // 发布本轮句柄；中断帧若在发布前到达（已留下标志），这里补做停止。
-            // 两边都是「先写自己的 volatile、再读对方的」：至少有一边看得到对方，重复停止是幂等的
-            currentRun = submitted.getRun();
+            // 受理期间的停止由框架接住；只剩「进入 submit 之前」的极短窗口，这里补一次（重复停止是幂等的）
             if (turnInterrupted) {
                 host.interrupt(TENANT, session.getSessionId());
             }
@@ -562,16 +555,13 @@ public class PrintMode {
             }
             result.interrupted = turnInterrupted;
 
-            // 检查是否超过最大轮次
-            if (result.trace != null && result.trace.isAbnormal()) {
-                result.maxTurnsExceeded = true;
-            }
+            // 异常结束（如超过最大轮次）由框架的终态给出
+            result.maxTurnsExceeded = outcome.isAbnormal();
         } catch (Exception e) {
             result.error = e;
             LOG.error("Print mode execution error: {}", e.getMessage(), e);
         } finally {
-            currentRun = null;
-            turnRunning = false;
+            turnSessionId = null;
         }
 
         return result;
@@ -581,20 +571,17 @@ public class PrintMode {
      * 中断当前进行中的轮次（用户停止：落取消消息、停流）。
      *
      * <p>由常驻模式的输入泵线程调用（收到 {@code control_request/interrupt}），与执行线程并发。
-     * 还在调度窗口里、尚未开流的那一轮也会被停掉（框架保证以 CANCELLED 收尾）。</p>
+     * 受理中、还在调度窗口里、尚未开流的那一轮都会被停掉（框架保证以 CANCELLED 收尾）。</p>
      *
      * @return true 表示确实有一个在跑的轮次被取消；false 表示当前无进行中轮次
      */
     boolean interruptCurrentTurn() {
-        if (turnRunning == false) {
+        String sessionId = turnSessionId;
+        if (sessionId == null) {
             return false;
         }
         turnInterrupted = true;
-        RunHandle run = currentRun;
-        if (run != null) {
-            host.interrupt(TENANT, run.getRun().getSessionId());
-        }
-        // 句柄尚未发布也算成功：runAgent 发布后会看到中断标志并补做停止
+        host.interrupt(TENANT, sessionId);
         return true;
     }
 
@@ -624,7 +611,6 @@ public class PrintMode {
             }
         } else if (chunk instanceof RunEndEvent) {
             RunEndEvent react = (RunEndEvent) chunk;
-            result.trace = react.getTrace();
             result.answer = clearThink(react.getText());
             result.metrics = react.getMetrics();
             result.sessionId = session.getSessionId();
@@ -1046,7 +1032,6 @@ public class PrintMode {
     static class PrintResult {
         String answer;
         String sessionId;
-        ReActTrace trace;
         Metrics metrics;
         Throwable error;
         boolean maxTurnsExceeded;

@@ -458,12 +458,8 @@ public class CliShell implements Runnable {
                         } else if (chunk instanceof ToolCallEndEvent) {
                             //ObservationChunk 为全量，一次工具调用产生一个 ObservationChunk
                             ToolCallEndEvent toolEnd = (ToolCallEndEvent) chunk;
-                            if (toolEnd.getError() == null
-                                    && Assert.isNotEmpty(toolEnd.getToolName())
-                                    && GoalTalent.isGoalTool(toolEnd.getToolName()) == false
-                                    && MemoryTalent.isMemoryTool(toolEnd.getToolName()) == false
-                                    && TaskTalent.TOOL_MULTITASK.equals(toolEnd.getToolName()) == false
-                                    && TaskTalent.TOOL_TASK.equals(toolEnd.getToolName()) == false) {
+                            // 「这一轮是否真的做了事」与框架同一口径（只数成功的非内部工具调用）
+                            if (toolEnd.getError() == null && GoalOutcome.isEvidenceTool(toolEnd.getToolName())) {
                                 hasToolCalls.set(true);
                             }
                             onToolCallEndEvent(toolEnd, isFirstReasonDeltaChunk);

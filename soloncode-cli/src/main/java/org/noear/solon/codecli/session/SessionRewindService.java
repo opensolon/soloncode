@@ -61,6 +61,21 @@ public class SessionRewindService {
     private static final Logger LOG = LoggerFactory.getLogger(SessionRewindService.class);
 
     /**
+     * {@code /rewind [n]} 命令回执中前端要删掉的条数：回退 n 条（缺省 1，参数非法也按 1），
+     * 再加上用户刚发出的这条命令本身。Web 与桌面端共用。
+     */
+    public static int rewindReceiptCount(String firstArg) {
+        int count = 1;
+        if (firstArg != null) {
+            try {
+                count = Integer.parseInt(firstArg.trim());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return count + 1;
+    }
+
+    /**
      * 回退结果。
      */
     public static class RewindResult {

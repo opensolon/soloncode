@@ -29,6 +29,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.session.HostAttrs;
+import org.noear.solon.codecli.session.SessionRewindService;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -142,17 +143,11 @@ final class WebHostSink implements HostSink {
         if ("rewind".equals(input.getCommandName())) {
             // rewind 走特殊通道：发送 rewind 事件让前端同步删除 DOM（加一条删掉自己发出的那条）
             ParsedCommand cmd = input.getCommand();
-            int rewindCount = 1;
-            if (cmd != null && cmd.argCount() > 0) {
-                try {
-                    rewindCount = Integer.parseInt(cmd.argAt(0));
-                } catch (NumberFormatException ignored) {
-                }
-            }
+            int count = SessionRewindService.rewindReceiptCount(cmd != null && cmd.argCount() > 0 ? cmd.argAt(0) : null);
             // 被回退的那一轮的执行过程还留在上下文快照里：不清掉的话刷新页面会把它原样回放回来
             TraceUtil.removeCurrentTrace(session);
             session.updateSnapshot();
-            gate.emitToClient(ctx, sid, WebEvent.ofRewind(rewindCount + 1));
+            gate.emitToClient(ctx, sid, WebEvent.ofRewind(count));
         } else {
             gate.emitToClient(ctx, sid, WebEvent.ofCommand(text));
             InputOrigin o = input.getOrigin();

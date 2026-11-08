@@ -183,7 +183,7 @@ public class SessionWebController extends AbstractWebController {
                 if (meta.isPinned()) {
                     continue;
                 }
-                if (runtimePort().isSessionBusy(engine(), sessionId)) {
+                if (runtimePort().isSessionOccupied(engine(), sessionId)) {
                     skippedBusy++;
                     continue;
                 }
@@ -276,7 +276,7 @@ public class SessionWebController extends AbstractWebController {
         SessionManager targetSessions = activeWorkspaceSession ? sessionManager()
                 : (targetContext == null ? null : targetContext.getSessionManager());
 
-        if (targetEngine != null && runtimePort().isSessionBusy(targetEngine, sessionId)) {
+        if (targetEngine != null && runtimePort().isSessionOccupied(targetEngine, sessionId)) {
             return Result.failure(409, "Session is running");
         }
 
@@ -701,7 +701,7 @@ public class SessionWebController extends AbstractWebController {
         }
         Path sessionPath = currentContext().getSessionPath(sessionId);
         if (!ownsSession(sessionPath)) return Result.failure(404, "Session not found");
-        if (runtimePort().isSessionBusy(engine(), sessionId)) {
+        if (runtimePort().isSessionOccupied(engine(), sessionId)) {
             return Result.failure(409, "Session is running");
         }
 

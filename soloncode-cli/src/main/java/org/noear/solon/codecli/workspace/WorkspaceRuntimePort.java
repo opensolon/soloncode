@@ -34,9 +34,15 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
     SessionAdmin sessionAdmin(WorkspaceContext workspaceContext);
 
     /**
-     * 判断指定引擎中的 Session 是否正在运行任务。
+     * 会话是否有运行流（含受理窗口，不含待审批）：插话、界面「运行中」展示用。
      */
     boolean isSessionBusy(HarnessEngine engine, String sessionId);
+
+    /**
+     * 会话是否「占着」：有运行流、受理中或有待审批卡。删除、回退等会破坏会话状态的操作用它判断
+     * （与桌面端、HarnessHost#closeSession 同一口径；等审批的会话被回退会把挂起的 trace 写坏）。
+     */
+    boolean isSessionOccupied(HarnessEngine engine, String sessionId);
 
     /**
      * 中断指定会话的当前 AI 任务。

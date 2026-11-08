@@ -55,6 +55,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 
 /**
  * 工作区管理器，用于统一管理多工作区的生命周期、实例化底层引擎及持久化最近工作区。
@@ -125,8 +127,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         });
 
         // LRU 闲置释放：定期扫描非默认工作区，释放长时间无访问且无 WS 连接的引擎资源
-        java.util.concurrent.ScheduledExecutorService sweeper =
-                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -> {
+        ScheduledExecutorService sweeper = Executors.newSingleThreadScheduledExecutor(r -> {
                     Thread t = new Thread(r, "workspace-idle-sweeper");
                     t.setDaemon(true);
                     return t;
