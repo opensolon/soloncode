@@ -61,9 +61,10 @@ public class InjectedRoundChannelContractTest {
     void everyEntryRegistersGoalExecutorOnGoalRuntimeChannel() throws IOException {
         // 注册统一走 GoalExtension 门面（addExecutor），宿主不再绕行 getGoalRuntime()；
         // 认领谓词统一引用 SessionIdOwnership，避免三处内联正则互不知情而抢跑会话。
+        // CLI：同样交给宿主骨架（goal / loop 执行器、恢复与续发一起登记），只认领 cli 会话
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "goal.addExecutor(\"cli\", SessionIdOwnership::isCli",
-                "CLI 未向 GoalRuntime 注册通道化执行器（/goal 将没有过程输出）");
+                ".programRuns(SessionIdOwnership::isCli)",
+                "CLI 未把后台轮次交给宿主骨架（/goal 将没有过程输出）");
 
         // Web：goal / loop 两个执行器由宿主骨架（HarnessHost）在首次取到引擎时一起登记，认领谓词同一个
         assertSourceRegisters(SRC.resolve("api/web/WebGate.java"),
@@ -153,10 +154,9 @@ public class InjectedRoundChannelContractTest {
      */
     @Test
     void eachEntryRegistersBothChannelsSeparately() throws IOException {
-        // CLI 与 Web 工作区都同时服务 loop 与 goal
-        // loop 通道经插件门面注册（CLI 与 Web 同形：挂接后 addExecutor，认领谓词交给插件）
+        // CLI 与 Web 工作区都同时服务 loop 与 goal：两端都由宿主骨架一起登记（同一条运行链）
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
-                "loop.addExecutor(\"cli\", SessionIdOwnership::isCli,", "CLI 的 loop 通道丢失");
+                ".programRuns(SessionIdOwnership::isCli)", "CLI 的 goal / loop 通道丢失");
         // Web：骨架对 goal 与 loop 各登记一个执行器（同一条运行链），工作区管理器不得再另登一份（会重叠抢跑）
         assertSourceRegisters(SRC.resolve("api/web/WebGate.java"),
                 ".programRuns(SessionIdOwnership::isWeb)", "Web 的 goal / loop 通道丢失");

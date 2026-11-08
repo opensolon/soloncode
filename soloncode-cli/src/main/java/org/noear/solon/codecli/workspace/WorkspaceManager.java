@@ -729,16 +729,61 @@ public class WorkspaceManager implements WorkspaceRegistry {
 
         // 初始化 HTTP 代理配置已移至构造函数（进程级一次性），见 WorkspaceManager(settings)
 
-        HarnessEngine engine = HarnessEngine.of(workspacePath, AgentFlags.getHarnessHome())
+        // harness 状态（TODO 清单等）经数据来源读写：~/.soloncode/workspaces/<key>/sessions/<sid>/TODO.md，
+        // 与会话目录同处；清单归属会话、不随 cwd 漂移。换成 db / http 来源即可算存分离
+        FileMountSource stateSource = FileMountSource.of(WorkspaceDataUtil.dataDir(workspacePath).toPath());
+
+        // 两步一次性迁移（顺序承载语义：必须先于 LoopExtension 挂接——挂接即加载并拆分 tasks.json；
+        // 插件在下方 build() 时挂接，所以迁移放在构建引擎之前）：
+        // ① tasks.json 的历史 GOAL 条目先摘到 goal-legacy.json，再逐会话写入快照 session.goal
+        //   （必须在任何会话实例化之前，绕过会话锁直写快照）。摘出后 loop 插件拿到的 tasks.json 里已无 GOAL，
+        //   失败的会话留在 goal-legacy.json 下次启动重试（loop 拆分会把外来条目只留在 .migrated-* 备份里，
+        //   不能指望它原样写回）；已被拆进备份的 GOAL 条目也会被补救。
+        // ② 旧版每会话 loop-tasks.json → tasks.json（仅 tasks.json 与 loop/ 都不存在时），挂接时再由插件拆成按会话分存。
+        Path tasksFile = WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json");
+        Path sessionsRoot = WorkspaceDataUtil.sessionsPath(workspacePath);
+        GoalDataMigrator.Result goalMigration = GoalDataMigrator.migrate(tasksFile, sessionsRoot);
+        if (goalMigration == GoalDataMigrator.Result.PARTIAL) {
+            LOG.warn("[Workspace] some legacy goals failed to migrate, kept in {} for retry", GoalDataMigrator.LEGACY_FILE);
+        }
+        LoopDataMigrator.migrate(tasksFile, sessionsRoot);
+
+        // harness 四个插件（steer / queue / goal / loop，各自独立模块）在构建期装配（build() 内挂接）：
+        // 插件间只经核心契约协作，装配顺序不承载语义。GoalExtension 在挂接时完成运行态→调度→/goal 命令→Talent 装配；
+        // 执行通道在挂接后按通道注册。
+        GoalGroupDo goalCfg = wsSettings.getGoal();
+        // 验证器在本轮会话工作目录（__cwd，缺省 engine.getSessionCwd()）下执行；job 名前缀由插件按实例自动生成
+        GoalExtension goalExtension = GoalExtension.builder()
+                .budget(goalCfg.getBudgetWarningPercentOrDefault(),
+                        goalCfg.getBudgetCriticalPercentOrDefault())
+                .stagnation(goalCfg.getStagnationThresholdOrDefault())
+                .maxErrors(goalCfg.getMaxConsecutiveErrorsOrDefault())
+                .validatorEnabled(goalCfg.isValidatorEnabledOrDefault())
+                .build();
+
+        // loop（会话定时任务）：宿主只提供存储位置、孤儿判定、阈值（实时读，支持热更新）与
+        // 调度线程日志归属；调度/持久化/命令/工具全部在插件内。执行通道在挂接后注册（与 goal、CLI 同形）。
+        // 没人认领时只记日志跳过（关闭插件缺省执行器，桌面会话等保持既有行为）。
+        // 任务存储跟随引擎的数据来源（与 TODO 清单同一来源）：按会话分存在 <dataDir>/loop/，
+        // 首次加载时把上方迁移器产出的 tasks.json 拆开迁移；数据来源换成 db / http 时 loop 一并跟随
+        // （上方两个迁移器只处理本地旧数据，届时应改为一次性导入）。
+        LoopExtension loopExtension = LoopExtension.builder()
+                .store(stateSource, LoopDataMigrator.LOOP_DIR, "tasks.json")
+                .sessionAlive(id -> id.startsWith(AutomationManager.SESSION_PREFIX)
+                        || Files.isDirectory(sessionsRoot.resolve(id)))
+                .maxErrors(() -> wsSettings.getLoop().getMaxConsecutiveErrorsOrDefault())
+                .triggerWrapper(r -> WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, r))
+                .defaultExecutor(false)
+                .build();
+
+        HarnessEngine.Builder engineBuilder = HarnessEngine.of(workspacePath, AgentFlags.getHarnessHome())
                 .userAgent(wsSettings.getGeneral().getUserAgent())
                 .systemPrompt(systemPrompt)
                 .maxTurns(wsSettings.getGeneral().getMaxTurns())
                 .autoRethink(wsSettings.getGeneral().isAutoRethink())
                 .sessionWindowSize(wsSettings.getGeneral().getSessionWindowSize())
                 .sessionProvider(new SessionManager(workspacePath))
-                // harness 状态（TODO 清单等）经数据来源读写：~/.soloncode/workspaces/<key>/sessions/<sid>/TODO.md，
-                // 与会话目录同处；清单归属会话、不随 cwd 漂移。换成 db / http 来源即可算存分离
-                .stateSource(FileMountSource.of(WorkspaceDataUtil.dataDir(workspacePath).toPath()))
+                .stateSource(stateSource)
                 // 压缩默认上下文窗口：通用页「模型默认-上下文长度」优先，未设置时保持 CLI 缺省 1m
                 .compressionDefaultContextLength(resolveCompressionDefaultContextLength(wsSettings.getGeneral().getModelDefaultContextLength()))
                 .compressionThreshold(wsSettings.getGeneral().getCompressionThresholdMessages(), wsSettings.getGeneral().getCompressionThresholdPercent() / 100.0D)
@@ -763,19 +808,22 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .httpCustomizeSet(http -> {
                     ProxyConfig.applyIfNeeded(http);
                 })
-                .build();
-
-        engine.setDefaultModel(wsSettings.getDefaultModel());
-
-
-
-        //清理 web 端遗留的僵尸会话目录（新建对话未发消息即切走产生的空壳）
-        Path wsSessionsRoot = WorkspaceDataUtil.sessionsPath(workspacePath);
-        SessionJanitor.cleanWebSessions(wsSessionsRoot);
+                .defaultModel(wsSettings.getDefaultModel())
+                .extensionAdd(new SteerExtension())
+                .extensionAdd(new QueueExtension())
+                .extensionAdd(goalExtension)
+                .extensionAdd(loopExtension);
 
         for (ModelDo model : wsSettings.getModels().values()) {
-            engine.addModel(model);
+            engineBuilder.modelAdd(model);
         }
+
+        HarnessEngine engine = engineBuilder.build();
+        // web / 自动化会话的 goal / loop 后台轮次由入口的宿主骨架（WebGate 内的 HarnessHost）在
+        // onWorkspaceReady 预热时登记执行器（认领谓词 SessionIdOwnership::isWeb），与用户轮次同一条链
+
+        //清理 web 端遗留的僵尸会话目录（新建对话未发消息即切走产生的空壳）
+        SessionJanitor.cleanWebSessions(sessionsRoot);
 
         for (Map.Entry<String, MountDo> entry : wsSettings.getMountPools().entrySet()) {
             MountDo mount = entry.getValue();
@@ -816,7 +864,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getCommandRegistry().register(new ClearCommand());
         engine.getCommandRegistry().register(new ContinueCommand());
         engine.getCommandRegistry().register(new InterruptCommand());
-        // /steer、/queue、/goal 三个插件由下方 addExtensionIfAbsent 装配（按类型幂等）。
+        // /steer、/queue、/goal、/loop 由各插件在构建期挂接时自行注册。
         // steer 输出走 AgentEvent（SteerAppliedEvent / SteerDroppedEvent），宿主零装配：
         // Web 由 WebEventMapper 映射为 system.steer_*，其余宿主不识别即忽略。
         engine.getCommandRegistry().register(new RerunCommand());
@@ -826,59 +874,6 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.getTalents().getLsp().setEnabled(wsSettings.getGeneral().isLspEnabled());
 
         RunUtil.async(() -> addServers(engine, wsSettings));
-
-        // 执行通道分离：loop 与 goal 各持自己的执行器与自己的宿，无跨域共享对象。
-        // （旧的 ExecutionBridge 已删除：它同时挂载「执行投递」「忙判定」「轮次度量」三件不相干的事，
-        //   而 busy 判定与轮次度量本可（且已）由会话快照与返回值直接得出）
-
-        // 两步一次性迁移（顺序承载语义：必须先于 LoopExtension 挂接——挂接即加载并拆分 tasks.json）：
-        // ① tasks.json 的历史 GOAL 条目先摘到 goal-legacy.json，再逐会话写入快照 session.goal
-        //   （必须在任何会话实例化之前，绕过会话锁直写快照）。摘出后 loop 插件拿到的 tasks.json 里已无 GOAL，
-        //   失败的会话留在 goal-legacy.json 下次启动重试（loop 拆分会把外来条目只留在 .migrated-* 备份里，
-        //   不能指望它原样写回）；已被拆进备份的 GOAL 条目也会被补救。
-        // ② 旧版每会话 loop-tasks.json → tasks.json（仅 tasks.json 与 loop/ 都不存在时），挂接时再由插件拆成按会话分存。
-        Path tasksFile = WorkspaceDataUtil.dataDir(workspacePath).toPath().resolve("tasks.json");
-        Path sessionsRoot = WorkspaceDataUtil.sessionsPath(workspacePath);
-        GoalDataMigrator.Result goalMigration = GoalDataMigrator.migrate(tasksFile, sessionsRoot);
-        if (goalMigration == GoalDataMigrator.Result.PARTIAL) {
-            LOG.warn("[Workspace] some legacy goals failed to migrate, kept in {} for retry", GoalDataMigrator.LEGACY_FILE);
-        }
-        LoopDataMigrator.migrate(tasksFile, sessionsRoot);
-
-        // harness 三个插件（steer / queue / goal，各自独立模块）集中在此装配：
-        // addExtensionIfAbsent 按类型幂等、返回实际生效实例；插件间只经核心契约协作，装配顺序不承载语义。
-        // GoalExtension 在挂接时完成运行态→调度→/goal 命令→Talent 装配；执行通道在挂接后按通道注册。
-        GoalGroupDo goalCfg = wsSettings.getGoal();
-        // 验证器在本轮会话工作目录（__cwd，缺省 engine.getSessionCwd()）下执行；job 名前缀由插件按实例自动生成
-        GoalExtension goalExtension = GoalExtension.builder()
-                .budget(goalCfg.getBudgetWarningPercentOrDefault(),
-                        goalCfg.getBudgetCriticalPercentOrDefault())
-                .stagnation(goalCfg.getStagnationThresholdOrDefault())
-                .maxErrors(goalCfg.getMaxConsecutiveErrorsOrDefault())
-                .validatorEnabled(goalCfg.isValidatorEnabledOrDefault())
-                .build();
-
-        // loop（会话定时任务）：宿主只提供存储位置、孤儿判定、阈值（实时读，支持热更新）与
-        // 调度线程日志归属；调度/持久化/命令/工具全部在插件内。执行通道在挂接后注册（与 goal、CLI 同形）。
-        // 没人认领时只记日志跳过（关闭插件缺省执行器，桌面会话等保持既有行为）。
-        // 任务存储跟随引擎的数据来源（与 TODO 清单同一来源）：按会话分存在 <dataDir>/loop/，
-        // 首次加载时把上方迁移器产出的 tasks.json 拆开迁移；数据来源换成 db / http 时 loop 一并跟随
-        // （上方两个迁移器只处理本地旧数据，届时应改为一次性导入）。
-        LoopExtension loopExtension = LoopExtension.builder()
-                .store(engine.getStateSource(), LoopDataMigrator.LOOP_DIR, "tasks.json")
-                .sessionAlive(id -> id.startsWith(AutomationManager.SESSION_PREFIX)
-                        || Files.isDirectory(sessionsRoot.resolve(id)))
-                .maxErrors(() -> wsSettings.getLoop().getMaxConsecutiveErrorsOrDefault())
-                .triggerWrapper(r -> WorkspaceLogRouter.withWorkspaceLogKey(workspacePath, r))
-                .defaultExecutor(false)
-                .build();
-
-        engine.addExtensionIfAbsent(new SteerExtension());
-        engine.addExtensionIfAbsent(new QueueExtension());
-        goalExtension = engine.addExtensionIfAbsent(goalExtension);
-        loopExtension = engine.addExtensionIfAbsent(loopExtension);
-        // web / 自动化会话的 goal / loop 后台轮次由入口的宿主骨架（WebGate 内的 HarnessHost）在
-        // onWorkspaceReady 预热时登记执行器（认领谓词 SessionIdOwnership::isWeb），与用户轮次同一条链
 
         // Goal / Loop 模式开关：loop 只关模型工具（/loop 命令与已有定时任务照常）；
         // goal 关闭时一并关闭 /goal 与调度（goal 依赖 goal_update 声明完成，工具关了继续跑只会空耗预算）

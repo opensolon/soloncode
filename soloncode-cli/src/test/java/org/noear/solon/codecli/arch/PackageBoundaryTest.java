@@ -612,41 +612,45 @@ class PackageBoundaryTest {
     }
 
     /**
-     * harness 三个插件（steer / queue / goal）必须用 <code>addExtensionIfAbsent</code> 幂等装配。
+     * harness 四个插件（steer / queue / goal / loop）必须在构建期用 <code>Builder.extensionAdd</code> 装配。
      *
-     * <p><code>addExtension</code> 不查重，重复写会二次 <code>onAttach</code>（重复注册、重建调度器）。
+     * <p>与框架推荐写法一致（SERVER 模式下 build 之后不能再挂）；运行期再 <code>addExtension</code> /
+     * <code>addExtensionIfAbsent</code> 这四个插件会二次 <code>onAttach</code> 或掩盖装配位置。
      * 原聚合入口 <code>HarnessExtensions</code> 已随插件独立而移除（它让核心反向依赖插件）。
-     * 同时要求三个插件确实装配了：少写一行就是「命令没注册、功能静默不存在」。</p>
+     * 同时要求四个插件确实装配了：少写一行就是「命令没注册、功能静默不存在」。</p>
      *
      * <p>豁免：测试源码不在 SRC 范围内，自然不命中。</p>
      */
     @Test
-    void hostMustInstallHarnessPluginsIdempotently() throws IOException {
+    void hostMustInstallHarnessPluginsAtBuildTime() throws IOException {
         List<String> violations = new ArrayList<>();
-        boolean steer = false, queue = false, goal = false;
+        boolean steer = false, queue = false, goal = false, loop = false;
+        String[] runtimeAdds = {
+                "addExtension(new SteerExtension())", "addExtensionIfAbsent(new SteerExtension())",
+                "addExtension(new QueueExtension())", "addExtensionIfAbsent(new QueueExtension())",
+                "addExtension(goalExtension)", "addExtensionIfAbsent(goalExtension)",
+                "addExtension(loopExtension)", "addExtensionIfAbsent(loopExtension)"};
         for (Path file : javaFiles(SRC)) {
             String name = file.getFileName().toString();
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
 
             if (content.contains("HarnessExtensions")) {
-                violations.add(name + " 引用已移除的 HarnessExtensions（应用 addExtensionIfAbsent）");
+                violations.add(name + " 引用已移除的 HarnessExtensions（应在构建期 extensionAdd）");
             }
-            if (content.contains("addExtension(new SteerExtension())")) {
-                violations.add(name + " 非幂等装配 steer（应用 addExtensionIfAbsent）");
+            for (String call : runtimeAdds) {
+                if (content.contains(call)) {
+                    violations.add(name + " 运行期装配插件：" + call + "（应在构建期 extensionAdd）");
+                }
             }
-            if (content.contains("addExtension(new QueueExtension())")) {
-                violations.add(name + " 非幂等装配 queue（应用 addExtensionIfAbsent）");
-            }
-            if (content.contains("addExtension(goalExtension)")) {
-                violations.add(name + " 非幂等装配 goal（应用 addExtensionIfAbsent）");
-            }
-            steer |= content.contains("addExtensionIfAbsent(new SteerExtension())");
-            queue |= content.contains("addExtensionIfAbsent(new QueueExtension())");
-            goal |= content.contains("addExtensionIfAbsent(goalExtension)");
+            steer |= content.contains(".extensionAdd(new SteerExtension())");
+            queue |= content.contains(".extensionAdd(new QueueExtension())");
+            goal |= content.contains(".extensionAdd(goalExtension)");
+            loop |= content.contains(".extensionAdd(loopExtension)");
         }
-        assertTrue(violations.isEmpty(), "harness 插件必须幂等装配：" + violations);
-        assertTrue(steer && queue && goal,
-                "组合根必须装配 steer/queue/goal 三个插件：steer=" + steer + ", queue=" + queue + ", goal=" + goal);
+        assertTrue(violations.isEmpty(), "harness 插件必须在构建期装配：" + violations);
+        assertTrue(steer && queue && goal && loop,
+                "组合根必须装配 steer/queue/goal/loop 四个插件：steer=" + steer + ", queue=" + queue
+                        + ", goal=" + goal + ", loop=" + loop);
     }
 
     private static List<Path> javaFiles(Path dir) throws IOException {
