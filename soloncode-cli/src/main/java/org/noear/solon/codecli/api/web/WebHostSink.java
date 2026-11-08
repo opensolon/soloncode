@@ -22,9 +22,9 @@ import org.noear.solon.ai.harness.host.HostRun;
 import org.noear.solon.ai.harness.host.HostSink;
 import org.noear.solon.ai.harness.host.HostInput;
 import org.noear.solon.ai.harness.host.RunSink;
+import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.input.InputOrigin;
-import org.noear.solon.ai.harness.input.InputOutcome;
-import org.noear.solon.ai.harness.input.InputOutcome.RejectReason;
+import org.noear.solon.ai.harness.input.RejectReason;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.channel.ImMessages;
 import org.noear.solon.codecli.channel.ImStatus;
@@ -88,7 +88,7 @@ final class WebHostSink implements HostSink {
         } else if (WebInputAttrs.isEcho(input)) {
             gate.emitToClient(ctx, input.getSessionId(), WebEvent.ofUserInput(input.getText(), input.getOrigin().getChannel()));
             // IM 侧感知补齐：受理后给来源端一条「已收到」；斜杠命令自带回执，不重复提示
-            if (input.getKind() == InputOutcome.Kind.TASK && input.isCommand() == false) {
+            if (input.getKind() == SubmitResult.Kind.STARTED && input.isCommand() == false) {
                 signal(ctx, input, ImStatus.ACCEPTED, null);
             }
         }
@@ -111,7 +111,7 @@ final class WebHostSink implements HostSink {
         }
 
         // 命令执行了但没有回执：给一个兜底提示（有回执的走 reply）
-        if (input.getKind() == InputOutcome.Kind.REPLY && input.hasReply() == false) {
+        if (input.getKind() == SubmitResult.Kind.REPLY && input.hasReply() == false) {
             renderReply(ctx, input, COMMAND_DONE_TEXT);
         }
     }
@@ -196,7 +196,7 @@ final class WebHostSink implements HostSink {
             LOG.warn("[WebGate] input rejected for unloaded workspace {}: {}", input.getTenant(), reason);
             return;
         }
-        if (reason == RejectReason.BUSY && input.getKind() == InputOutcome.Kind.TASK && input.isBesideRunning()) {
+        if (reason == RejectReason.BUSY && input.isBesideRunning()) {
             // 忙时可执行命令触发了任务（如 /continue），而会话已有流在跑：本次触发被忽略。
             // 与迁移前一致只给一条命令提示：不弹错误、不发终态（终态归正在跑的那条流）
             gate.emitToClient(ctx, input.getSessionId(), WebEvent.ofCommand(BUSY_TASK_IGNORED_TEXT));
