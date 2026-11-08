@@ -23,7 +23,6 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.host.SubmitResult;
-import org.noear.solon.ai.harness.host.SubmitSpec;
 import org.noear.solon.ai.harness.input.AgentMentions;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.HarnessInput;
@@ -253,13 +252,13 @@ final class DesktopInputRouter {
         gate.hostSink.bind(sessionId, socket);
         SubmitResult result;
         try {
-            result = gate.host.submit(WsGate.TENANT, sessionId, SubmitSpec.of(text).customize(in -> in
+            result = gate.host.submit(WsGate.TENANT, sessionId, HarnessInput.of(text)
                     .explicitAgent(agent)
                     .selectedModel(modelName)
                     .attachments(attachResult)
                     .attr(ATTR_REASONING_EFFORT, reasoningEffort)
                     .attr(ATTR_RUN_MODE, mode)
-                    .attr(ATTR_AGENT, agent)));
+                    .attr(ATTR_AGENT, agent));
         } catch (RuntimeException e) {
             deleteQuietly(createdFiles);
             throw e;

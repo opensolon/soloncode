@@ -52,7 +52,7 @@ class ImBusySteerContractTest {
         String safe = safeInput(gate);
         assertTrue(safe.contains("true, true)"),
                 "IM 入口必须以 echo=true、steerWhenBusy=true 提交（忙态普通输入默认插话）");
-        assertTrue(gate.contains(".whenBusy(steerWhenBusy ? SubmitSpec.BusyPolicy.STEER"), "忙时插话必须交给骨架的 steerWhenBusy，而不是宿主自己判忙");
+        assertTrue(gate.contains(".whenBusy(steerWhenBusy ? BusyPolicy.STEER"), "忙时插话必须交给骨架的 steerWhenBusy，而不是宿主自己判忙");
         assertFalse(gate.contains("steerExtension.steer(") || gate.contains("SteerExtension.class"),
                 "宿主不得再自己调插话门面（判忙、排除命令、回落排队都在骨架里）");
 
@@ -135,7 +135,7 @@ class ImBusySteerContractTest {
 
         String submit = gate.substring(gate.indexOf("private SubmitResult submit(WorkspaceContext"));
         assertFalse(submit.contains(".admit("), "受理判定只在唯一执行入口 engine.handle 里（admit 已删除）");
-        assertTrue(submit.contains("\"/resume\".equals(") && submit.contains("in.resume(resume)"),
+        assertTrue(submit.contains("\"/resume\".equals(") && submit.contains(".resume(resume)"),
                 "文本 /resume 必须转成显式 resume（引擎据此豁免待审批拦截），否则续流会被拦死");
         assertTrue(submit.contains("in.hitl(action, callId)") && submit.contains("HITLAction.of(hitlAction)"),
                 "审批决策必须作为 hitl 输入交给引擎（引擎据此豁免待审批拦截），否则审批永远提不了");

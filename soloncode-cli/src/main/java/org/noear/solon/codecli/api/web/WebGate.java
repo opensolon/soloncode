@@ -25,7 +25,8 @@ import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.SessionAdmin;
 import org.noear.solon.ai.harness.host.SubmitResult;
-import org.noear.solon.ai.harness.host.SubmitSpec;
+import org.noear.solon.ai.harness.input.BusyPolicy;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.auth.UserAuthConfig;
@@ -560,25 +561,23 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
 
             // 续流用的子代理取引擎的会话级记忆（审批请求通常不带 selectedAgent）；
             // 推理强度 / 思考模式 / cwd 是宿主域参数：作为属性交给引擎，忙时原样进积压、续发时原样带回
-            SubmitSpec spec = SubmitSpec.of(resume ? null : input)
+            HarnessInput in = HarnessInput.of(resume ? null : input)
                     .origin(isHitl ? InputOrigin.NONE : origin)
-                    .whenBusy(steerWhenBusy ? SubmitSpec.BusyPolicy.STEER : SubmitSpec.BusyPolicy.QUEUE)
-                    .customize(in -> {
-                        in.resume(resume)
-                                .selectedAgent(selectedAgent)
-                                .selectedModel(selectedModel)
-                                .attr(WebInputAttrs.REASONING_EFFORT, reasoningEffort)
-                                .attr(WebInputAttrs.THINKING_MODE, thinkingMode)
-                                .attr(WebInputAttrs.SESSION_CWD, Assert.isEmpty(sessionCwd) ? null : sessionCwd)
-                                .attr(WebInputAttrs.ECHO, echo ? "1" : null);
-                        if (isHitl) {
-                            in.hitl(action, callId);
-                        } else {
-                            in.attachments(WebAttachmentStore.toAttachments(
-                                    wsContext.getEngine().getWorkspace(), attachments, attachmentTypes));
-                        }
-                    });
-            return host.submit(tenant, sessionId, spec);
+                    .whenBusy(steerWhenBusy ? BusyPolicy.STEER : BusyPolicy.QUEUE)
+                    .resume(resume)
+                    .selectedAgent(selectedAgent)
+                    .selectedModel(selectedModel)
+                    .attr(WebInputAttrs.REASONING_EFFORT, reasoningEffort)
+                    .attr(WebInputAttrs.THINKING_MODE, thinkingMode)
+                    .attr(WebInputAttrs.SESSION_CWD, Assert.isEmpty(sessionCwd) ? null : sessionCwd)
+                    .attr(WebInputAttrs.ECHO, echo ? "1" : null);
+            if (isHitl) {
+                in.hitl(action, callId);
+            } else {
+                in.attachments(WebAttachmentStore.toAttachments(
+                        wsContext.getEngine().getWorkspace(), attachments, attachmentTypes));
+            }
+            return host.submit(tenant, sessionId, in);
         } catch (Exception e) {
             LOG.error("Task fail: {}", e.getMessage(), e);
             emitToClient(wsContext, sessionId, WebEvent.ofError(e));

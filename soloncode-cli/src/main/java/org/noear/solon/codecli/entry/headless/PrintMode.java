@@ -28,7 +28,8 @@ import org.noear.solon.ai.harness.host.RunOutcome;
 import org.noear.solon.ai.harness.host.RunPrep;
 import org.noear.solon.ai.harness.host.RunSink;
 import org.noear.solon.ai.harness.host.SubmitResult;
-import org.noear.solon.ai.harness.host.SubmitSpec;
+import org.noear.solon.ai.harness.input.BusyPolicy;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.permission.PermissionBehavior;
 import org.noear.solon.ai.harness.permission.PermissionRule;
 import org.noear.solon.ai.mount.source.FileMountSource;
@@ -519,12 +520,11 @@ public class PrintMode {
 
         final String model = modelSelected;
         try {
-            SubmitResult submitted = host.submit(TENANT, session.getSessionId(), SubmitSpec.of(prompt)
+            SubmitResult submitted = host.submit(TENANT, session.getSessionId(), HarnessInput.of(prompt)
                     // 会话忙（被其它入口占用）时直接拒绝：无头模式没有人接排队的那一轮
-                    .whenBusy(SubmitSpec.BusyPolicy.REJECT)
+                    .whenBusy(BusyPolicy.REJECT)
                     //headless 一律用主代理、不识别命令：子代理选择走 --agent 参数，由调用方自行拼接
-                    .customize(in -> in.selectedModel(model).commandAware(false).agentAware(false))
-                    .observe(new RunSink() {
+                    .selectedModel(model).commandAware(false).agentAware(false), new RunSink() {
                         @Override
                         public void prepare(RunPrep prep) {
                             if (options.getMaxTurns() != null) {
@@ -536,7 +536,7 @@ public class PrintMode {
                         public void event(AgentEvent event) {
                             handleChunk(session, event, result);
                         }
-                    }));
+                    });
             if (submitted.getKind() != SubmitResult.Kind.STARTED) {
                 // 未受理（会话正被其它入口占用 / 待审批）或空输入：不能当作成功静默退出
                 throw new IllegalStateException(submitted.getRejectDetail() != null
