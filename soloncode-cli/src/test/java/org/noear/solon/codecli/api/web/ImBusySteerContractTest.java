@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * IM 忙态默认语义契约：与 web 流式中回车一致，默认「插话」，插不进去才降级排队。
  *
- * <p>这条默认语义没有前端可依赖（IM 无前端），完全落在后端 {@code safeChatInput} 的兜底分支上，
+ * <p>这条默认语义没有前端可依赖（IM 无前端），完全落在后端 {@code WebGate#safeChatInput} 与骨架的 {@code steerWhenBusy} 上，
  * 因此用源码契约把它钉住：防止后人「顺手」把忙态处理改回无脑入队。</p>
  *
  * @author noear
@@ -33,34 +33,43 @@ class ImBusySteerContractTest {
             "ar", "bn", "br", "bs", "da", "de", "en", "es", "fr", "gr", "it",
             "ja", "ko", "nl", "no", "pl", "pt_BR", "ru", "th", "tr", "uk", "vi", "zh_TW");
 
-    /** 忙态默认走插话（SteerExtension.steer），而不是直接入队。 */
-    @Test
-    void busySessionDefaultsToSteer() throws IOException {
-        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
+    private static final String GATE = "src/main/java/org/noear/solon/codecli/api/web/WebGate.java";
+    private static final String SINK = "src/main/java/org/noear/solon/codecli/api/web/WebHostSink.java";
 
-        // 3 参形态：忙判定改由内核按 engine.status(session).isBusy() 自算，
-        // 宿主不再传 busyRecheck lambda（原 6 参调用形态随之消失）
-        assertTrue(source.contains("steerExtension.steer(session, input"),
-                "忙态普通输入应默认插话（SteerExtension.steer）");
-        assertFalse(source.contains("() -> SessionActivity.isBusy(session)"),
-                "忙判定不得再以 lambda 形式外包给宿主（答案在 engine.status，见 SteerExtension.defaultBusy）");
-        assertTrue(source.contains("ImStatus.STEERED"),
-                "插话成功后必须给来源端一条可感知的回执，否则 IM 端是黑箱");
-        // 斜杠命令不走插话（与 web 前端「运行中不把命令当插话」一致），仍走原有处理
-        assertTrue(source.contains("input != null && !input.startsWith(\"/\")"),
-                "忙态插话必须排除斜杠命令");
+    /** IM 入口：取 safeChatInput 方法体（7 参版本） */
+    private static String safeInput(String gate) {
+        String body = gate.substring(gate.indexOf("public boolean safeChatInput(WorkspaceContext wsContext, String sessionId, String input, String source,\n"));
+        return body.substring(0, body.indexOf("\n    }\n"));
     }
 
-    /** 插话失败仍降级为统一持久化排队，消息不丢。 */
+    /**
+     * 忙态默认走插话，而不是直接入队：IM 入口交给骨架的 steerWhenBusy
+     * （会话有运行流、纯文本、非命令、装了 steer 插件时插话；插不进再回落到 handle）。
+     */
+    @Test
+    void busySessionDefaultsToSteer() throws IOException {
+        String gate = readProjectFile(GATE);
+        String safe = safeInput(gate);
+        assertTrue(safe.contains("true, true)"),
+                "IM 入口必须以 echo=true、steerWhenBusy=true 提交（忙态普通输入默认插话）");
+        assertTrue(gate.contains(".steerWhenBusy(steerWhenBusy)"), "忙时插话必须交给骨架的 steerWhenBusy，而不是宿主自己判忙");
+        assertFalse(gate.contains("steerExtension.steer(") || gate.contains("SteerExtension.class"),
+                "宿主不得再自己调插话门面（判忙、排除命令、回落排队都在骨架里）");
+
+        String sink = readProjectFile(SINK);
+        assertTrue(sink.contains("ImStatus.STEERED"), "插话成功后必须给来源端一条可感知的回执，否则 IM 端是黑箱");
+    }
+
+    /** 插话失败仍降级为统一持久化排队（骨架回落到 handle → DEFERRED），并向 IM 回报排队位次。 */
     @Test
     void steerFailureFallsBackToQueue() throws IOException {
-        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
-
-        int steer = source.indexOf("steerExtension.steer(session, input");
-        int fallback = source.indexOf("InputOutcome outcome = onChatInput(", steer);
-        int queued = source.indexOf("InputOutcome.Kind.DEFERRED", fallback);
-        assertTrue(steer > 0 && fallback > steer && queued > fallback,
-                "插话失败必须降级交给唯一入口（引擎忙时自己入积压），并按 DEFERRED 回报排队位次，保证消息不丢");
+        String sink = readProjectFile(SINK);
+        String deferred = sink.substring(sink.indexOf("public void deferred(HostInput input, int position)"));
+        deferred = deferred.substring(0, deferred.indexOf("\n    }\n"));
+        assertTrue(deferred.contains("ImStatus.QUEUED") && deferred.contains("ImMessages.queued(position - 1"),
+                "排队必须把位次推给 IM 来源端（位置从 1 计）");
+        assertTrue(deferred.contains("claimCommandHint"), "命令引导同一轮忙态只教学一次");
+        assertTrue(deferred.contains("WebEvent.ofUserInput"), "排队时回放用户消息");
     }
 
     /** 插话回执文案按地区解析（zh/en 为代表），且 textOf 能兜底取到。 */
@@ -84,94 +93,76 @@ class ImBusySteerContractTest {
         }
     }
 
-    /** 端到端接线：终态投递本身不产生这条回执，只有 signalOriginChannel 会下发。 */
+    /** 端到端接线：插话回执只经统一出口 signalOriginChannel 投给来源端。 */
     @Test
     void steeredSignalIsDeliveredByOriginChannelOnly() throws IOException {
-        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
-
-        assertTrue(source.contains("signalOriginChannel(wsContext, sessionId, ImStatus.STEERED"),
-                "插话回执必须经统一出口 signalOriginChannel 只投来源端");
-    }
-
-    /** HITL 挂起时拒新输入：该判定必须早于忙态分派，否则普通输入会被插话/入队而不是提示先审批。 */
-    @Test
-    void pendingHitlRejectsBeforeBusyDispatch() throws IOException {
-        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
-        String safeInput = source.substring(source.indexOf("boolean safeChatInput(WorkspaceContext"));
-
-        int hitl = safeInput.indexOf("SessionActivity.hasPendingHitl(session)");
-        int busy = safeInput.indexOf("if (SessionActivity.isBusy(session))");
-        assertTrue(hitl > 0 && busy > hitl,
-                "HITL 挂起判定必须排在忙态分支之前，否则新输入会被插话/排队而非提示先处理审批");
-        assertTrue(safeInput.contains("ImStatus.HITL_PENDING"),
-                "拒收必须给来源端一个可区分的回执（HITL_PENDING ≠ 队列满）");
+        String sink = readProjectFile(SINK);
+        String steered = sink.substring(sink.indexOf("public void steered(HostInput input)"));
+        steered = steered.substring(0, steered.indexOf("\n    }\n"));
+        assertTrue(steered.contains("signal(ctx, input, ImStatus.STEERED"), "插话回执必须经 signal（signalOriginChannel）只投来源端");
+        assertTrue(sink.contains("gate.getStreamBuilder().signalOriginChannel("), "signal 必须走统一出口 signalOriginChannel");
+        assertFalse(steered.contains("ofUserInput"), "插话不回放 user_input（web 端由 steer_applied 就地渲染）");
     }
 
     /**
-     * 审批决策、队列派发、/resume、忙态旁路命令四类不得被 HITL 拦截（否则审批本身都无法提交）。
-     *
-     * <p>两个入口必须共用同一份豁免判定：此前 onChatInput 写了四项、safeChatInput 只写了一项，
-     * IM 侧发 /resume 或点审批会被当成「请先处理审批」拒掉——而这两者恰恰是处理审批的手段。</p>
+     * HITL 挂起时拒新输入：判定只在引擎受理里（SessionControl 第 1 步，早于入积压；HarnessHost 的忙时插话也排除待审批），
+     * 入口不再重复预检。IM 来源撞上待审批只告知来源端，不在 Web 端追加错误、不发终态（Web 端正停在审批卡上）。
+     */
+    @Test
+    void pendingHitlRejectsBeforeBusyDispatch() throws IOException {
+        String safe = safeInput(readProjectFile(GATE));
+        assertFalse(safe.contains("hasPendingHitl("), "入口不再重复引擎的 HITL 判定（两处口径必然漂移）");
+
+        String sink = readProjectFile(SINK);
+        String rejected = sink.substring(sink.indexOf("public void rejected(HostInput input, RejectReason reason, String detail)"));
+        rejected = rejected.substring(0, rejected.indexOf("\n    }\n"));
+        int imBranch = rejected.indexOf("reason == RejectReason.HITL_PENDING && input.getOrigin().isIm()");
+        int errorEmit = rejected.indexOf("WebEvent.ofError(reason.code(), detail)");
+        assertTrue(imBranch > 0 && errorEmit > imBranch, "IM 撞上待审批：在追加 Web 错误之前分流");
+        String branch = rejected.substring(imBranch, errorEmit);
+        assertTrue(branch.contains("ImStatus.HITL_PENDING") && branch.contains("return;"),
+                "拒收必须给来源端一个可区分的回执（HITL_PENDING ≠ 队列满），且不打扰 Web 端");
+    }
+
+    /**
+     * 审批决策、/resume、忙态旁路命令不得被 HITL 拦截（否则审批本身都无法提交）：豁免口径只在引擎里
+     * （审批决策 / 续流按输入本身豁免、旁路命令由命令自描述 runnableWhenBusy 决定）。
      */
     @Test
     void hitlGateExemptsDecisionDispatchAndBypassCommands() throws IOException {
-        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
+        String gate = readProjectFile(GATE);
+        assertFalse(gate.contains("isHitlExempt("), "豁免口径只在引擎里，入口不再维护第二份");
 
-        int methodStart = source.indexOf("private static boolean isHitlExempt(");
-        assertTrue(methodStart > 0, "豁免口径必须收敛为一个共用方法（isHitlExempt）");
-        String method = source.substring(methodStart);
-        method = method.substring(0, method.indexOf("\n    }"));
-
-        assertTrue(method.contains("Assert.isNotEmpty(hitlAction)"),
-                "审批决策本身必须豁免，否则审批永远提不了");
-        assertTrue(method.contains("/resume"), "显式续流必须豁免，它就是处理审批的手段");
-        assertTrue(method.contains("isQueueDispatch"),
-                "队列派发的一轮已过 isNotOccupied 闸门，不能二次拦截");        assertTrue(method.contains("isRunnableWhenBusy"),
-                "忙态旁路命令由命令自描述决定，闸门不得否定它");
-
-        // 两个入口都必须覆盖同一口径，不能各写一份。
-        // onChatInput 的受理判定收归 engine.handle 第 0 步（审批决策 / 续流按输入本身豁免）；
-        // safeChatInput 的 IM 预检仍直接调用 isHitlExempt。
-        assertTrue(source.indexOf("isHitlExempt(", methodStart + method.length()) > 0,
-                "safeChatInput 仍须调用共用的豁免判定");
-
-        String onInput = source.substring(source.indexOf("InputOutcome onChatInput(WorkspaceContext"));
-        onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
-        assertFalse(onInput.contains(".admit("),
-                "受理判定只在唯一执行入口 engine.handle 里（admit 已删除）");
-        assertTrue(onInput.contains("/resume") && onInput.contains(".resume(isHitl || resumeInput)"),
+        String submit = gate.substring(gate.indexOf("private SubmitResult submit(WorkspaceContext"));
+        assertFalse(submit.contains(".admit("), "受理判定只在唯一执行入口 engine.handle 里（admit 已删除）");
+        assertTrue(submit.contains("\"/resume\".equals(") && submit.contains("in.resume(resume)"),
                 "文本 /resume 必须转成显式 resume（引擎据此豁免待审批拦截），否则续流会被拦死");
-        assertTrue(onInput.contains("hin.hitl(HITLAction.of(hitlAction)"),
+        assertTrue(submit.contains("in.hitl(action, callId)") && submit.contains("HITLAction.of(hitlAction)"),
                 "审批决策必须作为 hitl 输入交给引擎（引擎据此豁免待审批拦截），否则审批永远提不了");
     }
 
     /**
-     * 回归：HITL 拒收分支必须补发终态包。
+     * 回归：拒收分支必须补发终态包。
      *
      * <p>前端在 POST 之前就把 {@code isStreaming} 置真，只有 {@code system.done} 会复位；
-     * {@code system.error} 只追加气泡不复位。该分支未占位（ticket 为 NONE），
-     * finally 的兜底不会触发。漏发 done 会让输入面板永久停在流式态：停止按钮常亮、
-     * 占位符不消失，后续所有输入被当作 steer 插话，用户只能刷新页面。</p>
+     * {@code system.error} 只追加气泡不复位。漏发 done 会让输入面板永久停在流式态。</p>
      */
     @Test
     void hitlRejectBranchEmitsTerminalPacket() throws IOException {
-        String source = readProjectFile("src/main/java/org/noear/solon/codecli/api/web/WebChatInputHandler.java");
-        // 拒收分支在 onChatInput（有 WS 事件出口的那个），不是 IM 用的 safeChatInput
-        String onInput = source.substring(source.indexOf("InputOutcome onChatInput(WorkspaceContext"));
-        onInput = onInput.substring(0, onInput.indexOf("boolean safeChatInput(WorkspaceContext"));
+        String sink = readProjectFile(SINK);
+        String rejected = sink.substring(sink.indexOf("public void rejected(HostInput input, RejectReason reason, String detail)"));
+        rejected = rejected.substring(0, rejected.indexOf("\n    }\n"));
 
-        // 拒收判定来自 engine.handle 的 REJECTED（值域与细节由引擎给出）
-        int reject = onInput.indexOf("InputOutcome.Kind.REJECTED");
-        assertTrue(reject > 0, "拒收分支必须按 handle 的 REJECTED 结局");
-        int errorEmit = onInput.indexOf("ofError(outcome.getRejectReason()", reject);
-        int doneEmit = onInput.indexOf("emitDoneGuarded", reject);
-        int queueBranch = onInput.indexOf("InputOutcome.Kind.DEFERRED", reject);
+        int errorEmit = rejected.indexOf("WebEvent.ofError(reason.code(), detail)");
+        int imSignal = rejected.lastIndexOf("ImStatus.HITL_PENDING");
+        int doneEmit = rejected.indexOf("doneGuarded(ctx, input)");
+        assertTrue(errorEmit > 0, "拒收必须先给出可读错误（原因与细节取自引擎）");
+        assertTrue(imSignal > errorEmit, "来源端（IM）也要知道本轮未受理，HITL_PENDING 与普通拒收可区分");
+        assertTrue(doneEmit > imSignal, "拒收分支必须发终态包（emitDoneGuarded），否则前端 isStreaming 永久为真");
 
-        assertTrue(errorEmit > reject, "HITL 拒收必须先给出可读错误（原因与细节取自 InputOutcome）");
-        assertTrue(doneEmit > errorEmit,
-                "拒收分支必须在 return 前发终态包（emitDoneGuarded），否则前端 isStreaming 永久为真");
-        assertTrue(doneEmit < queueBranch,
-                "终态包必须落在拒收分支内，不能落到后面的排队分支里");
+        String guarded = sink.substring(sink.indexOf("private void doneGuarded("));
+        guarded = guarded.substring(0, guarded.indexOf("\n    }\n"));
+        assertTrue(guarded.contains("emitDoneGuarded"), "有活跃流时不动终态门（拒收不得结束正在跑的那一轮）");
     }
 
     /** 新增的 im.hitlPending 必须补齐全部语言包与 FALLBACK，避免局部回退成中文。 */

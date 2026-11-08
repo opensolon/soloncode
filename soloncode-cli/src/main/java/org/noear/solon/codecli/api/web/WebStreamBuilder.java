@@ -3,6 +3,7 @@ package org.noear.solon.codecli.api.web;
 import lombok.extern.slf4j.Slf4j;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.chat.prompt.Prompt;
@@ -21,12 +22,10 @@ import org.noear.solon.ai.talents.lsp.LspCheckState;
 import org.noear.solon.codecli.api.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.api.web.pipeline.UiRenderFilter;
 import org.noear.solon.codecli.api.web.pipeline.WebEventMapper;
-import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.RunUtil;
-import reactor.core.publisher.Flux;
 
 import java.util.Map;
 import java.util.concurrent.Future;
@@ -239,8 +238,8 @@ public class WebStreamBuilder {
         prepareErrorReply(wsContext, session, null, e).run();
     }
 
-    private Runnable prepareErrorReply(WorkspaceContext context, AgentSession session,
-                                       ImageReplyTurn expected, Throwable e) {
+    Runnable prepareErrorReply(WorkspaceContext context, AgentSession session,
+                               ImageReplyTurn expected, Throwable e) {
         String msg = e == null ? null : e.getMessage();
         if (Assert.isEmpty(msg)) {
             msg = e == null ? "未知错误" : e.getClass().getSimpleName();
@@ -408,19 +407,21 @@ public class WebStreamBuilder {
     }
 
     /**
-     * 构建 SAEP 2.0 响应式事件流
+     * 开流前装配一轮的 SAEP 管道，并把 Web 端请求级选项写入请求。
      *
      * <p>请求主体（agent/session/模型/retry/maxTurns）已由 {@code engine.handle} 装配，
-     * 这里只做 Web 端请求级补充：推理强度、插话/图片拦截器、cwd。</p>
+     * 这里只做 Web 端请求级补充：推理强度、图片拦截器、cwd。装配失败时已释放图片轮次并抛出。</p>
      *
-     * @param outcome 引擎装配结果（getRequest() 即可订阅的请求）
-     * @param targetModel 展示用模型句柄（trace 事件的 model 标签；能力解析也基于它）
+     * @param prompt      装配好的提示词（续流轮为 null）
+     * @param agentName   生效子代理名（主代理可为 null）
+     * @param targetModel 展示用模型句柄
      */
-    public Flux<WebEvent<?>> buildStreamFlux(WorkspaceContext wsContext, AgentSession session, InputOutcome outcome, ChatModel targetModel, String sessionCwd) {
+    public WebRunPipeline openPipeline(WorkspaceContext wsContext, AgentSession session, ReActRequest request,
+                                       Prompt prompt, String agentName, ChatModel targetModel, String sessionCwd) {
         // 生效代理已由引擎在 handle 返回 TASK 时写入（ATTR_AGENT_EFFECTIVE，主代理归一 "main"）；
         // 这里仅同步存量会话（升级窗口内 attrs 可能还是旧值）并保持 WebEventMapper 读取口径不变。
-        if (outcome.getAgentName() != null) {
-            session.attrs().put(ATTR_EFFECTIVE_AGENT, outcome.getAgentName());
+        if (agentName != null) {
+            session.attrs().put(ATTR_EFFECTIVE_AGENT, agentName);
         }
 
         HarnessEngine engine = wsContext.getEngine();
@@ -467,8 +468,8 @@ public class WebStreamBuilder {
         final String effectiveEffort = ReasoningSupportUtil.resolveSessionEffortOrDefault(
                 session, globalEffort, cap);
         // 推理强度写进 Prompt attrs（request 持同一 Prompt 实例，attrs 生效；Prompt 为空即续流轮，跳过）
-        if (outcome.getPrompt() != null) {
-            ReasoningSupportUtil.applyToPrompt(outcome.getPrompt(), sessionThinkingMode, effectiveEffort);
+        if (prompt != null) {
+            ReasoningSupportUtil.applyToPrompt(prompt, sessionThinkingMode, effectiveEffort);
         }
 
         ImageReplyTurn imageTurn = new ImageReplyTurn(session, wsContext.getMeta().getPath(), sessionCwd);
@@ -478,39 +479,22 @@ public class WebStreamBuilder {
             UiRenderFilter uiRenderFilter = new UiRenderFilter();
 
             // 请求主体（agent/session/模型/retry/maxTurns）由 handle 装配，这里只补 Web 端请求级选项
-            final Flux<AgentEvent> stream = outcome.getRequest()
-                    .options(o -> {
-                        if (targetModel != null) {
-                            o.chatModel(targetModel);
-                        }
+            request.options(o -> {
+                if (targetModel != null) {
+                    o.chatModel(targetModel);
+                }
 
-                        ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
-                        o.interceptorAdd(imageTurn);
+                ReasoningSupportUtil.applyToOptions(o, sessionThinkingMode, effectiveEffort);
+                o.interceptorAdd(imageTurn);
 
+                if (Assert.isNotEmpty(sessionCwd)) {
+                    o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
+                }
+            });
 
-                        if (Assert.isNotEmpty(sessionCwd)) {
-                            o.toolContextPut(HarnessEngine.ATTR_CWD, sessionCwd);
-                        }
-                    })
-                    .stream();
-
-            return   stream
-                    .flatMap(event -> Flux.fromIterable(mapper.mapEvent(event)))
-                    .filter(WebEvent::isNotEmpty)
-                    .map(toolFilter::apply)
-                    .map(uiRenderFilter::apply)
-                    .onErrorResume(e -> {
-                        log.error("Stream execution error", e);
-                        //IM 与 web 是同一 session 的输出端：流式 error 仅 web 可见，
-                        //这里再补一条非流式终态给 IM，否则 IM 端会永久停在「已读不回」。
-                        prepareErrorReply(wsContext, session, imageTurn, e).run();
-                        //只发 error：done 统一由订阅侧 doFinally 走 emitDoneOnce 去重门发出。
-                        //此处再拼一个 ofDone 会绕过去重门直推给前端，造成同一轮双 done。
-                        return Flux.just(WebEvent.ofError(e));
-                    })
-                    .doFinally(signal -> imageTurn.cleanup());
+            return new WebRunPipeline(this, wsContext, session, imageTurn, mapper, toolFilter, uiRenderFilter);
         } catch (RuntimeException | Error e) {
-            // stream() 装配期也可能同步失败，此时尚无 doFinally。
+            // 装配期同步失败：先补 IM 终态再释放图片轮次
             try {
                 prepareErrorReply(wsContext, session, imageTurn, e).run();
             } finally {

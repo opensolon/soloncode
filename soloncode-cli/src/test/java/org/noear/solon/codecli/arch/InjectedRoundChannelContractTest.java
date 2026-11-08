@@ -65,9 +65,10 @@ public class InjectedRoundChannelContractTest {
                 "goal.addExecutor(\"cli\", SessionIdOwnership::isCli",
                 "CLI 未向 GoalRuntime 注册通道化执行器（/goal 将没有过程输出）");
 
-        assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "goalExtension.addExecutor(\"web\", SessionIdOwnership::isWeb",
-                "Web 未向 GoalRuntime 注册通道化执行器（/goal 将没有过程输出）");
+        // Web：goal / loop 两个执行器由宿主骨架（HarnessHost）在首次取到引擎时一起登记，认领谓词同一个
+        assertSourceRegisters(SRC.resolve("api/web/WebGate.java"),
+                ".programRuns(SessionIdOwnership::isWeb)",
+                "Web 未把后台轮次交给宿主骨架（/goal 将没有过程输出）");
 
         assertSourceRegisters(SRC.resolve("api/desktop/WsGate.java"),
                 "goal.addExecutor(\"desktop\", SessionIdOwnership::isDesktop",
@@ -156,8 +157,12 @@ public class InjectedRoundChannelContractTest {
         // loop 通道经插件门面注册（CLI 与 Web 同形：挂接后 addExecutor，认领谓词交给插件）
         assertSourceRegisters(SRC.resolve("entry/cli/CliShell.java"),
                 "loop.addExecutor(\"cli\", SessionIdOwnership::isCli,", "CLI 的 loop 通道丢失");
-        assertSourceRegisters(SRC.resolve("workspace/WorkspaceManager.java"),
-                "loopExtension.addExecutor(\"web\", SessionIdOwnership::isWeb, webLoopExecutor(", "Web 的 loop 通道丢失");
+        // Web：骨架对 goal 与 loop 各登记一个执行器（同一条运行链），工作区管理器不得再另登一份（会重叠抢跑）
+        assertSourceRegisters(SRC.resolve("api/web/WebGate.java"),
+                ".programRuns(SessionIdOwnership::isWeb)", "Web 的 goal / loop 通道丢失");
+        String manager = new String(Files.readAllBytes(SRC.resolve("workspace/WorkspaceManager.java")), StandardCharsets.UTF_8);
+        assertTrue(!manager.contains("addExecutor(\"web\""),
+                "WorkspaceManager 不得再登记 web 执行器（已由 WebGate 的宿主骨架登记，重复登记会重叠认领）");
     }
 
     /**
@@ -181,21 +186,18 @@ public class InjectedRoundChannelContractTest {
     }
 
     /**
-     * Web 运行时端口必须分别暴露 loop 与 goal 两条注入入口。
+     * Web 运行时端口不再转发注入回合：goal / loop 轮次经宿主骨架的同一条运行链执行
+     * （推流、终态、可被停止、结束后续发），结论归类（跳过 / 失败 / 完成，含工具证据与 token）在骨架里。
      *
-     * <p>两者是同一段执行、只有返回值不同（loop 要三态结论、goal 要事实）。
-     * loop 若只拿到文本，「会话忙」与「流报错」都会变成 null，失败就绕过了任务级熔断。</p>
+     * <p>旧端口的 runLoop / runGoalRound 是 Web 端自己写的第二条执行路径——同一不变量写两遍必然漏一遍。</p>
      */
     @Test
-    void runtimePortExposesBothInjectionEntries() throws Exception {
+    void runtimePortNoLongerForwardsInjectedRounds() throws Exception {
         Class<?> port = Class.forName("org.noear.solon.codecli.workspace.WorkspaceRuntimePort");
-
-        Method runLoop = port.getMethod("runLoop", String.class, String.class, String.class, String.class);
-        assertEquals(org.noear.solon.ai.harness.extension.loop.LoopOutcome.class, runLoop.getReturnType(),
-                "runLoop 必须回报三态结论（跳过与失败必须可区分）");
-
-        Method runGoal = port.getMethod("runGoalRound", String.class, String.class, String.class, String.class);
-        assertEquals(GoalOutcome.class, runGoal.getReturnType(), "runGoalRound 必须回报本轮结论（含客观事实）");
+        for (Method m : port.getMethods()) {
+            assertTrue(!m.getName().equals("runLoop") && !m.getName().equals("runGoalRound"),
+                    "运行时端口不得再暴露注入回合入口：" + m.getName());
+        }
     }
 
     /** 断言源码中出现了指定片段（非注释行）。 */

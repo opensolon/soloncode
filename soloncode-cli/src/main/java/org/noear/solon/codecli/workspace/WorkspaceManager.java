@@ -21,11 +21,8 @@ import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.command.builtin.*;
 import org.noear.solon.codecli.loop.AutomationManager;
 import org.noear.solon.codecli.loop.LoopDataMigrator;
-import org.noear.solon.ai.harness.extension.loop.LoopExecutor;
-import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
-import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.codecli.goal.GoalDataMigrator;
 import org.noear.solon.codecli.config.entity.GoalGroupDo;
 import org.noear.solon.codecli.config.AgentFlags;
@@ -36,7 +33,6 @@ import org.noear.solon.codecli.config.entity.*;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.codecli.workspace.filer.FileService;
 import org.noear.solon.codecli.workspace.git.GitService;
-import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionManager;
 import org.noear.solon.codecli.util.JdkHomeUtil;
@@ -217,6 +213,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
             // 归一化路径 key 使用 putIfAbsent：若同路径已有其它工作区实例（理论上不该发生），
             // 不覆盖，避免旧 ws-xxx key 指向被覆盖前的旧实例造成双实例永不关闭
             contexts.putIfAbsent(normalizedUserDir, defaultContext);
+            notifyContextReady(defaultContext);
         } catch (Exception e) {
             LOG.error("Failed to init default workspace: " + userDir, e);
         }
@@ -277,6 +274,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 meta.setLastAccessed(System.currentTimeMillis());
                 contexts.put(meta.getId(), ctx);
                 contexts.put(histPath.toString(), ctx);
+                notifyContextReady(ctx);
                 // 历史加载为低频事件，直接回写 lastAccessed，保证重启后 MRU 顺序准确
                 saveWorkspaceToHistory(meta);
                 return ctx;
@@ -349,6 +347,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
             context = createWorkspaceContext(meta);
             contexts.put(ctxKey, context);
             contexts.put(normalizedPathStr, context);
+            notifyContextReady(context);
             saveWorkspaceToHistory(meta);
             return context;
         } catch (Exception e) {
@@ -877,7 +876,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
         engine.addExtensionIfAbsent(new QueueExtension());
         goalExtension = engine.addExtensionIfAbsent(goalExtension);
         loopExtension = engine.addExtensionIfAbsent(loopExtension);
-        loopExtension.addExecutor("web", SessionIdOwnership::isWeb, webLoopExecutor(meta.getId()));
+        // web / 自动化会话的 goal / loop 后台轮次由入口的宿主骨架（WebGate 内的 HarnessHost）在
+        // recoverSessionQueues 预热时登记执行器（认领谓词 SessionIdOwnership::isWeb），与用户轮次同一条链
 
         // Goal / Loop 模式开关：loop 只关模型工具（/loop 命令与已有定时任务照常）；
         // goal 关闭时一并关闭 /goal 与调度（goal 依赖 goal_update 声明完成，工具关了继续跑只会空耗预算）
@@ -892,9 +892,6 @@ public class WorkspaceManager implements WorkspaceRegistry {
             engine.addExtension(extension);
         });
 
-
-        // 为本工作区的 GoalRuntime 就地注册 web 端执行器（goal 自己的通道，与 loop 无共享）
-        registerWebGoalExecutor(goalExtension, meta.getId());
 
         // FileWatchService（自建轮询/初始化线程，需显式带上工作区日志归属）
         FileWatchService fileWatchService = new FileWatchService().logWorkspacePath(workspacePath);
@@ -969,55 +966,22 @@ public class WorkspaceManager implements WorkspaceRegistry {
 
         // 上下文完整建成：retention 由 EPHEMERAL 提升为 PERSISTENT（失败不回滚，见方案 7.4）
         promoteWorkspaceMeta(workspacePath);
-        WorkspaceRuntimePort runtime = getRuntimePort();
-        if (runtime != null) {
-            runtime.recoverSessionQueues(context);
-        }
 
         return context;
     }
 
     /**
-     * 本工作区 loop 的 web 端执行器（认领谓词 {@code SessionIdOwnership::isWeb} 交给插件）。
+     * 工作区已放进缓存：通知入口运行时（预热后台工作、迁移旧数据）。
      *
-     * <p>每个工作区拥有独立的运行时入口，执行器必须动态绑定当前工作区的运行时端口：
-     * 默认工作区在入口绑定之前创建，不能捕获字段快照；端口暂不可用时本轮 skip（不计错误）。
-     * 忙判定不在此处：由插件经 {@code engine.isIdle} 统一派生。</p>
+     * <p>必须在 {@code contexts.put} 之后：预热会续发积压、恢复调度，输出侧按工作区 ID 只查缓存
+     * （{@link #getContextsCached}），放进缓存之前就通知会查不到。启动时默认工作区早于入口绑定，
+     * 此时运行时为空，由入口在绑定后自行调用。</p>
      */
-    private LoopExecutor webLoopExecutor(String workspaceId) {
-        return (sessionId, prompt) -> {
-            WorkspaceRuntimePort runtime = getRuntimePort();
-            if (runtime == null) {
-                return LoopOutcome.skip("web runtime not bound");
-            }
-            // 子代理归属是会话属性（自动化任务创建时已写入会话选择），不再经参数传递
-            // Loop 任务可能长时间执行（数小时），使用 Loop 专用无限等待版本
-            return runtime.runLoop(workspaceId, sessionId, prompt, "Loop");
-        };
-    }
-
-    /**
-     * 为本工作区的 GoalRuntime 注册 web 端任务执行器。
-     *
-     * <p>与 loop 执行器形状相同但通道分开：各自只服务自己那个引擎，没有共享类型、没有交叉兜底。
-     * 返回值必须携带本轮客观事实（token / 工具证据）——goal 的完成判定需要它，
-     * 而不是往会话 attrs 写一份旁路数据。</p>
-     */
-    private void registerWebGoalExecutor(GoalExtension goalExtension, String workspaceId) {
-        if (goalExtension == null) {
-            return;
+    private void notifyContextReady(WorkspaceContext context) {
+        WorkspaceRuntimePort runtime = getRuntimePort();
+        if (runtime != null && context != null) {
+            runtime.recoverSessionQueues(context);
         }
-
-        // 认领谓词交给引擎（重叠可告警）；运行时端口未就绪时本轮 skip（不计错误，等下一轮）
-        goalExtension.addExecutor("web", SessionIdOwnership::isWeb,
-                (sessionId, prompt) -> {
-                    WorkspaceRuntimePort runtime = getRuntimePort();
-                    if (runtime == null) {
-                        return GoalOutcome.skip("runtime port not ready");
-                    }
-                    // 与 loop 同口径：注入回合不识别命令、不排水，但过程事件照常推给前端（边跑边输出）
-                    return runtime.runGoalRound(workspaceId, sessionId, prompt, "Goal");
-                });
     }
 
     private void addServers(HarnessEngine engine, AgentSettings wsSettings) {

@@ -218,9 +218,10 @@ public class QueueWebController extends AbstractWebController {
                     .selectedModel(model).selectedAgent(selectedAgent)
                     .attr(WebInputAttrs.REASONING_EFFORT, reasoningEffort)
                     .attr(WebInputAttrs.THINKING_MODE, thinkingMode);
-            HarnessResult<Integer> queued = queue().enqueue(input, id);
+            // 经会话管理态入队：成功后由宿主骨架自动续发（会话空闲时立即执行）
+            HarnessResult<Integer> queued = runtimePort().sessionAdmin(currentContext())
+                    .call(sessionId, QueueExtension.class, (queue, s) -> queue.enqueue(input, id));
             if (!queued.isOk()) return HarnessResultUtil.failure(queued, "Queue is full or storage failed");
-            runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue item"); }
     }
@@ -255,9 +256,10 @@ public class QueueWebController extends AbstractWebController {
             if (!isValidSessionId(sessionId) || queuePath == null || !ownsSession(queuePath)) return Result.failure(404, "Session not found");
             org.noear.solon.ai.agent.AgentSession session = sessionManager().getSessionOrNull(sessionId);
             if (session == null) return Result.failure(404, "Session not found");
-            HarnessResult<Void> promoted = queue().promote(session, itemId);
+            // 置顶后由宿主骨架自动续发（「后端唯一 drainer」即骨架的续发链）
+            HarnessResult<Void> promoted = runtimePort().sessionAdmin(currentContext())
+                    .call(sessionId, QueueExtension.class, (queue, s) -> queue.promote(s, itemId));
             if (!promoted.isOk()) return HarnessResultUtil.failure(promoted, "Queue item not found");
-            runtimePort().drainSessionQueue(currentContext(), session);
             return Result.succeed(queueResult(session));
         } catch (Exception e) { return Result.failure(400, "Invalid queue operation"); }
     }

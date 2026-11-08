@@ -447,7 +447,8 @@ class PackageBoundaryTest {
         }
         // 派发事务身份：流生命周期路径不得自己捕获，只有队列适配器可读取派发线程身份
         for (String rel : new String[]{
-                "api/web/WebSessionRunner.java",
+                "api/web/WebRunSink.java",
+                "api/web/WebGate.java",
                 "api/desktop/DesktopStreamTurn.java",
                 "entry/cli/CliShell.java",
                 "entry/headless/PrintMode.java"}) {
@@ -513,21 +514,22 @@ class PackageBoundaryTest {
     @Test
     void hostMustNotComposeAdmissionManually() throws IOException {
         List<String> violations = new ArrayList<>();
-        Path file = SRC.resolve("api/web/WebChatInputHandler.java");
+        Path file = SRC.resolve("api/web/WebGate.java");
+        assertTrue(Files.exists(file), "Web 输入入口已移到 WebGate（受理归 engine.handle，编排归 HarnessHost）");
 
         if (Files.exists(file)) {
             String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
 
             // 受理入口不得再自己拼装：那段 50 余行 synchronized 块是历史事故源头
             if (content.contains("synchronized (session.attrs())")) {
-                violations.add("WebChatInputHandler.java 仍在入口手拼受理判定（受理归 engine.handle）");
+                violations.add("WebGate.java 仍在入口手拼受理判定（受理归 engine.handle）");
             }
             // 唯一执行入口：不得再出现独立的受理入口、受理凭据或宿主自己入队
             if (content.contains(".admit(") || content.contains("AdmitDecision") || content.contains("InputGate")) {
-                violations.add("WebChatInputHandler.java 仍在调用独立受理入口（admit / AdmitDecision / InputGate 已删除）");
+                violations.add("WebGate.java 仍在调用独立受理入口（admit / AdmitDecision / InputGate 已删除）");
             }
             if (content.contains(".enqueue(session")) {
-                violations.add("WebChatInputHandler.java 仍在宿主侧入队（忙时入积压由 engine.handle 完成）");
+                violations.add("WebGate.java 仍在宿主侧入队（忙时入积压由 engine.handle 完成）");
             }
         }
 

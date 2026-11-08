@@ -1,17 +1,16 @@
 package org.noear.solon.codecli.workspace;
 
-import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
-import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
+import org.noear.solon.ai.harness.host.SessionAdmin;
 import org.noear.solon.core.handle.UploadedFile;
 
 /**
  * 工作区运行时端口。
  *
  * <p>该端口承接 Web/Desktop 等入口对工作区运行时的适配能力：文件变化广播、
- * Session 队列恢复、Loop 执行和会话繁忙判断。工作区管理器只依赖这些能力，
- * 不持有具体的 WebGate 或其它协议网关。</p>
+ * Session 恢复、会话管理态与会话繁忙判断。工作区管理器只依赖这些能力，
+ * 不持有具体的 WebGate 或其它协议网关。goal / loop 的后台轮次由入口内部的宿主骨架
+ * （HarnessHost）在首次取到引擎时自行登记执行器，不再经本端口转发。</p>
  */
 public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
     /**
@@ -25,14 +24,14 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
     void broadcastRaw(WorkspaceContext workspaceContext, String json);
 
     /**
-     * 工作区初始化完成后恢复持久化的 Session 队列。
+     * 工作区初始化完成后：登记后台轮次执行器，并恢复持久化的 goal 调度与 Session 队列。
      */
     void recoverSessionQueues(WorkspaceContext workspaceContext);
 
     /**
-     * 从队头领取队列任务并派发给输入处理（队列 HTTP 接口取消/确认后触发）。
+     * 会话管理态（队列等管理接口）：对扩展门面的操作统一返回结果码，成功后自动续发积压。
      */
-    void drainSessionQueue(WorkspaceContext workspaceContext, AgentSession session);
+    SessionAdmin sessionAdmin(WorkspaceContext workspaceContext);
 
     /**
      * 判断指定引擎中的 Session 是否正在运行任务。
@@ -55,18 +54,4 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
                      UploadedFile[] attachments, String[] attachmentTypes,
                      String hitlAction, String source,
                      String reasoningEffort, String thinkingMode, String selectedAgent);
-
-    /**
-     * 执行 Loop 注入回合并等待本轮结论（done / skip：工作区未就绪、会话忙、无正文 / failed：流报错）。
-     */
-    LoopOutcome runLoop(String workspaceId, String sessionId, String input, String source);
-
-    /**
-     * 执行注入回合（goal）并等待本轮客观事实。
-     *
-     * <p>与 {@link #runLoop} 是同一段执行（同样推流），差别只在返回值：
-     * goal 需要 token 与工具证据做完成判定。两者分开而不合并成一个带额外字段的宽接口，
-     * 是因为各自只需要自己那份返回值。</p>
-     */
-    GoalOutcome runGoalRound(String workspaceId, String sessionId, String input, String source);
 }

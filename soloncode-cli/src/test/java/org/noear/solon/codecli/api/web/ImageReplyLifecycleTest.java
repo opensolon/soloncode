@@ -544,33 +544,29 @@ class ImageReplyLifecycleTest {
     }
 
     @Test
-    void realInterruptReservesCancellationBeforeBlockedSnapshotAndConcurrentRunEnd() throws Exception {
+    void realInterruptRepliesAfterBlockedSnapshotAndBlocksLateSuccess() throws Exception {
         assertRealInterruptWindow(false);
     }
 
     @Test
-    void delayedRealInterruptReplyAndOldCleanupCannotAffectNewTurn() throws Exception {
+    void realInterruptDoesNotAffectTheNextTurn() throws Exception {
         assertRealInterruptWindow(true);
     }
 
-    private void assertRealInterruptWindow(boolean replaceTurn) throws Exception {
+    /**
+     * 停止的真实窗口：HarnessHost 先立取消屏障（本轮不再有事件），再落取消消息、停流；
+     * IM 取消回执在本轮 finished 里、取消消息持久化之后发出，且只发一次。
+     */
+    private void assertRealInterruptWindow(boolean nextTurn) throws Exception {
         Fixture f = new Fixture();
-        org.noear.solon.codecli.session.SessionManager manager =
-                mock(org.noear.solon.codecli.session.SessionManager.class);
-        when(f.context.getSessionManager()).thenReturn(manager);
-        when(manager.getSessionOrNull("s1")).thenReturn(f.session);
-        ReActRequest request = f.mockRequest();
-        when(request.stream()).thenReturn(Flux.never());
-        Flux<WebEvent<?>> stream = f.buildStream();
-        ImageReplyTurn old = f.currentTurnWithImage();
-        Disposable handle = stream.subscribe();
-        SessionRuns.attach(f.session, handle);
-        WebGate gate = new WebGate(null) {
+        WebGate gate = new WebGate(TestWorkspaces.of(f.context)) {
             @Override
             public void emitToClient(WorkspaceContext context, String sessionId, WebEvent<?> event) {
                 // 保留真实取消入口和 done 门，仅替换 WebSocket 出口。
             }
         };
+        // 经宿主骨架开一轮（真实的受理 → 开流 → 两段式中断 → 终态链路）
+        ImageReplyTurn old = f.startViaHost(gate, Flux.never());
         CountDownLatch snapshotEntered = new CountDownLatch(1);
         CountDownLatch releaseSnapshot = new CountDownLatch(1);
         java.util.concurrent.atomic.AtomicBoolean snapshotReturned = new java.util.concurrent.atomic.AtomicBoolean();
@@ -591,45 +587,37 @@ class ImageReplyLifecycleTest {
         try {
             Future<Boolean> canceled = workers.submit(() -> gate.interruptSession(f.context, "s1"));
             assertTrue(snapshotEntered.await(5, TimeUnit.SECONDS));
-            assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-            assertFalse(old.isImagesAllowed());
-            WebEventMapper mapper = new WebEventMapper(f.builder, f.context, f.session, null, old);
-            Future<?> ended = workers.submit(() -> mapper.mapEvent(runEnd(f.session, "run", withImage("窗口内成功"))));
-            ended.get(5, TimeUnit.SECONDS);
-            // RunEnd 必须在持久化仍阻塞时返回，且不能投递成功文本或图片。
-            f.assertNoStructured();
+            // 持久化阻塞期间：什么都还没发到 IM
             verifyNoInteractions(f.origin, f.other, f.unbound);
 
-            // 重复 Stop 不应再写取消历史或重复领取 IM 终态。
-            assertTrue(gate.interruptSession(f.context, "s1"));
-            verify(f.session).updateSnapshot();
-            Map<String, String> replacement = new HashMap<>(f.route);
-            replacement.put("sourceUserId", "new-user");
-            replacement.put("replyTarget", "new-target");
-            replacement.put("messageId", "new-message");
-            f.route.clear();
-            f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
-            Path newImage = null;
-            if (replaceTurn) {
-                current = f.newTurn();
-                f.bind(current, "new");
-                newImage = createImage();
-                assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-            }
             releaseSnapshot.countDown();
             assertTrue(canceled.get(5, TimeUnit.SECONDS));
-            assertFalse(SessionRuns.isBusy(f.session));
-            verify(f.origin).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
-            verify(f.other).sendReply("s1", "用户已取消任务。", true);
-            verify(f.origin, never()).sendReply("s1", "用户已取消任务。", true,
-                    "new-user", "new-target", "new-message");
+            verify(f.origin, timeout(5_000)).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
+            verify(f.other, timeout(5_000)).sendReply("s1", "用户已取消任务。", true);
+            assertFalse(old.isImagesAllowed());
+            assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
+
+            // 重复 Stop：不再写取消历史、不重复回执
+            assertTrue(gate.interruptSession(f.context, "s1"));
+            verify(f.session).updateSnapshot();
+            verify(f.origin, times(1)).sendReply("s1", "用户已取消任务。", true, "user", "target", "message");
+
+            // 迟到的成功（绕过屏障直接投递）也被终态去重门挡下
+            f.builder.replyRunEnd(f.context, f.session, old, "run", withImage("迟到成功"), false);
             f.assertNoStructured();
             old.cleanup();
-            mapper.mapEvent(runEnd(f.session, "run", withImage("迟到成功")));
-            assertSame(replacement, f.attrs.get(HostAttrs.ATTR_REPLY_ROUTE));
-            if (replaceTurn) {
-                assertSame(current, f.attrs.get(ImageReplyTurn.ATTR));
-                assertTrue(current.isImagesAllowed());
+
+            if (nextTurn) {
+                // 下一轮照常：新路由、新图片轮次、新终态门
+                Map<String, String> replacement = new HashMap<>(f.route);
+                replacement.put("sourceUserId", "new-user");
+                replacement.put("replyTarget", "new-target");
+                replacement.put("messageId", "new-message");
+                f.route.clear();
+                f.attrs.put(HostAttrs.ATTR_REPLY_ROUTE, replacement);
+                current = f.newTurn();
+                f.bind(current, "new");
+                Path newImage = createImage();
                 assertFalse(f.attrs.containsKey(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
                 f.builder.replyRunEnd(f.context, f.session, current, "new", withImage("新轮成功"), false);
                 ArgumentCaptor<ChannelReply> reply = ArgumentCaptor.forClass(ChannelReply.class);
@@ -637,12 +625,7 @@ class ImageReplyLifecycleTest {
                         eq("new-target"), eq("new-message"));
                 assertEquals(withImage("新轮成功"), reply.getValue().getText());
                 assertSnapshot(newImage, reply.getValue());
-                verify(f.other).sendReply(eq("s1"), same(reply.getValue()), isNull(), isNull(), isNull());
-            } else {
-                assertEquals(Boolean.TRUE, f.attrs.get(WebStreamBuilder.ATTR_IM_TERMINAL_SENT));
-                f.assertNoStructured();
             }
-            verify(f.session).updateSnapshot();
         } finally {
             releaseSnapshot.countDown();
             workers.shutdownNow();
@@ -656,17 +639,8 @@ class ImageReplyLifecycleTest {
     @Test
     void realInterruptDisposesCompositeWhenCanceledDeliveryThrows() throws Exception {
         Fixture f = new Fixture();
-        org.noear.solon.codecli.session.SessionManager manager =
-                mock(org.noear.solon.codecli.session.SessionManager.class);
-        when(f.context.getSessionManager()).thenReturn(manager);
-        when(manager.getSessionOrNull("s1")).thenReturn(f.session);
-        ReActRequest request = f.mockRequest();
         CountDownLatch upstreamCanceled = new CountDownLatch(1);
-        when(request.stream()).thenReturn(Flux.<AgentEvent>never().doOnCancel(upstreamCanceled::countDown));
-        Flux<WebEvent<?>> stream = f.buildStream();
-        ImageReplyTurn turn = f.currentTurnWithImage();
-        Disposable handle = stream.subscribe();
-        SessionRuns.attach(f.session, handle);
+        List<String> emitted = new java.util.concurrent.CopyOnWriteArrayList<>();
         WebStreamBuilder failingBuilder = new WebStreamBuilder() {
             @Override
             Runnable prepareCanceledReply(WorkspaceContext context, AgentSession session) {
@@ -678,7 +652,7 @@ class ImageReplyLifecycleTest {
                 };
             }
         };
-        WebGate gate = new WebGate(null) {
+        WebGate gate = new WebGate(TestWorkspaces.of(f.context)) {
             @Override
             public WebStreamBuilder getStreamBuilder() {
                 return failingBuilder;
@@ -687,10 +661,15 @@ class ImageReplyLifecycleTest {
             @Override
             public void emitToClient(WorkspaceContext context, String sessionId, WebEvent<?> event) {
                 // 仅替换 WebSocket 出口，保留真实取消入口。
+                emitted.add(event.getEvent());
             }
         };
+        ImageReplyTurn turn = f.startViaHost(gate, Flux.<AgentEvent>never().doOnCancel(upstreamCanceled::countDown));
         try {
-            assertFalse(gate.interruptSession(f.context, "s1"));
+            // 回执投递失败只记日志：停流照常完成，本轮照常收尾（error → done）
+            assertTrue(gate.interruptSession(f.context, "s1"));
+            assertTrue(emitted.contains(WebEventNames.SYSTEM_ERROR), "取消必须给前端一条可读错误");
+            assertEquals(WebEventNames.SYSTEM_DONE, emitted.get(emitted.size() - 1), "取消回执失败也必须以 done 收尾");
             // 必须在测试 finally 主动清理之前断言，避免清理掩盖生产取消失效。
             assertFalse(SessionRuns.isBusy(f.session));
             assertTrue(upstreamCanceled.await(5, TimeUnit.SECONDS));
@@ -994,7 +973,6 @@ class ImageReplyLifecycleTest {
                     .when(engine).getExtension(org.noear.solon.ai.harness.extension.steer.SteerExtension.class);
             // 两段式中断委托给一台无扩展的真实引擎（等价于 prepareInterrupt 的核心段）：
             // mock 引擎默认返回 null 会让 interruptSession 走「无活跃流」兜底分支，测不到真实中断语义
-            HarnessEngine interrupter = bareEngine();
             doAnswer(inv -> interrupter.prepareInterrupt(inv.getArgument(0)))
                     .when(engine).prepareInterrupt(any());
             when(engine.getSession("s1")).thenReturn(session);
@@ -1025,9 +1003,59 @@ class ImageReplyLifecycleTest {
             });
         }
 
+        /** 两段式中断委托给一台无扩展的真实引擎（mock 引擎默认返回 null 会走「无活跃流」分支，测不到真实中断语义） */
+        final HarnessEngine interrupter = bareEngine();
         ReActAgent agent;
         ReActOptions options;
         ReActRequest request;
+
+        /**
+         * 经 WebGate 的宿主骨架开一轮（IM 来源 feishu，路由 user/target/message），等到本轮开流后返回本轮的图片回复轮次。
+         *
+         * <p>上游订阅时向会话登记运行句柄（与 ReActRequest 的登记同构），中断时由两段式提交取消订阅。</p>
+         */
+        ImageReplyTurn startViaHost(WebGate gate, Flux<AgentEvent> upstream) throws Exception {
+            org.noear.solon.codecli.session.SessionManager manager =
+                    mock(org.noear.solon.codecli.session.SessionManager.class);
+            when(context.getSessionManager()).thenReturn(manager);
+            when(manager.getSessionOrNull("s1")).thenReturn(session);
+            when(manager.getOwnedSession(eq("s1"), any())).thenReturn(session);
+            ReActRequest req = mockRequest();
+            // 与 ReActRequest 同构：取消以 onComplete 收尾（上游被取消、下游收到完成），宿主的终态链才会执行
+            reactor.core.publisher.Sinks.One<Boolean> stop = reactor.core.publisher.Sinks.one();
+            when(req.stream()).thenReturn(upstream.takeUntilOther(stop.asMono()).doOnSubscribe(sub -> SessionRuns.attach(session, new Disposable() {
+                private volatile boolean disposed;
+
+                @Override
+                public void dispose() {
+                    disposed = true;
+                    stop.tryEmitValue(true);
+                }
+
+                @Override
+                public boolean isDisposed() {
+                    return disposed;
+                }
+            })));
+            HarnessEngine engine = context.getEngine();
+            when(engine.getSessionOrNull("s1")).thenReturn(session);
+            when(engine.checkOwner(anyString())).thenReturn(org.noear.solon.ai.harness.session.OwnerCheck.owned());
+            when(engine.handle(any())).thenReturn(outcome(req));
+            // IM 来源：受理后回复路由按来源写入（与 fixture 的路由一致），渠道名与来源同名才定向回复
+            when(origin.getChannelName()).thenReturn("feishu");
+            route.put("source", "feishu");
+
+            gate.onChatInput(context, "s1", temp.toString(), "hi", null, null, null, null, "feishu",
+                    null, null, null, "user", "target", "message");
+
+            long deadline = System.currentTimeMillis() + 5_000;
+            while ((attrs.get(ImageReplyTurn.ATTR) == null || !SessionRuns.isBusy(session))
+                    && System.currentTimeMillis() < deadline) {
+                Thread.sleep(10);
+            }
+            assertTrue(SessionRuns.isBusy(session), "本轮应已开流");
+            return currentTurnWithImage();
+        }
 
         ReActRequest mockRequest() {
             if (request != null) {
@@ -1038,6 +1066,7 @@ class ImageReplyLifecycleTest {
             agent = mock(ReActAgent.class);
             request = mock(ReActRequest.class);
             WorkspaceMeta meta = new WorkspaceMeta();
+            meta.setId("ws-test");
             meta.setPath(temp.toString());
             when(context.getMeta()).thenReturn(meta);
             when(session.getContext()).thenReturn(mock(org.noear.solon.flow.FlowContext.class));
@@ -1058,8 +1087,31 @@ class ImageReplyLifecycleTest {
             return InputOutcome.task(Prompt.of(), "main", null, request);
         }
 
+        /**
+         * 直接订阅一轮的 SAEP 管道（不经 HarnessHost）：与 WebRunSink 的装配一致——开流前 openPipeline，
+         * 事件逐个 map，出错时 replyError 并只发 error（done 由订阅侧发），结束时 cleanup；
+         * stream() 装配期同步失败时同样 replyError + cleanup（生产上由 WebRunSink.finished(FAILED) 完成）。
+         */
         Flux<WebEvent<?>> buildStream() {
-            return builder.buildStreamFlux(context, session, outcome(mockRequest()), null, temp.toString());
+            InputOutcome outcome = outcome(mockRequest());
+            WebRunPipeline pipeline = builder.openPipeline(context, session, outcome.getRequest(), outcome.getPrompt(),
+                    outcome.getAgentName(), null, temp.toString());
+            try {
+                return outcome.getRequest().stream()
+                        .flatMap(event -> Flux.fromIterable(pipeline.map(event)))
+                        .onErrorResume(e -> {
+                            pipeline.replyError(e);
+                            return Flux.just(WebEvent.ofError(e));
+                        })
+                        .doFinally(signal -> pipeline.cleanup());
+            } catch (RuntimeException | Error e) {
+                try {
+                    pipeline.replyError(e);
+                } finally {
+                    pipeline.cleanup();
+                }
+                throw e;
+            }
         }
 
         ImageReplyTurn currentTurnWithImage() throws IOException {
