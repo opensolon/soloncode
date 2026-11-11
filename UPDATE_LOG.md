@@ -1,5 +1,5 @@
 
-### vNEXT
+### v2026.11.11
 * **工具卡片成败改用结构化 `isError`，不再匹配提示文案**：`app-message.js` / `app-streaming.js` 的编辑卡片与工具状态图标改读 `payload.isError`（删掉「成功完成」「edit(s) applied」两处文字判定），失败标红叉、LSP 报错仍为黄色提醒；回放（`LastTraceService`）同步带出 `isError`，刷新页面后结论一致。`fillToolCardBody` / `appendActionEndChunk` 统一改为传 `meta` 对象（后续新增标记不用再改签名）。新增 `ToolEndPayloadJsonContractTest` 锁死序列化字段名 `isError`（若序列化器改为 getter 推导成 `error`，前端会静默全判成功、不报错也不崩溃）。**升级前落库的 trace 没有该字段，旧会话里失败的编辑会显示为成功（一次性回退，不做兼容）。**
 
 * **goal 宿主 DX 收口：停等 / 展示正文 / 执行器注册 / 恢复四类样板收敛进门面**（配套 harness 新增 6 组 API + soloncode-cli 迁移）:
@@ -154,7 +154,7 @@
   * 验证：harness `TaskTalentResultFormatTest` 7 例全绿（含路径穿越防护）；cli 定向 19 例全绿（FilerIgnoreRules 8 + WebAttachmentStore 8 + DesktopAttachmentSupport 3）；全仓 grep 无残留引用（UPDATE_LOG 历史记录、飞书 link.uploads 字段名、solon-ai-core 的 MediaBlock javadoc 示例除外）
   * **抽取 `WorkspaceFiles` 常量类**（`workspace` 包）：`FILES_ROOT = ".files"`、`UPLOADS_DIR = ".files/uploads"`，取代 Java 主代码中 5 处裸字面量；消费方：`WebAttachmentStore`（落盘+引用路径）、`DesktopAttachmentSupport`（同）、`FilerIgnoreRules`（隐藏白名单入口粒度）；测试与文档中的字面量保留（契约锁值）；harness 侧 TaskTalent 自持 `.files/task` 约定不跨仓抽常量（两仓同步靠 javadoc 互指，见类注释）；定向回归 23 例全绿（原 19 例 + PackageBoundaryTest 4 例，确认 api→workspace 方向不踩包边界）
 
-### v2026.11.3
+### v2026.11.11
 
 * CLI 受理层收敛为**单一受理接口 + 参数对象**（三端统一契约的第一端落地）：
   * **意图**：每端只有一个接收输入的处理接口，不同输入情况由参数表达，内部一套处理逻辑。CLI 率先落地

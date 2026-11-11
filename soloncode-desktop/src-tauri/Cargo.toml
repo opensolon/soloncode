@@ -1,6 +1,6 @@
 [package]
 name = "soloncode-desktop"
-version = "2026.11.3"
+version = "2026.11.11"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
