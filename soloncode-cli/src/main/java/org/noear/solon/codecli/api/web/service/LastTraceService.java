@@ -280,12 +280,15 @@ public class LastTraceService {
                 // tool.start 用模型给的原始参数（与实时流一致：展示层过滤只作用于 tool.end）
                 turn.put("args", copyArgs(call.getArguments()));
 
-                String result = findToolResult(messages, i, call, c);
-                if (result == null) {
+                ToolMessage resultMsg = findToolResult(messages, i, call, c);
+                if (resultMsg == null) {
                     // 工具已发起但结果未落库：仍在执行中 / 被中断
                     turn.put("done", false);
                 } else {
+                    String result = nullToEmpty(resultMsg.getContent());
                     turn.put("done", true);
+                    // 成败由结构化标记决定（前端不解析文案）；截断分支也要保留
+                    turn.put("isError", resultMsg.isError());
                     if (totalChars >= MAX_TOTAL_CHARS) {
                         turn.put("result", "");
                         turn.put("omitted", true);
@@ -500,7 +503,7 @@ public class LastTraceService {
      * @param assistantIndex 发起调用的 AssistantMessage 下标
      * @param callIndex      该调用在本批 toolCalls 中的序号
      */
-    private String findToolResult(List<ChatMessage> messages, int assistantIndex, ToolCall call, int callIndex) {
+    private ToolMessage findToolResult(List<ChatMessage> messages, int assistantIndex, ToolCall call, int callIndex) {
         String callId = call.getId();
         List<ToolMessage> batch = new ArrayList<>();
 
@@ -521,7 +524,7 @@ public class LastTraceService {
         if (Assert.isNotEmpty(callId)) {
             for (ToolMessage tm : batch) {
                 if (callId.equals(tm.getToolCallId())) {
-                    return nullToEmpty(tm.getContent());
+                    return tm;
                 }
             }
         }
@@ -530,7 +533,7 @@ public class LastTraceService {
         if (callIndex < batch.size()) {
             ToolMessage tm = batch.get(callIndex);
             if (Assert.isEmpty(tm.getName()) || tm.getName().equals(call.getName())) {
-                return nullToEmpty(tm.getContent());
+                return tm;
             }
         }
 

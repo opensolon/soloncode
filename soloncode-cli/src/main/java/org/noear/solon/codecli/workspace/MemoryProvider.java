@@ -63,8 +63,4 @@ public class MemoryProvider implements MemorySolutionProvider {
     public String getScopeDefault() {
         return AgentFlags.SCOPE_LOCAL;
     }
-
-    public String getScopesDescription() {
-        return "存储作用域: workspace(工作区,默认) 或 user(用户全局)。跨项目的通用认知用 user 域。";
-    }
 }

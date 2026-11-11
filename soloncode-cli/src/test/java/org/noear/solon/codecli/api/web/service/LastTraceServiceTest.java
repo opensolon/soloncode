@@ -7,6 +7,7 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.tool.ToolCall;
+import org.noear.solon.ai.chat.tool.ToolResult;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.ai.harness.extension.steer.SteerProtocol;
 
@@ -104,6 +105,28 @@ public class LastTraceServiceTest {
         assertEquals(call.getUuid(), turn.get("callId"), "callId 必须是 ToolCall.uuid，与实时事件一致");
         assertEquals(true, turn.get("done"));
         assertEquals("<project>...</project>", turn.get("result"));
+    }
+
+    @Test
+    public void tool_error_flag_should_be_replayed() {
+        /* 成败由结构化标记回放：前端据此渲染错误样式，不再匹配「成功完成」之类文案
+         * （文案随语言变化，匹配必然失效）。 */
+        ReActTrace trace = new ReActTrace();
+
+        ToolCall bad = new ToolCall("0", "call_1", "edit", "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, bad));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool(
+                ToolResult.error("错误：文件不存在，无法进行编辑。"), "edit", "call_1", false));
+
+        ToolCall good = new ToolCall("1", "call_2", "edit", "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, good));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool(
+                ToolResult.success("文件 a.txt 成功完成 1 处修改。"), "edit", "call_2", false));
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null));
+        assertEquals(2, events.size());
+        assertEquals(true, events.get(0).get("isError"), "失败必须带 isError");
+        assertEquals(false, events.get(1).get("isError"), "成功必须是 false");
     }
 
     @Test
@@ -377,7 +400,7 @@ public class LastTraceServiceTest {
 
         trace.getWorkingMemory().addMessage(newToolCallMessage(null, c1));
         trace.getWorkingMemory().addMessage(ChatMessage.ofTool("a", "read", "call_1"));
-        ChatMessage steer = ChatMessage.ofUser(SteerProtocol.PREFIX + "改用 grep 找");
+        ChatMessage steer = ChatMessage.ofUser(SteerProtocol.prefix() + "改用 grep 找");
         steer.addMetadata("source", SteerProtocol.SOURCE);
         trace.getWorkingMemory().addMessage(steer);
         trace.getWorkingMemory().addMessage(newToolCallMessage(null, c2));
@@ -396,7 +419,7 @@ public class LastTraceServiceTest {
 
         trace.getWorkingMemory().addMessage(newToolCallMessage(null, c1));
         trace.getWorkingMemory().addMessage(ChatMessage.ofTool("a", "read", "call_1"));
-        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.PREFIX + "别改测试"));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.prefix() + "别改测试"));
         trace.getWorkingMemory().addMessage(new AssistantMessage("", "好的"));
 
         List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null));
@@ -413,7 +436,7 @@ public class LastTraceServiceTest {
 
         trace.getWorkingMemory().addMessage(newToolCallMessage(null, c1));
         trace.getWorkingMemory().addMessage(ChatMessage.ofTool("a", "read", "call_1"));
-        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.PREFIX + "直接给结论"));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.prefix() + "直接给结论"));
         addFinalAnswer(trace, "结论是……");
 
         List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null));
@@ -428,7 +451,7 @@ public class LastTraceServiceTest {
         ReActTrace trace = new ReActTrace();
         ToolCall c1 = new ToolCall("0", "call_1", "read", "{}", new HashMap<>());
 
-        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.PREFIX + "上一轮的旧插话"));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.prefix() + "上一轮的旧插话"));
         trace.getWorkingMemory().addMessage(newToolCallMessage(null, c1));
         trace.getWorkingMemory().addMessage(ChatMessage.ofTool("a", "read", "call_1"));
 
@@ -456,7 +479,7 @@ public class LastTraceServiceTest {
         // 插话不能单独支撑回放：它依附于 AI 的思考/工具过程才有语境
         ReActTrace trace = new ReActTrace();
         trace.getWorkingMemory().addMessage(new AssistantMessage("", ""));
-        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.PREFIX + "换个思路"));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofUser(SteerProtocol.prefix() + "换个思路"));
 
         Map<String, Object> data = service.buildLastTrace(newSession(trace), false, null);
         assertEquals(false, data.get("aligned"));
@@ -495,7 +518,7 @@ public class LastTraceServiceTest {
         // #2 工具结果
         trace.getWorkingMemory().addMessage(ChatMessage.ofTool("杭州天气…", "websearch", "call_1"));
         // #3 插话
-        ChatMessage steer1 = ChatMessage.ofUser(SteerProtocol.PREFIX + "去哪儿玩好？");
+        ChatMessage steer1 = ChatMessage.ofUser(SteerProtocol.prefix() + "去哪儿玩好？");
         steer1.addMetadata("source", SteerProtocol.SOURCE);
         trace.getWorkingMemory().addMessage(steer1);
         // #4 思考与答案同在 reasoning 通道，无 toolCalls
@@ -503,7 +526,7 @@ public class LastTraceServiceTest {
         // #5 ReasonTask 注入的格式修正指令（系统内务，不得上屏）
         trace.getWorkingMemory().addMessage(ChatMessage.ofUser("【系统指令：输出格式修正】…"));
         // #6 第二条插话
-        ChatMessage steer2 = ChatMessage.ofUser(SteerProtocol.PREFIX + "要多少钱？");
+        ChatMessage steer2 = ChatMessage.ofUser(SteerProtocol.prefix() + "要多少钱？");
         steer2.addMetadata("source", SteerProtocol.SOURCE);
         trace.getWorkingMemory().addMessage(steer2);
         // #7 同 #4 形态

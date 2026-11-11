@@ -161,16 +161,19 @@ final class WebRunSink implements RunSink {
      *
      * <p>IM 只会收到一条终态：停止受理后不再有事件，成功回执要么已在停止前发出（取消回执被去重门挡下），
      * 要么不会再发。其它方式的取消（程序取消、腾位）只发 done。</p>
+     *
+     * <p>提示文案与框架落库的取消消息同一语言：由框架按会话本轮的语言给出，宿主不必自取。</p>
      */
     private void onUserStop(RunOutcome outcome) {
-        gate.emitToClient(ctx, sessionId, WebEvent.ofError(InterruptPlan.CANCEL_TEXT));
+        String cancelText = InterruptPlan.cancelText(session);
+        gate.emitToClient(ctx, sessionId, WebEvent.ofError(cancelText));
         try {
             gate.getStreamBuilder().prepareCanceledReply(ctx, session).run();
         } catch (Throwable e) {
             LOG.warn("[WebGate] canceled reply delivery failed for session {}", sessionId, e);
         }
         gate.emitToClient(ctx, sessionId, WebEvent.ofTrace(null, outcome.getUsage().getTotalTokens(),
-                outcome.getUsage().getElapsedMs() / 1000, InterruptPlan.CANCEL_TEXT));
+                outcome.getUsage().getElapsedMs() / 1000, cancelText));
     }
 
     /** 后台轮次的展示来源名（与旧版保持一致：Goal / Loop） */

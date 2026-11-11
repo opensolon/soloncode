@@ -1,5 +1,7 @@
 
 ### vNEXT
+* **工具卡片成败改用结构化 `isError`，不再匹配提示文案**：`app-message.js` / `app-streaming.js` 的编辑卡片与工具状态图标改读 `payload.isError`（删掉「成功完成」「edit(s) applied」两处文字判定），失败标红叉、LSP 报错仍为黄色提醒；回放（`LastTraceService`）同步带出 `isError`，刷新页面后结论一致。`fillToolCardBody` / `appendActionEndChunk` 统一改为传 `meta` 对象（后续新增标记不用再改签名）。新增 `ToolEndPayloadJsonContractTest` 锁死序列化字段名 `isError`（若序列化器改为 getter 推导成 `error`，前端会静默全判成功、不报错也不崩溃）。**升级前落库的 trace 没有该字段，旧会话里失败的编辑会显示为成功（一次性回退，不做兼容）。**
+
 * **goal 宿主 DX 收口：停等 / 展示正文 / 执行器注册 / 恢复四类样板收敛进门面**（配套 harness 新增 6 组 API + soloncode-cli 迁移）:
   * **背景**：goal 内核本身封装得好（宿主理论上只碰 `GoalExtension`），但宿主侧仍有大量胶水——`pause + interrupt + 轮询等停` 的 `for` 循环在 Web（20ms×200）与桌面（10ms×200）**各复制一份**；`GoalSpec` 发布后宿主零采用，创建路径仍写 `Math.multiplyExact(minutes, 60_000L)`；桌面端 `attach(执行正文)` → `setCondition(展示正文)` → `commit` 会广播一次携带附件全文的中间态；三处执行器注册都要 `getGoalEngine().addTaskExecutor(...)` 且认领谓词各自内联
   * **harness 新增（全部增量，零签名变更）**：

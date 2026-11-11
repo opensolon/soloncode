@@ -1094,7 +1094,8 @@ function finishPendingTool(sess) {
 window._toolRenderers = window._toolRenderers || {};
 
 /* edit：git-diff 风格逐行着色 + 行号 */
-window._toolRenderers.edit = function(bodyEl, text, args) {
+window._toolRenderers.edit = function(bodyEl, text, args, meta) {
+    var isError = !!(meta && meta.isError);
     var diff = (args && typeof args.diff === 'string') ? args.diff : null;
     var result = (typeof text === 'string') ? text : null;
     if (!diff && result && result.startsWith('---')) { diff = result; result = null; }
@@ -1144,9 +1145,9 @@ window._toolRenderers.edit = function(bodyEl, text, args) {
     }
     // 输出段：成功时仅展示 diff（结果提示与改动重复，显示冗余，已隐藏）；
     // 仅在出错时渲染错误信息，避免编辑失败时卡片体空白。
+    // 成败取 payload.isError（工具返回 ToolResult.error），不解析提示文案。
     if (result && result !== diff) {
-        var isErr = result.indexOf("成功完成") < 0;
-        if (isErr) {
+        if (isError) {
             html += '<div class="edit-result is-error">'
                 + '<span class="edit-result-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg> ' + I18n.t('msg.failed') + '</span>'
                 + '<span class="edit-result-text">' + escapeHtml(result) + '</span></div>';
@@ -1361,13 +1362,13 @@ window._toolRenderers.todowrite = renderTodoMarkdown;
 window._toolRenderers.todoread = renderTodoMarkdown;
 
 /* 分发：命中专用 renderer 且渲染成功返回 true，否则交由调用方做纯文本兜底 */
-function renderToolBody(bodyEl, toolName, text, args) {
+function renderToolBody(bodyEl, toolName, text, args, meta) {
     var renderer = window._toolRenderers[toolName];
     // 未登记的 bash_ 系列工具（后续新增的）同样按终端风格渲染
     if (typeof renderer !== 'function' && isBashTool(toolName)) renderer = makeBashToolRenderer(toolName);
     if (typeof renderer === 'function') {
         try {
-            if (renderer(bodyEl, text, args)) return true;
+            if (renderer(bodyEl, text, args, meta)) return true;
         } catch(e) {
             console.warn('[toolRenderer] renderer "' + toolName + '" threw:', e);
         }
@@ -1623,14 +1624,14 @@ function bindToolCardToggle(card) {
     header.attr('aria-expanded', $(card).hasClass('expanded') ? 'true' : 'false');
 }
 
-function fillToolCardBody(card, toolName, text, args, lsp) {
+function fillToolCardBody(card, toolName, text, args, lsp, meta) {
     var body = $(card).find('.tool-card-body')[0];
     if (!body) return;
     function doRender() {
         if (card._toolBodyRendered) return;
         card._toolBodyRendered = true;
         body.className = 'tool-card-body';
-        if (!renderToolBody(body, toolName, text, args)) body.textContent = text || '';
+        if (!renderToolBody(body, toolName, text, args, meta || {})) body.textContent = text || '';
         appendLspPanel(body, lsp);
         checkOverflow(body);
     }
@@ -1697,7 +1698,8 @@ function resolveTaskSegmentFromCard(sess, card) {
     return (taskId && sess.taskSegments[taskId]) || null;
 }
 
-function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId, lsp) {
+/* meta：工具结果的元信息（{isError} 等），供 renderer 使用；缺省为空对象 */
+function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, reasonId, agentName, callId, lsp, meta) {
     var pendingMatch = findPendingToolCard(sess, callId, null);
     var card = pendingMatch.pending && pendingMatch.pending.started ? pendingMatch.pending.card : null;
     if (card) delete sess.pendingToolCards[pendingMatch.key];
@@ -1712,11 +1714,14 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
         bindToolCardToggle(card);
     }
     card._toolBodyRendered = false;
-    fillToolCardBody(card, toolName, text, args, lsp);
+    fillToolCardBody(card, toolName, text, args, lsp, meta);
     var icon = $(card).find('.tool-status-icon')[0];
-    // 工具本身执行成功，但 LSP 报错时用 warn 图标提醒（区别于工具失败的红色路径）
+    // 工具失败取结构化 isError（不再看文案）；工具本身成功但 LSP 报错时用 warn 图标提醒
     if (icon) {
-        if (hasLspErrors(lsp)) {
+        if (meta && meta.isError) {
+            icon.className = 'tool-status-icon reject';
+            icon.innerHTML = '<i class="layui-icon layui-icon-close"></i>';
+        } else if (hasLspErrors(lsp)) {
             icon.className = 'tool-status-icon warn';
             icon.innerHTML = '<i class="layui-icon layui-icon-tips"></i>';
         } else {

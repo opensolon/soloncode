@@ -1433,7 +1433,7 @@ function processWebEventNow(sess, webEvt) {
             case 'tool.end':
                 var toolArgs = p.args || (p.diff ? { diff: p.diff } : {});
                 if (p.diff && !toolArgs.diff) toolArgs.diff = p.diff;
-                sourceEl = appendActionEndChunk(sess, segment, p.name, p.result || '', toolArgs, p.title || p.name, reasonId, agentName, p.callId, p.lsp);
+                sourceEl = appendActionEndChunk(sess, segment, p.name, p.result || '', toolArgs, p.title || p.name, reasonId, agentName, p.callId, p.lsp, { isError: !!p.isError });
                 // todowrite 已在 handleWebGateChunk 入口统一派发过（会话不存在/未开流时也要更新左侧进度），
                 // 此处只补派其它工具，避免同一事件重复触发 todo 面板刷新
                 if (window._todoChunkHandlers && p.name !== 'todowrite') {
@@ -1995,6 +1995,7 @@ function replayLastTrace(sess, data, anchorRow) {
                 args: e.endArgs || e.args || {},
                 diff: e.diff || null,
                 lsp: e.lsp || null,
+                isError: !!e.isError,
                 result: result,
                 callId: e.callId
             }));
