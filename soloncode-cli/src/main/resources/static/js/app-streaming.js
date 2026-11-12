@@ -237,6 +237,7 @@ function enqueueMessage(sess, text, files) {
         reasoningEffort: typeof getSelectedReasoning === 'function' ? getSelectedReasoning() : null,
         thinkingMode: typeof getSelectedThinking === 'function' ? getSelectedThinking() : '',
         selectedAgent: typeof getSelectedAgent === 'function' ? getSelectedAgent() : '',
+        locale: currentUiLocale(),
         createdAt: Date.now()
     };
     sess.messageQueue.push(queuedItem);
@@ -251,6 +252,7 @@ function enqueueMessage(sess, text, files) {
             reasoningEffort: queuedItem.reasoningEffort,
             thinkingMode: queuedItem.thinkingMode,
             selectedAgent: queuedItem.selectedAgent,
+            locale: queuedItem.locale,
             hasFiles: queuedItem.hasFiles
         })
     }).then(function(response) {
@@ -329,6 +331,11 @@ function sendMessageCore(sess, text, filesToSend, options) {
     sendWithFormDataGrouped(sess, text || '', filesToSend, options);
 }
 
+/** 当前界面语言（跟随系统时为解析后的实际语言），随对话请求传给后端作为本轮语言 */
+function currentUiLocale() {
+    return (window.I18n && typeof I18n.getLocale === 'function') ? (I18n.getLocale() || '') : '';
+}
+
 function sendQueuedItem(sess, item) {
     if (!sess || !item) return;
     sendMessageCore(sess, item.text || '', item.files || [], {
@@ -336,7 +343,8 @@ function sendQueuedItem(sess, item) {
         model: item.model,
         reasoningEffort: item.reasoningEffort,
         thinkingMode: item.thinkingMode || '',
-        selectedAgent: item.selectedAgent
+        selectedAgent: item.selectedAgent,
+        locale: item.locale
     });
 }
 
@@ -1106,6 +1114,9 @@ function sendWithFormDataGrouped(sess, text, filesToSend, options) {
         selectedAgent = getSelectedAgent();
     }
     if (selectedAgent) formData.append('selectedAgent', selectedAgent);
+    // 当前界面语言：作为新一轮对话的语言（审批/续流由后端忽略，沿用原来那一轮）
+    var locale = options.locale || currentUiLocale();
+    if (locale) formData.append('locale', locale);
     for (var i = 0; i < filesToSend.length; i++) {
         formData.append('attachments', filesToSend[i].file, filesToSend[i].name);
         formData.append('attachmentTypes', filesToSend[i].attachmentsType || 'file');
@@ -1347,7 +1358,8 @@ function postUiAction(sess, blockId, actionId, formData) {
         sessionId: sess.sessionId,
         blockId: blockId,
         actionId: actionId,
-        formData: JSON.stringify(formData || {})
+        formData: JSON.stringify(formData || {}),
+        locale: currentUiLocale()
     }).fail(function(err) {
         console.warn('[ui_action] post failed:', err);
     });

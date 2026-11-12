@@ -20,6 +20,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.annotation.Body;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
@@ -212,10 +213,12 @@ public class QueueWebController extends AbstractWebController {
             String reasoningEffort = root.get("reasoningEffort") == null ? null : safeQueueString(root.get("reasoningEffort"), 50);
             String thinkingMode = root.get("thinkingMode") == null ? null : safeQueueString(root.get("thinkingMode"), 50);
             String selectedAgent = root.get("selectedAgent") == null ? null : safeQueueString(root.get("selectedAgent"), 128);
+            String locale = root.get("locale") == null ? null : safeQueueString(root.get("locale"), 35);
             boolean hasFiles = root.get("hasFiles") != null && root.get("hasFiles").getBoolean();
             if (hasFiles) return Result.failure(400, "Attachments cannot be queued");
             HarnessInput input = HarnessInput.of(session, text).origin(InputOrigin.channel("WEB"))
                     .selectedModel(model).selectedAgent(selectedAgent)
+                    .locale(AiI18n.toLocale(locale)) //前端入队时的界面语言：随队列项保存，续发时作为那一轮的语言
                     .attr(WebInputAttrs.REASONING_EFFORT, reasoningEffort)
                     .attr(WebInputAttrs.THINKING_MODE, thinkingMode);
             // 经会话管理态入队：成功后由宿主骨架自动续发（会话空闲时立即执行）

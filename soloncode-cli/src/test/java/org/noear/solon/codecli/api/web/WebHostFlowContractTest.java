@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -184,6 +185,27 @@ class WebHostFlowContractTest {
         assertEquals(WebEventNames.SYSTEM_RESET, seq.get(0), "空闲时的命令回执用完整的 reset … done 信封：" + seq);
         assertTrue(seq.contains(WebEventNames.SYSTEM_COMMAND), seq.toString());
         assertEquals(WebEventNames.SYSTEM_DONE, seq.get(seq.size() - 1), seq.toString());
+    }
+
+    @Test
+    void selectedLocaleBecomesTheRunLocale() throws Exception {
+        WorkspaceContext ctx = workspace();
+        WebGate gate = gate(ctx);
+
+        // 界面语言是英文：本轮语言即英文（记在本轮轨迹上）
+        gate.onChatInput(ctx, "web-5", null, "hello", null, null, null, null, "web",
+                null, null, null, Locale.ENGLISH);
+        await(() -> count(WebEventNames.SYSTEM_DONE) >= 1, "本轮应以 done 收尾");
+        await(() -> engine.isIdle(engine.getSessionOrNull("web-5")), "本轮结束后会话应空闲");
+        assertEquals(Locale.ENGLISH, engine.localeOf(engine.getSessionOrNull("web-5")), "选中的语言应成为本轮语言");
+
+        // 没传语言：用引擎默认语言，不会是英文
+        events.clear();
+        gate.onChatInput(ctx, "web-6", null, "hello", null, null, null, null, "web",
+                null, null, null, null);
+        await(() -> count(WebEventNames.SYSTEM_DONE) >= 1, "本轮应以 done 收尾");
+        await(() -> engine.isIdle(engine.getSessionOrNull("web-6")), "本轮结束后会话应空闲");
+        assertNotEquals(Locale.ENGLISH, engine.localeOf(engine.getSessionOrNull("web-6")));
     }
 
     @Test

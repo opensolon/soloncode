@@ -4,6 +4,8 @@ import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.host.SessionAdmin;
 import org.noear.solon.core.handle.UploadedFile;
 
+import java.util.Locale;
+
 /**
  * 工作区运行时端口。
  *
@@ -53,11 +55,15 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
 
     /**
      * 用户聊天输入入口（由 ChatWebController 等 HTTP 接口调用）。
+     *
+     * @param locale 本轮对话的语言（Web 入口由前端传入当前界面语言）；null 时用引擎默认语言。
+     *               审批与续流不是新的一轮，忽略该参数（沿用原来那一轮的语言）
      */
     void onChatInput(WorkspaceContext workspaceContext,
                      String sessionId, String sessionCwd,
                      String input, String selectedModel,
                      UploadedFile[] attachments, String[] attachmentTypes,
                      String hitlAction, String source,
-                     String reasoningEffort, String thinkingMode, String selectedAgent);
+                     String reasoningEffort, String thinkingMode, String selectedAgent,
+                     Locale locale);
 }

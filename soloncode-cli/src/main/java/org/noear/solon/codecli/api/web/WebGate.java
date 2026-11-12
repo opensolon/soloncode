@@ -53,6 +53,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -456,6 +457,8 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
 
     /**
      * 用户聊天输入入口（由 ChatWebController HTTP 接口调用）。
+     *
+     * @param locale 本轮对话语言（前端传入的当前界面语言）；null 时用引擎默认语言
      */
     @Override
     public void onChatInput(WorkspaceContext wsContext,
@@ -464,9 +467,11 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
                             String input, String selectedModel,
                             UploadedFile[] attachments, String[] attachmentTypes,
                             String hitlAction, String source,
-                            String reasoningEffort, String thinkingMode, String selectedAgent) {
-        onChatInput(wsContext, sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes,
-                hitlAction, source, reasoningEffort, thinkingMode, selectedAgent, null, null, null);
+                            String reasoningEffort, String thinkingMode, String selectedAgent,
+                            Locale locale) {
+        submit(wsContext, sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes, hitlAction,
+                InputOrigin.of(source, null, null, null),
+                reasoningEffort, thinkingMode, selectedAgent, locale, false, false);
     }
 
     /**
@@ -485,7 +490,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
                             String sourceUserId, String replyTarget, String messageId) {
         submit(wsContext, sessionId, sessionCwd, input, selectedModel, attachments, attachmentTypes, hitlAction,
                 InputOrigin.of(source, sourceUserId, replyTarget, messageId),
-                reasoningEffort, thinkingMode, selectedAgent, false, false);
+                reasoningEffort, thinkingMode, selectedAgent, null, false, false);
     }
 
     /**
@@ -515,7 +520,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         }
 
         SubmitResult r = submit(wsContext, sessionId, null, input, null, null, null, null, origin,
-                null, null, null, true, true);
+                null, null, null, null, true, true);
         if (r == null) {
             return false;
         }
@@ -530,6 +535,8 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
     /**
      * 统一提交：组装输入交给骨架。
      *
+     * @param locale        本轮对话语言（前端传入的当前界面语言）；null 时用引擎默认语言。
+     *                      审批与续流不是新的一轮，忽略它，沿用原来那一轮的语言
      * @param echo          受理后回放用户消息（IM / 外部入口：前端没有本地上屏）
      * @param steerWhenBusy 会话忙时先插话（IM 入口的默认语义）
      * @return 提交结果；入口异常时为 null（已向前端补发错误与终态）
@@ -539,7 +546,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
                                 UploadedFile[] attachments, String[] attachmentTypes,
                                 String hitlAction, InputOrigin origin,
                                 String reasoningEffort, String thinkingMode, String selectedAgent,
-                                boolean echo, boolean steerWhenBusy) {
+                                Locale locale, boolean echo, boolean steerWhenBusy) {
         AgentSession session = null;
         try {
             // 认领会话：对话隔离开启时按用户校验 / 认领归属，关闭时共享会话（首条消息即建会话）
@@ -568,6 +575,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
                     .resume(resume)
                     .selectedAgent(selectedAgent)
                     .selectedModel(selectedModel)
+                    .locale(resume ? null : locale)
                     .attr(WebInputAttrs.REASONING_EFFORT, reasoningEffort)
                     .attr(WebInputAttrs.THINKING_MODE, thinkingMode)
                     .attr(WebInputAttrs.SESSION_CWD, Assert.isEmpty(sessionCwd) ? null : sessionCwd)

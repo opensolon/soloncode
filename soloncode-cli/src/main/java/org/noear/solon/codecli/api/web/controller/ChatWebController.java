@@ -21,6 +21,7 @@ import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.ai.mount.catalog.SkillDescriptor;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
@@ -340,6 +341,7 @@ public class ChatWebController extends AbstractWebController {
      * @param model           指定的 AI 模型名称，可为 null（使用默认模型）
      * @param sessionId       会话 ID，若为空则从请求头 X-Session-Id 获取
      * @param selectedAgent   子代理选择器指定的名称，可为 null 或空（使用主 Agent）
+     * @param locale          前端当前界面语言（语言标签，如 en、zh-CN），作为新一轮对话的语言；为空或不合法时用引擎默认语言
      * @return 操作结果（AI 结果通过 WebSocket 推送）
      */
     @Mapping("/web/chat/input")
@@ -348,7 +350,8 @@ public class ChatWebController extends AbstractWebController {
                              String model, String sessionId,
                              @Param(value = "reasoningEffort", required = false) String reasoningEffort,
                              @Param(value = "thinkingMode", required = false) String thinkingMode,
-                             @Param(value = "selectedAgent", required = false) String selectedAgent) {
+                             @Param(value = "selectedAgent", required = false) String selectedAgent,
+                             @Param(value = "locale", required = false) String locale) {
         try {
             // 新版 Web 将长文本作为文件 part 发送，绕开 multipart 普通字段受 readBuffer
             // 大小限制的问题；保留 input 参数以兼容旧页面和其他调用方。
@@ -396,9 +399,9 @@ public class ChatWebController extends AbstractWebController {
                 sessionManager().getOwnedSession(sessionId, userId).getContext().put(WebGate.CTX_HITL_CALL_ID, hitlCallId);
             }
 
-            // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）
+            // 路由到 WebGate 处理（AI 结果通过 WebSocket 推送到前端）；本轮语言取前端传入的界面语言
             runtimePort().onChatInput(currentContext(), sessionId, sessionCwd, input, model, attachments, attachmentTypes, hitlAction, null,
-                    reasoningEffort, thinkingMode, selectedAgent);
+                    reasoningEffort, thinkingMode, selectedAgent, AiI18n.toLocale(locale));
 
             // 返回简单 JSON，前端通过 WebSocket 接收 AI 结果
             return Result.succeed();
@@ -422,13 +425,15 @@ public class ChatWebController extends AbstractWebController {
      * @param formData   动作附带的表单数据，JSON 对象字符串，可为空
      * @param model      指定的 AI 模型名称，可为 null（使用默认模型）
      * @param selectedAgent 子代理选择器指定的名称，可为 null 或空（使用主 Agent）
+     * @param locale     前端当前界面语言，作为新一轮对话的语言；为空或不合法时用引擎默认语言
      * @return 操作结果（Agent 响应通过 WebSocket 推送）
      */
     @Mapping("/web/chat/ui_action")
     public Result chat_ui_action(Context ctx, String sessionId, String blockId, String actionId,
                                  @Param(value = "formData", required = false) String formData,
                                  String model,
-                                 @Param(value = "selectedAgent", required = false) String selectedAgent) {
+                                 @Param(value = "selectedAgent", required = false) String selectedAgent,
+                                 @Param(value = "locale", required = false) String locale) {
         try {
             if (sessionId == null || sessionId.isEmpty()) {
                 sessionId = ctx.headerOrDefault("X-Session-Id", "web");
@@ -475,7 +480,7 @@ public class ChatWebController extends AbstractWebController {
 
             // 复用既有输入通道：作为一条来源为 web 的用户消息下发
             runtimePort().onChatInput(currentContext(), sessionId, sessionCwd, input, model, null, null, null, "web",
-                    null, null, selectedAgent);
+                    null, null, selectedAgent, AiI18n.toLocale(locale));
 
             return Result.succeed();
         } catch (Throwable e) {
