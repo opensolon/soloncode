@@ -228,11 +228,11 @@
         closeMoreMenus();
         var input = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : newChatInput;
         if (!input) return;
-        input.value = '/memory';
+        input.value = '/memory clean';
         if (typeof autoResize === 'function') autoResize(input);
         input.focus();
     }
-    // 供记忆面板等模块调用（填入 /memory 命令）
+    // 供记忆面板等模块调用（填入 /memory clean 命令，交由 Agent 整理记忆）
     window.fillMemoryText = fillMemoryText;
     $('#newChatMemoryBtn').on('click', function(e) {
         e.stopPropagation();
@@ -260,6 +260,11 @@
     function loopApi(action, params, callback) {
         var data = params || {};
         data.sessionId = SESSION_ID;
+        // 新建 / 编辑的任务、目标都记下当前界面语言：之后的定时轮次没有输入可取语言
+        if ((action === 'add' || action === 'update') && !data.locale && typeof currentUiLocale === 'function') {
+            var locale = currentUiLocale();
+            if (locale) data.locale = locale;
+        }
         $.ajax({
             url: '/web/chat/loop/' + action,
             method: (action === 'list' || action === 'get') ? 'GET' : 'POST',

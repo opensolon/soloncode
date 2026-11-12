@@ -30,6 +30,7 @@ import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
 import org.noear.solon.ai.harness.extension.loop.LoopPatch;
 import org.noear.solon.ai.harness.extension.loop.LoopSpec;
 import org.noear.solon.ai.harness.extension.loop.LoopTask;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.codecli.util.HarnessResultUtil;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
@@ -39,6 +40,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -148,8 +150,10 @@ public class LoopWebController extends AbstractWebController {
      *
      * <p>保留在 loop/add 内部分流而非新开端点，因为前端表单与列表渲染是
      * 一套 loop 契约（同构 Map），新开端点需要同步改表单提交与列表刷新两处。</p>
+     *
+     * @param locale 创建者的界面语言（null = 跟随引擎）：目标记下它，之后每一轮都用它
      */
-    private Result createSessionGoal(String sessionId, String prompt, Long maxTokens, Long maxDurationMs) {
+    private Result createSessionGoal(String sessionId, String prompt, Long maxTokens, Long maxDurationMs, Locale locale) {
         GoalExtension goal = currentContext().getGoalExtension();
         if (goal == null) {
             return Result.failure(503, "Goal service is unavailable");
@@ -157,7 +161,8 @@ public class LoopWebController extends AbstractWebController {
         try {
             HarnessResult<GoalSnapshot> created = goal.create(sessionId, GoalSpec.of(prompt)
                     .maxTokens(maxTokens != null ? maxTokens : 0L)
-                    .maxDurationMs(maxDurationMs != null ? maxDurationMs : 0L));
+                    .maxDurationMs(maxDurationMs != null ? maxDurationMs : 0L)
+                    .locale(locale));
             if (!created.isOk()) {
                 // 单槽语义：已有活跃/可恢复 goal 时为 INVALID（409）
                 return HarnessResultUtil.failure(created, "Goal cannot be created");
@@ -170,18 +175,25 @@ public class LoopWebController extends AbstractWebController {
 
     /**
      * Web 端编辑会话 goal（目标正文与预算）。仅非终态可编辑，语义同桌面版 goals/update。
+     *
+     * @param locale 编辑者的界面语言（null 或空串 = 不改）
      */
     private Result updateSessionGoal(GoalExtension goal, String sessionId,
-                                     String prompt, Long maxTokens, Long maxDurationMs) {
+                                     String prompt, Long maxTokens, Long maxDurationMs, String locale) {
         // 暂停 → 停流 → 停等 → 改写 → 恢复由门面一步完成；停流走 Web 渠道（清积压、推终态帧）
         WorkspaceContext ctx = currentContext();
         Runnable stopper = runtimePort() == null ? null
                 : () -> runtimePort().interruptSession(ctx, sessionId);
-        // 终态不可编辑 / 旧轮次未及时停稳（可重试）都是 INVALID（409）
-        HarnessResult<GoalSnapshot> updated = goal.update(sessionId, GoalPatch.create()
+        GoalPatch patch = GoalPatch.create()
                 .objective(prompt)
                 .maxTokens(maxTokens)
-                .maxDurationMs(maxDurationMs), stopper);
+                .maxDurationMs(maxDurationMs);
+        if (locale != null && !locale.isEmpty()) {
+            // 未传（或传空串）= 保持目标现有的语言
+            patch.locale(AiI18n.toLocale(locale));
+        }
+        // 终态不可编辑 / 旧轮次未及时停稳（可重试）都是 INVALID（409）
+        HarnessResult<GoalSnapshot> updated = goal.update(sessionId, patch, stopper);
         return HarnessResultUtil.toResult(updated, "Goal cannot be updated");
     }
 
@@ -220,6 +232,8 @@ public class LoopWebController extends AbstractWebController {
 
     /**
      * 新增循环任务。
+     *
+     * @param locale 创建者的界面语言（可空 = 跟随引擎）：任务记下它，之后的定时轮次都用它
      */
     @Post
     @Mapping("/web/chat/loop/add")
@@ -230,7 +244,8 @@ public class LoopWebController extends AbstractWebController {
                           @Param(value = "type", required = false) String type,
                           @Param(value = "runNow", required = false) Boolean runNow,
                           @Param(value = "maxTokens", required = false) Long maxTokens,
-                          @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
+                          @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
+                          @Param(value = "locale", required = false) String locale) {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -239,15 +254,17 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // goal 已属会话级独立能力（/goal 或 /desktop/chat/goals/add），定时任务页不再创建 GOAL
+        Locale taskLocale = AiI18n.toLocale(locale);
         if (type != null && "GOAL".equalsIgnoreCase(type)) {
-            return createSessionGoal(sessionId, prompt, maxTokens, maxDurationMs);
+            return createSessionGoal(sessionId, prompt, maxTokens, maxDurationMs, taskLocale);
         }
 
         // 请求参数原样交给规格（null = 未设置），校验由插件统一完成
         HarnessResult<LoopTask> scheduled = loop().schedule(sessionId, LoopSpec.of(prompt)
                 .everyMinutes(intervalMinutes)
                 .cron(cron)
-                .runNow(runNow));
+                .runNow(runNow)
+                .locale(taskLocale));
         if (!scheduled.isOk()) {
             // 规格不合法历来回 400
             return scheduled.getCode() == HarnessResult.Code.INVALID
@@ -270,7 +287,8 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "type", required = false) String type,
                              @Param(value = "runNow", required = false) Boolean runNow,
                              @Param(value = "maxTokens", required = false) Long maxTokens,
-                             @Param(value = "maxDurationMs", required = false) Long maxDurationMs) {
+                             @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
+                             @Param(value = "locale", required = false) String locale) {
         if (!isValidSessionId(sessionId)) {
             return Result.failure(400, "Invalid sessionId");
         }
@@ -282,7 +300,7 @@ public class LoopWebController extends AbstractWebController {
         // 不在 loop 任务表中，否则会先返回 404。
         GoalExtension updGoal = currentContext().getGoalExtension();
         if (goalRow(updGoal, sessionId, taskId) != null) {
-            return updateSessionGoal(updGoal, sessionId, prompt, maxTokens, maxDurationMs);
+            return updateSessionGoal(updGoal, sessionId, prompt, maxTokens, maxDurationMs, locale);
         }
 
         if (type != null && "GOAL".equalsIgnoreCase(type)) {
@@ -290,11 +308,16 @@ public class LoopWebController extends AbstractWebController {
         }
 
         // 补丁语义由插件承担：null = 保持原值（启停、运行状态、身份均保留），宿主不再手工合并
-        HarnessResult<LoopTask> updated = loop().update(sessionId, taskId, LoopPatch.create()
+        LoopPatch patch = LoopPatch.create()
                 .prompt(prompt)
                 .everyMinutes(intervalMinutes)
                 .cron(cron)
-                .runNow(runNow));
+                .runNow(runNow);
+        if (locale != null && !locale.isEmpty()) {
+            // 未传（或传空串）= 保持任务现有的语言
+            patch.locale(AiI18n.toLocale(locale));
+        }
+        HarnessResult<LoopTask> updated = loop().update(sessionId, taskId, patch);
         if (!updated.isOk() && updated.getCode() == HarnessResult.Code.INVALID) {
             return Result.failure(400, updated.getDetail());
         }
@@ -313,9 +336,10 @@ public class LoopWebController extends AbstractWebController {
                                     @Param(value = "maxTokens", required = false) Long maxTokens,
                                     @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
                                     @Param(value = "modelName", required = false) String modelName,
-                                    @Param(value = "agentName", required = false) String agentName) {
+                                    @Param(value = "agentName", required = false) String agentName,
+                                    @Param(value = "locale", required = false) String locale) {
         try {
-            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName);
+            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName, locale);
             return Result.succeed();
         } catch (IllegalArgumentException e) {
             return Result.failure(404, e.getMessage());
@@ -406,17 +430,19 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "maxTokens", required = false) Long maxTokens,
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
                              @Param(value = "modelName", required = false) String modelName,
-                             @Param(value = "agentName", required = false) String agentName) {
+                             @Param(value = "agentName", required = false) String agentName,
+                             @Param(value = "locale", required = false) String locale) {
         if (isAutomationType(type)) {
             try {
-                String taskId = automationManager().create(
-                        name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName);
+                // 任务记下创建者的界面语言：定时轮次由后台调度发起，没有输入可取语言
+                String taskId = automationManager().create(name, prompt, intervalMinutes, cron, taskType, runNow,
+                        maxTokens, maxDurationMs, modelName, agentName, AiI18n.toLocale(locale));
                 return Result.succeed(taskId);
             } catch (IllegalArgumentException | IllegalStateException | IOException e) {
                 return Result.failure(400, e.getMessage());
             }
         }
-        return loopAdd(sessionId, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs);
+        return loopAdd(sessionId, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, locale);
     }
 
     @Post
@@ -433,11 +459,12 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "maxTokens", required = false) Long maxTokens,
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
                              @Param(value = "modelName", required = false) String modelName,
-                             @Param(value = "agentName", required = false) String agentName) {
+                             @Param(value = "agentName", required = false) String agentName,
+                             @Param(value = "locale", required = false) String locale) {
         if (isAutomationType(type)) {
-            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName);
+            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName, locale);
         }
-        return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs);
+        return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, locale);
     }
 
     @Post

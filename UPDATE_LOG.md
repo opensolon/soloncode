@@ -154,7 +154,6 @@
   * 验证：harness `TaskTalentResultFormatTest` 7 例全绿（含路径穿越防护）；cli 定向 19 例全绿（FilerIgnoreRules 8 + WebAttachmentStore 8 + DesktopAttachmentSupport 3）；全仓 grep 无残留引用（UPDATE_LOG 历史记录、飞书 link.uploads 字段名、solon-ai-core 的 MediaBlock javadoc 示例除外）
   * **抽取 `WorkspaceFiles` 常量类**（`workspace` 包）：`FILES_ROOT = ".files"`、`UPLOADS_DIR = ".files/uploads"`，取代 Java 主代码中 5 处裸字面量；消费方：`WebAttachmentStore`（落盘+引用路径）、`DesktopAttachmentSupport`（同）、`FilerIgnoreRules`（隐藏白名单入口粒度）；测试与文档中的字面量保留（契约锁值）；harness 侧 TaskTalent 自持 `.files/task` 约定不跨仓抽常量（两仓同步靠 javadoc 互指，见类注释）；定向回归 23 例全绿（原 19 例 + PackageBoundaryTest 4 例，确认 api→workspace 方向不踩包边界）
 
-### v2026.11.11
 
 * CLI 受理层收敛为**单一受理接口 + 参数对象**（三端统一契约的第一端落地）：
   * **意图**：每端只有一个接收输入的处理接口，不同输入情况由参数表达，内部一套处理逻辑。CLI 率先落地

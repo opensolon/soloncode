@@ -48,6 +48,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -273,16 +274,21 @@ public class ChatWebController extends AbstractWebController {
      */
     @Get
     @Mapping("/web/chat/hints")
-    public Result<List<Map>> hints() {
+    public Result<List<Map>> hints(@Param(value = "locale", required = false) String locale) {
         List<Map> data = new ArrayList<>();
         HarnessEngine currentEngine = engine();
+        // 命令描述按前端界面语言输出；没传（旧前端、其它调用方）时用引擎语言
+        Locale hintLocale = AiI18n.toLocale(locale);
+        if (hintLocale == null) {
+            hintLocale = currentEngine.getLocale();
+        }
         for (Command cmd : currentEngine.getCommandRegistry().all()) {
             if (cmd.terminalOnly()) {
                 continue;
             }
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", cmd.name());
-            item.put("description", cmd.description(currentEngine.getLocale()));
+            item.put("description", cmd.description(hintLocale));
             item.put("type", "command");
             data.add(item);
         }

@@ -7,12 +7,14 @@ import org.noear.solon.ai.harness.extension.loop.LoopExtension;
 import org.noear.solon.ai.harness.extension.loop.LoopPatch;
 import org.noear.solon.ai.harness.extension.loop.LoopSpec;
 import org.noear.solon.ai.harness.extension.loop.LoopTask;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.codecli.session.SessionManager;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -62,10 +64,14 @@ public class AutomationManager {
 
     // ==================== CRUD（委托 loop 插件 + 覆盖层） ====================
 
+    /**
+     * @param locale 任务的语言（创建者的界面语言；null = 跟随引擎）。定时轮次由后台调度发起，没有输入可取语言，
+     *               所以创建时记在任务上，每一轮都用它
+     */
     public synchronized String create(String name, String prompt, Integer intervalMinutes,
                                       String cron, String type, Boolean runNow,
                                       Long maxTokens, Long maxDurationMs, String modelName,
-                                      String agentName) throws IOException {
+                                      String agentName, Locale locale) throws IOException {
         validate(name, prompt, intervalMinutes, cron);
         rejectGoalType(type);
         String sessionId = SESSION_PREFIX + UUID.randomUUID().toString().replace("-", "");
@@ -78,7 +84,8 @@ public class AutomationManager {
         require(loop.schedule(sessionId, meta.writeTo(LoopSpec.of(prompt)
                 .everyMinutes(intervalMinutes)
                 .cron(cron)
-                .runNow(runNow))));
+                .runNow(runNow)
+                .locale(locale))));
         sessionManager.markAutomationSession(sessionId, meta.getId());
         return meta.getId();
     }
@@ -133,10 +140,15 @@ public class AutomationManager {
         return found;
     }
 
+    /**
+     * 按补丁修改任务。
+     *
+     * @param locale 编辑者的界面语言（null 或空串 = 不改）
+     */
     public synchronized void update(String id, String name, String prompt, Integer intervalMinutes,
                                     String cron, String type, Boolean runNow,
                                     Long maxTokens, Long maxDurationMs, String modelName,
-                                    String agentName) throws IOException {
+                                    String agentName, String locale) throws IOException {
         Located found = locate(id);
         LoopTask old = found.task;
         String sessionId = found.sessionId;
@@ -147,13 +159,17 @@ public class AutomationManager {
                 intervalMinutes, cron == null ? old.getCron() : cron);
         rejectGoalType(type);
 
-        // 补丁语义：null = 保持原值、cron 空串 = 回到固定间隔；启停与运行状态由插件保留
+        // 补丁语义：null = 保持原值、cron 空串 = 回到固定间隔；启停、运行状态与语言（未传时）由插件保留
         meta.update(name, emptyToNull(modelName), emptyToNull(agentName));
-        require(loop.update(sessionId, old.getId(), meta.writeTo(LoopPatch.create()
+        LoopPatch patch = meta.writeTo(LoopPatch.create()
                 .prompt(prompt)
                 .everyMinutes(intervalMinutes)
                 .cron(cron)
-                .runNow(runNow))));
+                .runNow(runNow));
+        if (locale != null && !locale.isEmpty()) {
+            patch.locale(AiI18n.toLocale(locale));
+        }
+        require(loop.update(sessionId, old.getId(), patch));
         applySelections(sessionId, meta);
     }
 

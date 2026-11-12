@@ -16,6 +16,7 @@ import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -50,7 +51,7 @@ class GoalLoopEndpointTest {
                 .extensionAdd(goal)
                 .build();
         // 触发轮次时不调用模型：本通道认领并 skip
-        goal.addExecutor("web", null, (sid, prompt) -> GoalOutcome.skip("test"));
+        goal.addExecutor("web", null, (sid, prompt, locale) -> GoalOutcome.skip("test"));
 
         WorkspaceManager manager = mock(WorkspaceManager.class);
         WorkspaceContext context = mock(WorkspaceContext.class);
@@ -177,5 +178,25 @@ class GoalLoopEndpointTest {
         assertEquals("GOAL", row.get("type"));
         assertEquals(false, row.get("enabled"), "非活跃 goal 的 enabled 由插件视图给出");
         assertEquals(false, row.get("cancelled"));
+    }
+
+    /** 面板编辑时带界面语言：目标换成它；不带时保持目标现有的语言。 */
+    @Test
+    void updateEndpointAppliesTheRequestLocale() {
+        seed(GoalStatus.PAUSED);
+
+        assertEquals(Result.SUCCEED_CODE,
+                controller.loopUpdate(SESSION, TASK_ID, "新目标", null, null, "GOAL", null, null, null, "en").getCode());
+        assertEquals(Locale.ENGLISH, goal.get(SESSION).getLocale());
+
+        // 不传 locale = 不改（而不是清空）
+        assertEquals(Result.SUCCEED_CODE,
+                controller.loopUpdate(SESSION, TASK_ID, "再改一次", null, null, "GOAL", null, null, null, null).getCode());
+        assertEquals(Locale.ENGLISH, goal.get(SESSION).getLocale());
+
+        // 空串 = 同样不改（表单留空不会把语言清掉）
+        assertEquals(Result.SUCCEED_CODE,
+                controller.loopUpdate(SESSION, TASK_ID, "再改三次", null, null, "GOAL", null, null, null, "").getCode());
+        assertEquals(Locale.ENGLISH, goal.get(SESSION).getLocale());
     }
 }

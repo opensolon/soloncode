@@ -21,6 +21,7 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.InterruptMode;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.command.BufferedCommandOutputFactory;
 import org.noear.solon.ai.harness.host.HarnessHost;
@@ -228,8 +229,10 @@ public class WsGate extends SimpleWebSocketListener {
         // create 内部自带单槽校验（终态才允许覆盖），与 CLI/Web 同一口径。
         // 执行正文（含附件）与展示正文分离：一次成型、只广播一次，不会把附件全文推送成中间态。
         // runNow(false)：只挂 job 不立即跑（首轮由本方法的会话流自己驱动，与 Web 端创建不同）
+        // 界面语言随请求带来：之后的轮次由后台调度发起，没有输入可取语言
         HarnessResult<GoalSnapshot> created = goal.create(sessionId, GoalSpec.of(effectiveObjective)
                 .displayObjective(displayedObjective)
+                .locale(AiI18n.toLocale(req.getGoalLocale()))
                 .maxTokens(maxTokens != null ? maxTokens : 0L)
                 .maxDuration(maxDurationMinutes != null
                         ? Duration.ofMinutes(maxDurationMinutes) : null)

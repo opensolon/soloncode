@@ -428,7 +428,7 @@
         centerViewerMemNew.addEventListener('click', function () { startCreate(); });
     }
 
-    // header 「整理记忆」按钮：关闭面板并填入 /memory 命令，交由 Agent 执行整理
+    // header 「整理记忆」按钮：关闭面板并填入 /memory clean 命令，交由 Agent 执行整理
     var centerViewerMemOrganize = document.getElementById('centerViewerMemOrganize');
     if (centerViewerMemOrganize) {
         centerViewerMemOrganize.addEventListener('click', function () {
@@ -437,7 +437,7 @@
                 window.fillMemoryText();
             } else {
                 var input = (typeof inChatMode !== 'undefined' && inChatMode) ? chatInput : newChatInput;
-                if (input) { input.value = '/memory'; input.focus(); }
+                if (input) { input.value = '/memory clean'; input.focus(); }
             }
         });
     }

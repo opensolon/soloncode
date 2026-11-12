@@ -638,7 +638,9 @@ var commandsLoaded = false;
 var cmdTrigger = null; // '/' for commands, '@' for subagents, '$' for skills
 
 function loadCommands() {
-    $.get('/web/chat/hints', function(resp) {
+    // 命令描述按当前界面语言取（不传则后端用引擎语言）
+    var locale = typeof currentUiLocale === 'function' ? currentUiLocale() : '';
+    $.get('/web/chat/hints', locale ? {locale: locale} : {}, function(resp) {
         try {
             commandList = resp.data || [];
             commandsLoaded = true;
@@ -647,6 +649,8 @@ function loadCommands() {
     });
 }
 window.reloadCommandHints = loadCommands;
+// 切换界面语言后重取：命令描述跟着换语言
+document.addEventListener('i18n:switched', function() { loadCommands(); });
 
 // hints 非首屏必需，空闲时再拉，减少启动并发
 if (window.requestIdleCallback) {

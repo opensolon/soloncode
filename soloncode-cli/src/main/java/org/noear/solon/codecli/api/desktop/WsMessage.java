@@ -29,6 +29,9 @@ public class WsMessage {
 
     String goalObjective;
 
+    /** 目标的语言（界面语言；可空 = 跟随引擎）。后台轮次没有输入可取语言，只能创建时记下 */
+    String goalLocale;
+
     List<WsAttachment> attachments;
 
     @Data

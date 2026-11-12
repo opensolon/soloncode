@@ -18,6 +18,7 @@ package org.noear.solon.codecli.api.desktop.controller;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
@@ -111,7 +112,9 @@ public class DesktopGoalController extends AbstractDesktopController {
                     root.get("workspace").getString(),
                     root.get("reasoningEffort").getString());
 
+            // 目标的语言：界面语言随请求带来（可空 = 跟随引擎）；后台轮次没有输入可取语言
             HarnessResult<GoalSnapshot> created = goal.create(sessionId, GoalSpec.of(prompt)
+                    .locale(AiI18n.toLocale(root.get("locale").getString()))
                     .maxTokens(maxTokens != null ? maxTokens : 0L)
                     .maxDuration(maxDurationMinutes != null
                             ? Duration.ofMinutes(maxDurationMinutes) : null)

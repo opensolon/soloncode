@@ -18,6 +18,8 @@ package org.noear.solon.codecli.arch;
 import org.junit.jupiter.api.Test;
 import org.noear.solon.ai.harness.extension.goal.GoalOutcome;
 import org.noear.solon.ai.harness.extension.goal.GoalExecutor;
+import org.noear.solon.ai.harness.extension.loop.LoopExecutor;
+import org.noear.solon.ai.harness.extension.loop.LoopOutcome;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -26,7 +28,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -180,9 +184,26 @@ public class InjectedRoundChannelContractTest {
         Method handle = methods[0];
         assertEquals(GoalOutcome.class, handle.getReturnType(),
                 "GoalExecutor 必须返回 GoalOutcome（返回 String 会迫使指标再走 attrs 旁路）");
-        assertEquals(2, handle.getParameterCount(),
-                "GoalExecutor 只应有 (sessionId, prompt) 两个参数："
-                        + "agentName 恒传 null，子代理归属是会话属性 CTX_AGENT_SELECTED");
+        assertEquals(Arrays.asList(String.class, String.class, Locale.class), Arrays.asList(handle.getParameterTypes()),
+                "GoalExecutor 只应有 (sessionId, prompt, locale) 三个参数："
+                        + "没有 agentName（子代理归属是会话属性 CTX_AGENT_SELECTED）；"
+                        + "locale 是本轮提示词的语言（目标创建时记下），后台轮次没有输入可取语言，只能由 goal 交给执行器");
+    }
+
+    /**
+     * loop 执行器同理：定时轮次由后台调度发起，语言（任务创建时记下）只能由 loop 交给执行器。
+     *
+     * <p>回归：Web 界面选英文后创建定时任务，引擎未配语言，后台轮次的协议指令与工具文案全是中文。</p>
+     */
+    @Test
+    void loopExecutorCarriesTheTaskLocale() {
+        Method[] methods = LoopExecutor.class.getDeclaredMethods();
+        assertEquals(1, methods.length, "LoopExecutor 应当是单方法接口");
+
+        Method handle = methods[0];
+        assertEquals(LoopOutcome.class, handle.getReturnType());
+        assertEquals(Arrays.asList(String.class, String.class, Locale.class), Arrays.asList(handle.getParameterTypes()),
+                "LoopExecutor 只应有 (sessionId, prompt, locale) 三个参数：locale 是任务创建时记下的语言");
     }
 
     /**

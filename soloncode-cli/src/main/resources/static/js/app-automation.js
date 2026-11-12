@@ -557,6 +557,10 @@
             var ref = taskRef(current);
             Object.keys(ref).forEach(function (key) { data[key] = ref[key]; });
         }
+        if (window.I18n && typeof I18n.getLocale === 'function' && I18n.getLocale()) {
+            // 新建 / 编辑：任务记下当前界面语言，之后的定时轮次都用它
+            data.locale = I18n.getLocale();
+        }
         api('POST', id === NEW_ID ? '/web/tasks/create' : '/web/tasks/update', data)
             .then(function () { toast(I18n.t('toast.saveSuccess'), 'success'); expandedId = null; load(); })
             .catch(fail).finally(function () { button.disabled = false; });
