@@ -281,7 +281,7 @@ public class ChatWebController extends AbstractWebController {
             }
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", cmd.name());
-            item.put("description", cmd.description());
+            item.put("description", cmd.description(currentEngine.getLocale()));
             item.put("type", "command");
             data.add(item);
         }

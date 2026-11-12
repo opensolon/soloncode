@@ -26,16 +26,13 @@ import org.noear.solon.Utils;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.command.CommandContextFactory;
-import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOrigin;
 import org.noear.solon.ai.harness.session.SessionStatus;
-import org.noear.solon.codecli.command.CliCommandContext;
+import org.noear.solon.codecli.command.CliCommandOutput;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionIdOwnership;
@@ -220,23 +217,10 @@ public class CliShell implements Runnable {
     private void submit(AgentSession session, String text) {
         host().submit(TENANT, session.getSessionId(), HarnessInput.of(text)
                 .origin(CLI_ORIGIN)
-                // 命令行宿主：/help 不裁掉 terminalOnly 命令，命令上下文直接读写终端（分页、选择器）
+                // 命令行宿主：/help 不裁掉 terminalOnly 命令；命令回执直接写终端（带 ANSI）
                 .terminal(true)
-                .commandContextFactory(cliCommandFactory()));
+                .commandOutputFactory(in -> new CliCommandOutput(terminal)));
         awaitRuns(session);
-    }
-
-    /**
-     * 命令行上下文工厂：保留 Terminal/Reader 以支持 /help 交互与 /model 选择器
-     */
-    private CommandContextFactory cliCommandFactory() {
-        return new CommandContextFactory() {
-            @Override
-            public CommandContext create(HarnessEngine e, AgentSession s, ParsedCommand command, boolean terminal) {
-                return new CliCommandContext(s, CliShell.this.terminal, reader,
-                        command.getRawInput(), command.getName(), command.getArgs(), terminal);
-            }
-        };
     }
 
     /**

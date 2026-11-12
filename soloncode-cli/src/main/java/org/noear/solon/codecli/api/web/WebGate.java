@@ -21,7 +21,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
-import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
+import org.noear.solon.ai.harness.command.BufferedCommandOutputFactory;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.SessionAdmin;
 import org.noear.solon.ai.harness.host.Disposition;
@@ -105,7 +105,7 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
                 })
                 .input((tenant, in) -> {
                     // 命令内部触发的任务只记录意图（分发器交给引擎二段装配），流由骨架统一发起
-                    in.commandContextFactory(new BufferedCommandContextFactory());
+                    in.commandOutputFactory(BufferedCommandOutputFactory.INSTANCE);
                     if (in.isProgram()) {
                         // 用户写的定时提示词可指定 @子代理；以 / 开头也不当命令（程序轮次本身不识别命令）
                         in.agentAware(true);

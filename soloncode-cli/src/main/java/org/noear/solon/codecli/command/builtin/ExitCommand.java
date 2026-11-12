@@ -17,9 +17,12 @@ package org.noear.solon.codecli.command.builtin;
 
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.command.Command;
-import org.noear.solon.ai.harness.command.CommandContext;
-import org.noear.solon.ai.harness.input.InputOrigin;
+import org.noear.solon.ai.harness.command.CommandInput;
+import org.noear.solon.ai.harness.command.CommandOutput;
 import org.noear.solon.core.util.RunUtil;
+import org.noear.solon.lang.Nullable;
+
+import java.util.Locale;
 
 
 /**
@@ -38,12 +41,12 @@ public class ExitCommand implements Command {
     }
 
     @Override
-    public String description() {
+    public String description(@Nullable Locale locale) {
         return "退出进程";
     }
 
     @Override
-    public String[] examples() {
+    public String[] examples(@Nullable Locale locale) {
         return new String[]{
                 "/exit"
         };
@@ -60,8 +63,8 @@ public class ExitCommand implements Command {
     }
 
     @Override
-    public void execute(HarnessEngine engine, CommandContext ctx, InputOrigin origin) {
-        ctx.println(ctx.color(DIM + "Exiting..." + RESET));
+    public void execute(HarnessEngine engine, CommandInput input, CommandOutput output) {
+        output.println(output.color(DIM + "Exiting..." + RESET));
 
         Thread exitThread = new Thread(() -> System.exit(0));
         exitThread.start();

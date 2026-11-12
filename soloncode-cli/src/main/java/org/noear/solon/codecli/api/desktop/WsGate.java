@@ -22,7 +22,7 @@ import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.HarnessResult;
-import org.noear.solon.ai.harness.command.BufferedCommandContextFactory;
+import org.noear.solon.ai.harness.command.BufferedCommandOutputFactory;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSnapshot;
@@ -105,7 +105,7 @@ public class WsGate extends SimpleWebSocketListener {
                 .sink(hostSink)
                 .input((tenant, in) -> {
                     // 命令内部触发的任务只记录意图（分发器交给引擎二段装配），流由骨架统一发起
-                    in.commandContextFactory(new BufferedCommandContextFactory());
+                    in.commandOutputFactory(BufferedCommandOutputFactory.INSTANCE);
                     if (in.isProgram() == false) {
                         // 桌面端输入框允许换行与缩进（与 @子代理 解析同口径）
                         in.trimContent(true);

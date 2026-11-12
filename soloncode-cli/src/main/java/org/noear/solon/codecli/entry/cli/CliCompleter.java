@@ -54,7 +54,7 @@ public class CliCompleter implements Completer {
                 if (name.startsWith(prefix)) {
                     Command cmd = engine.getCommandRegistry().find(name);
                     // 构建补全提示：description + argument-hint
-                    candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(), null, null, null, null, true));
+                    candidates.add(new Candidate("/" + name, "/" + name + "  " + cmd.description(engine.getLocale()), null, null, null, null, true));
                 }
             }
         }
