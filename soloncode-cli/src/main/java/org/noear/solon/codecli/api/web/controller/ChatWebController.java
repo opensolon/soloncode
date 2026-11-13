@@ -296,7 +296,8 @@ public class ChatWebController extends AbstractWebController {
         for (AgentDefinition definition : currentEngine.getAgentManager().getAgents()) {
             Map<String, String> item = new LinkedHashMap<>();
             item.put("name", definition.getName());
-            item.put("description", definition.getDescription());
+            // 内置子代理有语言版本，与命令描述同一语言
+            item.put("description", currentEngine.getAgentDescription(definition, hintLocale));
             item.put("type", "subagent");
             data.add(item);
         }

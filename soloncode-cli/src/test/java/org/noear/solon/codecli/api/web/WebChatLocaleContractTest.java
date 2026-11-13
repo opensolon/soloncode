@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.controller.ChatWebController;
 import org.noear.solon.codecli.api.web.controller.GitWebController;
+import org.noear.solon.codecli.api.web.settings.AgentSettingsController;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -52,11 +53,29 @@ public class WebChatLocaleContractTest {
         assertTrue(git.substring(summary, summaryEnd).contains("currentUiLocale()"), "取值与发消息同一口径");
     }
 
+    /**
+     * 智能体列表（设置页、自动化任务选择器）带界面语言：内置智能体的描述按它展示
+     */
+    @Test
+    public void agentListsSendCurrentUiLocale() throws IOException {
+        String settings = resourceText("/static/js/app-settings-agents.js");
+        int list = settings.indexOf("$.get('/web/settings/agents'");
+        assertTrue(list >= 0 && settings.substring(list, settings.indexOf("function (resp)", list)).contains("locale: locale"),
+                "设置页智能体列表必须带 locale");
+        assertTrue(settings.contains("currentUiLocale()"), "取值与发消息同一口径");
+
+        String automation = resourceText("/static/js/app-automation.js");
+        int picker = automation.indexOf("api('GET', '/web/settings/agents'");
+        assertTrue(picker >= 0 && automation.substring(picker, automation.indexOf(".then(", picker)).contains("?locale="),
+                "自动化任务的智能体选择器必须带 locale");
+    }
+
     @Test
     public void backendAcceptsLocaleParam() {
         assertTrue(hasParam(ChatWebController.class, "chat_input", "locale"));
         assertTrue(hasParam(ChatWebController.class, "chat_ui_action", "locale"));
         assertTrue(hasParam(GitWebController.class, "gitSummary", "locale"));
+        assertTrue(hasParam(AgentSettingsController.class, "agentsList", "locale"));
     }
 
     private static boolean hasParam(Class<?> clz, String methodName, String paramName) {

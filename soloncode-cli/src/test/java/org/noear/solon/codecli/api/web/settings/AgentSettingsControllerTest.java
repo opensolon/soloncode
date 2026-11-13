@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -225,7 +226,7 @@ class AgentSettingsControllerTest {
         Files.write(userRoot.resolve("same.md"), user.getBytes(StandardCharsets.UTF_8));
         Files.write(workspaceRoot.resolve("same.md"), workspace.getBytes(StandardCharsets.UTF_8));
 
-        String json = ONode.ofBean(controller.agentsList(false).getData()).toJson();
+        String json = ONode.ofBean(controller.agentsList(false, null).getData()).toJson();
         assertFalse(json.contains("\"overriddenBy\""));
         assertTrue(json.contains("\"overridesUser\":true"));
     }
@@ -241,7 +242,7 @@ class AgentSettingsControllerTest {
         Files.write(userRoot.resolve("general.md"), user.getBytes(StandardCharsets.UTF_8));
         Files.write(workspaceRoot.resolve("workspace-only.md"), workspace.getBytes(StandardCharsets.UTF_8));
 
-        String json = ONode.ofBean(controller.agentsList(false).getData()).toJson();
+        String json = ONode.ofBean(controller.agentsList(false, null).getData()).toJson();
         assertTrue(json.contains("user override"));
         assertTrue(json.contains("workspace-only"));
         assertFalse(json.contains("\"scope\":\"builtin\""));
@@ -262,12 +263,12 @@ class AgentSettingsControllerTest {
         Files.write(workspaceRoot.resolve("hidden-agent.md"), hidden.getBytes(StandardCharsets.UTF_8));
 
         // 默认（自动化任务选择器等既有消费方）：隐藏项不返回
-        String json = ONode.ofBean(controller.agentsList(false).getData()).toJson();
+        String json = ONode.ofBean(controller.agentsList(false, null).getData()).toJson();
         assertTrue(json.contains("visible-agent"));
         assertFalse(json.contains("hidden-agent"));
 
         // includeHidden=true（设置面板）：隐藏项返回、携带 hidden 标记、排在末尾
-        Result included = controller.agentsList(true);
+        Result included = controller.agentsList(true, null);
         assertEquals(200, included.getCode());
         String full = ONode.ofBean(included.getData()).toJson();
         assertTrue(full.contains("visible-agent"));
@@ -342,7 +343,7 @@ class AgentSettingsControllerTest {
         assertEquals(200, disabled.getCode());
         String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(markdown.contains("enabled: false"));
-        assertTrue(ONode.ofBean(controller.agentsList(false).getData()).toJson().contains("\"enabled\":false"));
+        assertTrue(ONode.ofBean(controller.agentsList(false, null).getData()).toJson().contains("\"enabled\":false"));
 
         Result enabled = controller.agentsToggle(json("name", "toggle-agent", "scope", "workspace", "enabled", "true"));
         assertEquals(200, enabled.getCode());
@@ -371,15 +372,15 @@ class AgentSettingsControllerTest {
         assertEquals(200, hidden.getCode());
         String markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(markdown.contains("hidden: true"));
-        assertFalse(ONode.ofBean(controller.agentsList(false).getData()).toJson().contains("hide-agent"));
-        assertTrue(ONode.ofBean(controller.agentsList(true).getData()).toJson().contains("hide-agent"));
+        assertFalse(ONode.ofBean(controller.agentsList(false, null).getData()).toJson().contains("hide-agent"));
+        assertTrue(ONode.ofBean(controller.agentsList(true, null).getData()).toJson().contains("hide-agent"));
 
         Result unhidden = controller.agentsHide(json("name", "hide-agent", "scope", "workspace", "hidden", "false"));
         assertEquals(200, unhidden.getCode());
         markdown = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(markdown.contains("hidden: false"));
         assertFalse(markdown.contains("hidden: true"));
-        assertTrue(ONode.ofBean(controller.agentsList(false).getData()).toJson().contains("hide-agent"));
+        assertTrue(ONode.ofBean(controller.agentsList(false, null).getData()).toJson().contains("hide-agent"));
     }
 
     @Test
@@ -415,9 +416,33 @@ class AgentSettingsControllerTest {
                 "---\nname: auto-hidden\ndescription: auto\ntools: [\"read\"]\nhidden: true\n---\n\nHidden.\n".getBytes(StandardCharsets.UTF_8));
 
         // 固化默认过滤语义：自动化任务选择器等既有消费方依赖不含隐藏项的默认列表
-        Result def = controller.agentsList(false);
+        Result def = controller.agentsList(false, null);
         assertEquals(200, def.getCode());
         assertFalse(ONode.ofBean(def.getData()).toJson().contains("auto-hidden"));
+    }
+
+    /**
+     * 内置智能体的列表描述按界面语言（不传时用引擎语言，即默认中文）
+     */
+    @Test
+    void builtinAgentDescriptionFollowsUiLocale() {
+        String en = descriptionOf(controller.agentsList(false, "en"), "explore");
+        assertTrue(en.startsWith("Exploration expert"), en);
+
+        String def = descriptionOf(controller.agentsList(false, null), "explore");
+        assertFalse(def.startsWith("Exploration expert"), def);
+        assertEquals(def, descriptionOf(controller.agentsList(false, "zh-CN"), "explore"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static String descriptionOf(Result result, String name) {
+        assertEquals(200, result.getCode());
+        for (Map<String, Object> item : (List<Map<String, Object>>) result.getData()) {
+            if (name.equals(item.get("name"))) {
+                return String.valueOf(item.get("description"));
+            }
+        }
+        throw new AssertionError("agent not listed: " + name);
     }
 
     @Test
@@ -514,7 +539,7 @@ class AgentSettingsControllerTest {
                 .build());
 
         // 1) 列表可见
-        String listJson = ONode.ofBean(controller.agentsList(false).getData()).toJson();
+        String listJson = ONode.ofBean(controller.agentsList(false, null).getData()).toJson();
         assertTrue(listJson.contains("db-writer"), "extension mount agent should be listed");
         assertTrue(listJson.contains("Database expert provided by an extension classpath mount"));
 

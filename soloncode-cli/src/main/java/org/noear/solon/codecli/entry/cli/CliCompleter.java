@@ -76,7 +76,8 @@ public class CliCompleter implements Completer {
             for (AgentDefinition definition : engine.getAgentManager().getAgents()) {
                 if (definition.getName().startsWith(prefix)) {
                     // 构建补全提示：description + argument-hint
-                    candidates.add(new Candidate("@" + definition.getName(), "@" + definition.getName() + "  " + definition.getDescription(), null, null, null, null, true));
+                    candidates.add(new Candidate("@" + definition.getName(), "@" + definition.getName() + "  "
+                            + engine.getAgentDescription(definition, engine.getLocale()), null, null, null, null, true));
                 }
             }
         }

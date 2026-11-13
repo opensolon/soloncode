@@ -587,7 +587,9 @@
             }).filter(function (x) { return x.value; });
             renderSelItems(modelBox, items, getSel(row, 'model'), I18n.t('automation.modelPlaceholder'), I18n.t('automation.modelDefaultDesc'));
         }).catch(fail);
-        api('GET', '/web/settings/agents').then(function (data) {
+        // 内置智能体的描述按当前界面语言取（不传则后端用引擎语言）
+        var agentsLocale = typeof currentUiLocale === 'function' ? currentUiLocale() : '';
+        api('GET', '/web/settings/agents' + (agentsLocale ? '?locale=' + encodeURIComponent(agentsLocale) : '')).then(function (data) {
             if (!agentBox.isConnected) return;
             var list = data && (data.list || data) || [];
             if (!Array.isArray(list)) list = [];

@@ -18,6 +18,7 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.agent.AgentDefinition;
 import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.host.HostInput;
@@ -109,7 +110,16 @@ final class DesktopHostSink implements HostSink {
         if (mode != null) {
             session.attrs().put(DesktopRunSink.SESSION_ATTR_RUN_MODE, mode);
         }
-        engine.setSessionAgent(session, engine.getAgentOrMain(agent).name());
+        engine.setSessionAgent(session, agentNameOf(engine, session, agent));
+    }
+
+    /**
+     * 本轮实际生效的代理名：认本会话的会话级子代理；解析不到时为主代理。
+     * 只取名字，不构建代理。
+     */
+    static String agentNameOf(HarnessEngine engine, AgentSession session, String agent) {
+        AgentDefinition definition = engine.resolveAgent(session, agent);
+        return definition == null ? AgentDefinition.AGENT_MAIN : definition.getName();
     }
 
     @Override

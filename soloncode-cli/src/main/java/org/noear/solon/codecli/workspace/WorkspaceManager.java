@@ -27,6 +27,7 @@ import org.noear.solon.codecli.goal.GoalDataMigrator;
 import org.noear.solon.codecli.config.entity.GoalGroupDo;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.config.HostLocale;
 import org.noear.solon.codecli.config.ManagerExtension;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.config.entity.*;
@@ -777,6 +778,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .build();
 
         HarnessEngine.Builder engineBuilder = HarnessEngine.of(workspacePath, AgentFlags.getHarnessHome())
+                // 宿主级默认语言（只认显式配置的 solon.locale）：管不带语言的入口，IM 回执用同一个来源
+                .locale(HostLocale.configured())
                 .userAgent(wsSettings.getGeneral().getUserAgent())
                 .systemPrompt(systemPrompt)
                 .maxTurns(wsSettings.getGeneral().getMaxTurns())

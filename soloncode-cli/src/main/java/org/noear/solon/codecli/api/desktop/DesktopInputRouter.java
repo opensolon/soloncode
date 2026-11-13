@@ -27,6 +27,7 @@ import org.noear.solon.ai.harness.host.SubmitResult;
 import org.noear.solon.ai.harness.input.AgentMentions;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -190,15 +191,18 @@ final class DesktopInputRouter {
         // 模式处理：根据前端 mode 字段配置 session 行为（受理后写入）
         final String mode = DesktopRunModes.normalize(req.getMode());
         if ("plan".equals(mode)) {
-            // 规划模式：只读分析，不执行文件/命令操作
+            // 规划模式：只读分析，不执行文件/命令操作。前缀发给模型，与本轮同一语言
+            // （桌面输入不带语言，本轮即引擎语言；中文用中文，其余用英文）
             if (!currentInput.contains("不要执行") && !currentInput.contains("只分析")) {
-                currentInput = "[规划模式 - 仅分析不执行任何操作] " + currentInput;
+                currentInput = (AiI18n.isChinese(engine.getLocale())
+                        ? "[规划模式 - 仅分析不执行任何操作] "
+                        : "[Planning mode - analyze only, do not perform any operations] ") + currentInput;
             }
         }
         // default 模式：write/edit/bash 都在真正执行前进入 HITL 审批。
 
         // 与 WebStreamBuilder 保持一致：记录本轮真正的源 Agent，供 HITL 恢复继续使用。
-        final String resolvedAgentName = engine.getAgentOrMain(agentName).name();
+        final String resolvedAgentName = DesktopHostSink.agentNameOf(engine, session, agentName);
 
         // Goal 是对话持续流，不再交给斜杠命令返回“任务已注册”回执。
         // Goal 不经 handle 受理：选择照旧在创建前写入

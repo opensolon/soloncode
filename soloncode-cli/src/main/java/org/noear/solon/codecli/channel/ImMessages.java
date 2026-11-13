@@ -15,7 +15,7 @@
  */
 package org.noear.solon.codecli.channel;
 
-import org.noear.solon.Solon;
+import org.noear.solon.codecli.config.HostLocale;
 import org.noear.solon.i18n.I18nBundle;
 import org.noear.solon.i18n.I18nUtil;
 
@@ -146,7 +146,11 @@ public final class ImMessages {
     }
 
     /**
-     * 当前文案地区：显式指定 &gt; solon.locale 配置 &gt; JVM 默认。
+     * 当前文案地区：显式指定 &gt; 显式配置的 solon.locale（{@link HostLocale#configured()}，与引擎语言同一个来源）
+     * &gt; JVM 默认。
+     *
+     * <p>没配置时跟系统语言走（与此前一致，IM 文案有多语言资源）；引擎此时不设语言（全局默认中文），
+     * 要两边一致就配置 solon.locale。</p>
      */
     public static Locale getLocale() {
         Locale locale = localeOverride;
@@ -154,12 +158,7 @@ public final class ImMessages {
             return locale;
         }
 
-        try {
-            locale = Solon.cfg().locale();
-        } catch (Throwable ignored) {
-            // Solon 未初始化等异常场景，落到 JVM 默认地区
-        }
-
+        locale = HostLocale.configured();
         return locale == null ? Locale.getDefault() : locale;
     }
 

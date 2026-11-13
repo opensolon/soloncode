@@ -2,6 +2,7 @@ package org.noear.solon.codecli.api.web.settings;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.harness.agent.AgentDefinition;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.ai.util.MarkdownUtil;
 import org.noear.solon.ai.mount.catalog.AgentDescriptor;
 import org.noear.solon.annotation.Body;
@@ -31,6 +32,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 
@@ -56,11 +58,19 @@ public class AgentSettingsController extends BaseSettingsController {
 
     @Get
     @Mapping("/web/settings/agents")
-    public Result agentsList(@Param(value = "includeHidden", defaultValue = "false") boolean includeHidden) {
+    public Result agentsList(@Param(value = "includeHidden", defaultValue = "false") boolean includeHidden,
+                             @Param(value = "locale", required = false) String locale) {
+        // 内置智能体的描述按前端界面语言展示（没传时用引擎语言）；查看或编辑源文件仍是原文
+        Locale listLocale = AiI18n.toLocale(locale);
+        if (listLocale == null) {
+            listLocale = engine().getLocale();
+        }
+
         Map<String, AgentDefinition> builtinMap = loadCatalogAgentDefinitions();
         Map<String, Map<String, Object>> candidatesByName = new LinkedHashMap<>();
         for (AgentDefinition definition : builtinMap.values()) {
             Map<String, Object> item = toItem(definition, AgentFlags.SCOPE_USER, true);
+            item.put("description", engine().getAgentDescription(definition, listLocale));
             item.put("sourceScope", AgentFlags.SCOPE_USER);
             item.put("editable", true);
             candidatesByName.put(definition.getName(), item);
@@ -472,6 +482,8 @@ public class AgentSettingsController extends BaseSettingsController {
                     markdown = IoUtil.transferToString(input);
                 }
                 AgentDefinition definition = parseAndValidate(markdown, name);
+                // 记下来源挂载：引擎按它识别内置智能体（只有内置的有语言版本）
+                definition.setMountAlias(descriptor.getMountAlias());
                 result.put(name, definition);
             } catch (Exception e) {
                 LOG.debug("[Settings] Failed to load catalog agent {}: {}", name, e.getMessage());

@@ -191,7 +191,9 @@
     }
 
     function loadList() {
-        $.get('/web/settings/agents', { includeHidden: true }, function (resp) {
+        // 内置智能体的描述按当前界面语言取（不传则后端用引擎语言）
+        var locale = typeof currentUiLocale === 'function' ? currentUiLocale() : '';
+        $.get('/web/settings/agents', locale ? { includeHidden: true, locale: locale } : { includeHidden: true }, function (resp) {
             if (resp.code === 200) renderList(resp.data || []);
             else showToast(resp.message || I18n.t('toast.agentLoadFailed'), 'error');
         }).fail(function () { showToast(I18n.t('toast.agentLoadFailed'), 'error'); });
