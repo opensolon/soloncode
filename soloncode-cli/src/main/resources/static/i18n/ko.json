@@ -266,6 +266,8 @@
   "general.ui.title": "모양",
   "git.autoCommit": "현재 모든 파일 자동 커밋",
   "git.commitBtn": "커밋",
+  "git.commitHistoryEmpty": "커밋 메시지가 없습니다",
+  "git.commitHistoryLoading": "커밋 기록 로딩 중...",
   "git.generateSummaryBtn": "요약 생성",
   "git.generateSummaryTitle": "AI 변경 요약 생성",
   "git.initBenefit1": "파일 변경 기록 추적",

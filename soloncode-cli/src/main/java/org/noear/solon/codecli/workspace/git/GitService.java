@@ -18,10 +18,12 @@ package org.noear.solon.codecli.workspace.git;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.ai.mount.source.FileMountSource;
 import org.noear.solon.ai.mount.Mount;
 import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.core.handle.Result;
+import org.noear.solon.lang.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -753,16 +755,17 @@ public class GitService {
      *
      * @param sessionId 当前会话 ID，用于获取用户选择的 LLM 模型
      * @param files     需要分析的文件路径列表
+     * @param locale    界面语言，作为本轮语言（null 时用引擎的）
      * @return 包含 summary 的结果对象
      */
-
-
-    public Result<Map> summary(String sessionId, List<String> files) {
+    public Result<Map> summary(String sessionId, List<String> files, @Nullable Locale locale) {
         if (files == null || files.isEmpty()) {
             return Result.failure(400, "paths is required");
         }
 
         try {
+            final SummaryText text = SummaryText.of(locale != null ? locale : engine.getLocale());
+
             // 通过 sessionId 获取会话，复用用户选择的 LLM 模型
             AgentSession session = engine.getSession(sessionId);
             String selectedModel = engine.getSessionModel(session);
@@ -791,13 +794,13 @@ public class GitService {
                     if (!untrackedDiff.isEmpty()) {
                         diff = untrackedDiff;
                     } else {
-                        diff = "(无差异内容)";
+                        diff = text.noDiff();
                     }
                 }
                 // 单文件截断 500 行
                 String[] lines = diff.split("\n");
                 if (lines.length > MAX_DIFF_LINES) {
-                    diff = String.join("\n", Arrays.copyOf(lines, MAX_DIFF_LINES)) + "\n... (已截断)";
+                    diff = String.join("\n", Arrays.copyOf(lines, MAX_DIFF_LINES)) + "\n" + text.fileTruncated();
                 }
                 combinedDiff.append("\n\n=== ").append(filePath).append(" ===\n").append(diff);
             }
@@ -805,18 +808,16 @@ public class GitService {
             // 总字符截断
             if (combinedDiff.length() > MAX_TOTAL_CHARS) {
                 combinedDiff.setLength(MAX_TOTAL_CHARS);
-                combinedDiff.append("\n\n... (总差异过大，已截断)");
+                combinedDiff.append("\n\n").append(text.totalTruncated());
             }
 
-            String statInfo = targetFiles.size() + " 个文件" + (targetFiles.size() < files.size() ? "（仅前 15 个）" : "");
+            String userMessage = text.request(targetFiles.size(), targetFiles.size() < files.size(), combinedDiff);
 
-            String userMessage = "请根据以下 Git diff 变更内容，生成提交信息摘要。\n\n"
-                    + "变更统计：" + statInfo
-                    + "\n\n--- Diff 内容 ---\n" + combinedDiff;
-
+            // 语言同时决定 git-summary 子代理的提示词与协议指令的语言
             String summary = engine.handle(HarnessInput.of(null, userMessage)
                                     .selectedModel(selectedModel)
-                                    .selectedAgent("git-summary"))
+                                    .selectedAgent("git-summary")
+                                    .locale(locale))
                     .getRequest()
                     .call()
                     .getContent();
@@ -835,7 +836,58 @@ public class GitService {
             return Result.succeed(data);
         } catch (Throwable e) {
             LOG.error("[Web] gitSummary error: {}", e.getMessage());
-            return Result.failure(500, "生成摘要失败: " + e.getMessage());
+            // 只回原因：「生成摘要失败」前缀由前端按界面语言加（gitdiff.generateSummaryFailed）
+            return Result.failure(500, e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * 生成摘要时给模型的话（不是给用户看的文案）
+     *
+     * <p>与 git-summary 内置子代理同一语言规则：中文用中文，其余语言用英文（子代理只有中、英两版，
+     * 未知语言落回英文）。保持一致，提示词、协议指令与这里的话才不会中英混排。</p>
+     */
+    static final class SummaryText {
+        private final boolean zh;
+
+        private SummaryText(boolean zh) {
+            this.zh = zh;
+        }
+
+        /**
+         * @param locale 生效语言（null 为默认语言）
+         */
+        static SummaryText of(@Nullable Locale locale) {
+            return new SummaryText(AiI18n.isChinese(locale));
+        }
+
+        String noDiff() {
+            return zh ? "(无差异内容)" : "(no diff content)";
+        }
+
+        String fileTruncated() {
+            return zh ? "... (已截断)" : "... (truncated)";
+        }
+
+        String totalTruncated() {
+            return zh ? "... (总差异过大，已截断)" : "... (diff too large, truncated)";
+        }
+
+        /**
+         * @param fileCount 参与摘要的文件数
+         * @param limited   是否只取了前 15 个文件
+         */
+        String request(int fileCount, boolean limited, CharSequence diff) {
+            if (zh) {
+                return "请根据以下 Git diff 变更内容，生成提交信息摘要。\n\n"
+                        + "变更统计：" + fileCount + " 个文件" + (limited ? "（仅前 15 个）" : "")
+                        + "\n\n--- Diff 内容 ---\n" + diff;
+            } else {
+                return "Generate a commit message summary from the following Git diff.\n\n"
+                        + "Change stats: " + fileCount + (fileCount == 1 ? " file" : " files")
+                        + (limited ? " (first 15 only)" : "")
+                        + "\n\n--- Diff ---\n" + diff;
+            }
         }
     }
 }

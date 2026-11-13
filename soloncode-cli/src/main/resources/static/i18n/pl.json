@@ -266,6 +266,8 @@
   "general.ui.title": "Wygląd",
   "git.autoCommit": "Automatycznie zatwierdź wszystkie bieżące pliki",
   "git.commitBtn": "Zatwierdź",
+  "git.commitHistoryEmpty": "Brak komunikatów zatwierdzeń",
+  "git.commitHistoryLoading": "Ładowanie historii zatwierdzeń...",
   "git.generateSummaryBtn": "Generuj podsumowanie",
   "git.generateSummaryTitle": "AI generuje podsumowanie zmian",
   "git.initBenefit1": "Śledzenie historii zmian plików",

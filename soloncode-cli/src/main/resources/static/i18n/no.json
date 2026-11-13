@@ -266,6 +266,8 @@
   "general.ui.title": "Utseende",
   "git.autoCommit": "Auto-commit alle gjeldende filer",
   "git.commitBtn": "Commit",
+  "git.commitHistoryEmpty": "Ingen commit-meldinger ennå",
+  "git.commitHistoryLoading": "Laster commit-historikk...",
   "git.generateSummaryBtn": "Generer sammendrag",
   "git.generateSummaryTitle": "AI-generert endringssammendrag",
   "git.initBenefit1": "Spor filendringshistorikk",

@@ -266,6 +266,8 @@
   "general.ui.title": "Aparência",
   "git.autoCommit": "Confirmar automaticamente todos os arquivos atuais",
   "git.commitBtn": "Confirmar",
+  "git.commitHistoryEmpty": "Nenhuma mensagem de confirmação ainda",
+  "git.commitHistoryLoading": "Carregando histórico de confirmações...",
   "git.generateSummaryBtn": "Gerar",
   "git.generateSummaryTitle": "Gerar Resumo de Alterações com IA",
   "git.initBenefit1": "Rastrear histórico de alterações de arquivos",

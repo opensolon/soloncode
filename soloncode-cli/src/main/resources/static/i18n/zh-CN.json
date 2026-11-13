@@ -268,6 +268,8 @@
   "general.ui.title": "外观效果",
   "git.autoCommit": "自动提交当前所有文件",
   "git.commitBtn": "提交",
+  "git.commitHistoryEmpty": "暂无提交摘要",
+  "git.commitHistoryLoading": "加载提交历史...",
   "git.generateSummaryBtn": "生成摘要",
   "git.generateSummaryTitle": "AI 生成变更摘要",
   "git.initBenefit1": "跟踪文件变更历史",

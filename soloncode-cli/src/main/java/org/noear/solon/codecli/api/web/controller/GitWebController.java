@@ -21,6 +21,7 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.annotation.Param;
+import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.codecli.workspace.git.GitService;
@@ -29,6 +30,7 @@ import org.noear.solon.core.handle.Result;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -169,7 +171,8 @@ public class GitWebController extends AbstractWebController {
     @Mapping("/web/chat/git/summary")
     public Result<Map> gitSummary(@Param(value = "mount", required = false) String mount,
                                   @Param("sessionId") String sessionId,
-                                  @Param("paths") String paths) throws Exception {
+                                  @Param("paths") String paths,
+                                  @Param(value = "locale", required = false) String locale) throws Exception {
         if (sessionId == null || sessionId.isEmpty()) {
             return Result.failure(400, "sessionId is required");
         }
@@ -195,8 +198,10 @@ public class GitWebController extends AbstractWebController {
             }
         }
 
+        // 前端界面语言作为本轮语言：决定 git-summary 的提示词、协议指令与摘要的语言
+        final Locale summaryLocale = AiI18n.toLocale(locale);
         String wsId = (mount != null && !mount.isEmpty()) ? mount : null;
-        return withGitWorkspace(wsId, () -> gitService().summary(sessionId, files));
+        return withGitWorkspace(wsId, () -> gitService().summary(sessionId, files, summaryLocale));
     }
 
     /**

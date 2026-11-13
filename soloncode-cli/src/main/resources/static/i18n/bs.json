@@ -266,6 +266,8 @@
   "general.ui.title": "Izgled",
   "git.autoCommit": "Automatski potvrdi sve trenutne datoteke",
   "git.commitBtn": "Potvrdi",
+  "git.commitHistoryEmpty": "Još nema poruka potvrda",
+  "git.commitHistoryLoading": "Učitavanje historije potvrda...",
   "git.generateSummaryBtn": "Generiraj sažetak",
   "git.generateSummaryTitle": "AI generira sažetak promjena",
   "git.initBenefit1": "Praćenje historije promjena datoteka",

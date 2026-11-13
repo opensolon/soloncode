@@ -3,6 +3,7 @@ package org.noear.solon.codecli.api.web;
 import org.junit.jupiter.api.Test;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.controller.ChatWebController;
+import org.noear.solon.codecli.api.web.controller.GitWebController;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -37,10 +38,25 @@ public class WebChatLocaleContractTest {
                 "入队必须带入队时的 locale");
     }
 
+    /**
+     * 生成提交摘要同样带界面语言：否则摘要、git-summary 子代理提示词与协议指令都回落到引擎默认语言
+     */
+    @Test
+    public void gitSummarySendsCurrentUiLocale() throws IOException {
+        String git = resourceText("/static/js/app-git.js");
+
+        int summary = git.indexOf("fetch(gitUrl('/web/chat/git/summary')");
+        int summaryEnd = git.indexOf(".then(", summary);
+        assertTrue(summary >= 0 && git.substring(summary, summaryEnd).contains("'&locale=' + encodeURIComponent("),
+                "生成摘要必须带 locale");
+        assertTrue(git.substring(summary, summaryEnd).contains("currentUiLocale()"), "取值与发消息同一口径");
+    }
+
     @Test
     public void backendAcceptsLocaleParam() {
         assertTrue(hasParam(ChatWebController.class, "chat_input", "locale"));
         assertTrue(hasParam(ChatWebController.class, "chat_ui_action", "locale"));
+        assertTrue(hasParam(GitWebController.class, "gitSummary", "locale"));
     }
 
     private static boolean hasParam(Class<?> clz, String methodName, String paramName) {

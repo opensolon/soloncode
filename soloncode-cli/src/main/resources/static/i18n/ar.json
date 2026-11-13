@@ -266,6 +266,8 @@
   "general.ui.title": "المظهر",
   "git.autoCommit": "الالتزام التلقائي بجميع الملفات الحالية",
   "git.commitBtn": "التزام",
+  "git.commitHistoryEmpty": "لا توجد رسائل التزام بعد",
+  "git.commitHistoryLoading": "جارٍ تحميل سجل الالتزامات...",
   "git.generateSummaryBtn": "إنشاء ملخص",
   "git.generateSummaryTitle": "إنشاء ملخص التغييرات بالذكاء الاصطناعي",
   "git.initBenefit1": "تتبع تاريخ تغييرات الملفات",

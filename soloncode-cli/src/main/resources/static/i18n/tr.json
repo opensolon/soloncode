@@ -266,6 +266,8 @@
   "general.ui.title": "Görünüm",
   "git.autoCommit": "Geçerli tüm dosyaları otomatik gönder",
   "git.commitBtn": "Commit",
+  "git.commitHistoryEmpty": "Henüz commit mesajı yok",
+  "git.commitHistoryLoading": "Commit geçmişi yükleniyor...",
   "git.generateSummaryBtn": "Oluştur",
   "git.generateSummaryTitle": "AI Değişiklik Özeti Oluştur",
   "git.initBenefit1": "Dosya değişiklik geçmişini izle",

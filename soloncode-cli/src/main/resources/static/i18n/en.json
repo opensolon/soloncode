@@ -268,6 +268,8 @@
   "general.ui.title": "Appearance",
   "git.autoCommit": "Auto-commit all current files",
   "git.commitBtn": "Commit",
+  "git.commitHistoryEmpty": "No commit messages yet",
+  "git.commitHistoryLoading": "Loading commit history...",
   "git.generateSummaryBtn": "Generate",
   "git.generateSummaryTitle": "AI Generate Change Summary",
   "git.initBenefit1": "Track file change history",

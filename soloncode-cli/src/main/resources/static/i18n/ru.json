@@ -266,6 +266,8 @@
   "general.ui.title": "Внешний вид",
   "git.autoCommit": "Автоматически зафиксировать все текущие файлы",
   "git.commitBtn": "Коммит",
+  "git.commitHistoryEmpty": "Сообщений коммитов пока нет",
+  "git.commitHistoryLoading": "Загрузка истории коммитов...",
   "git.generateSummaryBtn": "Создать сводку",
   "git.generateSummaryTitle": "ИИ: сводка изменений",
   "git.initBenefit1": "Отслеживание истории изменений файлов",

@@ -266,6 +266,8 @@
   "general.ui.title": "Εμφάνιση",
   "git.autoCommit": "Αυτόματη υποβολή όλων των τρεχόντων αρχείων",
   "git.commitBtn": "Υποβολή",
+  "git.commitHistoryEmpty": "Δεν υπάρχουν ακόμη μηνύματα υποβολής",
+  "git.commitHistoryLoading": "Φόρτωση ιστορικού υποβολών...",
   "git.generateSummaryBtn": "Δημιουργία περίληψης",
   "git.generateSummaryTitle": "Δημιουργία περίληψης αλλαγών με AI",
   "git.initBenefit1": "Παρακολούθηση ιστορικού αλλαγών αρχείων",

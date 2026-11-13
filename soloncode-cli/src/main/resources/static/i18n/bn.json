@@ -266,6 +266,8 @@
   "general.ui.title": "উপস্থিতি",
   "git.autoCommit": "বর্তমান সব ফাইল স্বয়ংক্রিয়ভাবে কমিট করুন",
   "git.commitBtn": "কমিট",
+  "git.commitHistoryEmpty": "এখনও কোনো কমিট বার্তা নেই",
+  "git.commitHistoryLoading": "কমিট ইতিহাস লোড হচ্ছে...",
   "git.generateSummaryBtn": "সারাংশ তৈরি করুন",
   "git.generateSummaryTitle": "AI পরিবর্তন সারাংশ তৈরি",
   "git.initBenefit1": "ফাইল পরিবর্তনের ইতিহাস ট্র্যাক করুন",

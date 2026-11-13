@@ -2205,7 +2205,7 @@
     function renderGitCommitHistory() {
         if (!gitCommitHistory) return;
         if (!gitCommitHistoryItems.length) {
-            gitCommitHistory.innerHTML = '<div class="git-commit-history-empty">暂无提交摘要</div>';
+            gitCommitHistory.innerHTML = '<div class="git-commit-history-empty">' + escapeHtml(I18n.t('git.commitHistoryEmpty')) + '</div>';
         } else {
             gitCommitHistory.innerHTML = gitCommitHistoryItems.map(function(message, index) {
                 return '<button type="button" class="git-commit-history-item' + (index === gitCommitHistoryIndex ? ' active' : '')
@@ -2222,7 +2222,7 @@
         }
         gitCommitHistoryLoading = true;
         if (gitCommitHistory) {
-            gitCommitHistory.innerHTML = '<div class="git-commit-history-loading">加载提交历史...</div>';
+            gitCommitHistory.innerHTML = '<div class="git-commit-history-loading">' + escapeHtml(I18n.t('git.commitHistoryLoading')) + '</div>';
             gitCommitHistory.style.display = '';
         }
         fetch(gitUrl('/web/chat/git/history', 'limit=20'))
@@ -2299,6 +2299,8 @@
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'sessionId=' + encodeURIComponent(currentSessionId)
                     + '&paths=' + encodeURIComponent(JSON.stringify(files))
+                    // 界面语言作为本轮语言：摘要、子代理提示词与协议指令同一语言（与发消息同一口径）
+                    + '&locale=' + encodeURIComponent(typeof currentUiLocale === 'function' ? currentUiLocale() : '')
             })
             .then(function(r) { return r.json(); })
             .then(function(res) {

@@ -266,6 +266,8 @@
   "general.ui.title": "Erscheinungsbild",
   "git.autoCommit": "Alle aktuellen Dateien automatisch committen",
   "git.commitBtn": "Committen",
+  "git.commitHistoryEmpty": "Noch keine Commit-Nachrichten",
+  "git.commitHistoryLoading": "Commit-Verlauf wird geladen...",
   "git.generateSummaryBtn": "Generieren",
   "git.generateSummaryTitle": "KI-generierte Änderungszusammenfassung",
   "git.initBenefit1": "Dateiänderungshistorie verfolgen",

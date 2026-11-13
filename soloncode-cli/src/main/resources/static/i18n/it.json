@@ -266,6 +266,8 @@
   "general.ui.title": "Aspetto",
   "git.autoCommit": "Esegui commit automatico di tutti i file correnti",
   "git.commitBtn": "Commit",
+  "git.commitHistoryEmpty": "Nessun messaggio di commit",
+  "git.commitHistoryLoading": "Caricamento cronologia commit...",
   "git.generateSummaryBtn": "Genera riepilogo",
   "git.generateSummaryTitle": "Riepilogo modifiche generato dall'IA",
   "git.initBenefit1": "Traccia la cronologia delle modifiche ai file",

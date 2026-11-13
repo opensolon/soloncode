@@ -266,6 +266,8 @@
   "general.ui.title": "Apparence",
   "git.autoCommit": "Valider automatiquement tous les fichiers actuels",
   "git.commitBtn": "Valider",
+  "git.commitHistoryEmpty": "Aucun message de validation pour l'instant",
+  "git.commitHistoryLoading": "Chargement de l'historique des validations...",
   "git.generateSummaryBtn": "Générer un résumé",
   "git.generateSummaryTitle": "Résumé des modifications généré par l'IA",
   "git.initBenefit1": "Suivre l'historique des modifications de fichiers",

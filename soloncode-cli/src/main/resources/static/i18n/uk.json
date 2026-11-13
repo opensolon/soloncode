@@ -266,6 +266,8 @@
   "general.ui.title": "Зовнішній вигляд",
   "git.autoCommit": "Автоматично зафіксувати всі поточні файли",
   "git.commitBtn": "Зафіксувати",
+  "git.commitHistoryEmpty": "Повідомлень фіксацій поки немає",
+  "git.commitHistoryLoading": "Завантаження історії фіксацій...",
   "git.generateSummaryBtn": "Згенерувати резюме",
   "git.generateSummaryTitle": "AI-генерація резюме змін",
   "git.initBenefit1": "Відстеження історії змін файлів",

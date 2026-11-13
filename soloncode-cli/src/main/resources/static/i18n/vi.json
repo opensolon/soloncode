@@ -268,6 +268,8 @@
   "general.ui.title": "Giao diện",
   "git.autoCommit": "Tự động commit tất cả các tệp hiện tại",
   "git.commitBtn": "Commit",
+  "git.commitHistoryEmpty": "Chưa có thông điệp commit",
+  "git.commitHistoryLoading": "Đang tải lịch sử commit...",
   "git.generateSummaryBtn": "Tạo tóm tắt",
   "git.generateSummaryTitle": "AI tạo tóm tắt thay đổi",
   "git.initBenefit1": "Theo dõi lịch sử thay đổi tệp",
