@@ -30,7 +30,7 @@ import org.noear.solon.codecli.api.web.event.WebEventNames;
 import org.noear.solon.codecli.api.web.event.payload.ToolEndPayload;
 import org.noear.solon.codecli.api.web.pipeline.ToolPresentationFilter;
 import org.noear.solon.codecli.api.web.pipeline.ToolViewUtil;
-import org.noear.solon.codecli.util.TraceUtil;
+import org.noear.solon.ai.harness.util.TraceUtil;
 import org.noear.solon.core.util.Assert;
 
 import java.util.ArrayList;

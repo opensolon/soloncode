@@ -44,7 +44,10 @@ import java.nio.file.StandardOpenOption;
  *
  * @author noear
  * @since 4.2.0
+ * @deprecated 一次性数据迁移件（旧版每会话 loop-tasks.json → 工作区 tasks.json）。
+ *         旧格式彻底淘汰后（计划随下一个大版本）整体删除。
  */
+@Deprecated
 public final class LoopDataMigrator {
     private static final Logger LOG = LoggerFactory.getLogger(LoopDataMigrator.class);
     private static final String LEGACY_TASKS_FILE = "loop-tasks.json";

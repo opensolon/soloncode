@@ -60,7 +60,10 @@ import java.util.Map;
  *
  * @author noear
  * @since 3.9.4
+ * @deprecated 一次性数据迁移件（旧版 tasks.json 的 GOAL 条目 → 会话快照）。
+ *         新版本已不再写这种数据；旧格式彻底淘汰后（计划随下一个大版本）整体删除。
  */
+@Deprecated
 public final class GoalDataMigrator {
     private static final Logger LOG = LoggerFactory.getLogger(GoalDataMigrator.class);
     private static final String SNAPSHOT_SUFFIX = ".snapshot.json";

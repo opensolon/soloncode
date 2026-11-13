@@ -31,7 +31,7 @@ import org.noear.solon.codecli.channel.ImStatus;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.session.SessionRewindService;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
-import org.noear.solon.codecli.util.TraceUtil;
+import org.noear.solon.ai.harness.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;

@@ -18,11 +18,13 @@ package org.noear.solon.codecli.workspace.git;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.input.HarnessInput;
+import org.noear.solon.ai.harness.input.InputOutcome;
 import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.ai.mount.source.FileMountSource;
 import org.noear.solon.ai.mount.Mount;
 import org.noear.solon.ai.mount.MountType;
 import org.noear.solon.core.handle.Result;
+import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -813,12 +815,22 @@ public class GitService {
 
             String userMessage = text.request(targetFiles.size(), targetFiles.size() < files.size(), combinedDiff);
 
-            // 语言同时决定 git-summary 子代理的提示词与协议指令的语言
-            String summary = engine.handle(HarnessInput.of(null, userMessage)
-                                    .selectedModel(selectedModel)
-                                    .selectedAgent("git-summary")
-                                    .locale(locale))
-                    .getRequest()
+            // 旁路轮次（不绑定会话）：仍走引擎唯一入口，但要先判受理——未受受理时没有请求可跑，
+            // 直接取 getRequest() 会 NPE，把「忙 / 未受受理」误报成「生成摘要失败」。
+            InputOutcome outcome = engine.handle(HarnessInput.of(null, userMessage)
+                    .selectedModel(selectedModel)
+                    .selectedAgent("git-summary")
+                    .locale(locale));
+            if (outcome.hasRequest() == false) {
+                // 只把引擎给的原因回给前端（外部拼接「生成摘要失败」前缀）；不把内部结局枚举名漏给用户
+                String reason = Assert.isNotEmpty(outcome.getRejectDetail())
+                        ? outcome.getRejectDetail()
+                        : outcome.getKind().toString();
+                LOG.warn("[GitSummary] not admitted: kind={}, reason={}", outcome.getKind(), outcome.getRejectReason());
+                return Result.failure(500, reason);
+            }
+
+            String summary = outcome.getRequest()
                     .call()
                     .getContent();
 

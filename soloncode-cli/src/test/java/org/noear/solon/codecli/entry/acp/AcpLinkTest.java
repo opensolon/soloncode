@@ -25,7 +25,7 @@ import static org.mockito.Mockito.*;
  * <p>覆盖范围：</p>
  * <ul>
  *   <li>toInput — ACP ContentBlock → HarnessInput 转换（文本/图片/混合/空）</li>
- *   <li>AcpSessionContext — 构造、cancelled 标志、createdAt</li>
+ *   <li>AcpSessionContext — 构造、cwd/mcpServers/createdAt</li>
  *   <li>resolveToolKind — 工具名 → ToolKind 映射</li>
  *   <li>buildToolTitle — 简化/全量模式、start/end 阶段、子代理前缀</li>
  *   <li>buildToolContent — write/edit diff、其余文本块、空输出</li>
@@ -398,19 +398,6 @@ public class AcpLinkTest {
         assertEquals("/workspace", ctx.getCwd());
         assertSame(servers, ctx.getMcpServers());
         assertNotNull(ctx.getCreatedAt());
-        assertFalse(ctx.isCancelled());
-    }
-
-    @Test
-    @DisplayName("AcpSessionContext: cancelled 标志可切换")
-    void sessionContext_cancelledToggle() {
-        AcpLink.AcpSessionContext ctx = new AcpLink.AcpSessionContext(null, null);
-
-        assertFalse(ctx.isCancelled());
-        ctx.setCancelled(true);
-        assertTrue(ctx.isCancelled());
-        ctx.setCancelled(false);
-        assertFalse(ctx.isCancelled());
     }
 
     @Test

@@ -47,7 +47,10 @@ import java.util.List;
  *
  * @author noear
  * @since 2026.11
+ * @deprecated 一次性迁移件：只补「索引上线之前」的旧数据（旧队列文件、未登记索引的积压）。
+ *         新装机不再需要，旧数据清完后（计划随下一个大版本）整体删除。
  */
+@Deprecated
 final class WebSessionRecovery {
     private static final Logger LOG = LoggerFactory.getLogger(WebSessionRecovery.class);
 

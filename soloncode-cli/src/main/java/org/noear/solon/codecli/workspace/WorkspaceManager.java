@@ -183,7 +183,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 long last = ctx.getMeta().getLastAccessed();
                 if (now - last > IDLE_RELEASE_MS
                         && (ctx.getConnections() == null || ctx.getConnections().isEmpty())
-                        && (ctx.getLoopExtension() == null || !ctx.getLoopExtension().hasActiveTasks())) {
+                        && ctx.getEngine().isQuiescent()) {
                     idleIds.add(ctx.getMeta().getId());
                 }
             }
@@ -554,11 +554,10 @@ public class WorkspaceManager implements WorkspaceRegistry {
         if (ctx.getConnections() != null && !ctx.getConnections().isEmpty()) {
             return; // 预检查后有新连接
         }
-        if (ctx.getLoopExtension() != null && ctx.getLoopExtension().hasActiveTasks()) {
-            return;
-        }
-        // 活跃 goal 仍在调度的工作区不得被 LRU 释放（否则 goal 静默丢失）
-        if (ctx.getGoalExtension() != null && ctx.getGoalExtension().hasActiveGoals()) {
+        // 静默判定只有引擎自己知道全：运行中的请求 + 全部扩展声明的后台工作
+        // （goal 在调度、loop 有活跃任务；以后新增的插件只要覆写 isQuiescent 就自动计入）。
+        // 不自己逐个读扩展，否则新增插件会被漏掉，「后台还在跑却被 LRU 释放」。
+        if (ctx.getEngine().isQuiescent() == false) {
             return;
         }
         LOG.info("[Workspace] Releasing idle workspace: {}", id);
@@ -697,6 +696,9 @@ public class WorkspaceManager implements WorkspaceRegistry {
         }
     }
 
+    // 旧数据迁移件（GoalDataMigrator / LoopDataMigrator）已标 @Deprecated：老版本磁盘格式清完即删，
+    // 但本方法仍需在挂接插件之前调用一次，故在此局部抑制告警，避免调用链上到处飘 deprecated 警告
+    @SuppressWarnings("deprecation")
     private WorkspaceContext doCreateWorkspaceContext(WorkspaceMeta meta) throws Exception {
         String workspacePath = meta.getPath();
 

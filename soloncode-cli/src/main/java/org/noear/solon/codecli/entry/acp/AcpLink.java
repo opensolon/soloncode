@@ -7,6 +7,7 @@ import com.agentclientprotocol.sdk.error.AcpErrorCodes;
 import com.agentclientprotocol.sdk.error.AcpProtocolException;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActTrace;
@@ -19,13 +20,17 @@ import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.talents.cli.TerminalTalent;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
-import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.harness.host.HarnessHost;
+import org.noear.solon.ai.harness.host.HostSignal;
+import org.noear.solon.ai.harness.host.RunOutcome;
+import org.noear.solon.ai.harness.host.RunPrep;
+import org.noear.solon.ai.harness.host.RunSink;
+import org.noear.solon.ai.harness.input.BusyPolicy;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputAttachments;
-import org.noear.solon.ai.harness.input.InputOutcome;
-import org.noear.solon.ai.harness.extension.queue.QueueExtension;
-import org.noear.solon.ai.harness.extension.queue.QueueItem;
+import org.noear.solon.ai.harness.input.RejectReason;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -52,14 +57,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class AcpLink implements Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(AcpLink.class);
+    /** 宿主骨架的租户键（ACP 只有一个引擎） */
+    private static final String TENANT = "acp";
+
     private final HarnessEngine agentRuntime;
     private final AcpAgentTransport agentTransport;
     private final AgentSettings agentSettings;
+    /** 宿主骨架：受理、开流、终态、续发、停流由框架代办，本入口只把信号映射成 ACP 协议 */
+    private final HarnessHost host;
 
     public AcpLink(HarnessEngine agentRuntime, AcpAgentTransport agentTransport, AgentSettings agentSettings) {
         this.agentRuntime = agentRuntime;
         this.agentTransport = agentTransport;
         this.agentSettings = agentSettings;
+        this.host = HarnessHost.builder()
+                .engines(tenant -> agentRuntime)
+                // ACP 是一问一答：goal / loop 的后台轮次在 ACP 侧没有出口，也不接管积压续发
+                .programRuns(false)
+                .build();
     }
 
     private final Map<String, AcpSessionContext> sessionStates = new ConcurrentHashMap<>();
@@ -115,24 +130,25 @@ public class AcpLink implements Runnable {
                     return Mono.just(new AcpSchema.LoadSessionResponse(null, null));
                 })
                 .cancelHandler(req -> {
-                    String sessionId = req.sessionId();
-                    AcpSessionContext context = sessionStates.get(sessionId);
-                    if (context != null) {
-                        // 设置取消标志，prompt 流中的 takeWhile(!cancelled) 会在下一个 chunk 时中断后端任务
-                        context.setCancelled(true);
-                    }
+                    // 停止就是停止：停流由骨架代办，本轮不再往客户端投递事件，终态一定是 CANCELLED。
+                    // 只停当前一轮（一问一答，没有积压可保留）
+                    host.admin(TENANT).interrupt(req.sessionId(), InterruptMode.CANCEL_STREAM);
                     return Mono.empty();
                 })
                 .closeSessionHandler(req -> {
                     // 客户端显式关闭 session：正确的清理时机
                     String sessionId = req.sessionId();
-                    AcpSessionContext context = sessionStates.remove(sessionId);
-                    if (context != null) {
-                        context.setCancelled(true);
+                    sessionStates.remove(sessionId);
+                    // 若还有在跑的一轮，先停掉（不再向已关闭的会话投递）
+                    host.admin(TENANT).interrupt(sessionId, InterruptMode.CANCEL_STREAM);
+                    // 规范路径：判忙 → 通知扩展（撤 goal / loop 的定时任务）→ 删存储；仅从内存移除，
+                    // 磁盘历史保留，供后续 loadSession 恢复。
+                    // 停流是异步的：刚 interrupt 的那一轮可能还在收尾（仍算占用），此时 closeSession 会拒绝，
+                    // 退一步只清会话实例（否则会漏掉，下次 prompt 沿用旧实例）。
+                    if (host.closeSession(TENANT, sessionId, () -> removeBackendSession(sessionId)) == false) {
+                        LOG.debug("[ACP] session still occupied on close, evict only: {}", sessionId);
+                        removeBackendSession(sessionId);
                     }
-                    // 同步清理后端 AgentSession，避免 SessionManager.sessionMap 内存泄漏。
-                    // 注意：仅从内存 map 移除，磁盘上的 FileAgentSession 历史保留，供后续 loadSession 恢复。
-                    removeBackendSession(sessionId);
                     return Mono.just(new AcpSchema.CloseSessionResponse());
                 })
                 .promptHandler((request, acpContext) -> {
@@ -147,204 +163,232 @@ public class AcpLink implements Runnable {
                                 "Session not found: " + sessionId));
                     }
 
-                    // 会话必须先解析再构造 input：handle 依赖 input.getSession() 绑定会话，
+                    // 会话必须先解析再构造 input：受理依赖 input.getSession() 绑定会话，
                     // 传 null 会让 ReActRequest 回落到临时 InMemoryAgentSession（多轮上下文丢失、快照不落盘）。
-                    AgentSession session = agentRuntime.getSession(sessionId);
+                    // 经骨架开通（引擎要求作用域时会在这里拦下，而不是跑一半失败），ACP 没有登录身份故 principal 为空。
+                    AgentSession session = host.openSession(TENANT, sessionId, null);
 
-                    // ACP 客户端文本不构成命令语义，与既有直通行为保持一致
-                    InputOutcome outcome = agentRuntime.handle(toInput(request, session, context.getCwd())
+                    // ACP 客户端文本不构成命令语义，与既有直通行为保持一致。
+                    // 忙时直接拒绝：一问一答，排队的那一轮没有出口（本次响应返回后没人接续发）
+                    return prompt(acpContext, sessionId, toInput(request, session, context.getCwd())
                             .commandAware(false)
-                            .agentAware(false));
-                    if (outcome.hasRequest() == false) {
-                        return notAdmitted(outcome, session, acpContext);
-                    }
-
-                    final long startTime = System.currentTimeMillis();
-                    final AtomicInteger toolCallCounter = new AtomicInteger(0);
-
-                    return outcome.getRequest()
-                            .options(o -> {
-                                if (Assert.isNotEmpty(context.getCwd())) {
-                                    o.toolContextPut(HarnessEngine.ATTR_CWD, context.getCwd());
-                                }
-                            })
-                            .stream()
-                            .takeWhile(event -> !context.isCancelled())
-                            .concatMap(event -> {
-                                // === 规划阶段：映射到 ACP Plan 结构化输出 ===
-                                if (event instanceof PlanEvent) {
-                                    String content = event.getText();
-                                    AcpSchema.PlanEntry entry = new AcpSchema.PlanEntry(
-                                            content != null ? content : "Planning...",
-                                            AcpSchema.PlanEntryPriority.HIGH,
-                                            AcpSchema.PlanEntryStatus.IN_PROGRESS
-                                    );
-                                    AcpSchema.Plan plan = new AcpSchema.Plan("plan", Collections.singletonList(entry));
-                                    return acpContext.sendUpdate(sessionId, plan)
-                                            .thenReturn(event);
-                                }
-                                // === 思考阶段 ===
-                                else if (event instanceof ReasonDeltaEvent) {
-                                    if (event.hasText()) {
-                                        if (agentSettings.getGeneral().isCliThinkPrinted()) {
-                                            return acpContext.sendThought(event.getText())
-                                                    .thenReturn(event);
-                                        }
-                                    }
-                                }
-                                // === ThoughtChunk（多任务并行） ===
-                                else if (event instanceof ReasonEndEvent) {
-                                    ReasonEndEvent thoughtChunk = (ReasonEndEvent) event;
-                                    if (thoughtChunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
-                                        String content = thoughtChunk.getText();
-                                        if (Assert.isNotEmpty(content)) {
-                                            return acpContext.sendThought(content)
-                                                    .thenReturn(event);
-                                        }
-                                    }
-                                }
-                                // === 工具执行开始阶段：发 pending ToolCall 骨架卡 ===
-                                else if (event instanceof ToolCallStartEvent) {
-                                    ToolCallStartEvent startChunk = (ToolCallStartEvent) event;
-                                    String toolName = startChunk.getToolName();
-
-                                    if (isInternalTool(toolName)) {
-                                        return Mono.just(event);
-                                    }
-
-                                    // 以 callId 作为 toolCallId 的稳定来源，保证 start/end 精确配对；
-                                    // callId 缺失时退化为自增序号。
-                                    String toolCallId = resolveToolCallId(startChunk.getCallId(), toolCallCounter);
-                                    callIdToToolCallId.put(sessionId + "#" + startChunk.getCallId(), toolCallId);
-
-                                    Map<String, Object> args = startChunk.getArgs();
-                                    AcpSchema.ToolCall toolCall = new AcpSchema.ToolCall(
-                                            "tool_call",
-                                            toolCallId,
-                                            buildToolTitle(toolName, startChunk.getAgentName(), args, null, true),
-                                            resolveToolKind(toolName),
-                                            AcpSchema.ToolCallStatus.IN_PROGRESS,
-                                            Collections.emptyList(),
-                                            buildLocations(args),
-                                            args,          // rawInput
-                                            null,          // rawOutput
-                                            null           // meta
-                                    );
-                                    return acpContext.sendUpdate(sessionId, toolCall)
-                                            .thenReturn(event);
-                                }
-                                // === 工具执行结束阶段：发 ToolCallUpdate 填充完成/失败态 ===
-                                else if (event instanceof ToolCallEndEvent) {
-                                    ToolCallEndEvent observationChunk = (ToolCallEndEvent) event;
-                                    String toolName = observationChunk.getToolName();
-
-                                    if (isInternalTool(toolName)) {
-                                        return Mono.just(event);
-                                    }
-
-                                    // 复用 start 阶段登记的 toolCallId；未登记（无 start 事件）时新建
-                                    String key = sessionId + "#" + observationChunk.getCallId();
-                                    String toolCallId = callIdToToolCallId.remove(key);
-                                    if (toolCallId == null) {
-                                        toolCallId = resolveToolCallId(observationChunk.getCallId(), toolCallCounter);
-                                    }
-
-                                    boolean failed = observationChunk.getError() != null;
-                                    String content = failed
-                                            ? String.valueOf(observationChunk.getError().getMessage())
-                                            : event.getText();
-                                    Map<String, Object> args = observationChunk.getArgs();
-
-                                    AcpSchema.ToolCallUpdateNotification update = new AcpSchema.ToolCallUpdateNotification(
-                                            "tool_call_update",
-                                            toolCallId,
-                                            buildToolTitle(toolName, observationChunk.getAgentName(), args, content, false),
-                                            resolveToolKind(toolName),
-                                            failed ? AcpSchema.ToolCallStatus.FAILED : AcpSchema.ToolCallStatus.COMPLETED,
-                                            buildToolContent(toolName, args, content),
-                                            buildLocations(args),
-                                            args,          // rawInput
-                                            content,       // rawOutput
-                                            null           // meta
-                                    );
-                                    return acpContext.sendUpdate(sessionId, update)
-                                            .thenReturn(event);
-                                }
-                                // === 最终回复阶段 ===
-                                else if (event instanceof RunEndEvent) {
-                                    String traceInfo = buildTraceInfo(((RunEndEvent) event).getTrace(), startTime);
-
-                                    String finalContent = event.getText() + traceInfo;
-
-                                    // 发送最终文本内容
-                                    return acpContext.sendMessage(finalContent)
-                                            .thenReturn(event);
-                                }
-
-                                return Mono.just(event);
-                            })
-                            .onErrorResume(e -> {
-                                // 协议异常透传，保留原错误码；其余异常以消息形式反馈
-                                if (e instanceof AcpProtocolException) {
-                                    return Mono.error(e);
-                                }
-                                return acpContext.sendMessage("Error: " + e.getMessage())
-                                        .then(Mono.empty());
-                            })
-                            .doFinally(signal -> {
-                                // 不再删除 sessionStates（session 生命周期由 close/cancel 控制），
-                                // 仅重置本轮取消标志，为下一轮 prompt 准备
-                                context.setCancelled(false);
-                                // 清理本轮残留的 callId 映射：正常路径下 end 阶段已 remove，
-                                // 但工具 start 后被 cancel/异常中断（未走到 end）时会残留，此处按 sessionId 前缀兜底清理
-                                callIdToToolCallId.keySet().removeIf(k -> k.startsWith(sessionId + "#"));
-                            })
-                            .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN)));
+                            .agentAware(false)
+                            .whenBusy(BusyPolicy.REJECT), context.getCwd());
                 })
                 .build();
     }
 
     /**
-     * 未得到任务的结局：明确告诉客户端，不再静默结束（客户端分不清「没受理」与「空回复」）。
+     * 跑一轮：受理、开流、终态、停流都交给 {@link HarnessHost}，本方法只把 {@link HostSignal}
+     * 映射成 ACP 协议（流式更新 → 最终停止原因）。
      *
-     * <p>ACP 是一问一答：本次 prompt 的响应一旦返回，就没有通道承载「稍后续发」的那一轮输出，
-     * 且 ACP 入口没有积压续发点。引擎忙时把输入放进积压（DEFERRED）的话，这里撤回并拒绝，
-     * 否则这条消息会在队列里等一个永远不会来的续发。</p>
+     * <p>与直连 {@code engine.handle} 相比，这里不再自己判忙、自己 takeWhile 停流、自己撤回积压：
+     * 忙由 {@link BusyPolicy#REJECT} 直接拒绝，停止由客户端 cancel 走 {@code admin.interrupt}，
+     * 中断之后框架保证本轮不再投递事件、终态一定是 CANCELLED。</p>
      */
-    private Mono<AcpSchema.PromptResponse> notAdmitted(InputOutcome outcome, AgentSession session,
-                                                       PromptContext acpContext) {
-        switch (outcome.getKind()) {
+    private Mono<AcpSchema.PromptResponse> prompt(PromptContext acpContext, String sessionId,
+                                                  HarnessInput input, String cwd) {
+        final long startTime = System.currentTimeMillis();
+        final AtomicInteger toolCallCounter = new AtomicInteger(0);
+
+        // 本轮工作区在开流前补进请求（框架只暴露「改请求」这一个准备动作）
+        RunSink prepare = new RunSink() {
+            @Override
+            public void prepare(RunPrep prep) {
+                if (Assert.isNotEmpty(cwd)) {
+                    prep.request().options(o -> o.toolContextPut(HarnessEngine.ATTR_CWD, cwd));
+                }
+            }
+        };
+
+        return host.stream(TENANT, sessionId, input, prepare)
+                .concatMap(signal -> toAcp(signal, acpContext, sessionId, startTime, toolCallCounter))
+                .onErrorResume(e -> {
+                    // 协议异常透传，保留原错误码；其余异常以消息形式反馈
+                    if (e instanceof AcpProtocolException) {
+                        return Mono.error(e);
+                    }
+                    return acpContext.sendMessage("Error: " + e.getMessage()).then(Mono.empty());
+                })
+                // 只有终态会产出一个 PromptResponse
+                .next()
+                .switchIfEmpty(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN)));
+    }
+
+    /** 一个宿主信号 → ACP 输出（只有终态产生 PromptResponse） */
+    private Mono<AcpSchema.PromptResponse> toAcp(HostSignal signal, PromptContext acpContext,
+                                                 String sessionId, long startTime,
+                                                 AtomicInteger toolCallCounter) {
+        switch (signal.getType()) {
+            case REPLY:
+                if (Assert.isEmpty(signal.getText())) {
+                    return Mono.empty();
+                }
+                return acpContext.sendMessage(signal.getText()).then(Mono.empty());
+            case EVENT:
+                if (signal.getEvent() == null) {
+                    return Mono.empty();
+                }
+                return toAcpEvent(signal.getEvent(), acpContext, sessionId, startTime, toolCallCounter)
+                        .then(Mono.empty());
+            case REJECTED:
+                return acpContext.sendMessage(rejectText(signal))
+                        .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
             case DEFERRED:
-                retractDeferred(session, outcome.getBacklogPosition());
+                // 忙时直接拒绝（BusyPolicy.REJECT），不会进积压；留此分支只为兜底提示
                 return acpContext.sendMessage("当前会话正在执行任务，请稍后再发")
                         .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
-            case REJECTED:
-                String detail = outcome.getRejectDetail();
-                return acpContext.sendMessage(Assert.isEmpty(detail) ? "本次输入未被受理" : detail)
-                        .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
+            case HITL:
+                // ACP 侧没有审批卡通道（未装 HITL 拦截器）：只告警，本轮按空结束
+                LOG.warn("[ACP] hitl pending but ACP has no approval channel: {} (cards={})",
+                        sessionId, signal.getCards().size());
+                return Mono.empty();
+            case FINISHED:
+                return finish(signal.getOutcome(), acpContext, sessionId);
             default:
-                // IGNORED 等：无事可做，正常结束本轮
-                return Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN));
+                // IGNORED / STEERED：无事可做，正常结束本轮
+                return Mono.empty();
         }
     }
 
-    /** 撤回刚进积压的那一条（按引擎给出的位置，从 1 计）。 */
-    private void retractDeferred(AgentSession session, int position) {
-        QueueExtension queue = agentRuntime.getExtension(QueueExtension.class).orElse(null);
-        if (queue == null || session == null || position < 1) {
-            return;
+    /** 未受理的原因文案（引擎给的详情优先） */
+    private String rejectText(HostSignal signal) {
+        if (Assert.isNotEmpty(signal.getText())) {
+            return signal.getText();
         }
-        try {
-            List<QueueItem> items = queue.list(session);
-            if (position <= items.size()) {
-                HarnessResult<Void> canceled = queue.cancelItem(session, items.get(position - 1).getId());
-                if (!canceled.isOk()) {
-                    LOG.warn("[ACP] retract deferred input skipped: {}", canceled);
+        if (signal.getRejectReason() == RejectReason.BUSY) {
+            return "当前会话正在执行任务，请稍后再发";
+        }
+        return "本次输入未被受理";
+    }
+
+    /** 本轮终态：正常结束 / 出错 / 被中断（客户端据此区分「答完了」与「被取消」） */
+    private Mono<AcpSchema.PromptResponse> finish(RunOutcome outcome, PromptContext acpContext, String sessionId) {
+        // 清掉本轮残留的 callId 映射：正常路径下 end 阶段已 remove，
+        // 但工具 start 后被中断（未走到 end）时会残留，此处按 sessionId 前缀兜底清理
+        callIdToToolCallId.keySet().removeIf(k -> k.startsWith(sessionId + "#"));
+
+        if (outcome == null) {
+            // 骨架保证 FINISHED 带终态；真没有时不能把异常当正常结束
+            LOG.warn("[ACP] finished signal without outcome: {}", sessionId);
+            return Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN));
+        }
+        if (outcome.isCancelled()) {
+            return Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.CANCELLED));
+        }
+        if (outcome.isFailed()) {
+            Throwable error = outcome.getError();
+            String message = error == null ? "unknown error" : String.valueOf(error.getMessage());
+            return acpContext.sendMessage("Error: " + message)
+                    .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN)));
+        }
+        return Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN));
+    }
+
+    /** 单个 ReAct 事件 → ACP 流式更新（Plan / 思考 / 工具卡 / 最终回复） */
+    private Mono<Void> toAcpEvent(AgentEvent event, PromptContext acpContext,
+                                  String sessionId, long startTime, AtomicInteger toolCallCounter) {
+        // === 规划阶段：映射到 ACP Plan 结构化输出 ===
+        if (event instanceof PlanEvent) {
+            String content = event.getText();
+            AcpSchema.PlanEntry entry = new AcpSchema.PlanEntry(
+                    content != null ? content : "Planning...",
+                    AcpSchema.PlanEntryPriority.HIGH,
+                    AcpSchema.PlanEntryStatus.IN_PROGRESS
+            );
+            AcpSchema.Plan plan = new AcpSchema.Plan("plan", Collections.singletonList(entry));
+            return acpContext.sendUpdate(sessionId, plan);
+        }
+        // === 思考阶段 ===
+        else if (event instanceof ReasonDeltaEvent) {
+            if (event.hasText() && agentSettings.getGeneral().isCliThinkPrinted()) {
+                return acpContext.sendThought(event.getText());
+            }
+        }
+        // === ThoughtChunk（多任务并行） ===
+        else if (event instanceof ReasonEndEvent) {
+            ReasonEndEvent thoughtChunk = (ReasonEndEvent) event;
+            if (thoughtChunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
+                String content = thoughtChunk.getText();
+                if (Assert.isNotEmpty(content)) {
+                    return acpContext.sendThought(content);
                 }
             }
-        } catch (Throwable e) {
-            LOG.warn("[ACP] retract deferred input failed: {}", e.toString());
         }
+        // === 工具执行开始阶段：发 pending ToolCall 骨架卡 ===
+        else if (event instanceof ToolCallStartEvent) {
+            ToolCallStartEvent startChunk = (ToolCallStartEvent) event;
+            String toolName = startChunk.getToolName();
+
+            if (isInternalTool(toolName)) {
+                return Mono.empty();
+            }
+
+            // 以 callId 作为 toolCallId 的稳定来源，保证 start/end 精确配对；
+            // callId 缺失时退化为自增序号。
+            String toolCallId = resolveToolCallId(startChunk.getCallId(), toolCallCounter);
+            callIdToToolCallId.put(sessionId + "#" + startChunk.getCallId(), toolCallId);
+
+            Map<String, Object> args = startChunk.getArgs();
+            AcpSchema.ToolCall toolCall = new AcpSchema.ToolCall(
+                    "tool_call",
+                    toolCallId,
+                    buildToolTitle(toolName, startChunk.getAgentName(), args, null, true),
+                    resolveToolKind(toolName),
+                    AcpSchema.ToolCallStatus.IN_PROGRESS,
+                    Collections.emptyList(),
+                    buildLocations(args),
+                    args,          // rawInput
+                    null,          // rawOutput
+                    null           // meta
+            );
+            return acpContext.sendUpdate(sessionId, toolCall);
+        }
+        // === 工具执行结束阶段：发 ToolCallUpdate 填充完成/失败态 ===
+        else if (event instanceof ToolCallEndEvent) {
+            ToolCallEndEvent observationChunk = (ToolCallEndEvent) event;
+            String toolName = observationChunk.getToolName();
+
+            if (isInternalTool(toolName)) {
+                return Mono.empty();
+            }
+
+            // 复用 start 阶段登记的 toolCallId；未登记（无 start 事件）时新建
+            String key = sessionId + "#" + observationChunk.getCallId();
+            String toolCallId = callIdToToolCallId.remove(key);
+            if (toolCallId == null) {
+                toolCallId = resolveToolCallId(observationChunk.getCallId(), toolCallCounter);
+            }
+
+            boolean failed = observationChunk.getError() != null;
+            String content = failed
+                    ? String.valueOf(observationChunk.getError().getMessage())
+                    : event.getText();
+            Map<String, Object> args = observationChunk.getArgs();
+
+            AcpSchema.ToolCallUpdateNotification update = new AcpSchema.ToolCallUpdateNotification(
+                    "tool_call_update",
+                    toolCallId,
+                    buildToolTitle(toolName, observationChunk.getAgentName(), args, content, false),
+                    resolveToolKind(toolName),
+                    failed ? AcpSchema.ToolCallStatus.FAILED : AcpSchema.ToolCallStatus.COMPLETED,
+                    buildToolContent(toolName, args, content),
+                    buildLocations(args),
+                    args,          // rawInput
+                    content,       // rawOutput
+                    null           // meta
+            );
+            return acpContext.sendUpdate(sessionId, update);
+        }
+        // === 最终回复阶段 ===
+        else if (event instanceof RunEndEvent) {
+            String traceInfo = buildTraceInfo(((RunEndEvent) event).getTrace(), startTime);
+
+            // 发送最终文本内容
+            return acpContext.sendMessage(event.getText() + traceInfo);
+        }
+
+        return Mono.empty();
     }
 
     /**
@@ -710,7 +754,6 @@ public class AcpLink implements Runnable {
         private final String cwd;
         private final List<AcpSchema.McpServer> mcpServers;
         private final Instant createdAt;
-        private volatile boolean cancelled;
 
         public AcpSessionContext(String cwd, List<AcpSchema.McpServer> mcpServers) {
             this.cwd = cwd;
@@ -728,14 +771,6 @@ public class AcpLink implements Runnable {
 
         public List<AcpSchema.McpServer> getMcpServers() {
             return mcpServers;
-        }
-
-        public boolean isCancelled() {
-            return cancelled;
-        }
-
-        public void setCancelled(boolean cancelled) {
-            this.cancelled = cancelled;
         }
     }
 }
