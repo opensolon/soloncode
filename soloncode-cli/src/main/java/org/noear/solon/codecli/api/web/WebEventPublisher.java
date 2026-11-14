@@ -18,7 +18,7 @@ package org.noear.solon.codecli.api.web;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.codecli.session.HostAttrs;
 import org.noear.solon.codecli.api.web.event.WebEvent;
-import org.noear.solon.codecli.session.SessionActivity;
+import org.noear.solon.ai.harness.session.SessionStatus;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -90,7 +90,7 @@ class WebEventPublisher {
      * 有活跃流时不动终态门；否则复位后发 done（供输入受理失败等「流可能尚未建立」路径）。
      */
     void emitDoneGuarded(WorkspaceContext wsContext, AgentSession session) {
-        if (SessionActivity.hasActiveStream(session)) return;
+        if (SessionStatus.of(session).isBusy()) return;
         resetStreamDoneSent(session);
         emitDoneOnce(wsContext, session);
     }

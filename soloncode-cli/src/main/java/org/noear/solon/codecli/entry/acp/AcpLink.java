@@ -12,6 +12,7 @@ import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
+import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.task.PlanEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
@@ -22,6 +23,7 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.HostSignal;
 import org.noear.solon.ai.harness.host.RunOutcome;
@@ -60,6 +62,11 @@ public class AcpLink implements Runnable {
     /** 宿主骨架的租户键（ACP 只有一个引擎） */
     private static final String TENANT = "acp";
 
+    /** 挂起卡无人可批时的回执（同时作为拒绝理由写入工具结果） */
+    private static final String HITL_UNSUPPORTED =
+            "ACP 客户端没有审批通道：本次工具调用已全部拒绝，本轮已停止。"
+            + "需要逐次确认请关闭 HITL，或改用 Web / 桌面端。";
+
     private final HarnessEngine agentRuntime;
     private final AcpAgentTransport agentTransport;
     private final AgentSettings agentSettings;
@@ -75,6 +82,13 @@ public class AcpLink implements Runnable {
                 // ACP 是一问一答：goal / loop 的后台轮次在 ACP 侧没有出口，也不接管积压续发
                 .programRuns(false)
                 .build();
+
+        if (agentRuntime.isHitlEnabled()) {
+            // 启动就说清楚：ACP 协议侧有审批通道（session/request_permission），但本入口尚未使用，
+            // 落到挂起卡的轮次会被自动拒绝并停掉（见 denyHitl），而不是停在审批上等一个点不了的头。
+            LOG.warn("[ACP] hitlEnabled=true but ACP approval is not wired: pending cards are auto-denied, "
+                    + "turn is stopped. Disable hitl or use the web / desktop entry");
+        }
     }
 
     private final Map<String, AcpSessionContext> sessionStates = new ConcurrentHashMap<>();
@@ -239,11 +253,12 @@ public class AcpLink implements Runnable {
                 return acpContext.sendMessage("当前会话正在执行任务，请稍后再发")
                         .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
             case HITL:
-                // ACP 侧没有审批卡通道（未装 HITL 拦截器）：只告警，本轮按空结束
-                LOG.warn("[ACP] hitl pending but ACP has no approval channel: {} (cards={})",
-                        sessionId, signal.getCards().size());
-                return Mono.empty();
+                return denyHitl(signal.getCards(), acpContext, sessionId);
             case FINISHED:
+                if (signal.getOutcome() != null && signal.getOutcome().getHitlCards().isEmpty() == false) {
+                    // 终态里还带着挂起卡（HITL 信号在同一轮里已经处理过；这里兜底「只收到终态」的路径）
+                    return denyHitl(signal.getOutcome().getHitlCards(), acpContext, sessionId);
+                }
                 return finish(signal.getOutcome(), acpContext, sessionId);
             default:
                 // IGNORED / STEERED：无事可做，正常结束本轮
@@ -262,11 +277,48 @@ public class AcpLink implements Runnable {
         return "本次输入未被受理";
     }
 
+    /**
+     * ACP 侧没有使用审批通道时，把挂起卡就地了结（安全方向：拒绝），再停掉本轮。
+     *
+     * <p>不能只是「告警后结束」：挂起卡留在会话里会让后续输入一律按「待审批」拒收，
+     * 会话从此不可用（重启才恢复）。拒绝后会触发续流，而那一轮在 ACP 侧没有出口，
+     * 所以立即停掉，终态按 REFUSAL 回报给客户端。</p>
+     */
+    private Mono<AcpSchema.PromptResponse> denyHitl(List<HitlCard> cards, PromptContext acpContext, String sessionId) {
+        int denied = 0;
+        if (cards != null) {
+            for (HitlCard card : cards) {
+                if (card.isDecided()) {
+                    continue; // 已决策的残留项：不重复写，等引擎自己消费
+                }
+                try {
+                    host.decide(TENANT, sessionId, card.getCallId(), HITLAction.REJECT,
+                            HITL_UNSUPPORTED, null);
+                    denied++;
+                } catch (Throwable e) {
+                    LOG.warn("[ACP] deny hitl card failed: {} #{}", sessionId, card.getCallId(), e);
+                }
+            }
+        }
+
+        // 拒绝会触发续流：ACP 没有出口，也没有人能看，直接停掉
+        host.admin(TENANT).interrupt(sessionId, InterruptMode.CANCEL_STREAM);
+        cleanupToolCalls(sessionId);
+        LOG.warn("[ACP] hitl pending but ACP has no approval channel: {} (cards={}, denied={})",
+                sessionId, cards == null ? 0 : cards.size(), denied);
+
+        return acpContext.sendMessage(HITL_UNSUPPORTED)
+                .then(Mono.just(new AcpSchema.PromptResponse(AcpSchema.StopReason.REFUSAL)));
+    }
+
+    /** 清掉本轮残留的 callId 映射（正常路径下 end 阶段已 remove，工具 start 后被中断会残留） */
+    private void cleanupToolCalls(String sessionId) {
+        callIdToToolCallId.keySet().removeIf(k -> k.startsWith(sessionId + "#"));
+    }
+
     /** 本轮终态：正常结束 / 出错 / 被中断（客户端据此区分「答完了」与「被取消」） */
     private Mono<AcpSchema.PromptResponse> finish(RunOutcome outcome, PromptContext acpContext, String sessionId) {
-        // 清掉本轮残留的 callId 映射：正常路径下 end 阶段已 remove，
-        // 但工具 start 后被中断（未走到 end）时会残留，此处按 sessionId 前缀兜底清理
-        callIdToToolCallId.keySet().removeIf(k -> k.startsWith(sessionId + "#"));
+        cleanupToolCalls(sessionId);
 
         if (outcome == null) {
             // 骨架保证 FINISHED 带终态；真没有时不能把异常当正常结束

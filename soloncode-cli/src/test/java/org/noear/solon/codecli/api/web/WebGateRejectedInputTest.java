@@ -8,7 +8,7 @@ import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.agent.session.SessionRuns;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
-import org.noear.solon.codecli.session.SessionActivity;
+import org.noear.solon.ai.harness.session.SessionStatus;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.codecli.workspace.WorkspaceMessageGateway;
 import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
@@ -68,11 +68,11 @@ class WebGateRejectedInputTest {
     void admittingInputAloneIsNotAnActiveStream() {
         AgentSession session = InMemoryAgentSession.of();
         session.attrs().put(HarnessAttrs.INPUT_ADMITTING, Boolean.TRUE);
-        assertTrue(SessionActivity.isInputAdmitting(session));
-        assertFalse(SessionActivity.hasActiveStream(session));
+        assertTrue(SessionStatus.of(session).isAdmitting());
+        assertFalse(SessionStatus.of(session).isBusy());
 
         SessionRuns.attach(session, newHandle());
-        assertTrue(SessionActivity.hasActiveStream(session));
+        assertTrue(SessionStatus.of(session).isBusy());
     }
 
     @Test
@@ -80,11 +80,11 @@ class WebGateRejectedInputTest {
         AgentSession session = InMemoryAgentSession.of();
         reactor.core.Disposable handle = newHandle();
         SessionRuns.attach(session, handle);
-        assertTrue(SessionActivity.hasActiveStream(session));
+        assertTrue(SessionStatus.of(session).isBusy());
 
         SessionRuns.detach(session, handle);
 
-        assertFalse(SessionActivity.hasActiveStream(session));
+        assertFalse(SessionStatus.of(session).isBusy());
         assertFalse(SessionRuns.isBusy(session));
         // 会话 attrs 不再承载任何句柄
         assertTrue(session.attrs().keySet().stream().noneMatch(k -> k.contains("disposable")));

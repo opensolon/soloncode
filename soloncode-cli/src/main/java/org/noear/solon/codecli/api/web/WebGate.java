@@ -33,7 +33,7 @@ import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.auth.UserAuthConfig;
 import org.noear.solon.codecli.auth.UserLoginController;
 import org.noear.solon.codecli.auth.UserSessionManager;
-import org.noear.solon.codecli.session.SessionActivity;
+import org.noear.solon.ai.harness.session.SessionStatus;
 import org.noear.solon.codecli.session.SessionIdOwnership;
 import org.noear.solon.codecli.session.SessionMeta;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
@@ -231,7 +231,12 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         try {
             // 只取已存在的会话：判忙不应顺带新建（不存在即不忙）
             AgentSession session = engine.getSessionOrNull(sessionId);
-            return session != null && SessionActivity.isBusy(session);
+            // 忙 = 有运行流或正处于「已受理、流未登记」的窗口（不含待审批：那是占用而非忙）
+            if (session == null) {
+                return false;
+            }
+            SessionStatus status = SessionStatus.of(session);
+            return status.isBusy() || status.isAdmitting();
         } catch (Exception e) {
             LOG.warn("[WebGate] busy check failed for session {}: {}", sessionId, e.getMessage());
             return false;
@@ -510,7 +515,8 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         try {
             AgentSession session = wsContext.getEngine().getSession(sessionId);
             // 裸斜杠（如 "/"）无命令名：忙时跳过并告警，不进入穿透判定也不排队
-            if (input != null && "/".equals(input.trim()) && SessionActivity.isBusy(session)) {
+            SessionStatus status = SessionStatus.of(session);
+            if (input != null && "/".equals(input.trim()) && (status.isBusy() || status.isAdmitting())) {
                 LOG.warn("[WebGate] {} event skipped for session {}: empty command", source, sessionId);
                 return false;
             }
