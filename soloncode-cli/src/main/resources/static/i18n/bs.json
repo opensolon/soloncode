@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "Pretraži MCP servere...",
   "chatcap.empty": "Nema dostupnih stavki",
   "chatcap.noMatch": "Nema rezultata",
-  "chatcap.unavailable": "Nedostupno",
-  "chatcap.unavailableTip": "Nedostupno, nije moguće odabrati",
   "chatcap.saveFailed": "Čuvanje nije uspjelo, pokušajte ponovo"
 }

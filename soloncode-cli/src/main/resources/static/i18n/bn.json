@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "MCP সার্ভার খুঁজুন...",
   "chatcap.empty": "কোনো উপলব্ধ আইটেম নেই",
   "chatcap.noMatch": "কোনো মিল নেই",
-  "chatcap.unavailable": "অনুপলব্ধ",
-  "chatcap.unavailableTip": "অনুপলব্ধ, নির্বাচন করা যাবে না",
   "chatcap.saveFailed": "সংরক্ষণ ব্যর্থ, আবার চেষ্টা করুন"
 }

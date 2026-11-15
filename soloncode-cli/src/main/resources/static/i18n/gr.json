@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "Αναζήτηση διακομιστών MCP...",
   "chatcap.empty": "Δεν υπάρχουν διαθέσιμα στοιχεία",
   "chatcap.noMatch": "Καμία αντιστοιχία",
-  "chatcap.unavailable": "Μη διαθέσιμο",
-  "chatcap.unavailableTip": "Μη διαθέσιμο, δεν μπορεί να επιλεγεί",
   "chatcap.saveFailed": "Η αποθήκευση απέτυχε, δοκιμάστε ξανά"
 }

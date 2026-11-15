@@ -3893,9 +3893,8 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .cap-clear:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .cap-clear:disabled { opacity: 0.4; cursor: default; }
 .cap-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; cursor: pointer; }
-.cap-item:hover:not(.disabled) { background: var(--bg-hover); }
+.cap-item:hover { background: var(--bg-hover); }
 .cap-item.active { color: var(--accent); background: var(--accent-light); }
-.cap-item.disabled { opacity: 0.45; cursor: default; }
 .cap-check { width: 12px; flex: 0 0 12px; font-size: 11px; line-height: 1.7; }
 .cap-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .cap-item-name { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); min-width: 0; }
@@ -3903,4 +3902,3 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .cap-item-badge { flex: 0 0 auto; font-size: var(--fs-3xs); color: var(--text-secondary); background: var(--bg-hover); border-radius: 4px; padding: 0 4px; line-height: 1.6; }
 .cap-item.active .cap-item-badge { color: var(--accent); background: transparent; }
 .cap-item-desc { color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cap-item-tag { font-size: var(--fs-3xs); color: var(--text-secondary); flex: 0 0 auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 4px; line-height: 1.6; }

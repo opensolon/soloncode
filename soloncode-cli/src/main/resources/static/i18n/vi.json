@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "Tìm máy chủ MCP...",
   "chatcap.empty": "Không có mục khả dụng",
   "chatcap.noMatch": "Không có kết quả",
-  "chatcap.unavailable": "Không khả dụng",
-  "chatcap.unavailableTip": "Không khả dụng, không thể chọn",
   "chatcap.saveFailed": "Lưu thất bại, vui lòng thử lại"
 }

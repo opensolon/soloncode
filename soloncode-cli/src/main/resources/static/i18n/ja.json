@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "MCP サーバーを検索...",
   "chatcap.empty": "利用可能な項目がありません",
   "chatcap.noMatch": "一致する項目がありません",
-  "chatcap.unavailable": "利用不可",
-  "chatcap.unavailableTip": "利用不可のため選択できません",
   "chatcap.saveFailed": "保存に失敗しました。再試行してください"
 }

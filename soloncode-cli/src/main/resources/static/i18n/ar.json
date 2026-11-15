@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "بحث عن خوادم MCP...",
   "chatcap.empty": "لا توجد عناصر متاحة",
   "chatcap.noMatch": "لا توجد نتائج",
-  "chatcap.unavailable": "غير متاح",
-  "chatcap.unavailableTip": "غير متاح، لا يمكن اختياره",
   "chatcap.saveFailed": "فشل الحفظ، يرجى المحاولة مرة أخرى"
 }

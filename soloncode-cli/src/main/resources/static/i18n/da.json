@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "Søg MCP-servere...",
   "chatcap.empty": "Ingen tilgængelige elementer",
   "chatcap.noMatch": "Ingen match",
-  "chatcap.unavailable": "Utilgængelig",
-  "chatcap.unavailableTip": "Utilgængelig, kan ikke vælges",
   "chatcap.saveFailed": "Lagring mislykkedes, prøv igen"
 }

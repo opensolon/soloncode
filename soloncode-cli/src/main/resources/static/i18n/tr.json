@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "MCP sunucusu ara...",
   "chatcap.empty": "Kullanılabilir öğe yok",
   "chatcap.noMatch": "Eşleşme yok",
-  "chatcap.unavailable": "Kullanılamaz",
-  "chatcap.unavailableTip": "Kullanılamıyor, seçilemez",
   "chatcap.saveFailed": "Kaydedilemedi, lütfen tekrar deneyin"
 }

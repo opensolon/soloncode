@@ -330,8 +330,9 @@ public class ChatWebController extends AbstractWebController {
     }
 
     /**
-     * 查询可选的技能与 MCP 服务（输入面板选择器用）。
+     * 查询可选的技能与 MCP 服务（输入面板、自动任务选择器共用）。
      *
+     * <p>只返回当前可用的：已禁用的技能、未启用的 MCP 服务不进列表（不可选的东西不该出现）。</p>
      * <p>技能给完整 id（兼做前端展示与回传），MCP 只给名字与启用状态（不下发 env / headers）。</p>
      *
      * @return 包含 skills、mcpServers 的结果对象
@@ -343,11 +344,15 @@ public class ChatWebController extends AbstractWebController {
 
         List<Map<String, Object>> skills = new ArrayList<>();
         for (SkillDescriptor skill : harnessEngine.getSkills()) {
+            boolean allowed = harnessEngine.getSkillCatalog().isAllowed(skill);
+            if (allowed == false) {
+                continue;
+            }
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("id", skill.getId());
             item.put("name", skill.getName());
             item.put("description", skill.getDescription());
-            item.put("enabled", harnessEngine.getSkillCatalog().isAllowed(skill));
+            item.put("enabled", allowed);
             skills.add(item);
         }
         Collections.sort(skills, new Comparator<Map<String, Object>>() {
@@ -360,9 +365,13 @@ public class ChatWebController extends AbstractWebController {
         List<Map<String, Object>> mcpServers = new ArrayList<>();
         for (Map.Entry<String, org.noear.solon.ai.mcp.client.McpServerParameters> entry
                 : harnessEngine.getMcpServers().entrySet()) {
+            boolean enabled = entry.getValue() != null && entry.getValue().isEnabled();
+            if (enabled == false) {
+                continue;
+            }
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", entry.getKey());
-            item.put("enabled", entry.getValue() != null && entry.getValue().isEnabled());
+            item.put("enabled", enabled);
             mcpServers.add(item);
         }
         Collections.sort(mcpServers, new Comparator<Map<String, Object>>() {

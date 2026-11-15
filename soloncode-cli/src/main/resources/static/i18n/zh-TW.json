@@ -1401,14 +1401,12 @@
   "history.clearTitle": "清空未置頂對話",
   "streaming.queuePausedHitl": "待審批中，佇列已暫停",
   "chatcap.skills": "技能",
-  "chatcap.mcp": "MCP",
+  "chatcap.mcp": "連接器",
   "chatcap.unrestricted": "不限制",
   "chatcap.unrestrictedShort": "不限",
   "chatcap.searchSkills": "搜尋技能...",
-  "chatcap.searchMcp": "搜尋 MCP 服務...",
+  "chatcap.searchMcp": "搜尋連接器...",
   "chatcap.empty": "暂无可用项目",
   "chatcap.noMatch": "無符合項目",
-  "chatcap.unavailable": "已失效",
-  "chatcap.unavailableTip": "已失效，無法選擇",
   "chatcap.saveFailed": "儲存失敗，請重試"
 }

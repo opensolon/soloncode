@@ -1401,14 +1401,12 @@
   "sidebar.wsPickTimeout": "目录选择超时或失败，请重试",
   "streaming.queuePausedHitl": "待审批中，队列已暂停",
   "chatcap.skills": "技能",
-  "chatcap.mcp": "MCP",
+  "chatcap.mcp": "连接器",
   "chatcap.unrestricted": "不限制",
   "chatcap.unrestrictedShort": "不限",
   "chatcap.searchSkills": "搜索技能...",
-  "chatcap.searchMcp": "搜索 MCP 服务...",
+  "chatcap.searchMcp": "搜索连接器...",
   "chatcap.empty": "暂无可用项",
   "chatcap.noMatch": "无匹配项",
-  "chatcap.unavailable": "已失效",
-  "chatcap.unavailableTip": "已失效，不可选择",
   "chatcap.saveFailed": "保存失败，请重试"
 }

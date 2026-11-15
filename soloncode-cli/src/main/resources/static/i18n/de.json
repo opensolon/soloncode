@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "MCP-Dienste suchen...",
   "chatcap.empty": "Keine verfügbar",
   "chatcap.noMatch": "Keine Treffer",
-  "chatcap.unavailable": "Nicht verfügbar",
-  "chatcap.unavailableTip": "Nicht verfügbar, keine Auswahl möglich",
   "chatcap.saveFailed": "Speichern fehlgeschlagen, bitte erneut versuchen"
 }

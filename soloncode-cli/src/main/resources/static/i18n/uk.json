@@ -1408,7 +1408,5 @@
   "chatcap.searchMcp": "Пошук серверів MCP...",
   "chatcap.empty": "Немає доступних елементів",
   "chatcap.noMatch": "Немає збігів",
-  "chatcap.unavailable": "Недоступно",
-  "chatcap.unavailableTip": "Недоступно, вибір неможливий",
   "chatcap.saveFailed": "Не вдалося зберегти, спробуйте ще раз"
 }

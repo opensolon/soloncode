@@ -67,7 +67,19 @@
                 desc: (field === 'skills' ? item.description : item.description) || '',
                 enabled: item.enabled !== false
             };
-        }).filter(function (item) { return !!item.value; });
+        })
+            // 已禁用（停用的技能）/ 未启用（停用的 MCP 服务）一律不进列表：不可选的东西不该占位置
+            .filter(function (item) { return !!item.value && item.enabled; });
+    }
+
+    /** 从选择里剔掉当前不可用的项（历史选择残留、或选项已变化），返回值即引擎实际生效的那一份 */
+    function filterAvailable(field, values, items) {
+        var list = items || (options ? normalize(field, options) : null);
+        // 选项还没拉回来时不做过滤，避免把选择误当成“全部失效”而清空
+        if (!list) return (values || []).slice();
+        var available = {};
+        list.forEach(function (item) { available[item.value] = true; });
+        return (values || []).filter(function (v) { return available[v]; });
     }
 
     function dimOf(field) {
@@ -89,13 +101,11 @@
 
     function itemHtml(item, selected) {
         var active = selected.indexOf(item.value) >= 0;
-        var tip = item.value
-            + (item.desc ? '\n' + item.desc : '')
-            + (item.enabled ? '' : '\n' + t('chatcap.unavailableTip'));
+        var tip = item.value + (item.desc ? '\n' + item.desc : '');
 
         return ''
-            + '<div class="cap-item' + (active ? ' active' : '') + (item.enabled ? '' : ' disabled') + '"'
-            + ' data-value="' + esc(item.value) + '"' + (item.enabled ? '' : ' data-disabled="1"')
+            + '<div class="cap-item' + (active ? ' active' : '') + '"'
+            + ' data-value="' + esc(item.value) + '"'
             + ' title="' + esc(tip) + '">'
             + '  <span class="cap-check">' + (active ? '✓' : '') + '</span>'
             + '  <span class="cap-item-main">'
@@ -105,7 +115,6 @@
             + '    </span>'
             + (item.desc ? '<span class="cap-item-desc">' + esc(item.desc) + '</span>' : '')
             + '  </span>'
-            + (item.enabled ? '' : '<span class="cap-item-tag">' + esc(t('chatcap.unavailable')) + '</span>')
             + '</div>';
     }
 
@@ -178,7 +187,8 @@
 
     function render(widget) {
         var field = widget.dim.field;
-        var selected = selection[field] || [];
+        // 计数与勾选只看当前可用项：已禁用 / 未启用的不显示，也就不该算进标签
+        var selected = filterAvailable(field, selection[field]);
 
         widget.$items.html(itemsHtml(itemsOf(field), selected, widget.$search.val()));
 
@@ -220,7 +230,7 @@
         if (!sessionId) return;
 
         var payload = { sessionId: sessionId };
-        var value = selection[field];
+        var value = field && selection[field] != null ? filterAvailable(field, selection[field]) : null;
         payload[field] = value == null ? '' : value.join(',');
 
         $.post('/web/chat/skills/select', payload).fail(function (err) {
@@ -375,6 +385,7 @@
         searchPlaceholder: searchPlaceholder,
         clearText: function () { return t('chatcap.unrestricted'); },
         normalize: normalize,
+        filterAvailable: filterAvailable,
         itemsHtml: itemsHtml
     };
 

@@ -274,6 +274,9 @@
     function capItemsHtml(items, selected, query) {
         return window.Capabilities ? window.Capabilities.itemsHtml(items, selected, query) : '';
     }
+    function capFilterAvailable(kind, values, items) {
+        return window.Capabilities ? window.Capabilities.filterAvailable(kind, values, items) : values;
+    }
     // 渲染下拉项：items=[{value,label,desc}]，空值项始终在首位
     function renderSelItems(box, items, selected, emptyLabel, emptyDesc) {
         var html = '<div class="model-dropdown-item' + (selected ? '' : ' active') + '" data-value="">' +
@@ -374,7 +377,8 @@
         var query = '';
 
         function paint() {
-            var values = multiValues(row, kind);
+            // 已禁用 / 未启用的项不出现在列表，也不计入数量（与输入面板同口径）
+            var values = capFilterAvailable(kind, multiValues(row, kind), items);
             // 与输入面板同一口径：空态只显名称，有选择时追加数量
             nameEl.textContent = capLabel(kind, values.length, placeholder);
             box.classList.toggle('has-selection', values.length > 0);
@@ -668,7 +672,9 @@
             // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',
             modelName: getSel(row, 'model'), agentName: getSel(row, 'agent'),
-            skills: getSel(row, 'skills'), mcps: getSel(row, 'mcps')};
+            // 只提交当前可用项：已停用的技能 / MCP 存着也不会生效，不如不写进任务
+            skills: capFilterAvailable('skills', multiValues(row, 'skills')).join(','),
+            mcps: capFilterAvailable('mcps', multiValues(row, 'mcps')).join(',')};
         if (!data.prompt) { toast(I18n.t('automation.promptRequired'), 'error'); return; }
         if (isCron && !data.cron) { toast(I18n.t('automation.cronRequired'), 'error'); return; }
         if (!isCron && !(parseInt(data.intervalMinutes, 10) > 0)) { toast(I18n.t('automation.intervalInvalid'), 'error'); return; }
