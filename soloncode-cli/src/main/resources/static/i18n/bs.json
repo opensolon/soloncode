@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Neuspješno pražnjenje razgovora, pokušajte ponovo",
   "history.clearSuccess": "Ispražnjeno {count} razgovora",
   "history.clearTitle": "Isprazni neokačene razgovore",
-  "streaming.queuePausedHitl": "Čeka se odobrenje — red pauziran"
+  "streaming.queuePausedHitl": "Čeka se odobrenje — red pauziran",
+  "chatcap.skills": "Vještine",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Bez ograničenja",
+  "chatcap.unrestrictedShort": "Sve",
+  "chatcap.searchSkills": "Pretraži vještine...",
+  "chatcap.searchMcp": "Pretraži MCP servere...",
+  "chatcap.empty": "Nema dostupnih stavki",
+  "chatcap.noMatch": "Nema rezultata",
+  "chatcap.unavailable": "Nedostupno",
+  "chatcap.unavailableTip": "Nedostupno, nije moguće odabrati",
+  "chatcap.saveFailed": "Čuvanje nije uspjelo, pokušajte ponovo"
 }

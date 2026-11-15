@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Falha ao limpar conversas, tente novamente",
   "history.clearSuccess": "{count} conversas limpas",
   "history.clearTitle": "Limpar conversas não fixadas",
-  "streaming.queuePausedHitl": "O c'hort war-davet — arsavet eo ar steudad"
+  "streaming.queuePausedHitl": "O c'hort war-davet — arsavet eo ar steudad",
+  "chatcap.skills": "Habilidades",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Sem restrição",
+  "chatcap.unrestrictedShort": "Todos",
+  "chatcap.searchSkills": "Pesquisar habilidades...",
+  "chatcap.searchMcp": "Pesquisar servidores MCP...",
+  "chatcap.empty": "Nada disponível",
+  "chatcap.noMatch": "Sem resultados",
+  "chatcap.unavailable": "Indisponível",
+  "chatcap.unavailableTip": "Indisponível, não é possível selecionar",
+  "chatcap.saveFailed": "Falha ao salvar, tente novamente"
 }

@@ -337,9 +337,11 @@ public class LoopWebController extends AbstractWebController {
                                     @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
                                     @Param(value = "modelName", required = false) String modelName,
                                     @Param(value = "agentName", required = false) String agentName,
+                                    @Param(value = "skills", required = false) String skills,
+                                    @Param(value = "mcps", required = false) String mcps,
                                     @Param(value = "locale", required = false) String locale) {
         try {
-            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName, locale);
+            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName, splitNames(skills), splitNames(mcps), locale);
             return Result.succeed();
         } catch (IllegalArgumentException e) {
             return Result.failure(404, e.getMessage());
@@ -431,12 +433,14 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
                              @Param(value = "modelName", required = false) String modelName,
                              @Param(value = "agentName", required = false) String agentName,
+                             @Param(value = "skills", required = false) String skills,
+                             @Param(value = "mcps", required = false) String mcps,
                              @Param(value = "locale", required = false) String locale) {
         if (isAutomationType(type)) {
             try {
                 // 任务记下创建者的界面语言：定时轮次由后台调度发起，没有输入可取语言
                 String taskId = automationManager().create(name, prompt, intervalMinutes, cron, taskType, runNow,
-                        maxTokens, maxDurationMs, modelName, agentName, AiI18n.toLocale(locale));
+                        maxTokens, maxDurationMs, modelName, agentName, splitNames(skills), splitNames(mcps), AiI18n.toLocale(locale));
                 return Result.succeed(taskId);
             } catch (IllegalArgumentException | IllegalStateException | IOException e) {
                 return Result.failure(400, e.getMessage());
@@ -460,9 +464,11 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "maxDurationMs", required = false) Long maxDurationMs,
                              @Param(value = "modelName", required = false) String modelName,
                              @Param(value = "agentName", required = false) String agentName,
+                             @Param(value = "skills", required = false) String skills,
+                             @Param(value = "mcps", required = false) String mcps,
                              @Param(value = "locale", required = false) String locale) {
         if (isAutomationType(type)) {
-            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName, locale);
+            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName, skills, mcps, locale);
         }
         return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, locale);
     }
@@ -502,6 +508,20 @@ public class LoopWebController extends AbstractWebController {
         if (isAutomationType(type)) return automationSession(id);
         if (!isValidSessionId(sessionId)) return Result.failure(400, "sessionId is required for SESSION_LOOP");
         return Result.succeed(sessionId);
+    }
+
+    /** 逗号分隔清单 → 去空去重；未传（null）保持 null（等于不限制 / 清除） */
+    private static List<String> splitNames(String text) {
+        if (text == null) return null;
+
+        List<String> names = new ArrayList<>();
+        for (String name : text.split(",")) {
+            String trimmed = name.trim();
+            if (trimmed.isEmpty() == false && names.contains(trimmed) == false) {
+                names.add(trimmed);
+            }
+        }
+        return names;
     }
 
     private static boolean isAutomationType(String type) {

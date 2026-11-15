@@ -1399,5 +1399,16 @@
   "users.auth.conversationIsolation": "Benutzer-Dialogisolierung",
   "users.auth.conversationIsolationDesc": "Wenn aktiviert, können verschiedene angemeldete Benutzer nur ihre eigenen Dialoge sehen und verwenden",
   "users.auth.enabled": "Benutzerauthentifizierung aktivieren",
-  "streaming.queuePausedHitl": "Warten auf Freigabe – Warteschlange pausiert"
+  "streaming.queuePausedHitl": "Warten auf Freigabe – Warteschlange pausiert",
+  "chatcap.skills": "Fähigkeiten",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Keine Einschränkung",
+  "chatcap.unrestrictedShort": "Alle",
+  "chatcap.searchSkills": "Fähigkeiten suchen...",
+  "chatcap.searchMcp": "MCP-Dienste suchen...",
+  "chatcap.empty": "Keine verfügbar",
+  "chatcap.noMatch": "Keine Treffer",
+  "chatcap.unavailable": "Nicht verfügbar",
+  "chatcap.unavailableTip": "Nicht verfügbar, keine Auswahl möglich",
+  "chatcap.saveFailed": "Speichern fehlgeschlagen, bitte erneut versuchen"
 }

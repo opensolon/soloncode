@@ -96,6 +96,8 @@
             '<div class="input-toolbar"><div class="toolbar-left">' +
             selHtml('agent', t.agentName || '', I18n.t('automation.agentPlaceholder')) +
             selHtml('model', t.modelName || '', I18n.t('automation.modelPlaceholder')) +
+            selHtml('skills', (t.skills || []).join(','), I18n.t('chatcap.skills')) +
+            selHtml('mcps', (t.mcps || []).join(','), I18n.t('chatcap.mcp')) +
             scheduleSelHtml(cronVal, intervalVal) +
             '</div></div>' +
             '</div>' +
@@ -108,6 +110,8 @@
     // getModelItem/getAgentItem：row 私有数据（存 data-* 属性，行重建不丢失）；setXxx 同步回写
     var SVG_AGENT_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg>';
     var SVG_MODEL_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>';
+    var SVG_SKILL_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.1 5.1L19 10l-4.9 1.9L12 17l-2.1-5.1L5 10l4.9-1.9z"/><path d="M18 16l.9 2.1L21 19l-2.1.9L18 22l-.9-2.1L15 19l2.1-.9z"/></svg>';
+    var SVG_MCP_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 7V3M15 7V3"/><rect x="5" y="7" width="14" height="8" rx="2"/><path d="M12 15v3a3 3 0 0 0 6 0v-2"/></svg>';
     var SVG_SCHEDULE_ICON = '<svg class="toolbar-setting-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 1.5M7 3 5 5M17 3l2 2M9 21h6"/></svg>';
     // ===== 定时定点（可视化 cron）=====
     // 后端 java-cron 为 Quartz 语义：周几 1=周日 … 7=周六（SUN=1, MON=2, ... SAT=7）
@@ -234,15 +238,23 @@
     }
     function selHtml(kind, value, placeholder) {
         var shown = value ? esc(value) : esc(placeholder);
-        var icon = kind === 'agent' ? SVG_AGENT_ICON : SVG_MODEL_ICON;
+        var icon = kind === 'agent' ? SVG_AGENT_ICON
+            : kind === 'skills' ? SVG_SKILL_ICON
+            : kind === 'mcps' ? SVG_MCP_ICON : SVG_MODEL_ICON;
+        // 技能 / MCP 是多选，与输入面板用同一套条目样式、搜索文案和「不限制」按钮
+        var multi = kind === 'skills' || kind === 'mcps';
+        var searchPh = multi && window.Capabilities ? window.Capabilities.searchPlaceholder(kind) : I18n.t('automation.search');
+        var footer = multi
+            ? '<div class="model-dropdown-footer cap-footer"><button type="button" class="cap-clear">' + esc(window.Capabilities ? window.Capabilities.clearText() : I18n.t('chatcap.unrestricted')) + '</button></div>'
+            : '';
         return '<div class="toolbar-selector-group auto-select-group">' + icon +
-            '<div class="model-selector auto-select" data-kind="' + kind + '">' +
-            '<div class="model-selector-current auto-select-current" tabindex="0" role="button" aria-label="' + esc(kind === 'agent' ? I18n.t('automation.agent') : I18n.t('automation.model')) + '">' +
+            '<div class="model-selector auto-select' + (multi ? ' cap-multi' : '') + '" data-kind="' + kind + '">' +
+            '<div class="model-selector-current auto-select-current" tabindex="0" role="button" aria-label="' + esc(kind === 'agent' ? I18n.t('automation.agent') : kind === 'skills' ? I18n.t('chatcap.skills') : kind === 'mcps' ? I18n.t('chatcap.mcp') : I18n.t('automation.model')) + '">' +
             '<span class="model-name">' + shown + '</span>' +
             '<i class="layui-icon layui-icon-down model-arrow"></i></div>' +
-            '<div class="model-dropdown">' +
-            '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="' + I18n.t('automation.search') + '"/></div>' +
-            '<div class="model-dropdown-items"></div></div></div></div>';
+            '<div class="model-dropdown' + (multi ? ' cap-dropdown' : '') + '">' +
+            '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="' + esc(searchPh) + '"/></div>' +
+            '<div class="model-dropdown-items"></div>' + footer + '</div></div></div>';
     }
     function setSel(row, kind, value, placeholder) {
         row.setAttribute('data-' + kind, value || '');
@@ -251,6 +263,16 @@
     }
     function getSel(row, kind) {
         return row.getAttribute('data-' + kind) || '';
+    }
+    // ===== 技能 / MCP 多选：渲染与标签统一走 app-capabilities.js 的共享实现 =====
+    function capLabel(kind, count, placeholder) {
+        return window.Capabilities ? window.Capabilities.label(kind, count) : placeholder + (count ? ' ' + count : '');
+    }
+    function capNormalize(kind, opts) {
+        return window.Capabilities ? window.Capabilities.normalize(kind, opts) : [];
+    }
+    function capItemsHtml(items, selected, query) {
+        return window.Capabilities ? window.Capabilities.itemsHtml(items, selected, query) : '';
     }
     // 渲染下拉项：items=[{value,label,desc}]，空值项始终在首位
     function renderSelItems(box, items, selected, emptyLabel, emptyDesc) {
@@ -271,36 +293,135 @@
         var search = box.querySelector('.model-search-input');
         if (search) search.value = '';
     }
+    // ===== 下拉浮层定位：列表与查看器都是滚动/裁剪容器，绝对定位会被裁，统一改 fixed =====
+    function clearPopBox(box) {
+        if (!box) return;
+        box.classList.remove('open');
+        var dd = box.querySelector('.model-dropdown');
+        if (dd) { dd.classList.remove('is-fixed'); dd.style.left = ''; dd.style.top = ''; dd.style.maxHeight = ''; }
+    }
+    function placePopBox(box) {
+        var dd = box.querySelector('.model-dropdown');
+        var trig = box.querySelector('.auto-select-current');
+        if (!dd || !trig) return;
+        var anchor = trig.getBoundingClientRect();
+        var gap = 6, margin = 10;
+        var width = dd.offsetWidth || 320;
+        var height = dd.offsetHeight || 300;
+        // 左边界对齐触发器所在的整组（图标在左侧），再夹进视口
+        var left = Math.min(Math.max(margin, anchor.left - 26), window.innerWidth - width - margin);
+        var below = window.innerHeight - anchor.bottom - gap - margin;
+        var above = anchor.top - gap - margin;
+        // 下方放不下且上方更宽敞时向上翻，避免列表底部行被视口裁掉
+        var up = height > below && above > below;
+        var maxHeight = Math.max(140, up ? above : below);
+        var shown = Math.min(height, maxHeight);
+        dd.classList.add('is-fixed');
+        dd.style.left = Math.round(left) + 'px';
+        dd.style.maxHeight = Math.round(shown) + 'px';
+        dd.style.top = Math.round(up ? anchor.top - gap - shown : anchor.bottom + gap) + 'px';
+    }
+    function placeAllPops() {
+        document.querySelectorAll('.auto-select.open:not(.auto-schedule-select)').forEach(placePopBox);
+    }
     // 绑定触发器/搜索/选择；onChange 在选择后回调（row 内数据由 setSel 维护）
     function bindSel(row, kind, placeholder, onChange) {
         var box = row.querySelector('.auto-select[data-kind=' + kind + ']');
         if (!box) return;
         var current = box.querySelector('.auto-select-current');
-        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) o.classList.remove('open'); }); }
+        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) clearPopBox(o); }); }
         current.onclick = function (e) {
             e.stopPropagation();
             var opening = !box.classList.contains('open');
             closeOthers();
-            box.classList.toggle('open', opening);
-            if (opening) {
-                requestAnimationFrame(function () {
-                    var active = box.querySelector('.model-dropdown-item.active');
-                    if (active) active.scrollIntoView({ block: 'nearest' });
-                    var input = box.querySelector('.model-search-input');
-                    if (input) { input.value = ''; filterSelItems(box, ''); input.focus(); }
-                });
-            }
+            if (!opening) { clearPopBox(box); return; }
+            box.classList.add('open');
+            requestAnimationFrame(function () {
+                var active = box.querySelector('.model-dropdown-item.active');
+                if (active) active.scrollIntoView({ block: 'nearest' });
+                var input = box.querySelector('.model-search-input');
+                if (input) { input.value = ''; filterSelItems(box, ''); input.focus(); }
+                placePopBox(box);
+            });
         };
         current.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); current.onclick(e); } };
         var search = box.querySelector('.model-search-input');
-        if (search) search.oninput = function () { filterSelItems(box, this.value); };
+        if (search) search.oninput = function () { filterSelItems(box, this.value); placePopBox(box); };
         box.querySelector('.model-dropdown').onclick = function (e) {
             var item = e.target.closest('.model-dropdown-item');
             if (!item) return;
             e.stopPropagation();
             setSel(row, kind, item.getAttribute('data-value') || '', placeholder);
-            closeOthers();
+            // 单选：选中即关闭（原来只关其他行，自己的浮层会一直留在屏幕上）
+            clearPopBox(box);
             if (onChange) onChange(getSel(row, kind));
+        };
+    }
+    // ===== 多选（技能 / MCP）：值以逗号分隔存 data-* 属性，条目渲染与输入面板同源 =====
+    function multiValues(row, kind) {
+        var raw = getSel(row, kind);
+        return raw ? raw.split(',').filter(function (x) { return !!x; }) : [];
+    }
+    function bindMulti(row, kind, placeholder) {
+        var box = row.querySelector('.auto-select[data-kind=' + kind + ']');
+        if (!box) return function () {};
+        var current = box.querySelector('.auto-select-current');
+        var nameEl = current.querySelector('.model-name');
+        var itemsEl = box.querySelector('.model-dropdown-items');
+        var clearBtn = box.querySelector('.cap-clear');
+        var search = box.querySelector('.model-search-input');
+        var items = [];
+        var query = '';
+
+        function paint() {
+            var values = multiValues(row, kind);
+            // 与输入面板同一口径：空态只显名称，有选择时追加数量
+            nameEl.textContent = capLabel(kind, values.length, placeholder);
+            box.classList.toggle('has-selection', values.length > 0);
+            itemsEl.innerHTML = capItemsHtml(items, values, query);
+            if (clearBtn) clearBtn.disabled = values.length === 0;
+        }
+
+        current.onclick = function (e) {
+            e.stopPropagation();
+            var opening = !box.classList.contains('open');
+            closeAllSels(row);
+            if (!opening) return;
+            box.classList.add('open');
+            query = '';
+            if (search) search.value = '';
+            paint();
+            requestAnimationFrame(function () {
+                if (search) search.focus();
+                placePopBox(box);
+            });
+        };
+        current.onkeydown = function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); current.onclick(e); } };
+        if (search) search.oninput = function () { query = this.value; paint(); placePopBox(box); };
+        box.querySelector('.model-dropdown').onclick = function (e) {
+            var item = e.target.closest ? e.target.closest('.cap-item') : null;
+            if (!item || item.getAttribute('data-disabled')) return;
+            e.stopPropagation();
+            var value = item.getAttribute('data-value');
+            if (!value) return;
+            var values = multiValues(row, kind);
+            var index = values.indexOf(value);
+            if (index >= 0) values.splice(index, 1); else values.push(value);
+            setSel(row, kind, values.join(','), placeholder);
+            paint();
+            // 多选不关闭，但行数/高度会变，重新夹一次位置
+            placePopBox(box);
+        };
+        if (clearBtn) clearBtn.onclick = function (e) {
+            e.stopPropagation();
+            if (!multiValues(row, kind).length) return;
+            setSel(row, kind, '', placeholder);
+            paint();
+            placePopBox(box);
+        };
+        return function (opts) {
+            items = capNormalize(kind, opts);
+            paint();
         };
     }
     function filterSelItems(box, query) {
@@ -310,7 +431,7 @@
         });
     }
     // 点击行内其它区域关闭所有下拉
-    function closeAllSels(row) { row.querySelectorAll('.auto-select.open').forEach(function (o) { o.classList.remove('open'); }); }
+    function closeAllSels(row) { row.querySelectorAll('.auto-select.open').forEach(clearPopBox); }
     // 行内右侧图标按钮（对齐循环任务列表的 loop-item-actions 样式：图标 + title 提示）
     var SVG_PAUSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
     var SVG_PLAY = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>';
@@ -393,7 +514,7 @@
         var parsed = origCron ? cronToVisual(origCron) : null;
         if (parsed) mode = 'visual'; else if (origCron) mode = 'cron';
         var current = box.querySelector('.auto-select-current');
-        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) { o.classList.remove('open'); var p = o.querySelector('.auto-schedule-pop'); if (p) { p.classList.remove('is-fixed'); p.style.left = ''; p.style.top = ''; p.style.maxHeight = ''; } } }); }
+        function closeOthers() { row.querySelectorAll('.auto-select.open').forEach(function (o) { if (o !== box) { clearPopBox(o); var p = o.querySelector('.auto-schedule-pop'); if (p) { p.classList.remove('is-fixed'); p.style.left = ''; p.style.top = ''; p.style.maxHeight = ''; } } }); }
         // 展开方向在打开瞬间一次性锁定（按三种模式中最高面板判断），切换 tab / 重复粒度时不再上下翻转
         var placeDir = null, openMaxHeight = 0;
         function captureOpenHeight() {
@@ -546,7 +667,8 @@
             // 自动任务统一按定时任务创建；不传 taskType，创建走默认、更新时保留旧任务的底层类型。
             // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',
-            modelName: getSel(row, 'model'), agentName: getSel(row, 'agent')};
+            modelName: getSel(row, 'model'), agentName: getSel(row, 'agent'),
+            skills: getSel(row, 'skills'), mcps: getSel(row, 'mcps')};
         if (!data.prompt) { toast(I18n.t('automation.promptRequired'), 'error'); return; }
         if (isCron && !data.cron) { toast(I18n.t('automation.cronRequired'), 'error'); return; }
         if (!isCron && !(parseInt(data.intervalMinutes, 10) > 0)) { toast(I18n.t('automation.intervalInvalid'), 'error'); return; }
@@ -576,8 +698,19 @@
         if (!agentBox || !modelBox) return;
         row.setAttribute('data-agent', t.agentName || '');
         row.setAttribute('data-model', t.modelName || '');
+        row.setAttribute('data-skills', (t.skills || []).join(','));
+        row.setAttribute('data-mcps', (t.mcps || []).join(','));
         bindSel(row, 'agent', I18n.t('automation.agentPlaceholder'));
         bindSel(row, 'model', I18n.t('automation.modelPlaceholder'));
+        var applySkillOptions = bindMulti(row, 'skills', I18n.t('chatcap.skills'));
+        var applyMcpOptions = bindMulti(row, 'mcps', I18n.t('chatcap.mcp'));
+        // 选项与输入面板同源（会话级选择器用的就是这份清单）
+        api('GET', '/web/chat/skills/options').then(function (data) {
+            if (!row.isConnected) return;
+            var opts = (data && data.data) || data || {};
+            applySkillOptions(opts);
+            applyMcpOptions(opts);
+        }).catch(fail);
         api('GET', '/web/chat/models').then(function (data) {
             if (!modelBox.isConnected) return;
             var list = (data && data.list) || [];
@@ -650,9 +783,12 @@
     // 点击选择器外部时关闭下拉（全局仅注册一次，避免 renderList 重复挂监听）
     document.addEventListener('click', function (e) {
         if (e.target.closest && !e.target.closest('.auto-select')) {
-            document.querySelectorAll('.auto-select.open').forEach(function (o) { o.classList.remove('open'); });
+            document.querySelectorAll('.auto-select.open').forEach(clearPopBox);
         }
     });
+    // 浮层改 fixed 定位后脱离行，滚动/缩放时需重算坐标，否则会与触发器错位
+    window.addEventListener('resize', placeAllPops);
+    window.addEventListener('scroll', placeAllPops, true);
     window.openAutomationViewer = show;
     // 页面加载即静默拉取任务列表，徽标初始化对齐心智记忆（无需先打开面板；失败不打扰）
     load(true);

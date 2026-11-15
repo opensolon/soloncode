@@ -1,6 +1,10 @@
 
 ### v2026.11.11
 
+* **技能 / MCP 可与会话（及自动任务）绑定，像模型一样长期生效**：框架侧补上会话级选择层（`session.skill.selected` / `session.mcp.selected`，`SessionSelections` + `HarnessEngine.get/setSessionSkills|Mcps`），优先级固定为**输入显式选择 → 会话选择 → 智能体声明 → 不限制**；会话里失效的 id 会被剔除，全部失效按「不限制」处理（不回退智能体声明，避免卸载一个技能后视野被悄悄换掉）。Web 输入面板在模型选择器旁新增「技能」「MCP」两个多选（新会话与会话中两套工具栏状态同源），选择写 `POST /web/chat/skills/select` 随快照持久化，`WebGate` 一行未改 —— 积压、续发、`/命令` 派生输入都自然继承。自动任务同样可固定技能与 MCP（`AutomationMeta.skills/mcps` 随 `automation` 扩展节点落盘，历史任务无该字段即不限制，无需迁移；`AutomationManager.applySelections` 与模型、智能体写在同一处）。**两处选择器共用同一套渲染**（`app-capabilities.js` 暴露 `icon/label/normalize/itemsHtml`）：同一图标、同一 `.cap-item` 条目标记（勾选列 + 作用域徽标 + 描述 + 失效标签）、同一 340px 弹层与底部「不限制」按钮，不再出现「输入面板没图标、自动任务没不限制」的分叉。智能体设置页里的「声明技能 / MCP」多选按产品口径撤掉（`agent.md` 手写声明仍生效，只作为优先级链的一层）。
+
+* **MCP 硬隔离修正**（`AgentMcpExtension`）：① 构建代理时名字在引擎级注册表里取不到（会话级子代理 `generate` 非持久化的、或运行时同名冲突）不再抛异常——以前会让委派报「定义加载失败」，现在跳过、沿用全局网关（它声明的服务仍由引擎收窄视野）；② 是否挂载 MCP 改用引擎口径（展开 `*` / `**` 分组、看智能体与引擎两级的禁用列表），工具写成 `**` 的智能体不再被漏掉。
+
 * **工具卡片成败改用结构化 `isError`，不再匹配提示文案**：`app-message.js` / `app-streaming.js` 的编辑卡片与工具状态图标改读 `payload.isError`（删掉「成功完成」「edit(s) applied」两处文字判定），失败标红叉、LSP 报错仍为黄色提醒；回放（`LastTraceService`）同步带出 `isError`，刷新页面后结论一致。`fillToolCardBody` / `appendActionEndChunk` 统一改为传 `meta` 对象（后续新增标记不用再改签名）。新增 `ToolEndPayloadJsonContractTest` 锁死序列化字段名 `isError`（若序列化器改为 getter 推导成 `error`，前端会静默全判成功、不报错也不崩溃）。**升级前落库的 trace 没有该字段，旧会话里失败的编辑会显示为成功（一次性回退，不做兼容）。**
 
 * **goal 宿主 DX 收口：停等 / 展示正文 / 执行器注册 / 恢复四类样板收敛进门面**（配套 harness 新增 6 组 API + soloncode-cli 迁移）:

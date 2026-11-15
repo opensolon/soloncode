@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Konuşmalar temizlenemedi, lütfen tekrar deneyin",
   "history.clearSuccess": "{count} konuşma temizlendi",
   "history.clearTitle": "Sabitlenmemiş konuşmaları temizle",
-  "streaming.queuePausedHitl": "Onay bekleniyor — kuyruk duraklatıldı"
+  "streaming.queuePausedHitl": "Onay bekleniyor — kuyruk duraklatıldı",
+  "chatcap.skills": "Beceriler",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Sınırlama yok",
+  "chatcap.unrestrictedShort": "Tümü",
+  "chatcap.searchSkills": "Beceri ara...",
+  "chatcap.searchMcp": "MCP sunucusu ara...",
+  "chatcap.empty": "Kullanılabilir öğe yok",
+  "chatcap.noMatch": "Eşleşme yok",
+  "chatcap.unavailable": "Kullanılamaz",
+  "chatcap.unavailableTip": "Kullanılamıyor, seçilemez",
+  "chatcap.saveFailed": "Kaydedilemedi, lütfen tekrar deneyin"
 }

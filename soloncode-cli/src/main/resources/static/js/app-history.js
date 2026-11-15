@@ -731,6 +731,8 @@ function closeAllToolbarPanels() {
     else $('#chatLoopPanel, #newChatLoopPanel').hide();
     if (typeof window.collapseQueueDock === 'function') window.collapseQueueDock();
     $('#chatModelSelector, #newChatModelSelector').removeClass('open');
+    // 技能 / MCP 选择器与模型、子代理、更多菜单同属输入面板，彼此互斥
+    $('.model-selector.cap-selector').removeClass('open');
     $('#chatAgentSelector, #newChatAgentSelector').removeClass('open');
     $('#chatMoreMenu, #newChatMoreMenu').removeClass('open');
     $('#chatModelCurrent, #newChatModelCurrent, #chatAgentCurrent, #newChatAgentCurrent, #chatMoreBtn, #newChatMoreBtn')

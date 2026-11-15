@@ -51,6 +51,25 @@ public class LoopTaskAutomationMetaTest {
         assertEquals("0 0 22 * * ?", restored.getCron());
     }
 
+    /** 任务级技能 / MCP 视野随覆盖层往返；未声明的历史任务读出来是 null（不限制）。 */
+    @Test
+    public void capabilitySelectionRoundTrip() {
+        LoopTask task = loop().schedule("auto-2", new AutomationMeta("带能力", null, null,
+                java.util.Arrays.asList("alpha", "@skills/beta"),
+                java.util.Arrays.asList("m1")).writeTo(LoopSpec.of("t").everyMinutes(5))).getValue();
+
+        AutomationMeta meta = AutomationMeta.of(roundTrip(task, "auto-2"));
+        assertEquals(java.util.Arrays.asList("alpha", "@skills/beta"), meta.getSkills());
+        assertEquals(java.util.Arrays.asList("m1"), meta.getMcps());
+
+        // 历史任务没有这两个字段：读出来是 null，语义为不限制（回退智能体声明）
+        LoopTask legacy = loop().schedule("auto-3", new AutomationMeta("旧", null, null)
+                .writeTo(LoopSpec.of("t").everyMinutes(5))).getValue();
+        AutomationMeta legacyMeta = AutomationMeta.of(roundTrip(legacy, "auto-3"));
+        assertNull(legacyMeta.getSkills());
+        assertNull(legacyMeta.getMcps());
+    }
+
     /** 历史文件的键名与字段形态必须可读（含已废弃的 automation.enabled，读取时忽略）。 */
     @Test
     public void legacyAutomationJsonIsReadable() {

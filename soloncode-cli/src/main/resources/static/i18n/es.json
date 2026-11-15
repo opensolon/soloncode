@@ -1399,5 +1399,16 @@
   "users.auth.conversationIsolation": "Aislamiento de conversaciones por usuario",
   "users.auth.conversationIsolationDesc": "Al activarlo, cada usuario conectado solo puede ver y usar sus propias conversaciones",
   "users.auth.enabled": "Activar autenticación de usuarios",
-  "streaming.queuePausedHitl": "Esperando aprobación: cola en pausa"
+  "streaming.queuePausedHitl": "Esperando aprobación: cola en pausa",
+  "chatcap.skills": "Habilidades",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Sin restricción",
+  "chatcap.unrestrictedShort": "Todos",
+  "chatcap.searchSkills": "Buscar habilidades...",
+  "chatcap.searchMcp": "Buscar servidores MCP...",
+  "chatcap.empty": "Nada disponible",
+  "chatcap.noMatch": "Sin coincidencias",
+  "chatcap.unavailable": "No disponible",
+  "chatcap.unavailableTip": "No disponible, no se puede seleccionar",
+  "chatcap.saveFailed": "Error al guardar, inténtalo de nuevo"
 }

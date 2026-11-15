@@ -1399,5 +1399,16 @@
   "history.clearFailed": "대화 지우기 실패, 다시 시도하세요",
   "history.clearSuccess": "{count}개의 대화를 지웠습니다",
   "history.clearTitle": "고정되지 않은 대화 지우기",
-  "streaming.queuePausedHitl": "승인 대기 중 — 대기열 일시정지"
+  "streaming.queuePausedHitl": "승인 대기 중 — 대기열 일시정지",
+  "chatcap.skills": "스킬",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "제한 없음",
+  "chatcap.unrestrictedShort": "전체",
+  "chatcap.searchSkills": "스킬 검색...",
+  "chatcap.searchMcp": "MCP 서버 검색...",
+  "chatcap.empty": "사용 가능한 항목이 없습니다",
+  "chatcap.noMatch": "일치하는 항목이 없습니다",
+  "chatcap.unavailable": "사용 불가",
+  "chatcap.unavailableTip": "사용할 수 없어 선택할 수 없습니다",
+  "chatcap.saveFailed": "저장하지 못했습니다. 다시 시도하세요"
 }

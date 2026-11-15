@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Не вдалося очистити діалоги, спробуйте ще раз",
   "history.clearSuccess": "Очищено {count} діалогів",
   "history.clearTitle": "Очистити незакріплені діалоги",
-  "streaming.queuePausedHitl": "Очікування підтвердження — чергу призупинено"
+  "streaming.queuePausedHitl": "Очікування підтвердження — чергу призупинено",
+  "chatcap.skills": "Навички",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Без обмежень",
+  "chatcap.unrestrictedShort": "Усі",
+  "chatcap.searchSkills": "Пошук навичок...",
+  "chatcap.searchMcp": "Пошук серверів MCP...",
+  "chatcap.empty": "Немає доступних елементів",
+  "chatcap.noMatch": "Немає збігів",
+  "chatcap.unavailable": "Недоступно",
+  "chatcap.unavailableTip": "Недоступно, вибір неможливий",
+  "chatcap.saveFailed": "Не вдалося зберегти, спробуйте ще раз"
 }

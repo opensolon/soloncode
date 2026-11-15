@@ -1399,5 +1399,16 @@
   "users.auth.conversationIsolation": "ユーザー対話の分離",
   "users.auth.conversationIsolationDesc": "有効にすると、異なるログインユーザーは自分の対話のみ表示・利用できます",
   "users.auth.enabled": "ユーザー認証を有効化",
-  "streaming.queuePausedHitl": "承認待ちのためキューは一時停止中"
+  "streaming.queuePausedHitl": "承認待ちのためキューは一時停止中",
+  "chatcap.skills": "スキル",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "制限なし",
+  "chatcap.unrestrictedShort": "すべて",
+  "chatcap.searchSkills": "スキルを検索...",
+  "chatcap.searchMcp": "MCP サーバーを検索...",
+  "chatcap.empty": "利用可能な項目がありません",
+  "chatcap.noMatch": "一致する項目がありません",
+  "chatcap.unavailable": "利用不可",
+  "chatcap.unavailableTip": "利用不可のため選択できません",
+  "chatcap.saveFailed": "保存に失敗しました。再試行してください"
 }

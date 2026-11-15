@@ -1399,5 +1399,16 @@
   "sidebar.wsPickHeadless": "No desktop environment available; please type the path manually",
   "sidebar.wsPickBusy": "A folder picker is already open; finish or cancel it first",
   "sidebar.wsPickTimeout": "Directory selection timed out or failed; please retry",
-  "streaming.queuePausedHitl": "Awaiting approval — queue paused"
+  "streaming.queuePausedHitl": "Awaiting approval — queue paused",
+  "chatcap.skills": "Skills",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "No restriction",
+  "chatcap.unrestrictedShort": "All",
+  "chatcap.searchSkills": "Search skills...",
+  "chatcap.searchMcp": "Search MCP servers...",
+  "chatcap.empty": "Nothing available",
+  "chatcap.noMatch": "No matches",
+  "chatcap.unavailable": "Unavailable",
+  "chatcap.unavailableTip": "Unavailable, cannot be selected",
+  "chatcap.saveFailed": "Failed to save, please retry"
 }

@@ -3820,7 +3820,13 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
  .auto-input-box .auto-prompt { border: none; outline: none; resize: vertical; background: transparent; padding: 4px 14px 4px; font-family: var(--font-sans); font-size: var(--fs-md); color: var(--text-primary); min-height: calc(44px * var(--font-scale)); line-height: 1.6; box-sizing: border-box; }
 .auto-input-box .auto-prompt::placeholder { color: var(--text-secondary); }
 /* 一体卡片内选择器：复用 toolbar-selector-group，下拉向下弹（编辑区在页面中部，不同于输入面板的向上弹） */
-.auto-select-group .model-dropdown { bottom: auto; top: 100%; margin-top: 6px; margin-bottom: 0; left: -26px; min-width: 320px; width: max-content; animation: none; }
+/* 宽度必须定死：基础 .model-dropdown 是 width:max-content + max-width:90vw，技能描述一长就涨到 90vw，
+   在查看器（overflow:hidden）里横向溢出被裁，表现为“点开就破相” */
+.auto-select-group .model-dropdown { bottom: auto; top: 100%; margin-top: 6px; margin-bottom: 0; left: -26px; min-width: 0; width: 320px; max-width: min(320px, calc(100vw - 32px)); animation: none; }
+/* 描述最多两行，避免长文案撑高行、扫不动 */
+.auto-select-group .model-dropdown-item .model-item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* 空间不足时由 JS 改为 fixed 定位，脱离列表滚动容器，避免被上下裁切 */
+.auto-select-group .model-dropdown.is-fixed { position: fixed; right: auto; bottom: auto; z-index: 10005; }
 .auto-select-group .model-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .auto-select .agent-item-name, .auto-select .model-item-name { font-weight: 500; }
  .automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
@@ -3869,3 +3875,32 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
     .automation-toolbar { align-items: flex-start; }
     .automation-row-schedule { display: none; }
 }
+
+/* 会话级技能 / MCP 选择器（与模型选择器同构） */
+/* 两个入口（输入面板 / 自动任务）共用同一套尺寸与样式，避免同功能长得不一样 */
+.cap-selector-group { flex: 0 1 auto; min-width: 0; }
+.cap-selector-group .model-name,
+.auto-select.cap-multi .model-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-selector.has-selection .model-name,
+.auto-select.cap-multi.has-selection .model-name { color: var(--accent); }
+.cap-selector .model-dropdown,
+.auto-select-group .model-dropdown.cap-dropdown { width: 340px; min-width: 0; max-width: min(340px, calc(100vw - 32px)); max-height: min(460px, 62vh); }
+/* 贴到视口边缘时翻转，避免下拉被裁切 */
+.cap-dropdown.edge-right { left: auto; right: -26px; }
+.cap-dropdown.flip-down { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px; animation: none; }
+.cap-footer { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 8px; padding: 6px 8px; }
+.cap-clear { flex: 0 0 auto; border: 0; background: transparent; color: var(--text-secondary); font-size: var(--fs-xs); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.cap-clear:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
+.cap-clear:disabled { opacity: 0.4; cursor: default; }
+.cap-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 10px; cursor: pointer; }
+.cap-item:hover:not(.disabled) { background: var(--bg-hover); }
+.cap-item.active { color: var(--accent); background: var(--accent-light); }
+.cap-item.disabled { opacity: 0.45; cursor: default; }
+.cap-check { width: 12px; flex: 0 0 12px; font-size: 11px; line-height: 1.7; }
+.cap-item-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.cap-item-name { display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); min-width: 0; }
+.cap-item-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-item-badge { flex: 0 0 auto; font-size: var(--fs-3xs); color: var(--text-secondary); background: var(--bg-hover); border-radius: 4px; padding: 0 4px; line-height: 1.6; }
+.cap-item.active .cap-item-badge { color: var(--accent); background: transparent; }
+.cap-item-desc { color: var(--text-secondary); font-size: var(--fs-xs); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-item-tag { font-size: var(--fs-3xs); color: var(--text-secondary); flex: 0 0 auto; border: 1px solid var(--border-color); border-radius: 4px; padding: 0 4px; line-height: 1.6; }

@@ -1399,5 +1399,16 @@
   "users.auth.conversationIsolation": "Isolation des conversations par utilisateur",
   "users.auth.conversationIsolationDesc": "Une fois activée, chaque utilisateur connecté ne peut voir et utiliser que ses propres conversations",
   "users.auth.enabled": "Activer l'authentification utilisateur",
-  "streaming.queuePausedHitl": "En attente d'approbation – file suspendue"
+  "streaming.queuePausedHitl": "En attente d'approbation – file suspendue",
+  "chatcap.skills": "Compétences",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Sans restriction",
+  "chatcap.unrestrictedShort": "Tout",
+  "chatcap.searchSkills": "Rechercher des compétences...",
+  "chatcap.searchMcp": "Rechercher des services MCP...",
+  "chatcap.empty": "Aucun élément disponible",
+  "chatcap.noMatch": "Aucun résultat",
+  "chatcap.unavailable": "Indisponible",
+  "chatcap.unavailableTip": "Indisponible, sélection impossible",
+  "chatcap.saveFailed": "Échec de l'enregistrement, veuillez réessayer"
 }

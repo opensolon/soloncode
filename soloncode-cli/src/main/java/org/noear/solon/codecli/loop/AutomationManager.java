@@ -71,14 +71,15 @@ public class AutomationManager {
     public synchronized String create(String name, String prompt, Integer intervalMinutes,
                                       String cron, String type, Boolean runNow,
                                       Long maxTokens, Long maxDurationMs, String modelName,
-                                      String agentName, Locale locale) throws IOException {
+                                      String agentName, List<String> skills, List<String> mcps,
+                                      Locale locale) throws IOException {
         validate(name, prompt, intervalMinutes, cron);
         rejectGoalType(type);
         String sessionId = SESSION_PREFIX + UUID.randomUUID().toString().replace("-", "");
 
         // applySelections 内的 getSession 会建出专用会话目录，且在 loop.schedule 落盘任务之前
         AutomationMeta meta = new AutomationMeta(displayName(name, prompt.trim()),
-                emptyToNull(modelName), emptyToNull(agentName));
+                emptyToNull(modelName), emptyToNull(agentName), skills, mcps);
         applySelections(sessionId, meta);
         // 请求参数原样交给规格（null = 未设置），间隔范围与 cron 可触发性由插件统一校验
         require(loop.schedule(sessionId, meta.writeTo(LoopSpec.of(prompt)
@@ -148,7 +149,8 @@ public class AutomationManager {
     public synchronized void update(String id, String name, String prompt, Integer intervalMinutes,
                                     String cron, String type, Boolean runNow,
                                     Long maxTokens, Long maxDurationMs, String modelName,
-                                    String agentName, String locale) throws IOException {
+                                    String agentName, List<String> skills, List<String> mcps,
+                                    String locale) throws IOException {
         Located found = locate(id);
         LoopTask old = found.task;
         String sessionId = found.sessionId;
@@ -160,7 +162,7 @@ public class AutomationManager {
         rejectGoalType(type);
 
         // 补丁语义：null = 保持原值、cron 空串 = 回到固定间隔；启停、运行状态与语言（未传时）由插件保留
-        meta.update(name, emptyToNull(modelName), emptyToNull(agentName));
+        meta.update(name, emptyToNull(modelName), emptyToNull(agentName), skills, mcps);
         LoopPatch patch = meta.writeTo(LoopPatch.create()
                 .prompt(prompt)
                 .everyMinutes(intervalMinutes)
@@ -216,6 +218,8 @@ public class AutomationManager {
         if (meta != null) {
             if (meta.getModelName() != null) item.put("modelName", meta.getModelName());
             if (meta.getAgentName() != null) item.put("agentName", meta.getAgentName());
+            if (meta.getSkills() != null) item.put("skills", meta.getSkills());
+            if (meta.getMcps() != null) item.put("mcps", meta.getMcps());
         }
         item.put("automation", meta != null);
         return item;
@@ -227,6 +231,9 @@ public class AutomationManager {
         AgentSession session = sessionManager.getSession(sessionId);
         if (meta.getModelName() != null) engine.setSessionModel(session, meta.getModelName());
         if (meta.getAgentName() != null) engine.setSessionAgent(session, meta.getAgentName());
+        // 技能 / MCP 与模型、智能体同一处落到专用会话上：定时轮次经 handle 自动回退到这里
+        engine.setSessionSkills(session, meta.getSkills());
+        engine.setSessionMcps(session, meta.getMcps());
         session.updateSnapshot();
     }
 

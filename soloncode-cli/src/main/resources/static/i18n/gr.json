@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Αποτυχία καθαρισμού συνομιλιών, δοκιμάστε ξανά",
   "history.clearSuccess": "Καθαρίστηκαν {count} συνομιλίες",
   "history.clearTitle": "Καθαρισμός μη καρφιτσωμένων συνομιλιών",
-  "streaming.queuePausedHitl": "Αναμονή έγκρισης — η ουρά σε παύση"
+  "streaming.queuePausedHitl": "Αναμονή έγκρισης — η ουρά σε παύση",
+  "chatcap.skills": "Δεξιότητες",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Χωρίς περιορισμό",
+  "chatcap.unrestrictedShort": "Όλα",
+  "chatcap.searchSkills": "Αναζήτηση δεξιοτήτων...",
+  "chatcap.searchMcp": "Αναζήτηση διακομιστών MCP...",
+  "chatcap.empty": "Δεν υπάρχουν διαθέσιμα στοιχεία",
+  "chatcap.noMatch": "Καμία αντιστοιχία",
+  "chatcap.unavailable": "Μη διαθέσιμο",
+  "chatcap.unavailableTip": "Μη διαθέσιμο, δεν μπορεί να επιλεγεί",
+  "chatcap.saveFailed": "Η αποθήκευση απέτυχε, δοκιμάστε ξανά"
 }

@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Kunne ikke rydde samtaler, prøv igen",
   "history.clearSuccess": "Ryddede {count} samtaler",
   "history.clearTitle": "Ryd ikke-fastgjorte samtaler",
-  "streaming.queuePausedHitl": "Afventer godkendelse — køen er sat på pause"
+  "streaming.queuePausedHitl": "Afventer godkendelse — køen er sat på pause",
+  "chatcap.skills": "Færdigheder",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Ingen begrænsning",
+  "chatcap.unrestrictedShort": "Alle",
+  "chatcap.searchSkills": "Søg færdigheder...",
+  "chatcap.searchMcp": "Søg MCP-servere...",
+  "chatcap.empty": "Ingen tilgængelige elementer",
+  "chatcap.noMatch": "Ingen match",
+  "chatcap.unavailable": "Utilgængelig",
+  "chatcap.unavailableTip": "Utilgængelig, kan ikke vælges",
+  "chatcap.saveFailed": "Lagring mislykkedes, prøv igen"
 }

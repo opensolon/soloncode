@@ -45,6 +45,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -263,6 +265,117 @@ public class ChatWebController extends AbstractWebController {
         engine().setSessionAgent(session, agentName);
         session.updateSnapshot();
         return Result.succeed();
+    }
+
+    /**
+     * 切换指定会话的技能 / MCP 视野（会话级，长期生效）。
+     *
+     * <p>只影响有传入的参数：不传 = 不变，传空串 = 清除（回退智能体声明，再回退不限制）。
+     * 写入后会随快照持久化，后续该会话的每一轮新消息都自动使用它，包括积压、续发与程序轮次。</p>
+     *
+     * @param sessionId 会话 ID
+     * @param skills    技能标识清单，逗号分隔（可选）
+     * @param mcps      MCP 服务名清单，逗号分隔（可选）
+     * @return 操作结果
+     * @throws Exception 会话操作异常
+     */
+    @Post
+    @Mapping("/web/chat/skills/select")
+    public Result skills_select(@Param("sessionId") String sessionId,
+                                @Param(value = "skills", required = false) String skills,
+                                @Param(value = "mcps", required = false) String mcps) throws Exception {
+        String userId = getCurrentUserId();
+        AgentSession session = sessionManager().getOwnedSession(sessionId, userId);
+
+        if (skills != null) {
+            engine().setSessionSkills(session, splitNames(skills));
+        }
+        if (mcps != null) {
+            engine().setSessionMcps(session, splitNames(mcps));
+        }
+
+        session.updateSnapshot();
+        return Result.succeed();
+    }
+
+    /**
+     * 查询指定会话的技能 / MCP 会话级选择（未设置时为 null，表示不限制 / 回退声明）。
+     *
+     * @param sessionId 会话 ID
+     * @return 包含 skills、mcps 的结果对象
+     * @throws Exception 会话查询异常
+     */
+    @Get
+    @Mapping("/web/chat/skills")
+    public Result<Map> skills(@Param("sessionId") String sessionId) throws Exception {
+        String userId = getCurrentUserId();
+        AgentSession session = sessionManager().getOwnedSession(sessionId, userId);
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("skills", engine().getSessionSkills(session));
+        data.put("mcps", engine().getSessionMcps(session));
+        return Result.succeed(data);
+    }
+
+    /** 逗号分隔清单 → 去空去重（顺序保留）；空串返回空集合（语义为清除） */
+    private static List<String> splitNames(String text) {
+        List<String> names = new ArrayList<>();
+        for (String name : text.split(",")) {
+            String trimmed = name.trim();
+            if (trimmed.isEmpty() == false && names.contains(trimmed) == false) {
+                names.add(trimmed);
+            }
+        }
+        return names;
+    }
+
+    /**
+     * 查询可选的技能与 MCP 服务（输入面板选择器用）。
+     *
+     * <p>技能给完整 id（兼做前端展示与回传），MCP 只给名字与启用状态（不下发 env / headers）。</p>
+     *
+     * @return 包含 skills、mcpServers 的结果对象
+     */
+    @Get
+    @Mapping("/web/chat/skills/options")
+    public Result<Map> skillsOptions() {
+        HarnessEngine harnessEngine = engine();
+
+        List<Map<String, Object>> skills = new ArrayList<>();
+        for (SkillDescriptor skill : harnessEngine.getSkills()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", skill.getId());
+            item.put("name", skill.getName());
+            item.put("description", skill.getDescription());
+            item.put("enabled", harnessEngine.getSkillCatalog().isAllowed(skill));
+            skills.add(item);
+        }
+        Collections.sort(skills, new Comparator<Map<String, Object>>() {
+            @Override
+            public int compare(Map<String, Object> a, Map<String, Object> b) {
+                return String.valueOf(a.get("id")).compareToIgnoreCase(String.valueOf(b.get("id")));
+            }
+        });
+
+        List<Map<String, Object>> mcpServers = new ArrayList<>();
+        for (Map.Entry<String, org.noear.solon.ai.mcp.client.McpServerParameters> entry
+                : harnessEngine.getMcpServers().entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("name", entry.getKey());
+            item.put("enabled", entry.getValue() != null && entry.getValue().isEnabled());
+            mcpServers.add(item);
+        }
+        Collections.sort(mcpServers, new Comparator<Map<String, Object>>() {
+            @Override
+            public int compare(Map<String, Object> a, Map<String, Object> b) {
+                return String.valueOf(a.get("name")).compareToIgnoreCase(String.valueOf(b.get("name")));
+            }
+        });
+
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("skills", skills);
+        data.put("mcpServers", mcpServers);
+        return Result.succeed(data);
     }
 
     /**

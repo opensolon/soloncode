@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Xóa hội thoại thất bại, vui lòng thử lại",
   "history.clearSuccess": "Đã xóa {count} hội thoại",
   "history.clearTitle": "Xóa hội thoại chưa ghim",
-  "streaming.queuePausedHitl": "Đang chờ phê duyệt — hàng đợi tạm dừng"
+  "streaming.queuePausedHitl": "Đang chờ phê duyệt — hàng đợi tạm dừng",
+  "chatcap.skills": "Kỹ năng",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Không giới hạn",
+  "chatcap.unrestrictedShort": "Tất cả",
+  "chatcap.searchSkills": "Tìm kỹ năng...",
+  "chatcap.searchMcp": "Tìm máy chủ MCP...",
+  "chatcap.empty": "Không có mục khả dụng",
+  "chatcap.noMatch": "Không có kết quả",
+  "chatcap.unavailable": "Không khả dụng",
+  "chatcap.unavailableTip": "Không khả dụng, không thể chọn",
+  "chatcap.saveFailed": "Lưu thất bại, vui lòng thử lại"
 }

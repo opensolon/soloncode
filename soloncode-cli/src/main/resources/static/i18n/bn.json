@@ -1399,5 +1399,16 @@
   "history.clearFailed": "কথোপকথন খালি করতে ব্যর্থ, আবার চেষ্টা করুন",
   "history.clearSuccess": "{count}টি কথোপকথন খালি করা হয়েছে",
   "history.clearTitle": "আনপিন করা কথোপকথন খালি করুন",
-  "streaming.queuePausedHitl": "অনুমোদনের অপেক্ষায় — সারি বিরত"
+  "streaming.queuePausedHitl": "অনুমোদনের অপেক্ষায় — সারি বিরত",
+  "chatcap.skills": "স্কিল",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "কোনো সীমাবদ্ধতা নেই",
+  "chatcap.unrestrictedShort": "সব",
+  "chatcap.searchSkills": "স্কিল খুঁজুন...",
+  "chatcap.searchMcp": "MCP সার্ভার খুঁজুন...",
+  "chatcap.empty": "কোনো উপলব্ধ আইটেম নেই",
+  "chatcap.noMatch": "কোনো মিল নেই",
+  "chatcap.unavailable": "অনুপলব্ধ",
+  "chatcap.unavailableTip": "অনুপলব্ধ, নির্বাচন করা যাবে না",
+  "chatcap.saveFailed": "সংরক্ষণ ব্যর্থ, আবার চেষ্টা করুন"
 }

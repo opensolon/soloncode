@@ -1399,5 +1399,16 @@
   "history.clearFailed": "فشل تفريغ المحادثات، حاول مرة أخرى",
   "history.clearSuccess": "تم تفريغ {count} محادثة",
   "history.clearTitle": "تفريغ المحادثات غير المثبتة",
-  "streaming.queuePausedHitl": "بانتظار الموافقة — تم إيقاف قائمة الانتظار مؤقتًا"
+  "streaming.queuePausedHitl": "بانتظار الموافقة — تم إيقاف قائمة الانتظار مؤقتًا",
+  "chatcap.skills": "المهارات",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "بلا قيود",
+  "chatcap.unrestrictedShort": "الكل",
+  "chatcap.searchSkills": "بحث عن المهارات...",
+  "chatcap.searchMcp": "بحث عن خوادم MCP...",
+  "chatcap.empty": "لا توجد عناصر متاحة",
+  "chatcap.noMatch": "لا توجد نتائج",
+  "chatcap.unavailable": "غير متاح",
+  "chatcap.unavailableTip": "غير متاح، لا يمكن اختياره",
+  "chatcap.saveFailed": "فشل الحفظ، يرجى المحاولة مرة أخرى"
 }

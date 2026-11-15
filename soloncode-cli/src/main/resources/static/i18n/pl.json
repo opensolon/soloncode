@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Nie udało się wyczyścić rozmów, spróbuj ponownie",
   "history.clearSuccess": "Wyczyszczono {count} rozmów",
   "history.clearTitle": "Wyczyść nieprzypięte rozmowy",
-  "streaming.queuePausedHitl": "Oczekiwanie na zatwierdzenie — kolejka wstrzymana"
+  "streaming.queuePausedHitl": "Oczekiwanie na zatwierdzenie — kolejka wstrzymana",
+  "chatcap.skills": "Umiejętności",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Bez ograniczeń",
+  "chatcap.unrestrictedShort": "Wszystkie",
+  "chatcap.searchSkills": "Szukaj umiejętności...",
+  "chatcap.searchMcp": "Szukaj serwerów MCP...",
+  "chatcap.empty": "Brak dostępnych elementów",
+  "chatcap.noMatch": "Brak wyników",
+  "chatcap.unavailable": "Niedostępne",
+  "chatcap.unavailableTip": "Niedostępne, nie można wybrać",
+  "chatcap.saveFailed": "Zapis nie powiódł się, spróbuj ponownie"
 }

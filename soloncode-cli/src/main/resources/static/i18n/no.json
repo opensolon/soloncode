@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Kunne ikke tømme samtaler, prøv igjen",
   "history.clearSuccess": "Tømte {count} samtaler",
   "history.clearTitle": "Tøm ufestede samtaler",
-  "streaming.queuePausedHitl": "Venter på godkjenning — køen er satt på pause"
+  "streaming.queuePausedHitl": "Venter på godkjenning — køen er satt på pause",
+  "chatcap.skills": "Ferdigheter",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Ingen begrensning",
+  "chatcap.unrestrictedShort": "Alle",
+  "chatcap.searchSkills": "Søk ferdigheter...",
+  "chatcap.searchMcp": "Søk MCP-servere...",
+  "chatcap.empty": "Ingen tilgjengelige elementer",
+  "chatcap.noMatch": "Ingen treff",
+  "chatcap.unavailable": "Utilgjengelig",
+  "chatcap.unavailableTip": "Utilgjengelig, kan ikke velges",
+  "chatcap.saveFailed": "Lagring mislyktes, prøv igjen"
 }

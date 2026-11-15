@@ -1399,5 +1399,16 @@
   "history.clearFailed": "Не удалось очистить диалоги, попробуйте ещё раз",
   "history.clearSuccess": "Очищено диалогов: {count}",
   "history.clearTitle": "Очистить незакреплённые диалоги",
-  "streaming.queuePausedHitl": "Ожидание подтверждения — очередь приостановлена"
+  "streaming.queuePausedHitl": "Ожидание подтверждения — очередь приостановлена",
+  "chatcap.skills": "Навыки",
+  "chatcap.mcp": "MCP",
+  "chatcap.unrestricted": "Без ограничений",
+  "chatcap.unrestrictedShort": "Все",
+  "chatcap.searchSkills": "Поиск навыков...",
+  "chatcap.searchMcp": "Поиск серверов MCP...",
+  "chatcap.empty": "Нет доступных элементов",
+  "chatcap.noMatch": "Нет совпадений",
+  "chatcap.unavailable": "Недоступно",
+  "chatcap.unavailableTip": "Недоступно, выбор невозможен",
+  "chatcap.saveFailed": "Не удалось сохранить, попробуйте снова"
 }
