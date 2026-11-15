@@ -121,7 +121,11 @@
         currentModelValue = current || '';
         $('#agentsModel').val(currentModelValue);
         renderModelTrigger();
-        function render(list) { renderModelDropdown(list); }
+        function render(list) {
+            renderModelDropdown(list);
+            // 列表到达后重刷触发器：首帧 modelOptions 还是空，modelDisplayOf 只能回退完整 name
+            renderModelTrigger();
+        }
         if (modelOptions) { render(modelOptions); return; }
         $.get('/web/settings/llm/models', function (resp) {
             var list = [];

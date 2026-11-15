@@ -259,13 +259,8 @@
     function setSel(row, kind, value, placeholder) {
         row.setAttribute('data-' + kind, value || '');
         var box = row.querySelector('.auto-select[data-kind=' + kind + ']');
-        if (box) {
-            var label = (value && box.__labelMap && box.__labelMap[value]) || value || placeholder;
-            box.querySelector('.model-name').textContent = label;
-            // 悬停看完整名（短名可能同名，完整值仍可溯源）
-            if (value) box.querySelector('.auto-select-current').setAttribute('title', value);
-            else box.querySelector('.auto-select-current').removeAttribute('title');
-        }
+        // 选中值与显示名分开：data-* 存完整值，触发器显示短名，title 保留完整值
+        if (box) syncSelTrigger(box, value, placeholder, box.__labelMap);
     }
     function getSel(row, kind) {
         return row.getAttribute('data-' + kind) || '';
@@ -305,8 +300,20 @@
         }
         box.querySelector('.model-dropdown-items').innerHTML = html;
         box.__labelMap = labelMap;
+        // 回显修正：初始 HTML 用完整 value 打底（编辑既有任务时如此），选项到达后必须
+        // 按 labelMap 换成短名，否则触发器一直停在带供应商前缀的完整名上
+        syncSelTrigger(box, selected, emptyLabel, labelMap);
         var search = box.querySelector('.model-search-input');
         if (search) search.value = '';
+    }
+    // 触发器文案/悬停文案：短名上屏、完整值进 title 供溯源
+    function syncSelTrigger(box, value, emptyLabel, labelMap) {
+        var nameEl = box.querySelector('.model-name');
+        if (nameEl) nameEl.textContent = (value && labelMap && labelMap[value]) || value || emptyLabel || '';
+        var current = box.querySelector('.auto-select-current');
+        if (!current) return;
+        if (value) current.setAttribute('title', value);
+        else current.removeAttribute('title');
     }
     // ===== 下拉浮层定位：列表与查看器都是滚动/裁剪容器，绝对定位会被裁，统一改 fixed =====
     function clearPopBox(box) {

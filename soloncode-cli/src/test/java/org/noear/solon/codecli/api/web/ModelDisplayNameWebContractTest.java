@@ -60,8 +60,12 @@ public class ModelDisplayNameWebContractTest {
                 "自动化任务页模型项必须使用显示名");
         assertTrue(automation.contains("desc: x.description || '',"),
                 "自动化任务页必须读 description（接口字段名），此前读 desc 导致描述恒为空");
-        assertTrue(automation.contains("if (value) box.querySelector('.auto-select-current').setAttribute('title', value);"),
+        assertTrue(automation.contains("function syncSelTrigger(box, value, emptyLabel, labelMap) {"),
+                "触发器文案与 title 必须集中在一处同步，避免回显与手动选中两条路径不一致");
+        assertTrue(automation.contains("current.setAttribute('title', value);"),
                 "触发器的 title 必须保留完整模型值，供同名区分与溯源");
+        assertTrue(automation.contains("syncSelTrigger(box, selected, emptyLabel, labelMap);"),
+                "下拉项渲染后必须回写触发器，否则编辑既有任务时停在带供应商前缀的完整名上");
 
         String agents = resourceText("/static/js/app-settings-agents.js");
         assertTrue(agents.contains("if (!name || seen[name]) return;"),
