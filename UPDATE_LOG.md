@@ -1,4 +1,7 @@
 
+### v2026.11.15
+
+
 ### v2026.11.11
 
 * **自动任务编辑器的模型选择器与输入面板对齐（宽度弹性 + 默认值显示）**：用户第三次反馈「体验还是不同」。实测定位到两处对不上的具体原因：① 触发器宽度被 `.auto-select-group .model-name { max-width: 140px }` 定死，长模型名硬截断，不像输入面板（260px 上限 + `flex: 0 1 auto`）那样随内容与可用空间伸缩；② 输入面板首屏显示的是**全局默认值**（`agnes-3.0-flash · on · max`，来自 `/web/chat/models` 顶层的 `thinkingMode` / `reasoningEffort`），而自动任务一律显示「跟随默认模型」且药丸停在 `auto`——因为 `populateSelectors` 只取了 `data.selected` 当默认模型，丢掉了两个维度。现在新增 `effectiveOptions(box, row)` 把「显示值」与「保存值」分开：任务行属性为空串（未表态）时回填全局默认并**按目标模型能力 `clampEffort` 收敛**（换到只支持 low/medium/high 的模型，`max` 会显示成 `high`）；显式点 `auto` 仍保留 `auto`（否则点了 auto 又跳回 max）。保存语义不变——`reasoningEffort` / `thinkingMode` 仍提交 `row` 上的原始值（空串=跟随默认），实测保存后接口返回 `null`，显示层没有污染落库。同时把下拉度量统一到输入面板同值：380px 宽、footer `8px 10px 10px` + `gap 8px`、标签列 `52px`、药丸 `3px 8px` / `var(--fs-xs)`（原来是 340px / `7px 10px 8px` / `44px` / `2px 7px` / `fs-2xs`，看起来比输入面板“小一号”）。新增 `AutomationModelSelectorParityTest` 3 例锁住「不得回到 140px」「度量与输入面板同值」「只有空串才回填默认值且保存不提交显示值」。**
