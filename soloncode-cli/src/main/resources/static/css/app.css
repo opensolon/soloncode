@@ -3836,13 +3836,15 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 .auto-select-group .model-dropdown-item .model-item-desc { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* 空间不足时由 JS 改为 fixed 定位，脱离列表滚动容器，避免被上下裁切 */
 .auto-select-group .model-dropdown.is-fixed { position: fixed; right: auto; bottom: auto; z-index: 10005; }
-.auto-select-group .model-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 自动任务 / 智能体编辑的模型选择器：底部加了思考模式与推理强度两行，浮层略加宽并压缩行内间距 */
-.auto-select-group .model-dropdown.model-options-dropdown { width: 340px; max-width: min(340px, calc(100vw - 28px)); }
-.auto-select-group .model-options-footer { padding: 7px 10px 8px; gap: 6px; }
-.auto-select-group .model-option-label { min-width: 44px; }
-.auto-select-group .model-option-pills { gap: 3px; }
-.auto-select-group .model-option-pills button { padding: 2px 7px; font-size: var(--fs-2xs); }
+/* 触发器宽度与输入面板同一规则（app.css 输入面板 .model-selector-current .model-name）：
+   弹性收缩而不是定死 140px —— 定死会把长模型名硬截断，看起来比输入面板“短一截”且不随内容伸缩 */
+.auto-select-group .model-name { max-width: 260px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 自动任务 / 智能体编辑的模型选择器：底部思考模式与推理强度两行与输入面板同尺寸（380px / 8px 10px 10px / gap 8px） */
+.auto-select-group .model-dropdown.model-options-dropdown { width: 380px; max-width: min(380px, calc(100vw - 28px)); }
+.auto-select-group .model-options-footer { padding: 8px 10px 10px; gap: 8px; }
+.auto-select-group .model-option-label { min-width: 52px; }
+.auto-select-group .model-option-pills { gap: 4px; }
+.auto-select-group .model-option-pills button { padding: 3px 8px; font-size: var(--fs-xs); }
 .auto-select .agent-item-name, .auto-select .model-item-name { font-weight: 500; }
  .automation-form .memory-btn:disabled { opacity: .6; cursor: wait; }
  /* 调度浮层：与智能体/模型选择器共用触发器，内容采用紧凑的分段 + 胶囊布局 */

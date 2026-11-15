@@ -325,11 +325,22 @@
             return;
         }
         var row = box.closest('.automation-row');
+        var eff = effectiveOptions(box, row);
+        var showDepth = window.ModelOptions.supports(eff.meta);
+        if (nameEl) nameEl.textContent = window.ModelOptions.triggerLabel(displayName, eff.effort, eff.thinking, showDepth);
+        if (current) current.setAttribute('title', window.ModelOptions.triggerTitle(value || '', eff.effort, eff.thinking, showDepth));
+    }
+    // 实际生效的思考模式 / 推理强度：
+    // 任务未表态（属性为空串）时实际执行走全局默认，界面就显示默认值（与输入面板首屏一致）；
+    // 显式 'auto' 保留原样（auto 不高亮具体档位），两者不可合并，否则“点了 auto 又跳回 max”。
+    function effectiveOptions(box, row) {
+        if (!window.ModelOptions) return {thinking: '', effort: '', meta: null};
+        var meta = modelMetaOf(box, row ? getSel(row, 'model') : '');
         var thinking = row ? (row.getAttribute('data-thinking') || '') : '';
         var effort = row ? (row.getAttribute('data-effort') || '') : '';
-        var showDepth = window.ModelOptions.supports(modelMetaOf(box, value));
-        if (nameEl) nameEl.textContent = window.ModelOptions.triggerLabel(displayName, effort, thinking, showDepth);
-        if (current) current.setAttribute('title', window.ModelOptions.triggerTitle(value || '', effort, thinking, showDepth));
+        if (thinking === '' && box) thinking = box.__defaultThinking || '';
+        if (effort === '' && box) effort = window.ModelOptions.clampEffort(box.__defaultEffort || '', meta);
+        return {thinking: thinking, effort: effort, meta: meta};
     }
     // ===== 思考模式 / 推理强度：与输入面板同一套标记与绘制，状态存在任务行上 =====
     // 值域与接口一致：'' = 未表态（回退全局默认）、'auto' = 显式跟随默认、其余为具体档位
@@ -345,10 +356,8 @@
     function paintModelOptions(row) {
         var box = row.querySelector('.auto-select[data-kind=model]');
         if (!box || !window.ModelOptions) return;
-        window.ModelOptions.paint(box, {
-            thinking: row.getAttribute('data-thinking') || '',
-            effort: row.getAttribute('data-effort') || ''
-        }, modelMetaOf(box, getSel(row, 'model')));
+        var eff = effectiveOptions(box, row);
+        window.ModelOptions.paint(box, {thinking: eff.thinking, effort: eff.effort}, eff.meta);
         // 药丸变化后触发器上的「· off · 高」也要跟着变
         syncSelTrigger(box, getSel(row, 'model'), box.__emptyLabel || '', box.__labelMap);
     }
@@ -825,6 +834,9 @@
             // 能力元数据（supportsReasoning / reasoningEfforts）存一份，供两行药丸的显隐与收敛使用
             modelBox.__models = list.map(function (x) { return window.modelCapabilityOf ? window.modelCapabilityOf(x) : x; });
             modelBox.__defaultModel = (data && data.selected) || '';
+            // 全局默认的两个维度：任务未表态时界面显示它们（与实际执行一致），保存时仍写空串不变更语义
+            modelBox.__defaultThinking = (data && data.thinkingMode) || '';
+            modelBox.__defaultEffort = (data && data.reasoningEffort) || '';
             var items = list.map(function (x) {
                 var v = x.name || x.model;
                 return {
