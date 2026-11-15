@@ -639,3 +639,225 @@ window.modelProviderLabel = function (m) {
     if (idx <= 0) return '';
     return name.substring(0, idx).replace(/[-_/:.\\s]+$/, '');
 };
+
+/** 归一：只取推理相关的能力字段，供不加载 app-history.js 的页面（自动任务 / 智能体编辑）使用 */
+window.modelCapabilityOf = function (raw) {
+    raw = raw || {};
+    return {
+        name: raw.name || '',
+        model: raw.model || '',
+        provider: raw.provider || '',
+        supportsReasoning: !!raw.supportsReasoning,
+        reasoningEfforts: raw.reasoningEfforts || [],
+        defaultReasoningEffort: raw.defaultReasoningEffort || ''
+    };
+};
+
+/**
+ * 模型选项（思考模式 / 推理强度）共享层。
+ *
+ * <p>输入面板（app-history.js）与自动任务、智能体编辑（app-automation.js / app-settings-agents.js）
+ * 之前各写一套：标记结构、按钮文案、命中判定分散在三处，改一处另一处就长得不一样。
+ * 这里收敛为唯一实现，三处只负责“状态存哪里、开关时怎么持久化”：
+ * <ul>
+ *   <li>{ I18n key } 文案：label / thinking / effort / hints 全部集中在此；</li>
+ *   <li>A11y 标记：footerHtml() 产出的结构与 web.html 里的静态结构逐字一致；</li>
+ *   <li>能力约束：clampEffort() 与后端 ReasoningSupportUtil.clampEffort 同序（max→low 就近降级）。</li>
+ * </ul>
+ * 状态本身仍由调用方持有（输入面板按会话、任务按任务行），本层不存任何状态。
+ */
+window.ModelOptions = (function () {
+    var EFFORT_ORDER = ['max', 'high', 'medium', 'low'];
+    var EFFORT_ALL = ['low', 'medium', 'high', 'max'];
+
+    function t(key, fallback) {
+        return (window.I18n && I18n.t) ? (I18n.t(key) || fallback) : fallback;
+    }
+
+    /** 触发器上的档位短名（auto / 低 / 中 / 高 / 最大） */
+    function effortLabels() {
+        return {
+            auto: t('history.effortLabelAuto', 'auto'),
+            low: t('history.effortLabelLow', 'low'),
+            medium: t('history.effortLabelMedium', 'medium'),
+            high: t('history.effortLabelHigh', 'high'),
+            max: t('history.effortLabelMax', 'max')
+        };
+    }
+
+    function effortHints() {
+        return {
+            auto: t('history.effortHintAuto', ''),
+            low: t('history.effortHintLow', ''),
+            medium: t('history.effortHintMedium', ''),
+            high: t('history.effortHintHigh', ''),
+            max: t('history.effortHintMax', '')
+        };
+    }
+
+    /** 模型是否支持推理维度（false 时两行都不显示，与输入面板一致） */
+    function supports(meta) {
+        return !!(meta && meta.supportsReasoning);
+    }
+
+    /** 该模型允许的档位；模型未声明具体档位时按全档位处理（与后端一致） */
+    function allowedEfforts(meta) {
+        return (meta && meta.reasoningEfforts && meta.reasoningEfforts.length)
+            ? meta.reasoningEfforts : EFFORT_ALL;
+    }
+
+    /**
+     * 把档位收敛到模型能力范围内：命中则原样，否则按 max→high→medium→low 就近降级，再不行升级。
+     * @param {string} effort 目标档位（'' / auto 表示自动）
+     * @param {Object} meta 模型元数据
+     * @returns {string} 收敛后的档位，空串表示自动/不支持
+     */
+    function clampEffort(effort, meta) {
+        if (!effort) return '';
+        if (!supports(meta)) return '';
+        var list = allowedEfforts(meta);
+        if (!list.length) return effort;
+        if (list.indexOf(effort) >= 0) return effort;
+        var start = EFFORT_ORDER.indexOf(effort);
+        if (start < 0) start = 0;
+        for (var i = start; i < EFFORT_ORDER.length; i++) {
+            if (list.indexOf(EFFORT_ORDER[i]) >= 0) return EFFORT_ORDER[i];
+        }
+        for (var j = start - 1; j >= 0; j--) {
+            if (list.indexOf(EFFORT_ORDER[j]) >= 0) return EFFORT_ORDER[j];
+        }
+        return '';
+    }
+
+    /**
+     * 思考模式 + 推理强度两行标记。
+     * <p>结构与 web.html 输入面板里的静态标记完全一致（同一套 class / data 属性 / i18n key），
+     * 改这里等于同时改输入面板与任务编辑器，不要再往别处抄一份。</p>
+     */
+    function footerHtml() {
+        var thinking = ['auto', 'on', 'off'].map(function (mode) {
+            return '<button type="button" data-mode="' + mode + '" title="' + t('toolbar.thinking.' + mode, mode) + '" data-i18n-title="toolbar.thinking.' + mode + '">' + mode + '</button>';
+        }).join('');
+        var reasoning = ['auto', 'low', 'medium', 'high', 'max'].map(function (effort) {
+            return '<button type="button" data-effort="' + effort + '" title="' + t('toolbar.effort.' + effort, effort) + '" data-i18n-title="toolbar.effort.' + effort + '">' + effort + '</button>';
+        }).join('');
+        return '<div class="model-option-row model-thinking-row" style="display:none">'
+            + '<div class="model-option-main">'
+            + '<span class="model-option-label" data-i18n="toolbar.thinkingMode">' + t('toolbar.thinkingMode', '思考模式') + '</span>'
+            + '<div class="model-option-pills" data-kind="thinking">' + thinking + '</div>'
+            + '</div></div>'
+            + '<div class="model-option-row model-reasoning-row" style="display:none">'
+            + '<div class="model-option-main">'
+            + '<span class="model-option-label" data-i18n="toolbar.reasoningStrength">' + t('toolbar.reasoningStrength', '推理强度') + '</span>'
+            + '<div class="model-option-pills" data-kind="reasoning">' + reasoning + '</div>'
+            + '</div></div>';
+    }
+
+    function toDom(root) {
+        if (!root) return null;
+        if (root.jquery) return root.get(0);
+        return root;
+    }
+
+    /**
+     * 按状态绘制两行：不支持推理的模型整块隐藏（避免出现无效按钮）。
+     * @param {Element|jQuery} root 下拉容器（内部按 class 找两行）
+     * @param {Object} state {thinking: 'on'|'off'|'', effort: 'low'|...|''}
+     * @param {Object} meta 当前模型的元数据
+     */
+    function paint(root, state, meta) {
+        var el = toDom(root);
+        if (!el) return;
+        var thinkingRow = el.querySelector('.model-thinking-row');
+        var reasoningRow = el.querySelector('.model-reasoning-row');
+        var supported = supports(meta);
+        if (thinkingRow) thinkingRow.style.display = supported ? '' : 'none';
+        if (reasoningRow) reasoningRow.style.display = supported ? '' : 'none';
+        if (!supported) return;
+
+        var mode = (state && state.thinking) || 'auto';
+        if (thinkingRow) {
+            thinkingRow.querySelectorAll('button[data-mode]').forEach(function (btn) {
+                btn.classList.toggle('active', btn.getAttribute('data-mode') === mode);
+            });
+        }
+        if (!reasoningRow) return;
+        var allowed = allowedEfforts(meta);
+        // 'auto' 是“显式跟随默认”，视觉上与未设置同义（与输入面板一致：auto 时不高亮具体档位）
+        var effort = (state && state.effort) || '';
+        if (effort === 'auto') effort = '';
+        reasoningRow.querySelectorAll('button[data-effort]').forEach(function (btn) {
+            var value = btn.getAttribute('data-effort');
+            if (value === 'auto') {
+                btn.style.display = '';
+                btn.classList.toggle('active', !effort);
+                return;
+            }
+            var ok = allowed.indexOf(value) >= 0;
+            btn.style.display = ok ? '' : 'none';
+            btn.classList.toggle('active', ok && value === effort);
+        });
+    }
+
+    /**
+     * 触发器文案：`短名 · 状态 · 档位`（与输入面板逐字一致）。
+     * @param {string} displayName 已解析好的展示名
+     * @param {string} effort 档位
+     * @param {string} thinkingMode on / off / ''
+     * @param {boolean} showDepth 模型是否支持推理
+     */
+    function triggerLabel(displayName, effort, thinkingMode, showDepth) {
+        var parts = [displayName];
+        if (showDepth) {
+            if (thinkingMode === 'off') parts.push(t('history.effortLabelOff', 'off'));
+            else if (thinkingMode === 'on') parts.push('on');
+            var labels = effortLabels();
+            // auto 不出现在触发器上（输入面板同口径：只显示明确档位）
+            if (effort && effort !== 'auto' && labels[effort]) parts.push(labels[effort]);
+        }
+        return parts.join(' · ');
+    }
+
+    /** 触发器悬停文案：完整模型名 + 两个维度，供溯源 */
+    function triggerTitle(fullName, effort, thinkingMode, showDepth) {
+        var bits = [t('history.modelLabel', '') + (fullName || t('history.defaultShort', ''))];
+        if (showDepth) {
+            if (thinkingMode === 'off') bits.push(t('toolbar.thinkingMode', '') + ': ' + t('history.effortLabelOff', 'off'));
+            else if (thinkingMode === 'on') bits.push(t('toolbar.thinkingMode', '') + ': on');
+            var labels = effortLabels();
+            if (effort && effort !== 'auto' && labels[effort]) {
+                bits.push(t('history.reasoningEffortLabel', '') + labels[effort]);
+                var hints = effortHints();
+                if (hints[effort]) bits.push(hints[effort]);
+            } else {
+                bits.push(t('history.reasoningEffortAutoHint', ''));
+            }
+        }
+        return bits.join(' · ');
+    }
+
+    /** 从下拉容器读取当前选中的两个维度（点击后回写状态用） */
+    function read(root) {
+        var el = toDom(root);
+        if (!el) return {thinking: '', effort: ''};
+        var modeBtn = el.querySelector('.model-thinking-row button.active');
+        var effortBtn = el.querySelector('.model-reasoning-row button.active');
+        return {
+            thinking: (modeBtn && modeBtn.getAttribute('data-mode') === 'auto') ? '' : (modeBtn ? modeBtn.getAttribute('data-mode') : ''),
+            effort: (effortBtn && effortBtn.getAttribute('data-effort') === 'auto') ? '' : (effortBtn ? effortBtn.getAttribute('data-effort') : '')
+        };
+    }
+
+    return {
+        effortLabels: effortLabels,
+        effortHints: effortHints,
+        supports: supports,
+        allowedEfforts: allowedEfforts,
+        clampEffort: clampEffort,
+        footerHtml: footerHtml,
+        paint: paint,
+        read: read,
+        triggerLabel: triggerLabel,
+        triggerTitle: triggerTitle
+    };
+})();

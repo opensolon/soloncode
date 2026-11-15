@@ -1278,22 +1278,10 @@ var modelList = [];        // [{name, desc, supportsReasoning, reasoningEfforts,
     var sessionThinkingMap = {}; // { sessionId: 'on'|'off'|'' } — 思考模式开关，独立于推理强度
 
 function getEffortLabels() {
-    return {
-        auto: I18n.t('history.effortLabelAuto'),
-        low: I18n.t('history.effortLabelLow'),
-        medium: I18n.t('history.effortLabelMedium'),
-        high: I18n.t('history.effortLabelHigh'),
-        max: I18n.t('history.effortLabelMax')
-    };
+    return window.ModelOptions.effortLabels();
 }
 function getEffortHints() {
-    return {
-        auto: I18n.t('history.effortHintAuto'),
-        low: I18n.t('history.effortHintLow'),
-        medium: I18n.t('history.effortHintMedium'),
-        high: I18n.t('history.effortHintHigh'),
-        max: I18n.t('history.effortHintMax')
-    };
+    return window.ModelOptions.effortHints();
 }
 
 // Get the effective selected model for current context
@@ -1333,22 +1321,9 @@ function getCurrentModelMeta() {
     return modelList.length ? modelList[0] : null;
 }
 
+    // 档位收敛与后端 ReasoningSupportUtil.clampEffort 同序；实现在 app-base.js 的共享层
     function clampEffortForModel(effort, meta) {
-    if (!effort) return '';
-    if (!meta || !meta.supportsReasoning) return '';
-    var list = meta.reasoningEfforts || [];
-    if (!list.length) return effort;
-    if (list.indexOf(effort) >= 0) return effort;
-    var order = ['max', 'high', 'medium', 'low'];
-    var start = order.indexOf(effort);
-    if (start < 0) start = 0;
-    for (var i = start; i < order.length; i++) {
-        if (list.indexOf(order[i]) >= 0) return order[i];
-    }
-    for (var j = start - 1; j >= 0; j--) {
-        if (list.indexOf(order[j]) >= 0) return order[j];
-    }
-    return '';
+        return window.ModelOptions.clampEffort(effort, meta);
     }
 
     function parseModelItem(raw) {
@@ -1470,42 +1445,13 @@ function modelDisplayOf(modelName) {
 }
 
 function buildTriggerLabel(modelName, effort, showDepth, thinkingMode) {
-    var parts = [];
     var displayName = modelName ? modelDisplayOf(modelName) : I18n.t('history.defaultModel');
-    parts.push(displayName);
-    if (showDepth) {
-        if (thinkingMode === 'off') {
-            parts.push(I18n.t('history.effortLabelOff', 'off'));
-        } else if (thinkingMode === 'on') {
-            parts.push('on');
-        }
-        var _el = getEffortLabels();
-        if (effort && _el[effort]) {
-            parts.push(_el[effort]);
-        }
-    }
-    return parts.join(' · ');
+    return window.ModelOptions.triggerLabel(displayName, effort, thinkingMode, showDepth);
 }
 
 function buildTriggerTitle(modelName, effort, showDepth, thinkingMode) {
-    var bits = [];
-    bits.push(I18n.t('history.modelLabel') + (modelName || I18n.t('history.defaultShort')));
-    if (showDepth) {
-        if (thinkingMode === 'off') {
-            bits.push(I18n.t('toolbar.thinkingMode') + ': ' + I18n.t('history.effortLabelOff', 'off'));
-        } else if (thinkingMode === 'on') {
-            bits.push(I18n.t('toolbar.thinkingMode') + ': on');
-        }
-        var _el = getEffortLabels();
-        if (effort && _el[effort]) {
-            bits.push(I18n.t('history.reasoningEffortLabel') + _el[effort]);
-            var _h = getEffortHints();
-            if (_h[effort]) bits.push(_h[effort]);
-        } else {
-            bits.push(I18n.t('history.reasoningEffortAutoHint'));
-        }
-    }
-    return bits.join(' · ');
+    var fullName = modelName || I18n.t('history.defaultShort');
+    return window.ModelOptions.triggerTitle(fullName, effort, thinkingMode, showDepth);
 }
 
 function renderModelUI() {
@@ -1637,38 +1583,8 @@ $(document)
     });
 
 function renderModelOptionRows($dropdown, meta, userEffort) {
-    var $thinkingRow = $dropdown.find('.model-thinking-row');
-    var $reasonRow = $dropdown.find('.model-reasoning-row');
-    if (meta && meta.supportsReasoning) {
-        $thinkingRow.show();
-        var thinkingMode = getSelectedThinking() || 'auto'; // 'auto' | 'on' | 'off'
-        $thinkingRow.find('button[data-mode]').each(function() {
-            var m = $(this).attr('data-mode');
-            $(this).toggleClass('active', m === thinkingMode);
-        });
-
-        $reasonRow.show();
-        var allowed = meta.reasoningEfforts && meta.reasoningEfforts.length
-            ? meta.reasoningEfforts
-            : ['low', 'medium', 'high', 'max'];
-        $reasonRow.find('button[data-effort]').each(function() {
-            var e = $(this).attr('data-effort');
-            if (e === 'auto') {
-                $(this).show().toggleClass('active', !userEffort);
-                return;
-            }
-            var ok = allowed.indexOf(e) >= 0;
-            var isUser = ok && userEffort && e === userEffort;
-            $(this).toggle(ok).toggleClass('active', !!isUser);
-        });
-        var hintKey = userEffort || 'auto';
-        var _effortHints = getEffortHints();
-        var hint = _effortHints[hintKey] || _effortHints.auto;
-        $reasonRow.find('.model-option-hint').text(hint);
-    } else {
-        $thinkingRow.hide();
-        $reasonRow.hide();
-    }
+    // 两行的显隐、按钮显示与高亮统一由共享层绘制（与自动任务、智能体编辑同一份实现）
+    window.ModelOptions.paint($dropdown, {thinking: getSelectedThinking(), effort: userEffort}, meta);
 }
 
 function postModelSelect(payload) {

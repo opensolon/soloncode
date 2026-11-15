@@ -9,6 +9,7 @@ import org.noear.solon.ai.harness.extension.loop.LoopSpec;
 import org.noear.solon.ai.harness.extension.loop.LoopTask;
 import org.noear.solon.ai.i18n.AiI18n;
 import org.noear.solon.codecli.session.SessionManager;
+import org.noear.solon.codecli.util.ReasoningSupportUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -72,6 +73,7 @@ public class AutomationManager {
                                       String cron, String type, Boolean runNow,
                                       Long maxTokens, Long maxDurationMs, String modelName,
                                       String agentName, List<String> skills, List<String> mcps,
+                                      String reasoningEffort, String thinkingMode,
                                       Locale locale) throws IOException {
         validate(name, prompt, intervalMinutes, cron);
         rejectGoalType(type);
@@ -79,7 +81,8 @@ public class AutomationManager {
 
         // applySelections 内的 getSession 会建出专用会话目录，且在 loop.schedule 落盘任务之前
         AutomationMeta meta = new AutomationMeta(displayName(name, prompt.trim()),
-                emptyToNull(modelName), emptyToNull(agentName), skills, mcps);
+                emptyToNull(modelName), emptyToNull(agentName), skills, mcps,
+                reasoningEffort, thinkingMode);
         applySelections(sessionId, meta);
         // 请求参数原样交给规格（null = 未设置），间隔范围与 cron 可触发性由插件统一校验
         require(loop.schedule(sessionId, meta.writeTo(LoopSpec.of(prompt)
@@ -150,6 +153,7 @@ public class AutomationManager {
                                     String cron, String type, Boolean runNow,
                                     Long maxTokens, Long maxDurationMs, String modelName,
                                     String agentName, List<String> skills, List<String> mcps,
+                                    String reasoningEffort, String thinkingMode,
                                     String locale) throws IOException {
         Located found = locate(id);
         LoopTask old = found.task;
@@ -162,7 +166,8 @@ public class AutomationManager {
         rejectGoalType(type);
 
         // 补丁语义：null = 保持原值、cron 空串 = 回到固定间隔；启停、运行状态与语言（未传时）由插件保留
-        meta.update(name, emptyToNull(modelName), emptyToNull(agentName), skills, mcps);
+        meta.update(name, emptyToNull(modelName), emptyToNull(agentName), skills, mcps,
+                reasoningEffort, thinkingMode);
         LoopPatch patch = meta.writeTo(LoopPatch.create()
                 .prompt(prompt)
                 .everyMinutes(intervalMinutes)
@@ -220,6 +225,8 @@ public class AutomationManager {
             if (meta.getAgentName() != null) item.put("agentName", meta.getAgentName());
             if (meta.getSkills() != null) item.put("skills", meta.getSkills());
             if (meta.getMcps() != null) item.put("mcps", meta.getMcps());
+            if (meta.getReasoningEffort() != null) item.put("reasoningEffort", meta.getReasoningEffort());
+            if (meta.getThinkingMode() != null) item.put("thinkingMode", meta.getThinkingMode());
         }
         item.put("automation", meta != null);
         return item;
@@ -234,6 +241,10 @@ public class AutomationManager {
         // 技能 / MCP 与模型、智能体同一处落到专用会话上：定时轮次经 handle 自动回退到这里
         engine.setSessionSkills(session, meta.getSkills());
         engine.setSessionMcps(session, meta.getMcps());
+        // 思考模式 / 推理强度与输入面板同源（会话级，ReasoningSupportUtil 读写同一份上下文）：
+        // 定时轮次由后台调度发起，没有输入可取，只能在这里落到任务专用会话上
+        ReasoningSupportUtil.putSessionEffort(session, meta.getReasoningEffort(), meta.getReasoningEffort() != null);
+        ReasoningSupportUtil.putSessionThinkingMode(session, meta.getThinkingMode(), meta.getThinkingMode() != null);
         session.updateSnapshot();
     }
 

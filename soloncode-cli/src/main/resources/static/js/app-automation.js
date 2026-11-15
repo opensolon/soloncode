@@ -246,13 +246,16 @@
         var searchPh = multi && window.Capabilities ? window.Capabilities.searchPlaceholder(kind) : I18n.t('automation.search');
         var footer = multi
             ? '<div class="model-dropdown-footer cap-footer"><button type="button" class="cap-clear">' + esc(window.Capabilities ? window.Capabilities.clearText() : I18n.t('chatcap.unrestricted')) + '</button></div>'
-            : '';
+            // 模型选择器底部与输入面板同一份标记（思考模式 + 推理强度），不再各写一套
+            : kind === 'model'
+                ? '<div class="model-dropdown-footer model-options-footer">' + window.ModelOptions.footerHtml() + '</div>'
+                : '';
         return '<div class="toolbar-selector-group auto-select-group">' + icon +
             '<div class="model-selector auto-select' + (multi ? ' cap-multi' : '') + '" data-kind="' + kind + '">' +
             '<div class="model-selector-current auto-select-current" tabindex="0" role="button" aria-label="' + esc(kind === 'agent' ? I18n.t('automation.agent') : kind === 'skills' ? I18n.t('chatcap.skills') : kind === 'mcps' ? I18n.t('chatcap.mcp') : I18n.t('automation.model')) + '">' +
             '<span class="model-name">' + shown + '</span>' +
             '<i class="layui-icon layui-icon-down model-arrow"></i></div>' +
-            '<div class="model-dropdown' + (multi ? ' cap-dropdown' : '') + '">' +
+            '<div class="model-dropdown' + (multi ? ' cap-dropdown' : (kind === 'model' ? ' model-options-dropdown' : '')) + '">' +
             '<div class="model-search-wrap"><input type="text" class="model-search-input" placeholder="' + esc(searchPh) + '"/></div>' +
             '<div class="model-dropdown-items"></div>' + footer + '</div></div></div>';
     }
@@ -300,6 +303,7 @@
         }
         box.querySelector('.model-dropdown-items').innerHTML = html;
         box.__labelMap = labelMap;
+        box.__emptyLabel = emptyLabel;
         // 回显修正：初始 HTML 用完整 value 打底（编辑既有任务时如此），选项到达后必须
         // 按 labelMap 换成短名，否则触发器一直停在带供应商前缀的完整名上
         syncSelTrigger(box, selected, emptyLabel, labelMap);
@@ -307,13 +311,74 @@
         if (search) search.value = '';
     }
     // 触发器文案/悬停文案：短名上屏、完整值进 title 供溯源
+    // 模型选择器额外拼上「思考模式 / 推理强度」（与输入面板 buildTriggerLabel 逐字一致）
     function syncSelTrigger(box, value, emptyLabel, labelMap) {
         var nameEl = box.querySelector('.model-name');
-        if (nameEl) nameEl.textContent = (value && labelMap && labelMap[value]) || value || emptyLabel || '';
+        var displayName = (value && labelMap && labelMap[value]) || value || emptyLabel || '';
         var current = box.querySelector('.auto-select-current');
-        if (!current) return;
-        if (value) current.setAttribute('title', value);
-        else current.removeAttribute('title');
+        var isModel = box.getAttribute('data-kind') === 'model' && !!window.ModelOptions;
+        if (!isModel) {
+            if (nameEl) nameEl.textContent = displayName;
+            if (!current) return;
+            if (value) current.setAttribute('title', value);
+            else current.removeAttribute('title');
+            return;
+        }
+        var row = box.closest('.automation-row');
+        var thinking = row ? (row.getAttribute('data-thinking') || '') : '';
+        var effort = row ? (row.getAttribute('data-effort') || '') : '';
+        var showDepth = window.ModelOptions.supports(modelMetaOf(box, value));
+        if (nameEl) nameEl.textContent = window.ModelOptions.triggerLabel(displayName, effort, thinking, showDepth);
+        if (current) current.setAttribute('title', window.ModelOptions.triggerTitle(value || '', effort, thinking, showDepth));
+    }
+    // ===== 思考模式 / 推理强度：与输入面板同一套标记与绘制，状态存在任务行上 =====
+    // 值域与接口一致：'' = 未表态（回退全局默认）、'auto' = 显式跟随默认、其余为具体档位
+    function modelMetaOf(box, modelName) {
+        var list = box.__models || [];
+        // 任务未指定模型时跟随默认模型：用接口返回的 selected 取能力，与输入面板“显示默认模型能力”一致
+        var target = modelName || box.__defaultModel || '';
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].name === target) return list[i];
+        }
+        return null;
+    }
+    function paintModelOptions(row) {
+        var box = row.querySelector('.auto-select[data-kind=model]');
+        if (!box || !window.ModelOptions) return;
+        window.ModelOptions.paint(box, {
+            thinking: row.getAttribute('data-thinking') || '',
+            effort: row.getAttribute('data-effort') || ''
+        }, modelMetaOf(box, getSel(row, 'model')));
+        // 药丸变化后触发器上的「· off · 高」也要跟着变
+        syncSelTrigger(box, getSel(row, 'model'), box.__emptyLabel || '', box.__labelMap);
+    }
+    // 点击药丸：只改本任务行的状态，不关闭浮层（与输入面板一致）
+    function applyModelOptionPill(row, box, pill) {
+        var meta = modelMetaOf(box, getSel(row, 'model'));
+        var mode = pill.getAttribute('data-mode');
+        if (mode) {
+            row.setAttribute('data-thinking', mode);
+            paintModelOptions(row);
+            return;
+        }
+        var effort = pill.getAttribute('data-effort');
+        if (!effort) return;
+        // auto 原样记住（显式 auto 不吃全局默认）；具体档位按目标模型能力收敛
+        row.setAttribute('data-effort', effort === 'auto' ? 'auto' : window.ModelOptions.clampEffort(effort, meta));
+        paintModelOptions(row);
+    }
+    // 换模型时档位跟着收敛（与输入面板 selectModel 同规则）：不支持推理则清空
+    function clampModelOptionsFor(row) {
+        var box = row.querySelector('.auto-select[data-kind=model]');
+        if (!box || !window.ModelOptions) return;
+        var meta = modelMetaOf(box, getSel(row, 'model'));
+        var effort = row.getAttribute('data-effort') || '';
+        if (effort && effort !== 'auto') {
+            row.setAttribute('data-effort', window.ModelOptions.clampEffort(effort, meta));
+        } else if (!effort && !window.ModelOptions.supports(meta)) {
+            row.setAttribute('data-effort', '');
+        }
+        paintModelOptions(row);
     }
     // ===== 下拉浮层定位：列表与查看器都是滚动/裁剪容器，绝对定位会被裁，统一改 fixed =====
     function clearPopBox(box) {
@@ -358,6 +423,7 @@
             closeOthers();
             if (!opening) { clearPopBox(box); return; }
             box.classList.add('open');
+            if (kind === 'model') paintModelOptions(row);
             requestAnimationFrame(function () {
                 var active = box.querySelector('.model-dropdown-item.active');
                 if (active) active.scrollIntoView({ block: 'nearest' });
@@ -370,10 +436,19 @@
         var search = box.querySelector('.model-search-input');
         if (search) search.oninput = function () { filterSelItems(box, this.value); placePopBox(box); };
         box.querySelector('.model-dropdown').onclick = function (e) {
+            var pill = e.target.closest ? e.target.closest('.model-option-pills button') : null;
+            if (pill) {
+                e.stopPropagation();
+                e.preventDefault();
+                applyModelOptionPill(row, box, pill);
+                placePopBox(box);
+                return;
+            }
             var item = e.target.closest('.model-dropdown-item');
             if (!item) return;
             e.stopPropagation();
             setSel(row, kind, item.getAttribute('data-value') || '', placeholder);
+            if (kind === 'model') clampModelOptionsFor(row);
             // 单选：选中即关闭（原来只关其他行，自己的浮层会一直留在屏幕上）
             clearPopBox(box);
             if (onChange) onChange(getSel(row, kind));
@@ -693,6 +768,9 @@
             // 不传 name：新建时后端自动取提示词前 20 字作为名称，编辑时保留旧名称。
             runNow: 'false',
             modelName: getSel(row, 'model'), agentName: getSel(row, 'agent'),
+            // 与模型/智能体同级的任务级选择：定时轮次靠它落到任务专用会话上
+            reasoningEffort: row.getAttribute('data-effort') || '',
+            thinkingMode: row.getAttribute('data-thinking') || '',
             // 只提交当前可用项：已停用的技能 / MCP 存着也不会生效，不如不写进任务
             skills: capFilterAvailable('skills', multiValues(row, 'skills')).join(','),
             mcps: capFilterAvailable('mcps', multiValues(row, 'mcps')).join(',')};
@@ -727,6 +805,9 @@
         row.setAttribute('data-model', t.modelName || '');
         row.setAttribute('data-skills', (t.skills || []).join(','));
         row.setAttribute('data-mcps', (t.mcps || []).join(','));
+        // 思考模式 / 推理强度：空串 = 任务未表态（回退全局默认），与接口返回值同义
+        row.setAttribute('data-thinking', t.thinkingMode || '');
+        row.setAttribute('data-effort', t.reasoningEffort || '');
         bindSel(row, 'agent', I18n.t('automation.agentPlaceholder'));
         bindSel(row, 'model', I18n.t('automation.modelPlaceholder'));
         var applySkillOptions = bindMulti(row, 'skills', I18n.t('chatcap.skills'));
@@ -741,6 +822,9 @@
         api('GET', '/web/chat/models').then(function (data) {
             if (!modelBox.isConnected) return;
             var list = (data && data.list) || [];
+            // 能力元数据（supportsReasoning / reasoningEfforts）存一份，供两行药丸的显隐与收敛使用
+            modelBox.__models = list.map(function (x) { return window.modelCapabilityOf ? window.modelCapabilityOf(x) : x; });
+            modelBox.__defaultModel = (data && data.selected) || '';
             var items = list.map(function (x) {
                 var v = x.name || x.model;
                 return {
@@ -753,6 +837,7 @@
                 };
             }).filter(function (x) { return x.value; });
             renderSelItems(modelBox, items, getSel(row, 'model'), I18n.t('automation.modelPlaceholder'), I18n.t('automation.modelDefaultDesc'));
+            paintModelOptions(row);
         }).catch(fail);
         // 内置智能体的描述按当前界面语言取（不传则后端用引擎语言）
         var agentsLocale = typeof currentUiLocale === 'function' ? currentUiLocale() : '';

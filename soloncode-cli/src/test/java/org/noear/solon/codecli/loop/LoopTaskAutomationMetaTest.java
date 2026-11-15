@@ -70,6 +70,28 @@ public class LoopTaskAutomationMetaTest {
         assertNull(legacyMeta.getMcps());
     }
 
+    /** 任务级思考模式 / 推理强度随覆盖层往返；历史任务读出来是 null（回退全局默认）。 */
+    @Test
+    public void reasoningOptionsRoundTrip() {
+        LoopTask task = loop().schedule("auto-4", new AutomationMeta("带推理", "deepseek-chat", null,
+                null, null, "high", "off").writeTo(LoopSpec.of("t").everyMinutes(5))).getValue();
+
+        AutomationMeta meta = AutomationMeta.of(roundTrip(task, "auto-4"));
+        assertEquals("high", meta.getReasoningEffort());
+        assertEquals("off", meta.getThinkingMode());
+
+        // 历史任务没有这两个字段：读出来是 null，语义为未表态（回退设置→通用里的全局默认）
+        LoopTask legacy = loop().schedule("auto-5", new AutomationMeta("旧", null, null).writeTo(LoopSpec.of("t"))).getValue();
+        AutomationMeta legacyMeta = AutomationMeta.of(roundTrip(legacy, "auto-5"));
+        assertNull(legacyMeta.getReasoningEffort());
+        assertNull(legacyMeta.getThinkingMode());
+
+        // 提交空串表示清除（回退全局默认），不能把空串当成档位写下去
+        meta.update("带推理", "deepseek-chat", null, null, null, "", "");
+        assertNull(meta.getReasoningEffort());
+        assertNull(meta.getThinkingMode());
+    }
+
     /** 历史文件的键名与字段形态必须可读（含已废弃的 automation.enabled，读取时忽略）。 */
     @Test
     public void legacyAutomationJsonIsReadable() {

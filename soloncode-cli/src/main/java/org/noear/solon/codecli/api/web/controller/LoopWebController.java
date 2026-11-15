@@ -339,9 +339,11 @@ public class LoopWebController extends AbstractWebController {
                                     @Param(value = "agentName", required = false) String agentName,
                                     @Param(value = "skills", required = false) String skills,
                                     @Param(value = "mcps", required = false) String mcps,
+                                    @Param(value = "reasoningEffort", required = false) String reasoningEffort,
+                                    @Param(value = "thinkingMode", required = false) String thinkingMode,
                                     @Param(value = "locale", required = false) String locale) {
         try {
-            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName, splitNames(skills), splitNames(mcps), locale);
+            automationManager().update(id, name, prompt, intervalMinutes, cron, type, runNow, maxTokens, maxDurationMs, modelName, agentName, splitNames(skills), splitNames(mcps), reasoningEffort, thinkingMode, locale);
             return Result.succeed();
         } catch (IllegalArgumentException e) {
             return Result.failure(404, e.getMessage());
@@ -435,12 +437,15 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "agentName", required = false) String agentName,
                              @Param(value = "skills", required = false) String skills,
                              @Param(value = "mcps", required = false) String mcps,
+                             @Param(value = "reasoningEffort", required = false) String reasoningEffort,
+                             @Param(value = "thinkingMode", required = false) String thinkingMode,
                              @Param(value = "locale", required = false) String locale) {
         if (isAutomationType(type)) {
             try {
                 // 任务记下创建者的界面语言：定时轮次由后台调度发起，没有输入可取语言
                 String taskId = automationManager().create(name, prompt, intervalMinutes, cron, taskType, runNow,
-                        maxTokens, maxDurationMs, modelName, agentName, splitNames(skills), splitNames(mcps), AiI18n.toLocale(locale));
+                        maxTokens, maxDurationMs, modelName, agentName, splitNames(skills), splitNames(mcps),
+                        reasoningEffort, thinkingMode, AiI18n.toLocale(locale));
                 return Result.succeed(taskId);
             } catch (IllegalArgumentException | IllegalStateException | IOException e) {
                 return Result.failure(400, e.getMessage());
@@ -466,9 +471,11 @@ public class LoopWebController extends AbstractWebController {
                              @Param(value = "agentName", required = false) String agentName,
                              @Param(value = "skills", required = false) String skills,
                              @Param(value = "mcps", required = false) String mcps,
+                             @Param(value = "reasoningEffort", required = false) String reasoningEffort,
+                             @Param(value = "thinkingMode", required = false) String thinkingMode,
                              @Param(value = "locale", required = false) String locale) {
         if (isAutomationType(type)) {
-            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName, skills, mcps, locale);
+            return automationUpdate(id, name, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, modelName, agentName, skills, mcps, reasoningEffort, thinkingMode, locale);
         }
         return loopUpdate(sessionId, id, prompt, intervalMinutes, cron, taskType, runNow, maxTokens, maxDurationMs, locale);
     }

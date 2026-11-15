@@ -14,7 +14,8 @@ import java.util.UUID;
  * 自动任务覆盖层：挂在 {@link LoopTask} 扩展字段 {@value #EXTRA_KEY} 下的宿主元数据。
  *
  * <p>loop 插件不认识「自动任务」这个宿主概念，只把不认识的顶层字段原样存取；本类负责
- * 该字段的编解码（名称、模型/智能体选择、时间戳）。键名与历史 tasks.json 一致，格式不变。</p>
+ * 该字段的编解码（名称、模型/智能体选择、技能与 MCP 视野、思考模式与推理强度、时间戳）。
+ * 键名与历史 tasks.json 一致，格式不变（新字段均为可选，缺失时读为 null）。</p>
  *
  * <p>启停状态只有一个真相源：{@code task.isEnabled()}（旧版覆盖层上的 enabled 是重复状态，已删除；
  * 历史文件里残留的该字段读取时忽略）。</p>
@@ -31,6 +32,13 @@ public class AutomationMeta {
     private volatile List<String> skills;
     /** 任务级 MCP 视野（null = 不限制，回退智能体声明） */
     private volatile List<String> mcps;
+    /**
+     * 任务级推理强度（null = 未表态，回退全局默认；"auto" = 显式 auto，不吃全局默认）。
+     * <p>与输入面板同一口径，见 {@code ReasoningSupportUtil}。</p>
+     */
+    private volatile String reasoningEffort;
+    /** 任务级思考模式（null = 未表态；on / off / auto）。 */
+    private volatile String thinkingMode;
     private final Instant createdAt;
     private volatile Instant updatedAt;
 
@@ -40,12 +48,20 @@ public class AutomationMeta {
 
     public AutomationMeta(String name, String modelName, String agentName,
                           List<String> skills, List<String> mcps) {
+        this(name, modelName, agentName, skills, mcps, null, null);
+    }
+
+    public AutomationMeta(String name, String modelName, String agentName,
+                          List<String> skills, List<String> mcps,
+                          String reasoningEffort, String thinkingMode) {
         this(UUID.randomUUID().toString().replace("-", "").substring(0, 12),
-                name, modelName, agentName, skills, mcps, Instant.now(), Instant.now());
+                name, modelName, agentName, skills, mcps, reasoningEffort, thinkingMode,
+                Instant.now(), Instant.now());
     }
 
     private AutomationMeta(String id, String name, String modelName, String agentName,
                            List<String> skills, List<String> mcps,
+                           String reasoningEffort, String thinkingMode,
                            Instant createdAt, Instant updatedAt) {
         this.id = id;
         this.name = name;
@@ -53,6 +69,8 @@ public class AutomationMeta {
         this.agentName = emptyToNull(agentName);
         this.skills = normalize(skills);
         this.mcps = normalize(mcps);
+        this.reasoningEffort = emptyToNull(reasoningEffort);
+        this.thinkingMode = emptyToNull(thinkingMode);
         this.createdAt = createdAt == null ? Instant.now() : createdAt;
         this.updatedAt = updatedAt == null ? this.createdAt : updatedAt;
     }
@@ -82,6 +100,8 @@ public class AutomationMeta {
     public String getAgentName() { return agentName; }
     public List<String> getSkills() { return skills; }
     public List<String> getMcps() { return mcps; }
+    public String getReasoningEffort() { return reasoningEffort; }
+    public String getThinkingMode() { return thinkingMode; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
 
@@ -92,11 +112,25 @@ public class AutomationMeta {
 
     public void update(String name, String modelName, String agentName,
                        List<String> skills, List<String> mcps) {
+        update(name, modelName, agentName, skills, mcps, reasoningEffort, thinkingMode);
+    }
+
+    /**
+     * 全量更新覆盖层。
+     *
+     * @param reasoningEffort 推理强度；null = 保持原值，空串 = 清除（回退全局默认）
+     * @param thinkingMode    思考模式；null = 保持原值，空串 = 清除（回退全局默认）
+     */
+    public void update(String name, String modelName, String agentName,
+                       List<String> skills, List<String> mcps,
+                       String reasoningEffort, String thinkingMode) {
         if (name != null && !name.trim().isEmpty()) this.name = name.trim();
         this.modelName = emptyToNull(modelName);
         this.agentName = emptyToNull(agentName);
         this.skills = normalize(skills);
         this.mcps = normalize(mcps);
+        if (reasoningEffort != null) this.reasoningEffort = emptyToNull(reasoningEffort);
+        if (thinkingMode != null) this.thinkingMode = emptyToNull(thinkingMode);
         this.updatedAt = Instant.now();
     }
 
@@ -114,6 +148,8 @@ public class AutomationMeta {
             ONode mcpsNode = node.getOrNew("mcps");
             for (String mcp : mcps) mcpsNode.add(mcp);
         }
+        if (reasoningEffort != null) node.set("reasoningEffort", reasoningEffort);
+        if (thinkingMode != null) node.set("thinkingMode", thinkingMode);
         node.set("createdAt", createdAt.toString());
         node.set("updatedAt", updatedAt.toString());
         return node;
@@ -129,6 +165,8 @@ public class AutomationMeta {
                 text(node, "agentName", null),
                 strings(node, "skills"),
                 strings(node, "mcps"),
+                text(node, "reasoningEffort", null),
+                text(node, "thinkingMode", null),
                 instant(node, "createdAt"),
                 instant(node, "updatedAt"));
     }
