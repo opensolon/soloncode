@@ -803,7 +803,7 @@ body {
 .model-selector-current { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 8px 5px 2px; border: 0; border-radius: 8px; background: transparent; color: var(--text-secondary); font-size: var(--fs-base); cursor: pointer; transition: color 0.2s; white-space: nowrap; max-width: 420px; box-sizing: border-box; }
 .model-selector-current:hover { color: var(--text-primary); background: transparent; }
 .model-selector-current:focus-visible, .agent-selector-current:focus-visible, .more-menu-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.model-selector-current .model-name { overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+/* .model-name 的宽度约束统一在下方（与弹性收缩规则一并声明），此处不再重复声明 max-width */
 .model-selector-current .model-arrow { font-size: var(--fs-sm); transition: transform 0.2s; opacity: 0.5; }
 .model-selector.open .model-arrow { transform: rotate(180deg); }
 .model-dropdown { position: absolute; bottom: 100%; left: -26px; margin-bottom: 6px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); min-width: 380px; max-width: 90vw; width: max-content; max-height: 380px; display: none; z-index: 100; animation: drop-up 0.15s ease-out; overflow: hidden; }
@@ -898,7 +898,10 @@ body {
 
 .model-option-hint { font-size: var(--fs-2xs); color: var(--text-secondary); opacity: 0.78; line-height: 1.35; }
 .model-name-badge { font-size: var(--fs-xs); color: var(--text-secondary); opacity: 0.85; margin-left: 2px; }
-.model-selector-current .model-name { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+/* 模型名：窄屏时先让位（弹性收缩），而不是整体溢出把右侧按钮挤出去 */
+.model-selector-current .model-name { max-width: 260px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+/* 供应商徽标：模型短名同名时靠它区分 */
+.model-dropdown-item .model-item-provider { font-size: var(--fs-xs); font-weight: 500; color: var(--text-secondary); opacity: 0.9; flex-shrink: 0; padding: 0 4px; border: 1px solid var(--border-color); border-radius: 4px; line-height: 1.4; }
 
 /* Agents form model selector — reuse toolbar model-selector visuals, but as a full-width form control dropping downward */
 .agents-model-selector { display: block; width: 100%; }
@@ -936,7 +939,13 @@ body {
 .input-box { position: relative; }
 
 /* Toolbar left section */
-.toolbar-left { display: flex; align-items: center; gap: 2px; }
+.toolbar-left { display: flex; align-items: center; gap: 2px; min-width: 0; }
+/* 模型选择器组是唯一允许被压缩的：它自带省略号，越窄也不会撑破工具栏 */
+.toolbar-left > .model-selector-group:not(.cap-selector-group) { flex: 0 1 auto; min-width: 0; }
+.model-selector-group:not(.cap-selector-group) .model-selector {
+  min-width: 0;
+}
+.model-selector-group:not(.cap-selector-group) .model-selector-current { min-width: 0; }
 .toolbar-right { display: flex; align-items: center; gap: 6px; }
 
 /* Image attachment type tag */
@@ -3876,11 +3885,27 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
     .automation-row-schedule { display: none; }
 }
 
-/* 会话级技能 / MCP 选择器（与模型选择器同构） */
-/* 两个入口（输入面板 / 自动任务）共用同一套尺寸与样式，避免同功能长得不一样 */
-.cap-selector-group { flex: 0 1 auto; min-width: 0; }
+/*
+ * 会话级技能 / MCP 选择器（与模型选择器同构）
+ * 两个入口（输入面板 / 自动任务）共用同一套尺寸与样式，避免同功能长得不一样
+ * 窄容器下退化为纯图标，把宽度让给模型名（模型名有 title 完整值兼底）
+ */
+/* 能力选择器不参与收缩：图标+内边距是固定最小值，被压缩会溢出；让位交给模型名 */
+.cap-selector-group { flex: 0 0 auto; min-width: auto; }
 .cap-selector-group .model-name,
 .auto-select.cap-multi .model-name { max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-selector, .cap-selector .model-selector-current { min-width: auto; flex: 0 0 auto; }
+/* 窄屏（工具栏所在输入框会同步变窄）：能力标签退化为纯图标，把宽度让给模型名 */
+@media (max-width: 1150px) {
+  .toolbar-left .cap-selector .model-name,
+  .toolbar-left .cap-selector .model-arrow { display: none; }
+  /* 图标在触发器之外（兄弟节点），隐藏文案后按钮只剩内边距，需收紧避免变成空热区 */
+  .toolbar-left .cap-selector .model-selector-current { padding: 5px 6px; min-width: 20px; }
+}
+/* 智能体名同样可收缩（带省略号），进一步给窄屏让路 */
+.toolbar-left .agent-selector-group { flex: 0 1 auto; min-width: 0; }
+.toolbar-left .agent-selector-group .model-selector,
+.toolbar-left .agent-selector-group .model-selector-current { min-width: 0; }
 .cap-selector.has-selection .model-name,
 .auto-select.cap-multi.has-selection .model-name { color: var(--accent); }
 .cap-selector .model-dropdown,

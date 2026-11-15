@@ -87,6 +87,7 @@ public class ChatWebController extends AbstractWebController {
                 Map<String, Object> item = new LinkedHashMap<>();
                 item.put("model", config.getModel());
                 item.put("name", config.getNameOrModel());
+                item.put("provider", config.getProvider());
                 item.put("description", config.getDescriptionOrModel());
                 item.put("contextLength", config.getContextLength());
                 item.put("standard", config.getStandardOrProvider());

@@ -608,3 +608,34 @@ window.getCookie = function (name) {
     var match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
     return match ? decodeURIComponent(match[2]) : null;
 };
+/**
+ * 模型显示名：优先用不带供应商前缀的 model 字段（如 mimo-v2-omni），
+ * 缺失时回退到 name（带前缀的唯一键 / 用户自定义命名）。
+ * 仅用于“展示”，选中值、去重键、状态比较一律仍用 name。
+ * @param {Object} m 模型项 {name, model, provider}
+ * @returns {string} 展示用名称
+ */
+window.modelDisplayName = function (m) {
+    if (!m) return '';
+    var display = (m.model || '').trim();
+    return display !== '' ? display : (m.name || '').trim();
+};
+
+/**
+ * 模型来源标签：优先用 provider 字段；缺失时从 name 里剥掉 model 部分推导前缀
+ * （如 joker-gpt-6.1-sol + model=gpt-6.1-sol → joker）。
+ * 用途：短名撞车时在副标题区分，避免用户选错。
+ * @param {Object} m 模型项 {name, model, provider}
+ * @returns {string} 来源标签，无法推导时返回空串
+ */
+window.modelProviderLabel = function (m) {
+    if (!m) return '';
+    var provider = (m.provider || '').trim();
+    if (provider) return provider;
+    var name = (m.name || '').trim();
+    var model = (m.model || '').trim();
+    if (!name || !model || name === model) return '';
+    var idx = name.lastIndexOf(model);
+    if (idx <= 0) return '';
+    return name.substring(0, idx).replace(/[-_/:.\\s]+$/, '');
+};

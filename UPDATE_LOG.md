@@ -1,6 +1,12 @@
 
 ### v2026.11.11
 
+* **模型显示名改用短名，MCP 统一叫「连接器」**：选择器原来显示 `name`（带供应商前缀，如 `xiaomimimo-mimo-v2.5-tts-voicedesign`），长名会把工具栏顶破（实测最长真实模型名让左区溢出 58px，右侧「任务/文件/审查」被挤出）。现在触发器与下拉主标题显示 `model`（`mimo-v2.5-tts-voicedesign`），`name` 只作为选中值、状态判断与 `title` 溯源（**选中值必须是 `name`**：`/web/chat/models/select` 拿它查表，改成 `model` 会让两个供应商的同名模型串号）。短名会撞车（本机 12 个启用模型里 `joker-gpt-6.1-sol` 与 `shidizai-gpt-6.1-sol` 短名完全相同），故下拉项加来源徽标：优先 `provider` 字段，`provider` 为空（直接在设置里添加的模型）时从 `name` 里剥掉 `model` 推导前缀（`joker-gpt-6.1-sol` − `gpt-6.1-sol` → `joker`），搜索键同时汇总完整名、短名与来源三者。`/web/chat/models` 补 `provider` 字段（`ChatWebController`，`provider` 为空时序列化不输出，前端按缺省处理）。同步修掉两处既有缺陷：`app-automation.js` 读 `x.desc` 而接口返回 `description`，导致自动任务页模型描述一直是空；`app.css` 里 `.model-selector-current .model-name` 有 `max-width:180px`（806 行）与 `380px`（901 行）两条冲突规则，后者生效，380 正是溢出的直接原因。**
+
+* **输入面板工具栏窄屏不再溢出**（同上批一起做）：让位顺序固定为「模型名先省略 → 技能/连接器标签退化为纯图标」，`.cap-selector-group` 不参与收缩（图标+内边距是硬最小值，压到 21px 就会溢出 15px），`.toolbar-left` 只保留模型组与智能体组可收缩；视口 ≤1150px 时隐藏能力选择器文案（图标在触发器之外，是兄弟节点，故同时收紧按钮内边距，避免只剩空热区）。实测 1400 / 1280 / 1024 / 900 四档 `scrollWidth == clientWidth`，无溢出；1280 下模型名 159px、技能 54px、连接器 67px，与改造前一致。**注意：`container: name / inline-size` 不能加在 `.toolbar-left` 自身——inline-size 会引入尺寸包含，作为 flex 项时宽度直接塌成 0（本次踩过），窄屏判定改用媒体查询。**
+
+* **「MCP 服务器」→「MCP 连接器」（22 个语言包同步）**：设置页标签、区块标题、空态、删除确认、导入对话框等一律称「连接器」（English `MCP Connectors`），只有描述底层进程连通性的 `mcp.serverOffline` / `mcp.testTimeout` 保留「服务器」；`mcp.jsonHint` 改写成「粘贴 MCP 配置 JSON 字符串（含 mcpServers 段）」，避开与配置里的 `mcpServers` 键名对不上；选择器标签中文「连接器」、英文 `mcp`，搜索占位符同步。
+
 * **技能 / MCP 可与会话（及自动任务）绑定，像模型一样长期生效**：框架侧补上会话级选择层（`session.skill.selected` / `session.mcp.selected`，`SessionSelections` + `HarnessEngine.get/setSessionSkills|Mcps`），优先级固定为**输入显式选择 → 会话选择 → 智能体声明 → 不限制**；会话里失效的 id 会被剔除，全部失效按「不限制」处理（不回退智能体声明，避免卸载一个技能后视野被悄悄换掉）。Web 输入面板在模型选择器旁新增「技能」「MCP」两个多选（新会话与会话中两套工具栏状态同源），选择写 `POST /web/chat/skills/select` 随快照持久化，`WebGate` 一行未改 —— 积压、续发、`/命令` 派生输入都自然继承。自动任务同样可固定技能与 MCP（`AutomationMeta.skills/mcps` 随 `automation` 扩展节点落盘，历史任务无该字段即不限制，无需迁移；`AutomationManager.applySelections` 与模型、智能体写在同一处）。**两处选择器共用同一套渲染**（`app-capabilities.js` 暴露 `icon/label/normalize/itemsHtml`）：同一图标、同一 `.cap-item` 条目标记（勾选列 + 作用域徽标 + 描述 + 失效标签）、同一 340px 弹层与底部「不限制」按钮，不再出现「输入面板没图标、自动任务没不限制」的分叉。智能体设置页里的「声明技能 / MCP」多选按产品口径撤掉（`agent.md` 手写声明仍生效，只作为优先级链的一层）。
 
 * **MCP 硬隔离修正**（`AgentMcpExtension`）：① 构建代理时名字在引擎级注册表里取不到（会话级子代理 `generate` 非持久化的、或运行时同名冲突）不再抛异常——以前会让委派报「定义加载失败」，现在跳过、沿用全局网关（它声明的服务仍由引擎收窄视野）；② 是否挂载 MCP 改用引擎口径（展开 `*` / `**` 分组、看智能体与引擎两级的禁用列表），工具写成 `**` 的智能体不再被漏掉。

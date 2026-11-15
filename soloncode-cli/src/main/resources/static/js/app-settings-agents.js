@@ -56,13 +56,25 @@
         return '' + len;
     }
 
-    // 同步触发器文案：留空显示“跟随对话”，否则显示模型名。
+    // 同步触发器文案：留空显示“跟随对话”，否则显示模型短名（不带供应商前缀）。
+    function modelDisplayOf(value) {
+        if (!value) return '';
+        var list = modelOptions || [];
+        for (var i = 0; i < list.length; i++) {
+            var it = list[i] || {};
+            if ((it.name || it.model) === value) return window.modelDisplayName(it) || value;
+        }
+        return value;
+    }
+
     function renderModelTrigger() {
         var $name = $('#agentsModelName');
         if (currentModelValue) {
-            $name.text(currentModelValue).removeAttr('data-i18n');
+            $name.text(modelDisplayOf(currentModelValue)).removeAttr('data-i18n');
+            $('#agentsModelCurrent').attr('title', currentModelValue);
         } else {
             $name.text(I18n.t('agents.modelFollowDefault')).attr('data-i18n', 'agents.modelFollowDefault');
+            $('#agentsModelCurrent').removeAttr('title');
         }
     }
 
@@ -76,15 +88,19 @@
         (list || []).forEach(function (item) {
             var name = (item && (item.name || item.model)) || '';
             if (!name || seen[name]) return;
+            // 去重键必须是完整 name：两个供应商可能有同名 short model
             seen[name] = true;
             var standard = (item && item.standard) || 'openai';
             var ctxLen = fmtCtxLen(item && item.contextLength);
             var descParts = [];
-            if (item && item.desc) descParts.push(escapeHtml(item.desc));
+            // provider 徽标前置：短名撞车时靠它区分
+            var source = window.modelProviderLabel(item);
+            if (source) descParts.push('<span class="model-item-provider">' + escapeHtml(source) + '</span>');
+            if (item && item.description) descParts.push(escapeHtml(item.description));
             descParts.push('<span class="model-item-standard">[' + escapeHtml(standard) + ']</span>');
             var cls = name === currentModelValue ? ' active' : '';
-            html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeAttr(name) + '">'
-                + '<span class="model-item-name">' + escapeHtml(name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
+            html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeAttr(name) + '" title="' + escapeAttr(name) + '">'
+                + '<span class="model-item-name">' + escapeHtml(window.modelDisplayName(item)) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
                 + '<span class="model-item-desc">' + descParts.join(' ') + '</span>'
                 + '</div>';
         });

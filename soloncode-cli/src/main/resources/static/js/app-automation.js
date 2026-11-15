@@ -259,7 +259,13 @@
     function setSel(row, kind, value, placeholder) {
         row.setAttribute('data-' + kind, value || '');
         var box = row.querySelector('.auto-select[data-kind=' + kind + ']');
-        if (box) box.querySelector('.model-name').textContent = value || placeholder;
+        if (box) {
+            var label = (value && box.__labelMap && box.__labelMap[value]) || value || placeholder;
+            box.querySelector('.model-name').textContent = label;
+            // 悬停看完整名（短名可能同名，完整值仍可溯源）
+            if (value) box.querySelector('.auto-select-current').setAttribute('title', value);
+            else box.querySelector('.auto-select-current').removeAttribute('title');
+        }
     }
     function getSel(row, kind) {
         return row.getAttribute('data-' + kind) || '';
@@ -282,17 +288,23 @@
         var html = '<div class="model-dropdown-item' + (selected ? '' : ' active') + '" data-value="">' +
             '<span class="model-item-name">' + esc(emptyLabel) + '</span>' +
             (emptyDesc ? '<span class="model-item-desc">' + esc(emptyDesc) + '</span>' : '') + '</div>';
+        // value->label 映射：触发器显示短名，但 data-* 里仍存完整值
+        var labelMap = {};
         items.forEach(function (it) {
             var cls = it.value === selected ? ' active' : '';
-            html += '<div class="model-dropdown-item' + cls + '" data-value="' + esc(it.value) + '">' +
+            var provider = it.provider ? '<span class="model-item-provider">' + esc(it.provider) + '</span> ' : '';
+            labelMap[it.value] = it.label;
+            html += '<div class="model-dropdown-item' + cls + '" data-value="' + esc(it.value) + '"' +
+                (it.search ? ' data-search="' + esc(it.search.toLowerCase()) + '"' : '') + '>' +
                 '<span class="model-item-name">' + esc(it.label) + '</span>' +
-                (it.desc ? '<span class="model-item-desc">' + esc(it.desc) + '</span>' : '') + '</div>';
+                (it.desc ? '<span class="model-item-desc">' + provider + esc(it.desc) + '</span>' : '') + '</div>';
         });
         if (selected && !items.some(function (x) { return x.value === selected; })) {
             html += '<div class="model-dropdown-item active" data-value="' + esc(selected) + '">' +
                 '<span class="model-item-name">' + esc(selected) + '</span></div>';
         }
         box.querySelector('.model-dropdown-items').innerHTML = html;
+        box.__labelMap = labelMap;
         var search = box.querySelector('.model-search-input');
         if (search) search.value = '';
     }
@@ -431,7 +443,9 @@
     function filterSelItems(box, query) {
         var q = (query || '').toLowerCase().trim();
         box.querySelectorAll('.model-dropdown-item').forEach(function (item) {
-            item.style.display = !q || (item.textContent || '').toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+            // 优先用 data-search（汇总 name/model/provider），便于按供应商或完整名检索
+            var key = (item.getAttribute('data-search') || item.textContent || '').toLowerCase();
+            item.style.display = !q || key.indexOf(q) !== -1 ? '' : 'none';
         });
     }
     // 点击行内其它区域关闭所有下拉
@@ -722,7 +736,14 @@
             var list = (data && data.list) || [];
             var items = list.map(function (x) {
                 var v = x.name || x.model;
-                return {value: v, label: v, desc: x.desc || ''};
+                return {
+                    value: v,
+                    // 显示短名（不带供应商前缀），完整值仍作选中键
+                    label: window.modelDisplayName(x) || v,
+                    provider: window.modelProviderLabel(x),
+                    desc: x.description || '',
+                    search: [x.name || '', x.model || '', window.modelProviderLabel(x)].join(' ')
+                };
             }).filter(function (x) { return x.value; });
             renderSelItems(modelBox, items, getSel(row, 'model'), I18n.t('automation.modelPlaceholder'), I18n.t('automation.modelDefaultDesc'));
         }).catch(fail);

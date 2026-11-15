@@ -1355,6 +1355,7 @@ function getCurrentModelMeta() {
     return {
         name: raw.name,
         model: raw.model,
+        provider: raw.provider || '',
         desc: raw.description,
         contextLength: raw.contextLength || 0,
         standard: raw.standard || '',
@@ -1457,9 +1458,20 @@ function getCurrentModelMeta() {
     }
                 }
 
+// 触发器/列表里展示短名（不带供应商前缀），完整 name 只进 title 供溯源
+function modelDisplayOf(modelName) {
+    if (!modelName) return '';
+    for (var i = 0; i < modelList.length; i++) {
+        if (modelList[i].name === modelName) {
+            return window.modelDisplayName(modelList[i]) || modelName;
+        }
+    }
+    return modelName;
+}
+
 function buildTriggerLabel(modelName, effort, showDepth, thinkingMode) {
     var parts = [];
-    var displayName = modelName ? modelName : I18n.t('history.defaultModel');
+    var displayName = modelName ? modelDisplayOf(modelName) : I18n.t('history.defaultModel');
     parts.push(displayName);
     if (showDepth) {
         if (thinkingMode === 'off') {
@@ -1543,6 +1555,11 @@ function renderModelUI() {
         var standard = m.standard || 'openai';
         var hasDesc = !!(m.desc);
         var parts = [];
+        // 来源徽标放在最前：短名同名时靠它区分（provider 缺失时回退为 name 前缀）
+        var source = window.modelProviderLabel(m);
+        if (source) {
+            parts.push('<span class="model-item-provider">' + escapeHtml(source) + '</span>');
+        }
         if (hasDesc) {
             parts.push(escapeHtml(m.desc));
         }
@@ -1556,8 +1573,10 @@ function renderModelUI() {
         var m = modelList[i];
         var cls = m.name === currentModel ? ' active' : '';
         var ctxLen = m.contextLength ? (m.contextLength >= 1000000 && m.contextLength % 1000000 === 0 ? (m.contextLength / 1000000) + 'm' : (m.contextLength >= 1000 ? (m.contextLength / 1000) + 'k' : m.contextLength)) : '';
-        html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '">'
-            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
+        // data-model 保持完整 name（选中与回填的锚点）；data-search 汇总三种可检索文本
+        var searchKey = (m.name + ' ' + (m.model || '') + ' ' + window.modelProviderLabel(m)).toLowerCase();
+        html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '" data-search="' + escapeHtml(searchKey) + '">'
+            + '<span class="model-item-name">' + escapeHtml(window.modelDisplayName(m)) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + buildDescLine(m)
             + '</div>';
     }
@@ -1793,8 +1812,8 @@ function initModelSearch(dropdownId) {
             return;
         }
         $items.each(function() {
-            var name = ($(this).attr('data-model') || '').toLowerCase();
-            $(this).toggle(name.indexOf(query) !== -1);
+            var key = ($(this).attr('data-search') || $(this).attr('data-model') || '').toLowerCase();
+            $(this).toggle(key.indexOf(query) !== -1);
         });
     });
 }
