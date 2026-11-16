@@ -292,7 +292,8 @@ public class SkillhubSkillMarket implements SkillMarket {
                     .url("https://skillhub.cn/skills/" + getStringValue(node, "slug"))
                     .installs(getLongValue(node, "installs"))
                     .stars(getLongValue(node, "stars"))
-                    .version(parseVersion(node));
+                    .version(parseVersion(node))
+                    .iconUrl(parseIcon(node));
 
             result.add(item);
         }
@@ -319,6 +320,25 @@ public class SkillhubSkillMarket implements SkillMarket {
     private String getStringValue(ONode node, String key) {
         ONode child = node.get(key);
         return (child != null && !child.isNull()) ? child.getString() : null;
+    }
+
+    /**
+     * 解析图标地址：列表接口为 icon_url（下划线），详情接口为 iconUrl；
+     * 都取不到时回退发布方 logo（publisher.logoUrl），可能仍为空（前端显示首字母）。
+     */
+    private String parseIcon(ONode node) {
+        String icon = firstNonEmpty(
+                getStringValue(node, "icon_url"),
+                getStringValue(node, "iconUrl"));
+
+        if (icon == null) {
+            ONode publisherNode = node.get("publisher");
+            if (publisherNode != null && !publisherNode.isNull()) {
+                icon = getStringValue(publisherNode, "logoUrl");
+            }
+        }
+
+        return icon;
     }
 
     /**

@@ -34,7 +34,8 @@
     var $mcpMarketLoading = $('#mcpMarketLoading');
     var $mcpMarketError = $('#mcpMarketError');
 
-    var SVG_USE = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><polyline points="19 12 12 19 5 12"/></svg>';
+    // 添加：加号图标（与设置页「添加」按钮的视觉语义一致）
+    var SVG_ADD = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>';
     var SVG_SPIN = '<svg class="skill-install-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>';
 
     var PAGE_SIZE = 30;
@@ -213,12 +214,34 @@
     }
 
     /**
-     * 图标：优先用市场返回的 iconUrl（经后端代理加载，前端不直连境外域名），
-     * 加载失败或无图标时回退为名称首字母。
+     * 重复图标判定阈值：同一个图标地址在当次渲染中出现达到该次数，即视为平台默认占位图，
+     * 这类图标没有辨识度（多个条目长得一样），不如回退成名称首字母。
      */
-    function iconHtml(item, iconText) {
+    var REPEATED_ICON_THRESHOLD = 3;
+
+    /** 统计本次批内各图标地址的出现次数 */
+    function countIcons(iconUrls) {
+        var counts = {};
+        (iconUrls || []).forEach(function (url) {
+            if (url) {
+                counts[url] = (counts[url] || 0) + 1;
+            }
+        });
+        return counts;
+    }
+
+    /** 是否属于「重复出现的占位图」——是则不用图片，直接用文字徽标 */
+    function isPlaceholderIcon(iconUrl, iconCounts) {
+        return !!iconUrl && (iconCounts[iconUrl] || 0) >= REPEATED_ICON_THRESHOLD;
+    }
+
+    /**
+     * 图标：优先用市场返回的 iconUrl（经后端代理加载，前端不直连境外域名），
+     * 加载失败、无图标、或图标疑似占位图时回退为名称首字母。
+     */
+    function iconHtml(item, iconText, placeholder) {
         var iconUrl = item.iconUrl || '';
-        if (!iconUrl) {
+        if (!iconUrl || placeholder) {
             return '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>';
         }
 
@@ -261,6 +284,9 @@
             return;
         }
 
+        // 先统计本批图标出现次数，用于识别平台默认占位图
+        var iconCounts = countIcons(items.map(function (item) { return item.iconUrl || ''; }));
+
         var html = '';
         items.forEach(function (item) {
             var id = item.id || '';
@@ -275,7 +301,7 @@
             var repoUrl = item.repositoryUrl || '';
 
             html += '<div class="settings-list-item is-static" data-id="' + escapeAttr(id) + '">'
-                + iconHtml(item, iconText)
+                + iconHtml(item, iconText, isPlaceholderIcon(item.iconUrl, iconCounts))
                 + '<div class="settings-list-info">'
                 + '<div class="settings-list-title" title="' + escapeAttr(id) + '">' + escapeHtml(name)
                 + (item.installed ? '<span class="skill-installed-badge">' + I18n.t('mcp.marketInstalledBadge') + '</span>' : '')
@@ -291,7 +317,7 @@
                 + '</div></div>'
                 + '<div class="settings-list-actions">'
                 + '<div class="skill-install-wrap">'
-                + '<button type="button" class="skill-install-btn mcp-market-use-btn" data-id="' + escapeAttr(id) + '" title="' + I18n.t('mcp.marketUse') + '">' + SVG_USE + '</button>'
+                + '<button type="button" class="skill-install-btn mcp-market-use-btn" data-id="' + escapeAttr(id) + '" title="' + I18n.t('mcp.marketAdd') + '">' + SVG_ADD + '</button>'
                 + '<div class="skill-install-dropdown" data-id="' + escapeAttr(id) + '"></div>'
                 + '</div>'
                 + '</div></div>';
@@ -434,7 +460,7 @@
         $btn.addClass('loading').html(SVG_SPIN);
 
         fetchDetail(id, function (detail) {
-            $btn.removeClass('loading').html(SVG_USE);
+            $btn.removeClass('loading').html(SVG_ADD);
 
             var configs = detail.configs || [];
             if (!configs.length) {

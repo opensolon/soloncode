@@ -16,6 +16,7 @@ public class SkillMarketItem {
     private long installs;
     private long stars;
     private String version;    // 最新版本号（可能为空，市场不一定返回）
+    private String iconUrl;    // 图标地址（可能为空，市场不一定返回；前端经后端代理加载）
 
     public SkillMarketItem() {
     }
@@ -30,6 +31,7 @@ public class SkillMarketItem {
     public SkillMarketItem installs(long installs) { this.installs = installs; return this; }
     public SkillMarketItem stars(long stars) { this.stars = stars; return this; }
     public SkillMarketItem version(String version) { this.version = version; return this; }
+    public SkillMarketItem iconUrl(String iconUrl) { this.iconUrl = iconUrl; return this; }
 
     public String getSlug() { return slug; }
     public void setSlug(String slug) { this.slug = slug; }
@@ -51,4 +53,6 @@ public class SkillMarketItem {
     public void setStars(long stars) { this.stars = stars; }
     public String getVersion() { return version; }
     public void setVersion(String version) { this.version = version; }
+    public String getIconUrl() { return iconUrl; }
+    public void setIconUrl(String iconUrl) { this.iconUrl = iconUrl; }
 }

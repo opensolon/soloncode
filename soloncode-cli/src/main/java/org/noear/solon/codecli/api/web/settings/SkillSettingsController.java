@@ -15,6 +15,7 @@ import org.noear.solon.core.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
@@ -88,6 +89,20 @@ public class SkillSettingsController extends BaseSettingsController{
 
         SkillMarket market = marketManager.getMarketByName(marketName);
         return market.detail(slug);
+    }
+
+    /**
+     * 技能图标代理 — 由后端拉取市场图标，前端不直连远端域名。
+     *
+     * <p>域名白名单与拉取实现统一在 {@link MarketIconProxy}（与连接器市场共用）。</p>
+     *
+     * @param ctx 请求上下文（用于输出二进制）
+     * @param url 图标地址（市场条目返回的 iconUrl）
+     */
+    @Get
+    @Mapping("/web/settings/skills/market/icon")
+    public void skillsMarketIcon(Context ctx, @Param("url") String url) throws IOException {
+        MarketIconProxy.output(ctx, url);
     }
 
     /**

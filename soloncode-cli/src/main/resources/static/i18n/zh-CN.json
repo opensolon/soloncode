@@ -1416,7 +1416,7 @@
   "mcp.marketLoadFailedHttp": "加载连接器市场失败（HTTP {n}）",
   "mcp.marketTimeout": "请求超时，请稍后重试",
   "mcp.marketLoadMore": "加载更多",
-  "mcp.marketUse": "使用该连接器",
+  "mcp.marketAdd": "添加",
   "mcp.marketDetailFailed": "获取连接器详情失败",
   "mcp.marketResolveFailed": "生成配置失败，请重试",
   "mcp.marketNoConfig": "该连接器未提供可用的接入方式",

@@ -686,6 +686,45 @@
 
     // ==================== 渲染 ====================
 
+    /**
+     * 重复图标判定阈值：同一个图标地址在当次列表里出现达到该次数，即视为平台默认占位图。
+     * 例如 SkillHub 上有若干条目共用同一张腾讯云默认图，直接用会让列表看起来像坏图。
+     */
+    var REPEATED_ICON_THRESHOLD = 3;
+
+    /** 统计本次列表内各图标地址的出现次数（key 为图标地址，值为次数） */
+    function countIcons(iconUrls) {
+        var counts = {};
+        (iconUrls || []).forEach(function (url) {
+            if (url) {
+                counts[url] = (counts[url] || 0) + 1;
+            }
+        });
+        return counts;
+    }
+
+    /** 是否属于「重复出现的占位图」——是则不用图片，直接用文字徽标 */
+    function isPlaceholderIcon(iconUrl, iconCounts) {
+        return !!iconUrl && (iconCounts[iconUrl] || 0) >= REPEATED_ICON_THRESHOLD;
+    }
+
+    /**
+     * 条目图标：优先用市场返回的 iconUrl（经后端代理加载，前端不直连远端域名）；
+     * 无图标、图标疑似占位图、或图片拉取/解析失败时，回退为名称首字母文字图标。
+     */
+    function skillIconHtml(iconUrl, iconText, placeholder) {
+        if (!iconUrl || placeholder) {
+            return '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>';
+        }
+
+        var proxied = '/web/settings/skills/market/icon?url=' + encodeURIComponent(iconUrl);
+        return '<div class="settings-list-icon has-img">'
+            + '<img src="' + escapeAttr(proxied) + '" alt="" loading="lazy"'
+            + ' onerror="this.parentNode.classList.remove(\'has-img\');this.parentNode.classList.add(\'img-failed\');this.remove();">'
+            + '<span class="icon-fallback">' + escapeHtml(iconText) + '</span>'
+            + '</div>';
+    }
+
     function renderSkillsList(skills, installedMap) {
         if (!skills || skills.length === 0) {
             $skillsList.html(
@@ -698,6 +737,11 @@
             );
             return;
         }
+
+        // 先统计图标出现次数，用于识别平台默认占位图
+        var iconCounts = countIcons(skills.map(function (skill) {
+            return skill.iconUrl || (skill.owner && skill.owner.image) || '';
+        }));
 
         var html = '';
         skills.forEach(function (skill) {
@@ -714,10 +758,11 @@
             var shortDesc = desc && Array.from(desc).length > 60 ? Array.from(desc).slice(0, 60).join('') + '...' : desc;
 
             var skillUrl = skill.url || '';
+            var iconUrl = skill.iconUrl || (skill.owner && skill.owner.image) || '';
 
             // 行不可点（预览已移除），只有右侧安装按钮与「打开外部页面」按钮可交互
             html += '<div class="settings-list-item is-static">'
-                + '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>'
+                + skillIconHtml(iconUrl, iconText, isPlaceholderIcon(iconUrl, iconCounts))
                 + '<div class="settings-list-info">'
                 + '<div class="settings-list-title" title="' + escapeAttr(name) + '">' + escapeHtml(displayName) + (isInstalled ? '<span class="skill-installed-badge">' + I18n.t('skills.installedBadge') + '</span>' : '') + '</div>'
                 + (shortDesc ? '<div class="settings-list-desc" title="' + escapeAttr(desc) + '">' + escapeHtml(shortDesc) + '</div>' : '')

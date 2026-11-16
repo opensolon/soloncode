@@ -264,7 +264,8 @@ public class ClawhubSkillMarket implements SkillMarket {
                     .summary(getStringValue(node, "summary"))
                     .description(getStringValue(node, "description"))
                     .ownerHandle(ownerHandle)
-                    .url(detailUrl);
+                    .url(detailUrl)
+                    .iconUrl(parseIcon(node));
 
             // 解析安装量：新格式 metrics.lifetimeInstalls
             ONode metricsNode = node.get("metrics");
@@ -304,6 +305,21 @@ public class ClawhubSkillMarket implements SkillMarket {
     private long getLongValue(ONode node, String key) {
         ONode child = node.get(key);
         return (child != null && !child.isNull()) ? child.getLong() : 0;
+    }
+
+    /**
+     * 解析图标地址：ClawHub 条目本身不提供技能图标，回退到发布方头像（publisher.image，
+     * 多为 GitHub 头像）；发布方缺失（如 skills.sh 来源）时返回 null，前端显示首字母。
+     */
+    private String parseIcon(ONode node) {
+        ONode publisherNode = node.get("publisher");
+        if (publisherNode != null && !publisherNode.isNull()) {
+            String image = getStringValue(publisherNode, "image");
+            if (image != null && !image.isEmpty()) {
+                return image;
+            }
+        }
+        return null;
     }
 
     private void deleteDirectory(Path dir) throws Exception {
