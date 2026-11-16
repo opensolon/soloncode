@@ -244,8 +244,9 @@
         // 技能 / MCP 是多选，与输入面板用同一套条目样式、搜索文案和「不限制」按钮
         var multi = kind === 'skills' || kind === 'mcps';
         var searchPh = multi && window.Capabilities ? window.Capabilities.searchPlaceholder(kind) : I18n.t('automation.search');
+        // 技能 / MCP 的底部与输入面板同源（左「添加」、右「不限制」），不再自己拼一份
         var footer = multi
-            ? '<div class="model-dropdown-footer cap-footer"><button type="button" class="cap-clear">' + esc(window.Capabilities ? window.Capabilities.clearText() : I18n.t('chatcap.unrestricted')) + '</button></div>'
+            ? window.Capabilities.footerHtml(kind)
             // 模型选择器底部与输入面板同一份标记（思考模式 + 推理强度），不再各写一套
             : kind === 'model'
                 ? '<div class="model-dropdown-footer model-options-footer">' + window.ModelOptions.footerHtml() + '</div>'
@@ -475,6 +476,7 @@
         var nameEl = current.querySelector('.model-name');
         var itemsEl = box.querySelector('.model-dropdown-items');
         var clearBtn = box.querySelector('.cap-clear');
+        var addBtn = box.querySelector('.cap-add');
         var search = box.querySelector('.model-search-input');
         var items = [];
         var query = '';
@@ -486,7 +488,12 @@
             nameEl.textContent = capLabel(kind, values.length, placeholder);
             box.classList.toggle('has-selection', values.length > 0);
             itemsEl.innerHTML = capItemsHtml(items, values, query);
-            if (clearBtn) clearBtn.disabled = values.length === 0;
+            if (clearBtn) {
+                // 文案与输入面板同源：共享 footer 只产出空按钮，文字每次重绘时同步（语言包是异步到的）
+                clearBtn.textContent = window.Capabilities ? window.Capabilities.clearText() : I18n.t('chatcap.unrestricted');
+                clearBtn.disabled = values.length === 0;
+            }
+            if (addBtn) addBtn.textContent = window.Capabilities ? window.Capabilities.addText() : I18n.t('chatcap.add');
         }
 
         current.onclick = function (e) {
@@ -525,6 +532,12 @@
             setSel(row, kind, '', placeholder);
             paint();
             placePopBox(box);
+        };
+        if (addBtn) addBtn.onclick = function (e) {
+            // 先收起浮层，再唤起设置面板（与输入面板同一行为）
+            e.stopPropagation();
+            clearPopBox(box);
+            if (window.Capabilities) window.Capabilities.openAdd(kind);
         };
         return function (opts) {
             items = capNormalize(kind, opts);

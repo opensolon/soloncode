@@ -1,6 +1,12 @@
 
 ### v2026.11.15
 
+* **技能 / 连接器选择器新增「添加」按钮，点了直接跳到设置对应位置（22 个语言包同步）**：输入面板与自动任务页的这两个多选下拉原本只有「不限制」——列表为空时无从下手，装到第 N 个想装第 N+1 个时也只能自己去找设置入口。现在底部左侧常驻「添加」（不是只在空态出现：技能与连接器是持续扩张的，装完第 5 个还要能装第 6 个），右侧仍是「不限制」；点击后先收起浮层（否则设置面板压在浮层上，看着像浮层从设置里冒出来），再按字段跳转：技能落到「技能市场」子视图（不是「已安装」——用户点「添加」就是想装新的，落地后再点一次才算完），连接器落到 MCP 列表。
+  * **同时接上一条一直没被调用的死代码**：`window.reloadCapabilities()`（`app-capabilities.js`）定义了却全仓无人调用，能力选项只在页面初始化时拉一次并缓存——只加按钮不补这条，用户装完技能回到会话，下拉里仍然是旧列表，会当成安装失败报 bug。现在 `closeSettings()` 末尾统一重拉（实测关闭设置触发且仅触发 1 次 `/web/chat/skills/options`），装完即见。
+  * **标记只有一份来源**：新增 `Capabilities.footerHtml(field)` 与 `Capabilities.openAdd(field)`，自动任务页删掉自己手拼的「只有不限制」footer 改调共享函数；`openSettingsTab(tab, opts)` 新增 `opts.view`，`_skillModule.resetAndLoad(view)` 支持落视图，`web.html` 里延迟加载设置模块的代理层一并转发 `opts`（不转发时首点「添加」会丢视图）。
+  * **实测踩到并修掉一处回归**：共享 footer 只产出空按钮，文案在重绘时回填；自动任务页原来把文案直接烧进 HTML，改成共享后 `paint()` 漏了回填，浏览器里看到「不限制」是空按钮——已补 `clearBtn.textContent`，并写进契约测试。
+  * **验收**：1280 宽下输入面板与自动任务两处的 footer 度量逐项一致（下拉 340px、footer 高 37px、「添加」38px、「不限制」49px、左右内边距 8/8、`space-between`）；四条路径实测通过（技能添加→设置落在技能 tab 且市场可见、连接器添加→落在 mcp tab 且列表可见、自动任务页两处同样生效、关闭设置后重新打开下拉仍 19 项且文案正常）。新增 `CapabilityAddButtonWebContractTest` 4 例（共享 footer 不可回退、落点按字段决定、关闭设置必须重拉、22 个语言包齐备），并已在 HEAD 上反向验证全数失败。cli 全量 **1260 例 3F + 3 跳过**，失败仍是基线那三个（`AgentSettingsControllerTest`、`GeneralModelDefaultsContractTest`、`MountSettingsControllerTest`），无回归。
+  * **顺带**：`web.html` 里 MCP 区块的静态兜底文案（`MCP 服务器` / `添加服务器` / 导入标题 / 表单标题）一并改为「连接器」——上一轮只改了语言包，这处硬编码漏改，语言包加载前会闪一下旧称。
 
 ### v2026.11.11
 

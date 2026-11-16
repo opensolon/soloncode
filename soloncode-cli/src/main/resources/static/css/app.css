@@ -3921,7 +3921,10 @@ body.app-boot > *:not(#onboardingMask) { visibility: hidden; }
 /* 贴到视口边缘时翻转，避免下拉被裁切 */
 .cap-dropdown.edge-right { left: auto; right: -26px; }
 .cap-dropdown.flip-down { bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px; animation: none; }
-.cap-footer { display: flex; flex-direction: row; align-items: center; justify-content: flex-end; gap: 8px; padding: 6px 8px; }
+.cap-footer { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; }
+/* 左侧「添加」常驻：技能与连接器是持续扩张的，装到第 N 个时还要能再装 */
+.cap-add { flex: 0 0 auto; border: 0; background: transparent; color: var(--accent); font-size: var(--fs-xs); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.cap-add:hover { background: var(--accent-light); }
 .cap-clear { flex: 0 0 auto; border: 0; background: transparent; color: var(--text-secondary); font-size: var(--fs-xs); padding: 4px 8px; border-radius: 6px; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .cap-clear:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .cap-clear:disabled { opacity: 0.4; cursor: default; }

@@ -137,6 +137,31 @@
         return list ? list.length : 0;
     }
 
+    /**
+     * 下拉底部：左「添加」（跳到设置里装技能 / 建连接器）、右「不限制」。
+     * 常驻而非只在空态出现——技能与连接器是持续扩张的，装到第 N 个时还要能再装。
+     * 两处工具栏与自动任务页共用本函数，避免再各拼一份。
+     */
+    function footerHtml(field) {
+        return '<div class="model-dropdown-footer cap-footer">'
+            + '  <button type="button" class="cap-add" data-cap-add="' + esc(field) + '"></button>'
+            + '  <button type="button" class="cap-clear"></button>'
+            + '</div>';
+    }
+
+    /** 字段 → 设置页落点：技能直接进「技能市场」，连接器进 MCP 列表 */
+    function addTarget(field) {
+        return field === 'mcps' ? { tab: 'mcp', view: null } : { tab: 'skills', view: 'market' };
+    }
+
+    /** 打开设置并落到对应的添加视图；返回是否成功唤起 */
+    function openAdd(field) {
+        if (typeof window.openSettingsTab !== 'function') return false;
+        var target = addTarget(field);
+        window.openSettingsTab(target.tab, target.view ? { view: target.view } : null);
+        return true;
+    }
+
     function buildWidget(dim, anchorSelector, suffix) {
         var $anchor = $(anchorSelector).closest('.toolbar-selector-group');
         if (!$anchor.length) return null;
@@ -155,9 +180,7 @@
             + '        <input type="text" class="model-search-input" id="' + id + '-search"/>'
             + '      </div>'
             + '      <div class="model-dropdown-items"></div>'
-            + '      <div class="model-dropdown-footer cap-footer">'
-            + '        <button type="button" class="cap-clear"></button>'
-            + '      </div>'
+            + footerHtml(dim.field)
             + '    </div>'
             + '  </div>'
             + '</div>';
@@ -201,6 +224,7 @@
         // 文案每次重绘时同步：语言包是异步加载的，不能在构建期就把 t() 结果烧进 DOM
         widget.$search.attr('placeholder', searchPlaceholder(field));
         widget.$dd.find('.cap-clear').text(t('chatcap.unrestricted')).prop('disabled', selected.length === 0);
+        widget.$dd.find('.cap-add').text(t('chatcap.add'));
     }
 
     /** 两套工具栏（新会话 / 会话中）共用同一份状态，必须一起重绘，否则切换视图后标签与实际不一致 */
@@ -318,6 +342,13 @@
             clear(widget);
         });
 
+        $root.on('click', '.cap-add', function (e) {
+            // 先收起浮层：设置面板会压在它上面，不关就会出现“浮层从设置页里冒出来”的错觉
+            e.stopPropagation();
+            $root.removeClass('open');
+            openAdd(widget.dim.field);
+        });
+
         $root.on('input', '.model-search-input', function () {
             render(widget);
         });
@@ -384,6 +415,10 @@
         label: label,
         searchPlaceholder: searchPlaceholder,
         clearText: function () { return t('chatcap.unrestricted'); },
+        addText: function () { return t('chatcap.add'); },
+        footerHtml: footerHtml,
+        addTarget: addTarget,
+        openAdd: openAdd,
         normalize: normalize,
         filterAvailable: filterAvailable,
         itemsHtml: itemsHtml

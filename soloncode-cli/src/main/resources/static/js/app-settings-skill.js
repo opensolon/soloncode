@@ -1208,7 +1208,7 @@
          * 重置缓存并加载。默认落在「已安装」子视图，
          * 市场列表懒加载（首次切过去时才请求外网）。
          */
-        resetAndLoad: function () {
+        resetAndLoad: function (view) {
             _installedSkillsCache = null;
             _mountPoolsCache = null;
             _marketLoaded = false;
@@ -1216,7 +1216,8 @@
             _installedGroups = [];
             $skillsInstalledFilter.val('');
             $skillsInstalledFilterClear.hide();
-            switchView('installed');
+            // 「添加」按钮从选择器跳进来时直接落到技能市场（选视图就是想去装新的），否则回默认
+            switchView(view === 'market' ? 'market' : 'installed');
         }
     };
 

@@ -103,6 +103,14 @@
 
     function mod(name) { return window[name]; }
 
+    // 「添加」按钮跳进来时要比落的子视图（技能市场），只对紧接着的那次打开生效
+    var pendingSkillView = null;
+    function takeSkillView() {
+        var view = pendingSkillView;
+        pendingSkillView = null;
+        return view;
+    }
+
     function resetCurrentTabView(targetTab) {
         if (targetTab === 'llm' && mod('_settingsLlm')) { mod('_settingsLlm').showList(); mod('_settingsLlm').reset(); }
         else if (targetTab === 'agents' && mod('_settingsAgents')) { mod('_settingsAgents').showList(); mod('_settingsAgents').reset(); }
@@ -137,6 +145,8 @@
             $('#skillsSearchInput').val('');
             $('#skillsSearchClear').hide();
         }
+        // 设置里可能刚装完技能 / 新建了连接器，回到会话要能看到：选项是缓存的一次性快照，必须重拉
+        if (typeof window.reloadCapabilities === 'function') window.reloadCapabilities();
     }
 
     $settingsBtn.on('click', openSettings);
@@ -174,7 +184,7 @@
             if (mod('_settingsLlm')) mod('_settingsLlm').load();
         } else if (targetTab === 'skills') {
             $('#settingsTabSkills').addClass('active');
-            if (window._skillModule) window._skillModule.resetAndLoad();
+            if (window._skillModule) window._skillModule.resetAndLoad(takeSkillView());
         } else if (targetTab === 'mounts') {
             $('#settingsTabMounts').addClass('active');
             if (mod('_settingsMounts')) mod('_settingsMounts').load();
@@ -204,7 +214,7 @@
         }
         else if (targetTab === 'agents') { if (mod('_settingsAgents')) mod('_settingsAgents').load(); }
         else if (targetTab === 'llm') { if (mod('_settingsLlm')) mod('_settingsLlm').load(); }
-        else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(); }
+        else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(takeSkillView()); }
         else if (targetTab === 'mounts') { if (mod('_settingsMounts')) mod('_settingsMounts').load(); }
         else if (targetTab === 'mcp') { if (mod('_settingsMcp')) mod('_settingsMcp').load(); }
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
@@ -284,11 +294,19 @@
         }
     });
 
-    // 全局打开设置 tab 入口（供 app-filer.js 调用）
+    // 全局打开设置 tab 入口（供 app-filer.js / 选择器「添加」按钮调用）
+    // opts.view：技能 tab 的子视图（'market' 直接落到技能市场）
     // skin 已并入通用 → 界面效果，旧入口兼容跳到 general
-    window.openSettingsTab = function(tab) {
+    window.openSettingsTab = function(tab, opts) {
         if (tab === 'skin') tab = 'general';
+        pendingSkillView = (opts && opts.view) || null;
         $overlay.css('display', 'flex');
-        $('.settings-tab[data-tab="' + tab + '"]').click();
+        var $tab = $('.settings-tab[data-tab="' + tab + '"]');
+        if ($tab.length) {
+            $tab.click();
+        } else {
+            // tab 不存在时不能把视图提示留到下一个人，否则眼镜按钮进去也会跑到市场
+            pendingSkillView = null;
+        }
     };
 })();
