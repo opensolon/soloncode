@@ -111,14 +111,54 @@
         return view;
     }
 
+    // 「大语言模型」页内的两个子视图：模型 / 供应商（供应商原本是独立 Tab）
+    var currentLlmView = 'models';
+    // 「供应商」深链进来时要落的子视图，只对紧接着的那次打开生效
+    var pendingLlmView = null;
+    function takeLlmView() {
+        var view = pendingLlmView;
+        pendingLlmView = null;
+        // 无深链时沿用当前子视图：面板内来回切 tab 不会把用户甩回「模型」，
+        // 重新打开面板则是 models（closeSettings 会复位）
+        return view || currentLlmView;
+    }
+
+    /**
+     * 切换「大语言模型」页内的子视图。
+     * skipLoad=true 只做显示切换（进页面/关闭面板复位时用），避免和随后的 load 重复请求。
+     */
+    function switchLlmView(view, skipLoad) {
+        currentLlmView = view === 'providers' ? 'providers' : 'models';
+        $('#llmViewToggle .mcp-type-btn').removeClass('active')
+            .filter('[data-view="' + currentLlmView + '"]').addClass('active');
+        if (currentLlmView === 'providers') {
+            $('#llmViewModels').hide();
+            $('#llmViewProviders').show();
+            if (skipLoad) return;
+            // 切进去先回列表页：上次可能停留在编辑表单，不归位会看起来像「供应商列表空页」
+            if (window.settingsProviders) window.settingsProviders.showList();
+        } else {
+            $('#llmViewProviders').hide();
+            $('#llmViewModels').show();
+            if (skipLoad) return;
+            if (mod('_settingsLlm')) { mod('_settingsLlm').showList(); mod('_settingsLlm').load(); }
+        }
+    }
+
     function resetCurrentTabView(targetTab) {
-        if (targetTab === 'llm' && mod('_settingsLlm')) { mod('_settingsLlm').showList(); mod('_settingsLlm').reset(); }
+        if (targetTab === 'llm' || targetTab === 'providers') {
+            if (currentLlmView === 'providers') {
+                if (window.settingsProviders) window.settingsProviders.showList();
+            } else if (mod('_settingsLlm')) {
+                mod('_settingsLlm').showList();
+                mod('_settingsLlm').reset();
+            }
+        }
         else if (targetTab === 'agents' && mod('_settingsAgents')) { mod('_settingsAgents').showList(); mod('_settingsAgents').reset(); }
         else if (targetTab === 'mounts' && mod('_settingsMounts')) { mod('_settingsMounts').showList(); mod('_settingsMounts').reset(); }
         else if (targetTab === 'mcp' && mod('_settingsMcp')) { mod('_settingsMcp').showList(); mod('_settingsMcp').reset(); $('#mcpToolsToolbar').hide(); }
         else if (targetTab === 'openapi' && mod('_settingsOpenapi')) { mod('_settingsOpenapi').showList(); mod('_settingsOpenapi').reset(); }
         else if (targetTab === 'lsp' && mod('_settingsLsp')) { mod('_settingsLsp').showList(); mod('_settingsLsp').reset(); }
-        else if (targetTab === 'providers' && window.settingsProviders) { window.settingsProviders.showList(); }
     }
 
     function openSettings() {
@@ -132,6 +172,8 @@
         if (mod('_settingsGeneral') && typeof mod('_settingsGeneral').revertFont === 'function') {
             mod('_settingsGeneral').revertFont();
         }
+        // 子视图复位：下次打开默认落「模型」列表，不沿用上次停留的子视图/表单
+        switchLlmView('models', true);
         if (mod('_settingsLlm')) mod('_settingsLlm').showList();
         if (mod('_settingsMcp')) mod('_settingsMcp').showList();
         if (mod('_settingsOpenapi')) mod('_settingsOpenapi').showList();
@@ -173,15 +215,26 @@
         if (targetTab === 'general') {
             $('#settingsTabGeneral').addClass('active');
             if (mod('_settingsGeneral')) mod('_settingsGeneral').load();
-            if (mod('_settingsSkin')) mod('_settingsSkin').load();
             if (mod('_settingsPermission')) mod('_settingsPermission').load();
 
+        } else if (targetTab === 'appearance') {
+            $('#settingsTabAppearance').addClass('active');
+            // 外观页的表单（字体/缩放/简化展示）与通用页同一份存储，走同一套 load/save
+            if (mod('_settingsGeneral')) mod('_settingsGeneral').load();
+            if (mod('_settingsSkin')) mod('_settingsSkin').load();
         } else if (targetTab === 'agents') {
             $('#settingsTabAgents').addClass('active');
             if (mod('_settingsAgents')) mod('_settingsAgents').load();
-        } else if (targetTab === 'llm') {
+        } else if (targetTab === 'llm' || targetTab === 'providers') {
+            // providers 是合并前的老 tab 名，只作为深链别名
             $('#settingsTabLlm').addClass('active');
-            if (mod('_settingsLlm')) mod('_settingsLlm').load();
+            var llmView = targetTab === 'providers' ? 'providers' : takeLlmView();
+            switchLlmView(llmView, true);
+            if (llmView === 'providers') {
+                if (window.settingsProviders) window.settingsProviders.loadList();
+            } else if (mod('_settingsLlm')) {
+                mod('_settingsLlm').load();
+            }
         } else if (targetTab === 'skills') {
             $('#settingsTabSkills').addClass('active');
             if (window._skillModule) window._skillModule.resetAndLoad(takeSkillView());
@@ -197,10 +250,14 @@
         } else if (targetTab === 'lsp') {
             $('#settingsTabLsp').addClass('active');
             if (mod('_settingsLsp')) mod('_settingsLsp').load();
-        } else if (targetTab === 'providers') {
-            $('#settingsTabProviders').addClass('active');
-            if (window.settingsProviders) window.settingsProviders.loadList();
         }
+    });
+
+    // 「模型 / 供应商」子视图切换
+    $(document).on('click', '#llmViewToggle .mcp-type-btn', function () {
+        var view = $(this).attr('data-view');
+        if (view === currentLlmView) return;
+        switchLlmView(view);
     });
 
     function loadActiveTabData() {
@@ -209,17 +266,22 @@
         var targetTab = $active.attr('data-tab');
         if (targetTab === 'general') {
             if (mod('_settingsGeneral')) mod('_settingsGeneral').load();
-            if (mod('_settingsSkin')) mod('_settingsSkin').load();
             if (mod('_settingsPermission')) mod('_settingsPermission').load();
         }
+        else if (targetTab === 'appearance') {
+            if (mod('_settingsGeneral')) mod('_settingsGeneral').load();
+            if (mod('_settingsSkin')) mod('_settingsSkin').load();
+        }
         else if (targetTab === 'agents') { if (mod('_settingsAgents')) mod('_settingsAgents').load(); }
-        else if (targetTab === 'llm') { if (mod('_settingsLlm')) mod('_settingsLlm').load(); }
+        else if (targetTab === 'llm' || targetTab === 'providers') {
+            if (currentLlmView === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
+            else if (mod('_settingsLlm')) mod('_settingsLlm').load();
+        }
         else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(takeSkillView()); }
         else if (targetTab === 'mounts') { if (mod('_settingsMounts')) mod('_settingsMounts').load(); }
         else if (targetTab === 'mcp') { if (mod('_settingsMcp')) mod('_settingsMcp').load(); }
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
         else if (targetTab === 'lsp') { if (mod('_settingsLsp')) mod('_settingsLsp').load(); }
-        else if (targetTab === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
     }
 
     /**
@@ -296,9 +358,18 @@
 
     // 全局打开设置 tab 入口（供 app-filer.js / 选择器「添加」按钮调用）
     // opts.view：技能 tab 的子视图（'market' 直接落到技能市场）
-    // skin 已并入通用 → 界面效果，旧入口兼容跳到 general
+    // 旧入口兼容：skin → 外观（外观已独立成 tab）、providers → 大语言模型 + 供应商子视图、lsp → 通用
     window.openSettingsTab = function(tab, opts) {
-        if (tab === 'skin') tab = 'general';
+        if (tab === 'skin') {
+            tab = 'appearance';
+        } else if (tab === 'providers') {
+            tab = 'llm';
+            pendingLlmView = 'providers';
+        } else if (tab === 'lsp') {
+            // LSP tab 已在侧边栏隐藏，深链降到通用页，避免点了没反应
+            tab = 'general';
+        }
+        if (tab !== 'llm') pendingLlmView = null;
         pendingSkillView = (opts && opts.view) || null;
         $overlay.css('display', 'flex');
         var $tab = $('.settings-tab[data-tab="' + tab + '"]');

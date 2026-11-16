@@ -322,9 +322,13 @@
         previewFont();
     });
 
+    // 通用表单是否已从服务端回填过（外观页复用同一份表单，未回填就提交会清空配置）
+    var generalLoaded = false;
+
     function loadGeneralSettings() {
-        $.get('/web/settings/general', function (resp) {
+        var p1 = $.get('/web/settings/general', function (resp) {
             if (resp.code === 200 && resp.data) {
+                generalLoaded = true;
                 var d = resp.data;
                 $('#generalSessionWindowSize').val(d.sessionWindowSize != null ? formatNum(d.sessionWindowSize) : '');
                 $('#generalCompressionMsgs').val((d.compressionThresholdMessages ?? d.summaryWindowSize) != null ? formatNum(d.compressionThresholdMessages ?? d.summaryWindowSize) : '');
@@ -391,7 +395,7 @@
         }).fail(function () { console.error('[Settings] Failed to load general settings'); });
 
         // 加载 Loop Goal 配置
-        $.get('/web/settings/loop', function (resp) {
+        var p2 = $.get('/web/settings/loop', function (resp) {
             if (resp.code === 200 && resp.data) {
                 var d = resp.data;
                 $('#generalLoopDefaultMaxTokens').val(d.defaultMaxTokens != null && d.defaultMaxTokens > 0 ? formatNum(d.defaultMaxTokens) : '');
@@ -403,12 +407,14 @@
                 $('#generalLoopValidatorEnabled').prop('checked', d.validatorEnabled !== false);
             }
         }).fail(function () { console.error('[Settings] Failed to load loop settings'); });
+
+        return $.when(p1, p2);
     }
 
     // 皮肤切换由 app-settings-skin.js 统一处理（含服务端 activeSkin 持久化）
 
-    $('#generalSaveBtn').on('click', function () {
-        var $generalSaveBtn = $('#generalSaveBtn');
+    // 通用页与外观页共用同一个保存体（字体/缩放/简化工具调用展示都在 /web/settings/general 里）
+    function saveGeneralSettings($generalSaveBtn) {
 
         // 模型默认-并发数：必须是正整数（引擎上界见 TaskTalent.MAX_CONCURRENCY）
         var concRaw = $('#generalModelDefaultConcurrency').val().trim();
@@ -506,6 +512,18 @@
             .done(function () { showToast(window.I18n ? window.I18n.t('toast.saveSuccess') : '\u4fdd\u5b58\u6210\u529f'); })
             .fail(function () { showToast(window.I18n ? window.I18n.t('toast.saveFailed') : '\u4fdd\u5b58\u5931\u8d25', 'error'); })
             .always(function () { $generalSaveBtn.prop('disabled', false); });
+    }
+
+    $(document).on('click', '#generalSaveBtn, #appearanceSaveBtn', function () {
+        var $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        // 外观页可能先于通用页打开：表单尚未从服务端回填就提交会把配置清空，先补一次 load
+        if (!generalLoaded) {
+            $btn.prop('disabled', true);
+            loadGeneralSettings().always(function () { saveGeneralSettings($btn); });
+            return;
+        }
+        saveGeneralSettings($btn);
     });
 
         // 打开日志目录（在系统文件管理器中打开）

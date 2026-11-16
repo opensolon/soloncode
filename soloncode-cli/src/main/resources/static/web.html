@@ -640,21 +640,19 @@
                 <div class="settings-tabs-scroll">
                 <button class="settings-tab active" data-tab="general"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> <span data-i18n="settings.tab.general">通用</span></button>
 
-                <button class="settings-tab" data-tab="agents"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg> <span data-i18n="settings.tab.agents">智能体</span></button>
+                <button class="settings-tab" data-tab="appearance"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.65-.75 1.65-1.69 0-.44-.18-.84-.44-1.13-.29-.29-.44-.65-.44-1.12a1.64 1.64 0 0 1 1.67-1.67h2c3.05 0 5.56-2.5 5.56-5.55C21.97 6.01 17.46 2 12 2z"/></svg> <span data-i18n="settings.tab.appearance">外观</span></button>
+
+                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:var(--fs-xs);color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;" data-i18n="settings.group.features">功能</div>
                 <button class="settings-tab" data-tab="mounts"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> <span data-i18n="settings.tab.mounts">挂载</span></button>
+                <button class="settings-tab" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> <span data-i18n="settings.group.llm">大语言模型</span></button>
+                <button class="settings-tab" data-tab="agents"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/><path d="M19 3v4M17 5h4"/></svg> <span data-i18n="settings.tab.agents">智能体</span></button>
                 <!-- 图标与输入面板的技能 / 连接器选择器同源：static/js/app-capabilities.js 的 SVG_SKILL_ICON / SVG_MCP_ICON，改动请两边一起改 -->
-                <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.1L19 10l-4.9 1.9L12 17l-2.1-5.1L5 10l4.9-1.9z"/><path d="M18 16l.9 2.1L21 19l-2.1.9L18 22l-.9-2.1L15 19l2.1-.9z"/></svg> <span data-i18n="settings.tab.skills">技能管理</span></button>
-
-                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:var(--fs-xs);color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;" data-i18n="settings.group.llm">大语言模型</div>
-                <button class="settings-tab" data-tab="providers"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6M12 17v6M4.22 4.22l4.24 4.24M15.54 15.54l4.24 4.24M1 12h6M17 12h6M4.22 19.78l4.24-4.24M15.54 8.46l4.24-4.24"/></svg> <span data-i18n="settings.tab.providers">供应商</span></button>
-                <button class="settings-tab" data-tab="llm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1.27a7 7 0 0 1-12.46 0H6a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73A2 2 0 0 1 12 2z"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg> <span data-i18n="settings.tab.llm">模型</span></button>
-
-                <div class="sidebar-title" style="padding:16px 16px 8px;font-size:var(--fs-xs);color:var(--text-secondary);font-weight:600;letter-spacing:1px;text-transform:uppercase;" data-i18n="settings.group.external">外部连接</div>
+                <button class="settings-tab" data-tab="skills"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.1 5.1L19 10l-4.9 1.9L12 17l-2.1-5.1L5 10l4.9-1.9z"/><path d="M18 16l.9 2.1L21 19l-2.1.9L18 22l-.9-2.1L15 19l2.1-.9z"/></svg> <span data-i18n="settings.tab.skills">技能</span></button>
                 <button class="settings-tab" data-tab="mcp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3"/><rect x="5" y="7" width="14" height="8" rx="2"/><path d="M12 15v3a3 3 0 0 0 6 0v-2"/></svg> <span data-i18n="settings.tab.mcp">MCP 连接器</span></button>
-                <!--
-                    <button class="settings-tab" data-tab="openapi"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> <span data-i18n="settings.tab.openapi">OpenAPI 服务器</span></button>
-                -->
+
+                <!-- LSP 服务器暂不展示（内容与 app-settings-lsp.js 逻辑保留），需要时把下面这行注释放开即可
                 <button class="settings-tab" data-tab="lsp"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> <span data-i18n="settings.tab.lsp">LSP 服务器</span></button>
+                -->
 
                 <!-- 用户管理已迁至独立的管理控制台 (/admin)，不再属于面向普通用户的设置面板 -->
                 </div>
@@ -676,29 +674,6 @@
                         </div>
 
                         <div class="general-card-group">
-                            <!-- 显示语言 -->
-                            <div class="general-card">
-                                <div class="general-card-header">
-                                    <div class="general-card-text">
-                                        <div class="general-card-title" data-i18n="general.language.title">显示语言</div>
-                                    </div>
-                                </div>
-                                <div class="general-card-body">
-                                    <div class="general-toggle-row">
-                                        <div class="general-toggle-info">
-                                            <span class="general-toggle-desc" data-i18n="general.language.subTitle">语言</span>
-                                        </div>
-                                        <div class="locale-selector" id="localeSelector">
-                                            <div class="locale-selector-current" id="localeSelectorCurrent">
-                                                <span class="locale-selector-name" id="localeSelectorName">中文</span>
-                                                <i class="layui-icon layui-icon-down locale-selector-arrow"></i>
-                                            </div>
-                                            <div class="locale-selector-dropdown" id="localeSelectorDropdown"></div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
                             <!-- 上下文压缩策略 -->
                             <div class="general-card">
                                 <div class="general-card-header">
@@ -870,75 +845,6 @@
                                         </div>
                                     </div>
                                     <div class="general-toggle-desc settings-gap-top-sm" data-i18n="general.retry.desc">控制各类请求失败后的自动重试次数</div>
-                                </div>
-                            </div>
-
-                            <!-- 外观效果 -->
-                            <div class="general-card">
-                                <div class="general-card-header">
-                                    <div class="general-card-text">
-                                        <div class="general-card-title" data-i18n="general.ui.title">外观效果</div>
-                                    </div>
-                                </div>
-                                <div class="general-card-body">
-                                    <div class="general-toggle-row">
-                                        <div class="general-toggle-info">
-                                            <span class="general-toggle-name" data-i18n="general.ui.simplifiedName">简化工具调用展示</span>
-                                             <span class="general-toggle-desc" data-i18n="general.ui.simplifiedDesc">开启后默认收起详情，需要时再展开；关闭则始终完整显示</span>
-                                        </div>
-                                        <label class="toggle-switch">
-                                            <input type="checkbox" id="generalCliPrintSimplified"/>
-                                            <span class="toggle-slider"></span>
-                                        </label>
-                                    </div>
-
-                                    <div class="settings-gap-top-md font-section">
-                                        <div class="general-subblock-title" data-i18n="general.ui.fontTitle">调整字体</div>
-                                        <div class="general-field-row">
-                                            <div class="general-field font-selector" data-font-type="sans" style="flex:1">
-                                                <label class="general-field-label" for="generalUiFontFamily" data-i18n="general.ui.fontFamily">界面字体</label>
-                                                <div class="font-selector-control">
-                                                    <input type="text" class="general-input font-selector-input" id="generalUiFontFamily"
-                                                           autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"
-                                                           aria-autocomplete="list" aria-controls="generalUiFontFamilyDropdown"
-                                                           placeholder="系统默认" data-i18n-placeholder="general.ui.fontPlaceholder"/>
-                                                    <button type="button" class="font-selector-toggle" tabindex="-1"
-                                                            data-i18n-title="general.ui.fontFamily" title="界面字体">
-                                                        <i class="layui-icon layui-icon-down"></i>
-                                                    </button>
-                                                    <div class="font-selector-dropdown" id="generalUiFontFamilyDropdown" role="listbox"></div>
-                                                </div>
-                                            </div>
-                                            <div class="general-field font-selector" data-font-type="mono" style="flex:1">
-                                                <label class="general-field-label" for="generalUiFontMono" data-i18n="general.ui.fontMono">代码字体</label>
-                                                <div class="font-selector-control">
-                                                    <input type="text" class="general-input font-selector-input" id="generalUiFontMono"
-                                                           autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"
-                                                           aria-autocomplete="list" aria-controls="generalUiFontMonoDropdown"
-                                                           placeholder="系统默认" data-i18n-placeholder="general.ui.fontPlaceholder"/>
-                                                    <button type="button" class="font-selector-toggle" tabindex="-1"
-                                                            data-i18n-title="general.ui.fontMono" title="代码字体">
-                                                        <i class="layui-icon layui-icon-down"></i>
-                                                    </button>
-                                                    <div class="font-selector-dropdown" id="generalUiFontMonoDropdown" role="listbox"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div class="font-scale-row settings-gap-top-sm">
-                                            <label class="general-field-label" for="generalUiFontScale" data-i18n="general.ui.fontScale">字号缩放</label>
-                                            <div class="font-scale-control">
-                                                <input type="range" id="generalUiFontScale" min="85" max="150" step="5" value="100"/>
-                                                <span class="font-scale-value" id="generalUiFontScaleValue">100%</span>
-                                                <button type="button" class="settings-mini-btn" id="generalUiFontReset" data-i18n="general.ui.fontReset">重置</button>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="settings-gap-top-md skin-section">
-                                        <div class="general-subblock-title" data-i18n="general.ui.chooseSkin">选择皮肤</div>
-                                        <input type="file" id="skinZipInput" accept=".zip,application/zip" style="display:none"/>
-                                        <div class="skin-card-list" id="skinCardList"></div>
-                                    </div>
                                 </div>
                             </div>
 
@@ -1177,6 +1083,115 @@
                     </div>
                 </div>
 
+                <!-- Appearance Tab -->
+                <div class="settings-tab-content" id="settingsTabAppearance">
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <div>
+                                <span class="settings-section-title" data-i18n="settings.tab.appearance">外观</span>
+                                <div class="settings-section-desc" data-i18n="general.ui.desc">调整界面字体、字号缩放与皮肤，仅影响当前浏览器</div>
+                            </div>
+                        </div>
+                        <div class="general-card-group">
+                            <!-- 显示语言 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="general.language.title">显示语言</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-desc" data-i18n="general.language.subTitle">语言</span>
+                                        </div>
+                                        <div class="locale-selector" id="localeSelector">
+                                            <div class="locale-selector-current" id="localeSelectorCurrent">
+                                                <span class="locale-selector-name" id="localeSelectorName">中文</span>
+                                                <i class="layui-icon layui-icon-down locale-selector-arrow"></i>
+                                            </div>
+                                            <div class="locale-selector-dropdown" id="localeSelectorDropdown"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 外观效果 -->
+                            <div class="general-card">
+                                <div class="general-card-header">
+                                    <div class="general-card-text">
+                                        <div class="general-card-title" data-i18n="general.ui.title">外观效果</div>
+                                    </div>
+                                </div>
+                                <div class="general-card-body">
+                                    <div class="general-toggle-row">
+                                        <div class="general-toggle-info">
+                                            <span class="general-toggle-name" data-i18n="general.ui.simplifiedName">简化工具调用展示</span>
+                                             <span class="general-toggle-desc" data-i18n="general.ui.simplifiedDesc">开启后默认收起详情，需要时再展开；关闭则始终完整显示</span>
+                                        </div>
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="generalCliPrintSimplified"/>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="settings-gap-top-md font-section">
+                                        <div class="general-subblock-title" data-i18n="general.ui.fontTitle">调整字体</div>
+                                        <div class="general-field-row">
+                                            <div class="general-field font-selector" data-font-type="sans" style="flex:1">
+                                                <label class="general-field-label" for="generalUiFontFamily" data-i18n="general.ui.fontFamily">界面字体</label>
+                                                <div class="font-selector-control">
+                                                    <input type="text" class="general-input font-selector-input" id="generalUiFontFamily"
+                                                           autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"
+                                                           aria-autocomplete="list" aria-controls="generalUiFontFamilyDropdown"
+                                                           placeholder="系统默认" data-i18n-placeholder="general.ui.fontPlaceholder"/>
+                                                    <button type="button" class="font-selector-toggle" tabindex="-1"
+                                                            data-i18n-title="general.ui.fontFamily" title="界面字体">
+                                                        <i class="layui-icon layui-icon-down"></i>
+                                                    </button>
+                                                    <div class="font-selector-dropdown" id="generalUiFontFamilyDropdown" role="listbox"></div>
+                                                </div>
+                                            </div>
+                                            <div class="general-field font-selector" data-font-type="mono" style="flex:1">
+                                                <label class="general-field-label" for="generalUiFontMono" data-i18n="general.ui.fontMono">代码字体</label>
+                                                <div class="font-selector-control">
+                                                    <input type="text" class="general-input font-selector-input" id="generalUiFontMono"
+                                                           autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"
+                                                           aria-autocomplete="list" aria-controls="generalUiFontMonoDropdown"
+                                                           placeholder="系统默认" data-i18n-placeholder="general.ui.fontPlaceholder"/>
+                                                    <button type="button" class="font-selector-toggle" tabindex="-1"
+                                                            data-i18n-title="general.ui.fontMono" title="代码字体">
+                                                        <i class="layui-icon layui-icon-down"></i>
+                                                    </button>
+                                                    <div class="font-selector-dropdown" id="generalUiFontMonoDropdown" role="listbox"></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="font-scale-row settings-gap-top-sm">
+                                            <label class="general-field-label" for="generalUiFontScale" data-i18n="general.ui.fontScale">字号缩放</label>
+                                            <div class="font-scale-control">
+                                                <input type="range" id="generalUiFontScale" min="85" max="150" step="5" value="100"/>
+                                                <span class="font-scale-value" id="generalUiFontScaleValue">100%</span>
+                                                <button type="button" class="settings-mini-btn" id="generalUiFontReset" data-i18n="general.ui.fontReset">重置</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="settings-gap-top-md skin-section">
+                                        <div class="general-subblock-title" data-i18n="general.ui.chooseSkin">选择皮肤</div>
+                                        <input type="file" id="skinZipInput" accept=".zip,application/zip" style="display:none"/>
+                                        <div class="skin-card-list" id="skinCardList"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions form-actions-end settings-actions-spacious">
+                                <button class="btn-primary" id="appearanceSaveBtn" data-i18n="general.saveBtn">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Agents Tab -->
                 <div class="settings-tab-content" id="settingsTabAgents">
                     <div class="settings-view settings-view-list" id="agentsListView">
@@ -1264,6 +1279,12 @@
                 </div>
                 <!-- LLM Tab -->
                 <div class="settings-tab-content" id="settingsTabLlm">
+                    <!-- 顶部子视图切换：模型 / 供应商（合并前的两个独立 Tab） -->
+                    <div class="mcp-type-toggle" id="llmViewToggle" style="margin-bottom:12px;max-width:320px">
+                        <button type="button" class="mcp-type-btn active" data-view="models" data-i18n="llm.title">模型</button>
+                        <button type="button" class="mcp-type-btn" data-view="providers" data-i18n="provider.title">供应商</button>
+                    </div>
+                    <div class="settings-view-group" id="llmViewModels">
                     <!-- List View -->
                     <div class="settings-view settings-view-list" id="llmListView">
                         <div class="settings-section">
@@ -1394,6 +1415,104 @@
                         </div>
                     </div>
 
+                    </div><!-- /#llmViewModels -->
+                    <!-- 供应商视图：由原「供应商」Tab 整体迁入 -->
+                    <div class="settings-view-group" id="llmViewProviders" style="display:none">
+                    <!-- List View -->
+                    <div class="settings-view settings-view-list" id="providersListView">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div>
+                                    <span class="settings-section-title" data-i18n="provider.title">供应商</span>
+                                     <div class="settings-section-desc" data-i18n="provider.desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div>
+                                </div>
+                                <div class="openapi-header-actions">
+                                    <button class="settings-add-btn" id="providerAddBtn" data-i18n="provider.addBtn">+ 添加供应商</button>
+                                </div>
+                            </div>
+                            <div class="openapi-server-list" id="providerList"></div>
+                        </div>
+                    </div>
+                    <!-- Form View -->
+                    <div class="settings-view settings-view-form" id="providersFormView" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="providerBackBtn" title="返回" data-i18n-title="common.back">
+                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                     </button>
+                                    <span class="settings-section-title" id="providerFormTitle">添加供应商</span>
+                                </div>
+                                <div class="settings-form-actions" id="providerFormActions" style="display:none">
+                                    <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除" data-i18n-title="provider.deleteTitle">
+                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                         <span data-i18n="provider.deleteBtn">删除</span>
+                                     </button>
+                                </div>
+                            </div>
+                            <div class="openapi-add-form" id="providerAddForm">
+                                <div class="form-group">
+                                    <label data-i18n="form.name">名称 <span class="required">*</span></label>
+                                    <input type="text" id="providerName" placeholder="deepseek"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="form.scope">作用域</label>
+                                 <input type="hidden" id="providerScope" value="user"/>
+                                 <div class="settings-scope-toggle" data-target="providerScope">
+                                     <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="scope.user">用户（全局）</button>
+                                     <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="scope.workspace">工作区（本地）</button>
+                                 </div>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="form.apiStandard">API 规范</label>
+                                    <select id="providerStandard" class="form-select-custom">
+                                        <option value="openai" data-i18n="provider.standard.openai">OpenAI Completions BaseUrl / 兼容接口</option>
+                                        <option value="openai-responses" data-i18n="provider.standard.openaiResponses">OpenAI Responses BaseUrl / 兼容接口</option>
+                                        <option value="anthropic" data-i18n="provider.standard.anthropic">Anthropic BaseUrl / 兼容接口</option>
+                                        <option value="google" data-i18n="provider.standard.google">Google v1Beta BaseUrl / 兼容接口</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="form.apiUrl">API 地址 <span class="required">*</span></label>
+                                    <input type="text" id="providerApiUrl" placeholder="https://api.deepseek.com/v1"/>
+                                </div>
+                                <div class="form-group">
+                                    <label data-i18n="form.apiKey">API 密钥</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
+                                        <button class="password-toggle" id="providerApiKeyToggle" title="显示/隐藏" data-i18n-title="form.showHide">
+                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="form-group-header">
+                                        <label data-i18n="provider.models.title">模型管理</label>
+                                        <div class="provider-model-header-actions">
+                                            <button type="button" class="provider-model-text-btn" id="providerModelsSelectAll" data-i18n="provider.selectAll">全选</button>
+                                            <button type="button" class="provider-model-text-btn" id="providerModelsInvert" data-i18n="provider.invert">反选</button>
+                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型" data-i18n-title="provider.models.addTitle">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                            </button>
+                                            <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表" data-i18n-title="provider.models.fetchTitle">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                            </button>
+                                            <button class="provider-model-icon-btn icon-btn-clear" id="providerClearModelsBtn" title="清空模型列表" data-i18n-title="provider.models.clearTitle">
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="provider-models-list" id="providerModelsList"></div>
+                                    <div class="provider-models-empty" id="providerModelsEmpty" ><span data-i18n="provider.modelsEmpty.prefix">点击右侧</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> <span data-i18n="provider.modelsEmpty.middle">添加模型，或</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> <span data-i18n="provider.modelsEmpty.suffix">从 API 拉取</span></div>
+                                </div>
+
+                                <div class="form-actions form-actions-end">
+                                    <button class="btn-primary" id="providerSaveBtn" data-i18n="provider.saveBtn">保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    </div><!-- /#llmViewProviders -->
                 </div>
                 <!-- Skills Tab -->
                 <div class="settings-tab-content" id="settingsTabSkills">
@@ -1866,102 +1985,6 @@
                 <!-- Users Tab -->
                 <!-- 用户管理面板已迁至独立的管理控制台 (/admin)，此处不再保留 -->
                 <!-- Providers Tab -->
-                <div class="settings-tab-content" id="settingsTabProviders">
-                    <!-- List View -->
-                    <div class="settings-view settings-view-list" id="providersListView">
-                        <div class="settings-section">
-                            <div class="settings-section-header">
-                                <div>
-                                    <span class="settings-section-title" data-i18n="provider.title">供应商</span>
-                                     <div class="settings-section-desc" data-i18n="provider.desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div>
-                                </div>
-                                <div class="openapi-header-actions">
-                                    <button class="settings-add-btn" id="providerAddBtn" data-i18n="provider.addBtn">+ 添加供应商</button>
-                                </div>
-                            </div>
-                            <div class="openapi-server-list" id="providerList"></div>
-                        </div>
-                    </div>
-                    <!-- Form View -->
-                    <div class="settings-view settings-view-form" id="providersFormView" style="display:none">
-                        <div class="settings-section">
-                            <div class="settings-section-header">
-                                <div class="settings-title-row">
-                                    <button class="settings-back-btn" id="providerBackBtn" title="返回" data-i18n-title="common.back">
-                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                     </button>
-                                    <span class="settings-section-title" id="providerFormTitle">添加供应商</span>
-                                </div>
-                                <div class="settings-form-actions" id="providerFormActions" style="display:none">
-                                    <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除" data-i18n-title="provider.deleteTitle">
-                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                         <span data-i18n="provider.deleteBtn">删除</span>
-                                     </button>
-                                </div>
-                            </div>
-                            <div class="openapi-add-form" id="providerAddForm">
-                                <div class="form-group">
-                                    <label data-i18n="form.name">名称 <span class="required">*</span></label>
-                                    <input type="text" id="providerName" placeholder="deepseek"/>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.scope">作用域</label>
-                                 <input type="hidden" id="providerScope" value="user"/>
-                                 <div class="settings-scope-toggle" data-target="providerScope">
-                                     <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="scope.user">用户（全局）</button>
-                                     <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="scope.workspace">工作区（本地）</button>
-                                 </div>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiStandard">API 规范</label>
-                                    <select id="providerStandard" class="form-select-custom">
-                                        <option value="openai" data-i18n="provider.standard.openai">OpenAI Completions BaseUrl / 兼容接口</option>
-                                        <option value="openai-responses" data-i18n="provider.standard.openaiResponses">OpenAI Responses BaseUrl / 兼容接口</option>
-                                        <option value="anthropic" data-i18n="provider.standard.anthropic">Anthropic BaseUrl / 兼容接口</option>
-                                        <option value="google" data-i18n="provider.standard.google">Google v1Beta BaseUrl / 兼容接口</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiUrl">API 地址 <span class="required">*</span></label>
-                                    <input type="text" id="providerApiUrl" placeholder="https://api.deepseek.com/v1"/>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiKey">API 密钥</label>
-                                    <div class="password-input-group">
-                                        <input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
-                                        <button class="password-toggle" id="providerApiKeyToggle" title="显示/隐藏" data-i18n-title="form.showHide">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <div class="form-group-header">
-                                        <label data-i18n="provider.models.title">模型管理</label>
-                                        <div class="provider-model-header-actions">
-                                            <button type="button" class="provider-model-text-btn" id="providerModelsSelectAll" data-i18n="provider.selectAll">全选</button>
-                                            <button type="button" class="provider-model-text-btn" id="providerModelsInvert" data-i18n="provider.invert">反选</button>
-                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型" data-i18n-title="provider.models.addTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                            </button>
-                                            <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表" data-i18n-title="provider.models.fetchTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                                            </button>
-                                            <button class="provider-model-icon-btn icon-btn-clear" id="providerClearModelsBtn" title="清空模型列表" data-i18n-title="provider.models.clearTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="provider-models-list" id="providerModelsList"></div>
-                                    <div class="provider-models-empty" id="providerModelsEmpty" ><span data-i18n="provider.modelsEmpty.prefix">点击右侧</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> <span data-i18n="provider.modelsEmpty.middle">添加模型，或</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> <span data-i18n="provider.modelsEmpty.suffix">从 API 拉取</span></div>
-                                </div>
-
-                                <div class="form-actions form-actions-end">
-                                    <button class="btn-primary" id="providerSaveBtn" data-i18n="provider.saveBtn">保存</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div><!-- /.settings-body -->
         </div><!-- /.settings-content -->
     </div>
