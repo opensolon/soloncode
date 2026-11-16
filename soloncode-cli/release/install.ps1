@@ -469,6 +469,26 @@ try {
         $USER_ENV.Close()
     }
 }
+# 直接写注册表不会通知其他程序：Explorer 会一直沿用旧环境，从开始菜单、任务栏、
+# 资源管理器新开的终端都找不到 soloncode，直到注销重登。[Environment]::SetEnvironmentVariable
+# 会自动广播 WM_SETTINGCHANGE，但会把 REG_EXPAND_SZ 改写成 REG_SZ，所以这里自己补发。
+# PATH 已存在时也发，重装即可修复旧版本留下的未生效状态；通知失败不影响安装。
+$PATH_NOTIFIED = $false
+try {
+    if (-not ("SolonCodeInstaller.NativeMethods" -as [type])) {
+        Add-Type -Namespace SolonCodeInstaller -Name NativeMethods -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode)]
+public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
+'@
+    }
+    $notifyResult = [UIntPtr]::Zero
+    # HWND_BROADCAST=0xffff, WM_SETTINGCHANGE=0x1a, SMTO_ABORTIFHUNG=2 (skip hung windows), 5s timeout.
+    [void][SolonCodeInstaller.NativeMethods]::SendMessageTimeout([IntPtr]0xffff, 0x1a, [UIntPtr]::Zero, "Environment", 2, 5000, [ref]$notifyResult)
+    $PATH_NOTIFIED = $true
+    Write-Host "      Notified Windows of the PATH change" -ForegroundColor Gray
+} catch {
+    Write-Host "      [Warn] Could not notify Windows of the PATH change: $($_.Exception.Message)" -ForegroundColor Yellow
+}
 # =============================================
 # 完成
 # =============================================
@@ -481,7 +501,11 @@ Write-Host "  Install path: $TARGET_DIR" -ForegroundColor White
 Write-Host "  Java version: $javaVersion" -ForegroundColor White
 Write-Host ""
 Write-Host "  Usage:" -ForegroundColor Cyan
-Write-Host "    1. Sign out and back in so all new terminals receive the updated PATH"
+if ($PATH_NOTIFIED) {
+    Write-Host "    1. Open a new terminal (restart VS Code, IDEs or terminal apps that were already open)"
+} else {
+    Write-Host "    1. Sign out and back in so all new terminals receive the updated PATH"
+}
 Write-Host "    2. Run: 'soloncode cli' or 'soloncode web'"
 Write-Host ""
 Write-Host "  Directory structure:" -ForegroundColor Cyan

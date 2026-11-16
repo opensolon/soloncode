@@ -13,6 +13,8 @@ Mac / Linux / Harmony PC：
 sh install.sh
 ```
 
+macOS 还可以直接双击 `install.mac.command`（会在“终端”里跑 `install.sh`，装完停在窗口里等回车，方便看结果）。
+
 Windows (PowerShell)：
 
 ```powershell
@@ -29,7 +31,49 @@ Windows 离线安装器及生成的启动器以 Windows PowerShell **2.0～5.1**
 安装脚本会把程序文件写入 `~/.soloncode/`，并尝试将 `soloncode` 命令注册到 PATH。
 
 
-### 3、安装后的主要目录
+### 3、免安装运行（便携模式）
+
+不想“安装”也可以直接用发布包里的 `run.sh` / `run.cmd` 启动，它们只做一件事：用 Java 运行同包的 `bin/soloncode-cli.jar`。
+
+Mac / Linux / Harmony PC：
+
+```bash
+sh run.sh                # 交互式命令行
+sh run.sh web            # Web 界面（默认端口 4808）
+sh run.sh web 4808       # Web 界面并指定端口
+```
+
+Windows：
+
+```bat
+run.cmd
+run.cmd web
+run.cmd web 4808
+```
+
+* Windows 和 macOS 都可以直接双击启动，不用开命令行：Windows 双击 `run.cmd`（程序退出后窗口会停住，方便看提示）；macOS 双击 `run.mac.command`（会在“终端”里运行 `run.sh`，因为 Finder 里双击 `.sh` 只会用编辑器打开）。
+* 双击时的工作目录是发布包所在目录，也就是 CLI 默认使用的工作区；想换个目录，就在终端里先 `cd` 到目标目录再执行 `sh /path/to/run.sh`。
+* 如果 macOS 提示“无法验证开发者”，执行一次：`xattr -d com.apple.quarantine run.mac.command install.mac.command run.sh install.sh`。
+
+* 这个包可以放在 U 盘、网络共享目录等任意位置，换台机器（对方机器有 Java 8+）就能跑。
+* 默认情况下数据仍然写到用户主目录（`~/.soloncode`，Windows 为 `%USERPROFILE%\.soloncode`），和安装版共用同一份配置。
+* 想让配置、会话、记忆、技能、子代理都跟着程序走（真正“随处运行”），把 `SOLONCODE_HOME` 指向一个可写目录即可，程序会在其下创建 `.soloncode/`：
+
+```bash
+export SOLONCODE_HOME="/media/usb/soloncode-data"   # Windows: set SOLONCODE_HOME=E:\soloncode-data
+sh run.sh web
+```
+
+* 注意：包根的 `AGENTS.md`、`skills/`、`commands/` 是给安装脚本用的，程序运行时只从 `~/.soloncode/`（便携模式下为 `$SOLONCODE_HOME/.soloncode/`）读取。想在新环境里预置，把它们复制到该目录下即可，例如便携模式：
+
+```bash
+mkdir -p "$SOLONCODE_HOME/.soloncode"
+cp -r skills commands AGENTS.md "$SOLONCODE_HOME/.soloncode/"
+```
+* 免安装启动器比安装版生成的 `soloncode` 命令更简单：不做“复用已在运行实例并把当前目录打开为工作区”的端口探测，`web` 端口被占用时会直接报错，不会自动接管。
+
+
+### 4、安装后的主要目录
 
 ```text
 ~/.soloncode/
@@ -50,7 +94,7 @@ Windows 离线安装器及生成的启动器以 Windows PowerShell **2.0～5.1**
 ```
 
 
-### 4、首次配置模型（使用 Web 设置页）
+### 5、首次配置模型（使用 Web 设置页）
 
 ```bash
 soloncode web
@@ -67,7 +111,7 @@ soloncode web
 如果固定端口被其他服务占用，命令会明确报错。
 
 
-### 5、如何卸载
+### 6、如何卸载
 
 Mac / Linux：
 

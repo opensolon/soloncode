@@ -24,9 +24,13 @@
             <fileMode>0755</fileMode>
             <includes>
                 <include>AGENTS.md</include>
-                <include>install.cmd</include>
-                <include>install.ps1</include>
                 <include>install.sh</include>
+                <include>install.ps1</include>
+                <include>install.window.cmd</include>
+                <include>install.mac.command</include>
+                <include>run.sh</include>
+                <include>run.window.cmd</include>
+                <include>run.mac.command</include>
                 <include>README.md</include>
             </includes>
         </fileSet>
