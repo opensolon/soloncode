@@ -322,10 +322,14 @@ if [ "${1:-}" = "web" ] && [ "$web_help" = false ]; then
     fi
 fi
 
-JAVA_VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | grep -oE '[0-9]+' | head -1)
-[ -n "$JAVA_VER" ] || JAVA_VER=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
 JAVA_OPTS="-Dfile.encoding=UTF-8"
-[ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ] && JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
+# JDK 24+ 把 System.load 归入受限方法（jansi 加载本地库会触发），会打四行
+# “restricted method” WARNING；加 --enable-native-access=ALL-UNNAMED 可消除。
+# 该参数 JDK 16+（含 17/21/25）都认识，JDK 8/11 会当未知参数直接启动失败，
+# 所以直接探测一次，而不是靠版本号猜测。
+if java --enable-native-access=ALL-UNNAMED -version >/dev/null 2>&1; then
+    JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
+fi
 if [ -n "$MSYSTEM" ]; then
     JAVA_OPTS="$JAVA_OPTS -Djline.terminal.type=xterm-256color"
     if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then exec winpty java $JAVA_OPTS -jar "$SCRIPT_DIR/soloncode-cli.jar" "$@"; fi

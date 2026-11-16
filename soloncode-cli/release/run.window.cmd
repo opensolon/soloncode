@@ -37,7 +37,16 @@ if errorlevel 1 (
     goto :fail
 )
 
-java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -jar "%JAR_FILE%" web
+rem JDK 24+ treats System.load as a restricted method; jansi loading its native
+rem library then prints four "restricted method" WARNING lines. Passing
+rem --enable-native-access=ALL-UNNAMED silences them (JDK 16+, so 17/21/25, all
+rem accept the flag; JDK 8/11 treat it as an unknown option and refuse to start,
+rem hence the probe below instead of an unconditional flag).
+set "NATIVE_ACCESS="
+java --enable-native-access=ALL-UNNAMED -version >nul 2>nul
+if not errorlevel 1 set "NATIVE_ACCESS=--enable-native-access=ALL-UNNAMED"
+
+java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 %NATIVE_ACCESS% -jar "%JAR_FILE%" web
 set "RC=%ERRORLEVEL%"
 
 :fail

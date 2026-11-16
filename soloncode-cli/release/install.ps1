@@ -397,9 +397,13 @@ if (-not $helpRequested -and $RestArgs.Count -gt 0 -and $RestArgs[0] -eq "web") 
 
 try { $OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 $JavaArgs = @("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-Dstdin.encoding=UTF-8")
+# JDK 24+ reports System.load as a restricted method (jansi loads a native library) and
+# prints four "restricted method" WARNING lines. --enable-native-access=ALL-UNNAMED
+# silences them: JDK 16+ (so 17/21/25) accepts the flag, JDK 8/11 rejects it and refuses
+# to start, hence a one-shot probe instead of guessing the version.
 try {
-    $v = (java -version 2>&1 | Select-Object -First 1)
-    if ($v -match '"(\d+)' -and [int]$Matches[1] -ge 21) { $JavaArgs += "--enable-native-access=ALL-UNNAMED" }
+    $null = & java --enable-native-access=ALL-UNNAMED -version 2>&1
+    if ($LASTEXITCODE -eq 0) { $JavaArgs += "--enable-native-access=ALL-UNNAMED" }
 } catch { }
 & java @JavaArgs -jar $JarFile @RestArgs
 exit $LASTEXITCODE
