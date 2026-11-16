@@ -1115,17 +1115,17 @@
                                 </div>
                             </div>
 
-                            <!-- 简化工具调用展示 -->
+                            <!-- 工具展示 -->
                             <div class="general-card">
                                 <div class="general-card-header">
                                     <div class="general-card-text">
-                                        <div class="general-card-title" data-i18n="general.ui.simplifiedName">简化工具调用展示</div>
+                                        <div class="general-card-title" data-i18n="general.ui.simplifiedName">工具展示</div>
                                     </div>
                                 </div>
                                 <div class="general-card-body">
                                     <div class="general-toggle-row">
                                         <div class="general-toggle-info">
-                                            <span class="general-toggle-desc" data-i18n="general.ui.simplifiedDesc">开启后默认收起详情，需要时再展开；关闭则始终完整显示</span>
+                                            <span class="general-toggle-desc" data-i18n="general.ui.simplifiedDesc">开启后工具调用默认收起详情，需要时再展开；关闭则始终完整显示</span>
                                         </div>
                                         <label class="toggle-switch">
                                             <input type="checkbox" id="generalCliPrintSimplified"/>
@@ -1526,22 +1526,20 @@
                 </div>
                 <!-- Skills Tab -->
                 <div class="settings-tab-content" id="settingsTabSkills">
-                    <div class="settings-section">
+                    <!-- 视图 A：已安装（列表页） -->
+                    <div class="settings-view settings-view-list" id="skillsViewInstalled">
+                        <div class="settings-section">
                             <div class="settings-section-header">
                                 <div>
-                                    <span class="settings-section-title" data-i18n="skills.title">技能管理</span>
-                                     <div class="settings-section-desc" data-i18n="skills.desc">管理已安装的技能包，或从技能市场获取更多能力</div>
+                                    <span class="settings-section-title" data-i18n="settings.tab.skills">技能（Skill）</span>
+                                    <div class="settings-section-desc" data-i18n="skills.desc">管理已安装的技能包，或从技能市场获取更多能力</div>
                                 </div>
-                                <button class="settings-reload-icon-btn" id="skillsRefreshBtn" title="刷新技能列表" data-i18n-title="skills.refreshTitle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
+                                <div class="settings-header-icon-actions">
+                                    <button class="settings-add-btn has-icon" id="skillsRefreshBtn" title="刷新技能列表" data-i18n-title="skills.refreshTitle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span data-i18n="common.refresh">刷新</span></button>
+                                    <button class="settings-add-btn" id="skillsAddBtn" data-i18n="skills.addBtn">+ 添加技能</button>
+                                </div>
                             </div>
 
-                        <div class="mcp-type-toggle" id="skillsViewToggle" style="margin-bottom:12px">
-                            <button type="button" class="mcp-type-btn active" data-view="installed" data-i18n="skills.installedView">已安装<span id="skillsInstalledCount" class="skills-view-count"></span></button>
-                             <button type="button" class="mcp-type-btn" data-view="market" data-i18n="skills.marketView">技能市场</button>
-                        </div>
-
-                        <!-- 视图 A：已安装 -->
-                        <div class="skills-view" id="skillsViewInstalled">
                             <div class="skills-search-bar">
                                 <div class="skills-market-wrap">
                                     <svg class="skills-market-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -1563,9 +1561,18 @@
                             </div>
                             <div class="skills-list" id="skillsInstalledList"></div>
                         </div>
+                    </div>
 
-                        <!-- 视图 B：技能市场 -->
-                        <div class="skills-view" id="skillsViewMarket" style="display:none">
+                    <!-- 视图 B：技能市场（二级页，由「添加技能」进入） -->
+                    <div class="settings-view settings-view-form" id="skillsViewMarket" style="display:none">
+                        <div class="settings-section">
+                            <div class="settings-section-header">
+                                <div class="settings-title-row">
+                                    <button class="settings-back-btn" id="skillsMarketBackBtn" title="返回" data-i18n-title="common.back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></button>
+                                    <span class="settings-section-title" data-i18n="skills.marketView">技能市场</span>
+                                </div>
+                            </div>
+
                             <div class="skills-search-bar">
                                 <div class="skills-market-wrap">
                                     <svg class="skills-market-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -1693,7 +1700,7 @@
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <div>
-                                    <span class="settings-section-title" data-i18n="mcp.title">MCP 连接器</span>
+                                    <span class="settings-section-title" data-i18n="settings.tab.mcp">连接器（MCP）</span>
                                      <div class="settings-section-desc" data-i18n="mcp.desc">管理外部工具连接器，扩展文件、数据库、浏览器等工具能力</div>
                                 </div>
                                 <div class="mcp-header-actions">
