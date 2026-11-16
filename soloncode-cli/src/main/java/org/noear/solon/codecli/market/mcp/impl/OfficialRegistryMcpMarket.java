@@ -67,7 +67,8 @@ public class OfficialRegistryMcpMarket implements McpMarket {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<McpMarketPage> list(String query, int limit, String cursor) {
+    public Result<McpMarketPage> list(String query, int limit, String cursor, String categoryId) {
+        // 官方注册表没有分类维度，categoryId 忽略
         int pageSize = limit <= 0 ? 30 : Math.min(limit, PAGE_SIZE_MAX);
 
         try {
@@ -148,7 +149,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
     private ONode fetchServer(String id) {
         String shortName = id.contains("/") ? id.substring(id.indexOf('/') + 1) : id;
 
-        Result<McpMarketPage> pageResult = list(shortName, 50, null);
+        Result<McpMarketPage> pageResult = list(shortName, 50, null, null);
         if (pageResult.getCode() != 200 || pageResult.getData() == null) {
             return null;
         }

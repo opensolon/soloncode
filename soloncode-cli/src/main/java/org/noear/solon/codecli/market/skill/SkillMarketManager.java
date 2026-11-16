@@ -33,24 +33,21 @@ public class SkillMarketManager {
     private SkillMarket defaultMarket;
 
     private SkillMarketManager() {
-        SkillMarket skillhub = new SkillhubSkillMarket();
-        register(skillhub);
+        this.defaultMarket = register(new SkillhubSkillMarket());
 
-        SkillMarket clawhub = new ClawhubSkillMarket();
-        register(clawhub);
+        register(new ClawhubSkillMarket());
 
-//        Market modelscope = new ModelscopeMarket();
-//        register(modelscope);
-
-        this.defaultMarket = skillhub;
+//        register(new ModelscopeMarket());
     }
 
     /**
      * 注册一个市场适配器
      */
-    public void register(SkillMarket market) {
+    public SkillMarket register(SkillMarket market) {
         markets.put(market.name(), market);
         LOG.info("MarketManager: registered market -> {}", market.name());
+
+        return market;
     }
 
     /**

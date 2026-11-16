@@ -5,6 +5,7 @@ import org.noear.solon.codecli.config.McpTypeResolver;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.market.mcp.McpMarket;
 import org.noear.solon.codecli.market.mcp.McpMarketConfig;
+import org.noear.solon.codecli.market.mcp.McpMarketCategory;
 import org.noear.solon.codecli.market.mcp.McpMarketDetail;
 import org.noear.solon.codecli.market.mcp.McpMarketItem;
 import org.noear.solon.codecli.market.mcp.McpMarketPage;
@@ -84,6 +85,17 @@ public class TencentMcpMarket implements McpMarket {
 
     /** 目录缓存（全量条目，扁平化后按广场默认顺序） */
     private volatile Catalog catalog;
+    /** 分类缓存 */
+    private volatile Categories categories;
+
+    /** 分类/搜索的扁平结果缓存（key = keyword|categoryId） */
+    private final Map<String, Flat> flatCache = Collections.synchronizedMap(
+            new LinkedHashMap<String, Flat>(32, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, Flat> eldest) {
+                    return size() > 32;
+                }
+            });
 
     @Override
     public String name() {
@@ -95,17 +107,68 @@ public class TencentMcpMarket implements McpMarket {
         return "腾讯云开发者 MCP 广场（中文、分类齐全，超千条；国内直连）";
     }
 
+    // ==================== 分类 ====================
+
+    @Override
+    public Result<List<McpMarketCategory>> categories() {
+        try {
+            return Result.succeed(getCategories());
+        } catch (Exception e) {
+            LOG.warn("TencentMcpMarket.categories error: {}", e.getMessage());
+            return Result.failure("获取连接器分类失败: " + e.getMessage());
+        }
+    }
+
+    private List<McpMarketCategory> getCategories() throws Exception {
+        Categories current = categories;
+        if (current != null && !current.isExpired()) {
+            return current.items;
+        }
+
+        synchronized (this) {
+            current = categories;
+            if (current != null && !current.isExpired()) {
+                return current.items;
+            }
+
+            ONode root = post("/categories", new ONode());
+
+            List<McpMarketCategory> items = new ArrayList<>();
+            // 返回结构：{list:[{categoryId, mcpNum, name, weight}]}，已按权重排序
+            for (ONode node : arrayOf(root, "list")) {
+                String id = str(node, "categoryId");
+                String name = str(node, "name");
+                if (Assert.isEmpty(id) || Assert.isEmpty(name)) {
+                    continue;
+                }
+                items.add(new McpMarketCategory()
+                        .id(id)
+                        .name(name)
+                        .count((int) longOf(node, "mcpNum")));
+            }
+
+            current = new Categories(items);
+            categories = current;
+            return items;
+        }
+    }
+
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<McpMarketPage> list(String query, int limit, String cursor) {
+    public Result<McpMarketPage> list(String query, int limit, String cursor, String categoryId) {
         int pageSize = limit <= 0 ? 30 : limit;
+        int offset = parseOffset(cursor);
+        String keyword = query == null ? "" : query.trim();
+        String category = categoryId == null ? "" : categoryId.trim();
 
         try {
-            if (Assert.isNotEmpty(query)) {
-                return searchByQuery(query.trim(), pageSize);
+            if (keyword.isEmpty() && category.isEmpty()) {
+                // 无筛选：用目录缓存（一次拉全量，本地切页）
+                return pageOf(getCatalog().items, offset, pageSize);
             }
-            return browse(parseOffset(cursor), pageSize);
+            // 分类/搜索：走服务端扁平结果（语义与广场页面一致），分页仍本地切
+            return pageOf(getFlat(keyword, category), offset, pageSize);
         } catch (Exception e) {
             LOG.warn("TencentMcpMarket.list error: {}", e.getMessage());
             return Result.failure("获取连接器市场列表失败: " + e.getMessage());
@@ -113,12 +176,10 @@ public class TencentMcpMarket implements McpMarket {
     }
 
     /**
-     * 浏览：目录接口一次给全量，本地按 offset 切页，避免每次翻页都重复拉 550KB。
+     * 本地切页（目录与扁平结果共用）
      */
-    private Result<McpMarketPage> browse(int offset, int pageSize) throws Exception {
-        List<McpMarketItem> all = getCatalog().items;
-
-        if (offset >= all.size()) {
+    private Result<McpMarketPage> pageOf(List<McpMarketItem> all, int offset, int pageSize) {
+        if (all == null || offset >= all.size()) {
             return Result.succeed(new McpMarketPage()
                     .items(Collections.<McpMarketItem>emptyList())
                     .nextCursor(null));
@@ -132,10 +193,28 @@ public class TencentMcpMarket implements McpMarket {
     }
 
     /**
-     * 搜索：直接使用广场的服务端搜索（中文分词由对方处理），不做本地索引。
+     * 分类浏览与搜索：两者走同一个接口 {@code /list-by-search}。
+     *
+     * <p>实测行为：只传 {@code categoryId} 即按分类过滤（中文分类语义由广场给出）；
+     * 同时传 {@code keyword} 则为「关键词 ∩ 分类」；返回体为 {@code {list:[...], total:n}}，
+     * 一次性返回全部命中，故本地切页。</p>
      */
-    private Result<McpMarketPage> searchByQuery(String query, int limit) throws Exception {
-        ONode body = new ONode().set("keyword", query);
+    private List<McpMarketItem> getFlat(String keyword, String categoryId) throws Exception {
+        String cacheKey = keyword + "|" + categoryId;
+
+        Flat cached = flatCache.get(cacheKey);
+        if (cached != null && !cached.isExpired()) {
+            return cached.items;
+        }
+
+        ONode body = new ONode();
+        if (Assert.isNotEmpty(keyword)) {
+            body.set("keyword", keyword);
+        }
+        if (Assert.isNotEmpty(categoryId)) {
+            body.set("categoryId", categoryValueOf(categoryId));
+        }
+
         ONode root = post("/list-by-search", body);
 
         List<McpMarketItem> items = new ArrayList<>();
@@ -143,13 +222,11 @@ public class TencentMcpMarket implements McpMarket {
             McpMarketItem item = toItem(serverNode);
             if (item != null) {
                 items.add(item);
-                if (items.size() >= limit) {
-                    break;
-                }
             }
         }
 
-        return Result.succeed(new McpMarketPage().items(items).nextCursor(null));
+        flatCache.put(cacheKey, new Flat(items));
+        return items;
     }
 
     /**
@@ -792,6 +869,17 @@ public class TencentMcpMarket implements McpMarket {
     }
 
     /**
+     * 分类 id 转请求参数：广场接口接收数字，非数字时原样传（防御未来改成字符串 id）
+     */
+    private Object categoryValueOf(String categoryId) {
+        try {
+            return Long.parseLong(categoryId);
+        } catch (NumberFormatException e) {
+            return categoryId;
+        }
+    }
+
+    /**
      * 占位值判定：{@code <...>}、YOUR_xxx、your-xxx、xxx/示例
      */
     private boolean isPlaceholderValue(String value) {
@@ -934,6 +1022,38 @@ public class TencentMcpMarket implements McpMarket {
         final long createdAt = System.currentTimeMillis();
 
         Catalog(List<McpMarketItem> items) {
+            this.items = items;
+        }
+
+        boolean isExpired() {
+            return System.currentTimeMillis() - createdAt > CATALOG_TTL;
+        }
+    }
+
+    /**
+     * 分类缓存
+     */
+    private static class Categories {
+        final List<McpMarketCategory> items;
+        final long createdAt = System.currentTimeMillis();
+
+        Categories(List<McpMarketCategory> items) {
+            this.items = items;
+        }
+
+        boolean isExpired() {
+            return System.currentTimeMillis() - createdAt > CATALOG_TTL;
+        }
+    }
+
+    /**
+     * 扁平结果缓存（分类浏览 / 关键词搜索）
+     */
+    private static class Flat {
+        final List<McpMarketItem> items;
+        final long createdAt = System.currentTimeMillis();
+
+        Flat(List<McpMarketItem> items) {
             this.items = items;
         }
 

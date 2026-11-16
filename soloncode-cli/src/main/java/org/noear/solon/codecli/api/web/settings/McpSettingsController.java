@@ -74,6 +74,7 @@ public class McpSettingsController extends BaseSettingsController{
      * @param query      搜索关键词（为空表示浏览默认列表）
      * @param limit      每页条数
      * @param cursor     翻页游标（官方注册表为游标分页）
+     * @param categoryId 分类标识（可选，仅对有分类维度的市场有效；为空表示全部分类）
      * @param marketName 市场名称（可选，默认使用默认市场）
      */
     @Get
@@ -81,15 +82,27 @@ public class McpSettingsController extends BaseSettingsController{
     public Result mcpMarketProxy(@Param(value = "q", defaultValue = "") String query,
                                  @Param(value = "limit", defaultValue = "30") int limit,
                                  @Param(value = "cursor", defaultValue = "") String cursor,
+                                 @Param(value = "categoryId", defaultValue = "") String categoryId,
                                  @Param(value = "marketName", defaultValue = "") String marketName) {
         McpMarket market = mcpMarketManager.getMarketByName(marketName);
-        Result<McpMarketPage> result = market.list(query, limit, cursor);
+        Result<McpMarketPage> result = market.list(query, limit, cursor, categoryId);
 
         if (result.getCode() == 200 && result.getData() != null) {
             markInstalled(result.getData().getItems());
         }
 
         return result;
+    }
+
+    /**
+     * 连接器市场分类列表（无分类维度的市场返回空数组）
+     *
+     * @param marketName 市场名称（可选）
+     */
+    @Get
+    @Mapping("/web/settings/mcp/market/categories")
+    public Result mcpMarketCategories(@Param(value = "marketName", defaultValue = "") String marketName) {
+        return mcpMarketManager.getMarketByName(marketName).categories();
     }
 
     /**

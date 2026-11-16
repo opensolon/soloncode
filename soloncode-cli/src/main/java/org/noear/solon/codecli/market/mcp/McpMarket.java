@@ -3,6 +3,9 @@ package org.noear.solon.codecli.market.mcp;
 import org.noear.solon.codecli.market.skill.SkillMarket;
 import org.noear.solon.core.handle.Result;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * 连接器（MCP）市场接口 — 抽象连接器市场的浏览、搜索与配置生成能力。
  *
@@ -26,13 +29,23 @@ public interface McpMarket {
     }
 
     /**
+     * 分类列表。
+     *
+     * <p>没有分类维度的市场返回空列表，前端据此隐藏分类筛选条。</p>
+     */
+    default Result<List<McpMarketCategory>> categories() {
+        return Result.succeed(Collections.<McpMarketCategory>emptyList());
+    }
+
+    /**
      * 列表/搜索。
      *
-     * @param query  关键词，为空表示浏览默认列表
-     * @param limit  每页条数
-     * @param cursor 翻页游标，为空表示第一页
+     * @param query      关键词，为空表示浏览默认列表
+     * @param limit      每页条数
+     * @param cursor     翻页游标，为空表示第一页
+     * @param categoryId 分类标识，为空表示全部分类（仅对有分类维度的市场有效）
      */
-    Result<McpMarketPage> list(String query, int limit, String cursor);
+    Result<McpMarketPage> list(String query, int limit, String cursor, String categoryId);
 
     /**
      * 条目详情（含全部可用接入方式）

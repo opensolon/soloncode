@@ -98,7 +98,8 @@ public class SmitheryMcpMarket implements McpMarket {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<McpMarketPage> list(String query, int limit, String cursor) {
+    public Result<McpMarketPage> list(String query, int limit, String cursor, String categoryId) {
+        // Smithery 没有分类维度，categoryId 忽略
         int pageSize = limit <= 0 ? 30 : Math.min(limit, PAGE_SIZE_MAX);
 
         if (Assert.isNotEmpty(query)) {

@@ -38,26 +38,25 @@ public class McpMarketManager {
     private McpMarket defaultMarket;
 
     private McpMarketManager() {
-        // Smithery：条目最多、带图标与热度（无服务端搜索，适配器内做本地过滤）。
-        // 作为默认市场注册在首位 —— 前端下拉与缺省 marketName 都取第一个/默认实例。
-        SmitheryMcpMarket smithery = new SmitheryMcpMarket();
-        register(smithery);
+        // 腾讯云 MCP 广场：中文、分类齐全、国内直连，作为默认市场注册在首位
+        // —— 前端下拉与缺省 marketName 都取第一个/默认实例。
+        this.defaultMarket = register(new TencentMcpMarket());
 
-        // 官方 Registry：字段最规范、接口稳定，作为第二源
-        register(new OfficialRegistryMcpMarket());
+        // Smithery：条目最多、带图标与热度（无服务端搜索，适配器内做本地过滤）
+        register(new SmitheryMcpMarket());
 
-        // 腾讯云 MCP 广场：中文、分类齐全、国内直连（境外源抖动时的兜底）
-        register(new TencentMcpMarket());
-
-        this.defaultMarket = smithery;
+        // 官方 Registry：字段最规范、接口稳定（境外，作为备选源）
+        //register(new OfficialRegistryMcpMarket());
     }
 
     /**
      * 注册一个市场适配器
      */
-    public void register(McpMarket market) {
+    public McpMarket register(McpMarket market) {
         markets.put(market.name(), market);
         LOG.info("McpMarketManager: registered market -> {}", market.name());
+
+        return market;
     }
 
     /**
