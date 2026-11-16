@@ -1,4 +1,9 @@
 
+
+### v2026.11.16
+
+调整 soloncode web 设置面板样式
+
 ### v2026.11.15
 
 * 新增 soloncode web 直接运行模式（不需要安装，双击 run.xxx 即可）
