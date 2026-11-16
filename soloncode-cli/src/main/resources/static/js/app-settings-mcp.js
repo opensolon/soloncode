@@ -26,8 +26,8 @@
     var mcpEditName = null;
     var mcpCachedList = [];
 
-    function showMcpListView() { $mcpToolsView.hide(); $mcpFormView.hide(); $mcpListView.addClass('slide-back').show(); setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260); }
-    function showMcpFormView(title, isEdit) { $mcpToolsView.hide(); $mcpFormTitle.text(title || I18n.t('mcp.formTitle')); $mcpListView.hide(); $mcpFormView.show(); $('#mcpFormActions').toggle(!!isEdit); }
+    function showMcpListView() { $mcpToolsView.hide(); $mcpFormView.hide(); $('#mcpMarketView').hide(); $mcpListView.addClass('slide-back').show(); setTimeout(function(){ $mcpListView.removeClass('slide-back'); }, 260); }
+    function showMcpFormView(title, isEdit) { $mcpToolsView.hide(); $('#mcpMarketView').hide(); $mcpFormTitle.text(title || I18n.t('mcp.formTitle')); $mcpListView.hide(); $mcpFormView.show(); $('#mcpFormActions').toggle(!!isEdit); }
     function setMcpType(type) {
         $mcpTypeBtns.removeClass('active');
         $mcpTypeBtns.filter('[data-type="' + type + '"]').addClass('active');
@@ -40,6 +40,7 @@
     function loadMcpList() {
         $mcpToolsView.hide();
         $mcpFormView.hide();
+        $('#mcpMarketView').hide();
         $mcpListView.show();
         $.get('/web/settings/mcp/servers', function (resp) {
             if (resp.code === 200 && resp.data) {
@@ -225,6 +226,7 @@
         $mcpSaveBtn.text(I18n.t('mcp.saveBtn'));
         $('#mcpName').val('').prop('readOnly', false).removeClass('readonly-gray');
         $('#mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
+        $('#mcpMarketHint').hide().empty();
         setScopeValue('mcpScope', 'user');
         setScopeReadonly('mcpScope', false);
         setMcpType('stdio');
@@ -247,6 +249,95 @@
             if (server.headers) Object.keys(server.headers).forEach(function (k) { headerLines.push(k + '=' + server.headers[k]); });
             $('#mcpHeaders').val(headerLines.join('\n'));
             $('#mcpTimeout').val(server.timeout || '');
+        }
+    }
+
+    /**
+     * 用市场草稿填充表单（连接器市场的「安装」入口：只预填，不落库）
+     */
+    function fillMarketDraft(draft) {
+        mcpEditName = null;
+        resetMcpForm();
+        showMcpFormView(I18n.t('mcp.marketFormTitle'), false);
+        $mcpSaveBtn.text(I18n.t('mcp.saveBtn'));
+
+        // 与已配置项重名时自动追加后缀，避免保存时被重名校验拒绝
+        var name = draft.name || '';
+        if (name) {
+            var base = name;
+            var seq = 2;
+            while (mcpCachedList.some(function (s) { return s.name === name; })) {
+                name = base + '-' + seq;
+                seq++;
+            }
+        }
+        $('#mcpName').val(name).prop('readOnly', false).removeClass('readonly-gray');
+
+        var type = draft.type || 'stdio';
+        if (type !== 'stdio' && type !== 'sse' && type !== 'streamable') {
+            type = 'streamable';
+        }
+        setMcpType(type);
+        setScopeValue('mcpScope', 'user');
+
+        var pending = draft.pendingParams || [];
+
+        if (type === 'stdio') {
+            $('#mcpCommand').val(draft.command || '');
+            $('#mcpArgs').val((draft.args || []).join('\n'));
+
+            var envLines = [];
+            if (draft.env) {
+                Object.keys(draft.env).forEach(function (k) { envLines.push(k + '=' + draft.env[k]); });
+            }
+            // 待填参数给出 KEY= 占位，用户直接补值即可
+            pending.forEach(function (p) {
+                if (p.in === 'env' && envLines.indexOf(p.name + '=') < 0) {
+                    envLines.push(p.name + '=');
+                }
+            });
+            $('#mcpEnv').val(envLines.join('\n'));
+        } else {
+            $('#mcpRemoteUrl').val(draft.url || '');
+
+            var headerLines = [];
+            if (draft.headers) {
+                Object.keys(draft.headers).forEach(function (k) { headerLines.push(k + '=' + draft.headers[k]); });
+            }
+            pending.forEach(function (p) {
+                if (p.in === 'header' && headerLines.indexOf(p.name + '=') < 0) {
+                    headerLines.push(p.name + '=');
+                }
+            });
+            $('#mcpHeaders').val(headerLines.join('\n'));
+        }
+
+        renderMarketHint(draft);
+    }
+
+    /**
+     * 表单顶部来源提示：来源市场 + 需补填的参数
+     */
+    function renderMarketHint(draft) {
+        var $hint = $('#mcpMarketHint');
+        var parts = [];
+
+        if (draft.source) {
+            parts.push('<span>' + I18n.t('mcp.marketSource', { name: escapeHtml(draft.source) }) + '</span>');
+        }
+
+        var pending = draft.pendingParams || [];
+        if (pending.length) {
+            var names = pending.map(function (p) {
+                return escapeHtml(p.name) + (p.secret ? I18n.t('mcp.marketSecretMark') : '');
+            }).join(I18n.t('mcp.marketParamSep'));
+            parts.push('<span class="mcp-market-hint-req">' + I18n.t('mcp.marketPending', { names: names }) + '</span>');
+        }
+
+        if (parts.length) {
+            $hint.html(parts.join('')).show();
+        } else {
+            $hint.hide().empty();
         }
     }
 
@@ -314,7 +405,8 @@
     }
 
     // MCP 按钮事件
-    $('#mcpAddBtn').on('click', function () { resetMcpForm(); showMcpFormView(I18n.t('mcp.formTitle'), false); });
+    // 「添加连接器」统一进「连接器（MCP）市场」二级页（入口绑定在 app-settings-mcp-market.js），
+    // 空表单由市场页右上角「手动添加」调用 showAddForm() 打开。
     $('#mcpBackBtn').on('click', function () { showMcpListView(); resetMcpForm(); });
 
     $mcpTypeBtns.on('click', function () { setMcpType($(this).attr('data-type')); });
@@ -941,5 +1033,13 @@
     }
     
     
-    window._settingsMcp = { load: loadMcpList, reset: resetMcpForm, showList: showMcpListView };
+    window._settingsMcp = {
+        load: loadMcpList,
+        reset: resetMcpForm,
+        showList: showMcpListView,
+        /** 打开空白的「添加连接器」表单（市场页「手动添加」调用） */
+        showAddForm: function () { resetMcpForm(); showMcpFormView(I18n.t('mcp.formTitle'), false); },
+        /** 用市场草稿打开添加表单（由 app-settings-mcp-market.js 调用） */
+        showDraft: fillMarketDraft
+    };
 })();

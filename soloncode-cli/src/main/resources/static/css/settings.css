@@ -292,6 +292,10 @@
 .mcp-check-result { display: flex; align-items: center; gap: 6px; margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: var(--fs-sm); line-height: 1.5; }
 .mcp-check-result.success { background: rgba(34,197,94,0.08); color: #16a34a; border: 1px solid rgba(34,197,94,0.2); }
 .mcp-check-result.error { background: rgba(239,68,68,0.08); color: #dc2626; border: 1px solid rgba(239,68,68,0.2); }
+
+/* 连接器市场：表单来源提示 */
+.mcp-market-hint { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border-color); }
+.mcp-market-hint-req { color: #d97706; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* 空状态引导 */

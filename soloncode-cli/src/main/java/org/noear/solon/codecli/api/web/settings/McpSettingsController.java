@@ -13,6 +13,10 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.config.McpTypeResolver;
 import org.noear.solon.codecli.config.entity.McpServerDo;
+import org.noear.solon.codecli.mcpmarket.McpMarket;
+import org.noear.solon.codecli.mcpmarket.McpMarketItem;
+import org.noear.solon.codecli.mcpmarket.McpMarketManager;
+import org.noear.solon.codecli.mcpmarket.McpMarketPage;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -43,6 +47,132 @@ public class McpSettingsController extends BaseSettingsController{
      */
     public McpSettingsController(WorkspaceManager workspaceManager) {
         super(workspaceManager);
+    }
+
+    // ==================== 设置：连接器（MCP）市场 ====================
+
+    /**
+     * 连接器市场管理器（与技能市场同构：单例 + 多适配器）
+     */
+    private final McpMarketManager mcpMarketManager = McpMarketManager.getInstance();
+
+    /**
+     * 获取所有可用连接器市场列表
+     */
+    @Get
+    @Mapping("/web/settings/mcp/market/markets")
+    public Result mcpMarketMarkets() {
+        return Result.succeed(mcpMarketManager.getMarketInfos());
+    }
+
+    /**
+     * 连接器市场代理接口 — 列表/搜索。
+     * <p>所有外部请求均由后端适配器完成，前端不直连外部服务。</p>
+     *
+     * @param query      搜索关键词（为空表示浏览默认列表）
+     * @param limit      每页条数
+     * @param cursor     翻页游标（官方注册表为游标分页）
+     * @param marketName 市场名称（可选，默认使用默认市场）
+     */
+    @Get
+    @Mapping("/web/settings/mcp/market/proxy")
+    public Result mcpMarketProxy(@Param(value = "q", defaultValue = "") String query,
+                                 @Param(value = "limit", defaultValue = "30") int limit,
+                                 @Param(value = "cursor", defaultValue = "") String cursor,
+                                 @Param(value = "marketName", defaultValue = "") String marketName) {
+        McpMarket market = mcpMarketManager.getMarketByName(marketName);
+        Result<McpMarketPage> result = market.list(query, limit, cursor);
+
+        if (result.getCode() == 200 && result.getData() != null) {
+            markInstalled(result.getData().getItems());
+        }
+
+        return result;
+    }
+
+    /**
+     * 连接器详情（含全部可用接入方式）
+     *
+     * @param id         市场条目 id（必填）
+     * @param marketName 市场名称（可选）
+     */
+    @Get
+    @Mapping("/web/settings/mcp/market/detail")
+    public Result mcpMarketDetail(@Param("id") String id,
+                                  @Param(value = "marketName", defaultValue = "") String marketName) {
+        if (Assert.isEmpty(id)) {
+            return Result.failure("id is required");
+        }
+
+        return mcpMarketManager.getMarketByName(marketName).detail(id);
+    }
+
+    /**
+     * 将市场条目解析为配置草稿（不落库、不执行）— MCP 版的「安装」等价物。
+     *
+     * @param id         市场条目 id（必填）
+     * @param configId   接入方式 id（可选，默认第一个）
+     * @param marketName 市场名称（可选）
+     */
+    @Post
+    @Mapping("/web/settings/mcp/market/resolve")
+    public Result mcpMarketResolve(@Param("id") String id,
+                                   @Param(value = "configId", defaultValue = "") String configId,
+                                   @Param(value = "marketName", defaultValue = "") String marketName) {
+        if (Assert.isEmpty(id)) {
+            return Result.failure("id is required");
+        }
+
+        return mcpMarketManager.getMarketByName(marketName).resolve(id, configId);
+    }
+
+    /**
+     * 标注市场条目是否已在本地配置中（按包名/远程地址比对）
+     */
+    private void markInstalled(List<McpMarketItem> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+
+        Collection<McpServerDo> servers = settings().getMcpServers().values();
+        for (McpMarketItem item : items) {
+            List<String> keys = item.getMatchKeys();
+            if (keys == null || keys.isEmpty()) {
+                continue;
+            }
+
+            for (McpServerDo server : servers) {
+                if (matchesServer(server, keys)) {
+                    item.installed(true);
+                    break;
+                }
+            }
+        }
+    }
+
+    private boolean matchesServer(McpServerDo server, List<String> keys) {
+        String type = McpTypeResolver.standardize(server.getTypeOrTransport());
+
+        if (McpTypeResolver.isStdio(type)) {
+            String command = server.getCommand();
+            List<String> args = server.getArgs();
+
+            for (String key : keys) {
+                if (key.equals(command)) {
+                    return true;
+                }
+                if (args != null && args.contains(key)) {
+                    return true;
+                }
+            }
+        } else {
+            String url = server.getUrl();
+            if (url != null && keys.contains(url)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // ==================== 设置：MCP 服务器管理 ====================
