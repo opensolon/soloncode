@@ -1,5 +1,5 @@
 /**
- * app-settings-mcp-market.js — 「连接器（MCP）市场」二级页
+ * app-settings-mcp-market.js — 「连接器市场」二级页
  *
  * 由设置 → 连接器（MCP）页右上角「添加连接器」进入，浏览/搜索远端连接器，
  * 选中一种接入方式后生成配置草稿并带入「添加连接器」表单预填；
@@ -29,6 +29,7 @@
     var $mcpMarketSearchInput = $('#mcpMarketSearchInput');
     var $mcpMarketSearchClear = $('#mcpMarketSearchClear');
     var $mcpMarketList = $('#mcpMarketList');
+    var $mcpMarketCategories = $('#mcpMarketCategories');
     var $mcpMarketStatus = $('#mcpMarketStatus');
     var $mcpMarketLoading = $('#mcpMarketLoading');
     var $mcpMarketError = $('#mcpMarketError');
@@ -41,8 +42,11 @@
     // ==================== 状态 ====================
 
     var _marketName = '';
+    var _categoryId = '';
     var _loaded = false;
     var _loading = false;
+    /** 请求序号：只采纳最后一次发起的列表请求 */
+    var _reqSeq = 0;
     var _cursor = null;
     var _query = '';
     var _detailCache = {};
@@ -59,6 +63,7 @@
         if (!_loaded) {
             _loaded = true;
             loadMarketOptions();
+            loadCategories();
             loadList(true);
         }
     }
@@ -95,10 +100,55 @@
         });
     }
 
+    // ==================== 分类筛选 ====================
+
+    /**
+     * 加载当前市场的分类。无分类维度的市场（官方 Registry / Smithery）
+     * 返回空数组，此时隐藏整条分类栏。
+     */
+    function loadCategories() {
+        $.ajax({
+            url: '/web/settings/mcp/market/categories?marketName=' + encodeURIComponent(_marketName || ''),
+            method: 'GET',
+            timeout: 15000,
+            dataType: 'json'
+        }).done(function (resp) {
+            var categories = (resp && resp.code === 200 && resp.data) ? resp.data : [];
+            renderCategories(categories);
+        }).fail(function () {
+            // 分类是辅助功能，失败时静默隐藏，不影响主列表
+            renderCategories([]);
+        });
+    }
+
+    function renderCategories(categories) {
+        _categoryId = '';
+
+        if (!categories || !categories.length) {
+            $mcpMarketCategories.hide().html('');
+            return;
+        }
+
+        var html = '<button type="button" class="mcp-category-chip active" data-id="">'
+            + escapeHtml(I18n.t('mcp.marketAllCategories')) + '</button>';
+
+        categories.forEach(function (c) {
+            var count = Number(c.count) || 0;
+            html += '<button type="button" class="mcp-category-chip" data-id="' + escapeAttr(c.id || '') + '" title="' + escapeAttr(c.name || '') + '">'
+                + escapeHtml(c.name || '')
+                + (count > 0 ? '<span class="mcp-category-count">' + count + '</span>' : '')
+                + '</button>';
+        });
+
+        $mcpMarketCategories.html(html).show();
+    }
+
     // ==================== 列表加载 ====================
 
     function loadList(reset) {
-        if (_loading) return;
+        // 切分类/改关键词会连续发请求，用序号丢弃过期响应（否则慢请求会把新结果覆盖）
+        if (_loading && !reset) return;
+        var seq = ++_reqSeq;
         _loading = true;
 
         if (reset) {
@@ -112,6 +162,7 @@
 
         var url = '/web/settings/mcp/market/proxy?limit=' + PAGE_SIZE
             + '&q=' + encodeURIComponent(_query || '')
+            + '&categoryId=' + encodeURIComponent(_categoryId || '')
             + '&marketName=' + encodeURIComponent(_marketName || '');
         if (!reset && _cursor) {
             url += '&cursor=' + encodeURIComponent(_cursor);
@@ -119,6 +170,7 @@
 
         $.ajax({ url: url, method: 'GET', timeout: 30000, dataType: 'json' })
             .done(function (resp) {
+                if (seq !== _reqSeq) return;
                 $mcpMarketLoading.hide();
 
                 if (resp && resp.code !== undefined && resp.code !== 200) {
@@ -136,6 +188,7 @@
                 }
             })
             .fail(function (jqXHR, textStatus) {
+                if (seq !== _reqSeq) return;
                 $mcpMarketLoading.hide();
                 var msg = I18n.t('mcp.marketLoadFailed');
                 if (textStatus === 'timeout') msg = I18n.t('mcp.marketTimeout');
@@ -143,7 +196,7 @@
                 $mcpMarketError.text(msg).show();
             })
             .always(function () {
-                _loading = false;
+                if (seq === _reqSeq) _loading = false;
             });
     }
 
@@ -322,7 +375,20 @@
 
     $mcpMarketSelect.on('change', function () {
         _marketName = $(this).val() || '';
+        _categoryId = '';
         _detailCache = {};
+        loadCategories();
+        loadList(true);
+    });
+
+    // 分类切换
+    $mcpMarketCategories.on('click', '.mcp-category-chip', function () {
+        var $chip = $(this);
+        if ($chip.hasClass('active')) return;
+
+        $mcpMarketCategories.find('.mcp-category-chip').removeClass('active');
+        $chip.addClass('active');
+        _categoryId = $chip.attr('data-id') || '';
         loadList(true);
     });
 
@@ -423,8 +489,10 @@
             _cursor = null;
             _detailCache = {};
             _query = '';
+            _categoryId = '';
             $mcpMarketSearchInput.val('');
             $mcpMarketSearchClear.hide();
+            $mcpMarketCategories.hide().html('');
         },
         show: showMarketView,
         hide: function () {

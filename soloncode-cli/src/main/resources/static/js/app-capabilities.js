@@ -149,9 +149,9 @@
             + '</div>';
     }
 
-    /** 字段 → 设置页落点：技能直接进「技能市场」，连接器进 MCP 列表 */
+    /** 字段 → 设置页落点：技能与连接器都直接进各自的市场（手动添加在市场页右上角） */
     function addTarget(field) {
-        return field === 'mcps' ? { tab: 'mcp', view: null } : { tab: 'skills', view: 'market' };
+        return field === 'mcps' ? { tab: 'mcp', view: 'market' } : { tab: 'skills', view: 'market' };
     }
 
     /** 打开设置并落到对应的添加视图；返回是否成功唤起 */

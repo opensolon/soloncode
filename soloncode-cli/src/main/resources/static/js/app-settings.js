@@ -103,11 +103,11 @@
 
     function mod(name) { return window[name]; }
 
-    // 「添加」按钮跳进来时要比落的子视图（技能市场），只对紧接着的那次打开生效
-    var pendingSkillView = null;
-    function takeSkillView() {
-        var view = pendingSkillView;
-        pendingSkillView = null;
+    // 「添加」按钮跳进来时要落的子视图（技能市场 / 连接器市场），只对紧接着的那次打开生效
+    var pendingSubView = null;
+    function takeSubView() {
+        var view = pendingSubView;
+        pendingSubView = null;
         return view;
     }
 
@@ -237,13 +237,19 @@
             }
         } else if (targetTab === 'skills') {
             $('#settingsTabSkills').addClass('active');
-            if (window._skillModule) window._skillModule.resetAndLoad(takeSkillView());
+            if (window._skillModule) window._skillModule.resetAndLoad(takeSubView());
         } else if (targetTab === 'mounts') {
             $('#settingsTabMounts').addClass('active');
             if (mod('_settingsMounts')) mod('_settingsMounts').load();
         } else if (targetTab === 'mcp') {
             $('#settingsTabMcp').addClass('active');
+            var mcpView = takeSubView();
             if (mod('_settingsMcp')) mod('_settingsMcp').load();
+            // 深链 view=market：「添加」直接从市场选，而不是先落到列表再让用户找入口
+            if (mcpView === 'market' && mod('_settingsMcpMarket')) {
+                mod('_settingsMcpMarket').reset();
+                mod('_settingsMcpMarket').show();
+            }
         } else if (targetTab === 'openapi') {
             $('#settingsTabOpenapi').addClass('active');
             if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load();
@@ -277,7 +283,7 @@
             if (currentLlmView === 'providers') { if (window.settingsProviders) window.settingsProviders.loadList(); }
             else if (mod('_settingsLlm')) mod('_settingsLlm').load();
         }
-        else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(takeSkillView()); }
+        else if (targetTab === 'skills') { if (window._skillModule) window._skillModule.resetAndLoad(takeSubView()); }
         else if (targetTab === 'mounts') { if (mod('_settingsMounts')) mod('_settingsMounts').load(); }
         else if (targetTab === 'mcp') { if (mod('_settingsMcp')) mod('_settingsMcp').load(); }
         else if (targetTab === 'openapi') { if (mod('_settingsOpenapi')) mod('_settingsOpenapi').load(); }
@@ -370,14 +376,14 @@
             tab = 'general';
         }
         if (tab !== 'llm') pendingLlmView = null;
-        pendingSkillView = (opts && opts.view) || null;
+        pendingSubView = (opts && opts.view) || null;
         $overlay.css('display', 'flex');
         var $tab = $('.settings-tab[data-tab="' + tab + '"]');
         if ($tab.length) {
             $tab.click();
         } else {
             // tab 不存在时不能把视图提示留到下一个人，否则眼镜按钮进去也会跑到市场
-            pendingSkillView = null;
+            pendingSubView = null;
         }
     };
 })();

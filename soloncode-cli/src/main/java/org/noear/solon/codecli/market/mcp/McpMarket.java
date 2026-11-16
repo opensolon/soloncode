@@ -7,7 +7,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 连接器（MCP）市场接口 — 抽象连接器市场的浏览、搜索与配置生成能力。
+ * 连接器市场接口 — 抽象连接器市场的浏览、搜索与配置生成能力。
  *
  * <p>与技能市场 {@link SkillMarket} 的区别：
  * 技能的 install 是「下载并解压到目录」，连接器的 install 等价物是

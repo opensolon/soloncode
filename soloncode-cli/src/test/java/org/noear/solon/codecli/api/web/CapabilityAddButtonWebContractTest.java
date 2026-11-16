@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 技能 / 连接器选择器的「添加」按钮契约。
  *
  * <p>用户诉求：选择器面板里已有「不限制」，再加一个「添加」，点了直接跳到设置的对应
- * tab（技能 → 技能市场、连接器 → MCP 列表）。这里锁住四件容易回退的事：</p>
+ * tab（技能 → 技能市场、连接器 → 连接器市场）。这里锁住四件容易回退的事：</p>
  * <ul>
  *   <li>底部标记只能有一份来源，不许自动任务页再手拼一套（历史问题复现三次）；</li>
  *   <li>「添加」只负责跳转，跳哪里必须由字段名决定，不能写死成某一个 tab；</li>
@@ -55,9 +55,9 @@ public class CapabilityAddButtonWebContractTest {
         String skill = resourceText("/static/js/app-settings-skill.js");
         String web = resourceText("/static/web.html");
 
-        // 字段 → 落点：连接器进 mcp，技能直接进技能市场
-        assertTrue(capabilities.contains("return field === 'mcps' ? { tab: 'mcp', view: null } : { tab: 'skills', view: 'market' };"),
-                "「添加」的去处必须按字段决定，不能写死某一个 tab");
+        // 字段 → 落点：两类都直接进各自市场（手动添加在市场页右上角）
+        assertTrue(capabilities.contains("return field === 'mcps' ? { tab: 'mcp', view: 'market' } : { tab: 'skills', view: 'market' };"),
+                "「添加」的去处必须按字段决定，且两类都落到各自市场");
         assertTrue(capabilities.contains("window.openSettingsTab(target.tab, target.view ? { view: target.view } : null);"),
                 "必须复用既有 openSettingsTab 入口，并把子视图透传下去");
 
@@ -66,10 +66,12 @@ public class CapabilityAddButtonWebContractTest {
                 "点击「添加」必须先关闭选择器浮层");
 
         // 技能市场视图：入口 → 透传 → 落视图，三段都要在
-        assertTrue(settings.contains("pendingSkillView = (opts && opts.view) || null;"),
+        assertTrue(settings.contains("pendingSubView = (opts && opts.view) || null;"),
                 "openSettingsTab 必须接收并暂存子视图");
-        assertTrue(settings.contains("window._skillModule.resetAndLoad(takeSkillView())"),
+        assertTrue(settings.contains("window._skillModule.resetAndLoad(takeSubView())"),
                 "技能 tab 必须把子视图传给 resetAndLoad");
+        assertTrue(settings.contains("if (mcpView === 'market' && mod('_settingsMcpMarket'))"),
+                "连接器 tab 必须支持直接落到连接器市场，否则用户点了「添加」还在列表页");
         assertTrue(skill.contains("switchView(view === 'market' ? 'market' : 'installed');"),
                 "resetAndLoad 必须支持直接落到技能市场，否则用户点了「添加」还要自己再点一次");
 

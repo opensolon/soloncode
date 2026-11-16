@@ -451,7 +451,7 @@
     }
 
     // MCP 按钮事件
-    // 「添加连接器」统一进「连接器（MCP）市场」二级页（入口绑定在 app-settings-mcp-market.js），
+    // 「添加连接器」统一进「连接器市场」二级页（入口绑定在 app-settings-mcp-market.js），
     // 空表单由市场页右上角「手动添加」调用 showAddForm() 打开。
     $('#mcpBackBtn').on('click', function () { showMcpListView(); resetMcpForm(); });
 

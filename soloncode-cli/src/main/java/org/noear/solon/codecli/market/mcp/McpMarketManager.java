@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 连接器（MCP）市场管理器 — 管理多个 McpMarket 适配器。
+ * 连接器市场管理器 — 管理多个 McpMarket 适配器。
  *
  * <p>与 {@link SkillMarketManager} 同构（单例 + register），
  * 便于后续接入国内源（如腾讯云 MCP 广场）或自建 bundle 源。</p>

@@ -51,7 +51,7 @@ public class McpSettingsController extends BaseSettingsController{
         super(workspaceManager);
     }
 
-    // ==================== 设置：连接器（MCP）市场 ====================
+    // ==================== 设置：连接器市场 ====================
 
     /**
      * 连接器市场管理器（与技能市场同构：单例 + 多适配器）
