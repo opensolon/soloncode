@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Regola carattere",
   "general.ui.simplifiedDesc": "Se abilitato, i dettagli vengono compressi per impostazione predefinita ed espansi quando necessario; disattivarlo mostra sempre il contenuto completo",
   "general.ui.simplifiedName": "Visualizzazione semplificata chiamate strumenti",
-  "general.ui.title": "Aspetto",
   "git.autoCommit": "Esegui commit automatico di tutti i file correnti",
   "git.commitBtn": "Commit",
   "git.commitHistoryEmpty": "Nessun messaggio di commit",

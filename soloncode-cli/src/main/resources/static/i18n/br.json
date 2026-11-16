@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Ajustar fonte",
   "general.ui.simplifiedDesc": "Recolhe os detalhes das ferramentas por padrão; desative para sempre mostrar a saída completa",
   "general.ui.simplifiedName": "Exibição Simplificada de Ferramentas",
-  "general.ui.title": "Aparência",
   "git.autoCommit": "Confirmar automaticamente todos os arquivos atuais",
   "git.commitBtn": "Confirmar",
   "git.commitHistoryEmpty": "Nenhuma mensagem de confirmação ainda",

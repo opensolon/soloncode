@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Schrift anpassen",
   "general.ui.simplifiedDesc": "Tool-Details standardmäßig einklappen; deaktivieren, um die vollständige Ausgabe immer anzuzeigen",
   "general.ui.simplifiedName": "Vereinfachte Tool-Anzeige",
-  "general.ui.title": "Erscheinungsbild",
   "git.autoCommit": "Alle aktuellen Dateien automatisch committen",
   "git.commitBtn": "Committen",
   "git.commitHistoryEmpty": "Noch keine Commit-Nachrichten",

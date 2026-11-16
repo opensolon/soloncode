@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Yazı tipini ayarla",
   "general.ui.simplifiedDesc": "Araç ayrıntılarını varsayılan olarak daraltır; kapatmak tam çıktıyı her zaman gösterir",
   "general.ui.simplifiedName": "Basitleştirilmiş Araç Görünümü",
-  "general.ui.title": "Görünüm",
   "git.autoCommit": "Geçerli tüm dosyaları otomatik gönder",
   "git.commitBtn": "Commit",
   "git.commitHistoryEmpty": "Henüz commit mesajı yok",

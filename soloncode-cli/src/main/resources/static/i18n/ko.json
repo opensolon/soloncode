@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "글꼴 조정",
   "general.ui.simplifiedDesc": "활성화하면 기본적으로 세부 정보를 접고, 필요할 때 펼칩니다. 비활성화하면 항상 전체 표시",
   "general.ui.simplifiedName": "도구 호출 표시 간소화",
-  "general.ui.title": "모양",
   "git.autoCommit": "현재 모든 파일 자동 커밋",
   "git.commitBtn": "커밋",
   "git.commitHistoryEmpty": "커밋 메시지가 없습니다",

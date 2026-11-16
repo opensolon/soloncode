@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "フォント調整",
   "general.ui.simplifiedDesc": "有効にするとデフォルトで詳細を折りたたみ、必要に応じて展開します。無効にすると常に完全表示します",
   "general.ui.simplifiedName": "ツール呼び出し表示の簡略化",
-  "general.ui.title": "外観",
   "git.autoCommit": "現在のすべてのファイルを自動コミット",
   "git.commitBtn": "コミット",
   "git.commitHistoryEmpty": "コミットメッセージはまだありません",

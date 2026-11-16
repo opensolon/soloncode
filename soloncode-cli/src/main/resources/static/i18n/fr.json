@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Ajuster la police",
   "general.ui.simplifiedDesc": "Réduit les détails par défaut, développe si nécessaire ; désactiver pour toujours afficher le contenu complet",
   "general.ui.simplifiedName": "Affichage simplifié des appels d'outils",
-  "general.ui.title": "Apparence",
   "git.autoCommit": "Valider automatiquement tous les fichiers actuels",
   "git.commitBtn": "Valider",
   "git.commitHistoryEmpty": "Aucun message de validation pour l'instant",

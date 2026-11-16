@@ -265,7 +265,6 @@
   "general.ui.fontTitle": "Điều chỉnh phông chữ",
   "general.ui.simplifiedDesc": "Khi bật, chi tiết được thu gọn theo mặc định và mở rộng khi cần; khi tắt, luôn hiển thị đầy đủ",
   "general.ui.simplifiedName": "Hiển thị đơn giản hóa lệnh gọi công cụ",
-  "general.ui.title": "Giao diện",
   "git.autoCommit": "Tự động commit tất cả các tệp hiện tại",
   "git.commitBtn": "Commit",
   "git.commitHistoryEmpty": "Chưa có thông điệp commit",

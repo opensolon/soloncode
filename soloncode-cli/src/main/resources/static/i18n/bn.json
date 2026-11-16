@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "ফন্ট সমন্বয়",
   "general.ui.simplifiedDesc": "সক্রিয় থাকলে ডিফল্টে বিবরণ ভাঁজ থাকবে, প্রয়োজনে প্রসারিত করবেন; বন্ধ থাকলে সর্বদা সম্পূর্ণ দেখাবে",
   "general.ui.simplifiedName": "সরলীকৃত টুল কল প্রদর্শন",
-  "general.ui.title": "উপস্থিতি",
   "git.autoCommit": "বর্তমান সব ফাইল স্বয়ংক্রিয়ভাবে কমিট করুন",
   "git.commitBtn": "কমিট",
   "git.commitHistoryEmpty": "এখনও কোনো কমিট বার্তা নেই",

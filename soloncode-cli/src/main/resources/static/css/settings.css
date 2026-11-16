@@ -717,13 +717,7 @@
     text-align: center;
 }
 
-/* ===== Skin picker（通用 → 界面效果，一行 4 块） ===== */
-.general-subblock-title {
-    font-size: var(--fs-base);
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 10px;
-}
+/* ===== Skin picker（外观效果 → 选择皮肤，一行 4 块） ===== */
 .skin-manage-hint {
     font-size: var(--fs-xs);
     color: var(--text-secondary);

@@ -265,7 +265,6 @@
   "general.ui.fontTitle": "ปรับฟอนต์",
   "general.ui.simplifiedDesc": "เมื่อเปิดใช้งาน รายละเอียดจะถูกยุบตามค่าเริ่มต้น และขยายเมื่อต้องการ; ปิดเพื่อแสดงแบบเต็มเสมอ",
   "general.ui.simplifiedName": "แสดงการเรียกเครื่องมือแบบย่อ",
-  "general.ui.title": "รูปลักษณ์",
   "git.autoCommit": "คอมมิตไฟล์ทั้งหมดปัจจุบันโดยอัตโนมัติ",
   "git.commitBtn": "คอมมิต",
   "git.commitHistoryEmpty": "ยังไม่มีข้อความคอมมิต",

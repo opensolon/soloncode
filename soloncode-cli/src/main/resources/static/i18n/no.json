@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Juster skrift",
   "general.ui.simplifiedDesc": "Skjul detaljer som standard, utvid ved behov; deaktiver for alltid å vise fullt innhold",
   "general.ui.simplifiedName": "Forenklet verktøyvisning",
-  "general.ui.title": "Utseende",
   "git.autoCommit": "Auto-commit alle gjeldende filer",
   "git.commitBtn": "Commit",
   "git.commitHistoryEmpty": "Ingen commit-meldinger ennå",

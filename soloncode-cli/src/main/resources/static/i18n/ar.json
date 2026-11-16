@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "ضبط الخط",
   "general.ui.simplifiedDesc": "عند التفعيل يتم طي التفاصيل افتراضيًا ويتم توسيعها عند الحاجة؛ الإيقاف يعرضها بالكامل دائمًا",
   "general.ui.simplifiedName": "عرض مبسّط لاستدعاءات الأدوات",
-  "general.ui.title": "المظهر",
   "git.autoCommit": "الالتزام التلقائي بجميع الملفات الحالية",
   "git.commitBtn": "التزام",
   "git.commitHistoryEmpty": "لا توجد رسائل التزام بعد",

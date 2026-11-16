@@ -265,7 +265,6 @@
   "general.ui.fontTitle": "Adjust Font",
   "general.ui.simplifiedDesc": "Collapse tool details by default; disable to always show full output",
   "general.ui.simplifiedName": "Simplified Tool Display",
-  "general.ui.title": "Appearance",
   "general.ui.desc": "Adjust display language, fonts, font scale and skins for this browser only",
   "git.autoCommit": "Auto-commit all current files",
   "git.commitBtn": "Commit",

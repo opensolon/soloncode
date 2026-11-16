@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Prilagodi font",
   "general.ui.simplifiedDesc": "Kada je omogućeno, detalji su po zadanim postavkama skupljeni i proširuju se po potrebi; isključivanjem se uvijek prikazuju u cijelosti",
   "general.ui.simplifiedName": "Pojednostavljen prikaz poziva alata",
-  "general.ui.title": "Izgled",
   "git.autoCommit": "Automatski potvrdi sve trenutne datoteke",
   "git.commitBtn": "Potvrdi",
   "git.commitHistoryEmpty": "Još nema poruka potvrda",

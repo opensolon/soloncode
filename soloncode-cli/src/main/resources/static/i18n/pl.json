@@ -263,7 +263,6 @@
   "general.ui.fontTitle": "Dostosuj czcionkę",
   "general.ui.simplifiedDesc": "Po włączeniu szczegóły są domyślnie zwinięte i można je rozwinąć w razie potrzeby; po wyłączeniu zawsze pełny widok",
   "general.ui.simplifiedName": "Uproszczone wyświetlanie wywołań narzędzi",
-  "general.ui.title": "Wygląd",
   "git.autoCommit": "Automatycznie zatwierdź wszystkie bieżące pliki",
   "git.commitBtn": "Zatwierdź",
   "git.commitHistoryEmpty": "Brak komunikatów zatwierdzeń",
