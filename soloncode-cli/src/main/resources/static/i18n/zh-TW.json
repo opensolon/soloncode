@@ -90,7 +90,7 @@
   "automation.minutes": "分鐘",
   "automation.model": "模型",
   "automation.modelDefaultDesc": "任務執行時使用預設模型",
-  "automation.modelPlaceholder": "跟隨預設模型",
+  "automation.modelPlaceholder": "預設模型",
   "automation.new": "新增自動任務",
   "automation.pause": "暫停",
   "automation.promptPlaceholder": "描述自動任務需要完成的事情",

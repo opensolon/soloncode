@@ -91,7 +91,7 @@
   "automation.minutes": "分钟",
   "automation.model": "模型",
   "automation.modelDefaultDesc": "任务执行时使用默认模型",
-  "automation.modelPlaceholder": "跟随默认模型",
+  "automation.modelPlaceholder": "默认模型",
   "automation.new": "新建自动任务",
   "automation.pause": "暂停",
   "automation.promptPlaceholder": "描述自动任务需要完成的事情",
