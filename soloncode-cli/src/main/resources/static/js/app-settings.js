@@ -129,7 +129,7 @@
      */
     function switchLlmView(view, skipLoad) {
         currentLlmView = view === 'providers' ? 'providers' : 'models';
-        $('#llmViewToggle .mcp-type-btn').removeClass('active')
+        $('#llmViewToggle .plain-tabs__tab').removeClass('active')
             .filter('[data-view="' + currentLlmView + '"]').addClass('active');
         if (currentLlmView === 'providers') {
             $('#llmViewModels').hide();
@@ -254,7 +254,7 @@
     });
 
     // 「模型 / 供应商」子视图切换
-    $(document).on('click', '#llmViewToggle .mcp-type-btn', function () {
+    $(document).on('click', '#llmViewToggle .plain-tabs__tab', function () {
         var view = $(this).attr('data-view');
         if (view === currentLlmView) return;
         switchLlmView(view);

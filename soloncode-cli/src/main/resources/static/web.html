@@ -1280,9 +1280,9 @@
                 <!-- LLM Tab -->
                 <div class="settings-tab-content" id="settingsTabLlm">
                     <!-- 顶部子视图切换：模型 / 供应商（合并前的两个独立 Tab） -->
-                    <div class="mcp-type-toggle" id="llmViewToggle" style="margin-bottom:12px;max-width:320px">
-                        <button type="button" class="mcp-type-btn active" data-view="models" data-i18n="llm.title">模型</button>
-                        <button type="button" class="mcp-type-btn" data-view="providers" data-i18n="provider.title">供应商</button>
+                    <div class="plain-tabs settings-llm-view-tabs" id="llmViewToggle">
+                        <button type="button" class="plain-tabs__tab active" data-view="models" data-i18n="llm.title">模型</button>
+                        <button type="button" class="plain-tabs__tab" data-view="providers" data-i18n="provider.title">供应商</button>
                     </div>
                     <div class="settings-view-group" id="llmViewModels">
                     <!-- List View -->
@@ -1290,7 +1290,6 @@
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <div>
-                                    <span class="settings-section-title" data-i18n="llm.title">模型</span>
                                     <div class="settings-section-desc" data-i18n="llm.desc">配置 AI 模型的连接参数与默认设定</div>
                                 </div>
                                 <div class="llm-header-actions">
@@ -1423,7 +1422,6 @@
                         <div class="settings-section">
                             <div class="settings-section-header">
                                 <div>
-                                    <span class="settings-section-title" data-i18n="provider.title">供应商</span>
                                      <div class="settings-section-desc" data-i18n="provider.desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div>
                                 </div>
                                 <div class="openapi-header-actions">

@@ -257,6 +257,16 @@
 .mcp-type-btn.active { background: var(--accent-fill, var(--accent)); color: #fff; }
 .mcp-type-btn.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
+/* ===== 纯文字页签（无边框、无下划线，仅靠字色区分选中） =====
+   用法：容器 .plain-tabs + 若干 .plain-tabs__tab
+   字号与 .settings-section-title 一致，用于「页签即标题」的场景（页内不再重复标题） */
+.plain-tabs { display: inline-flex; align-items: center; gap: 24px; }
+.plain-tabs__tab { height: 44px; padding: 0; border: none; background: none; font-size: var(--fs-3xl); font-weight: 500; line-height: 1; color: var(--text-secondary); cursor: pointer; transition: color 0.2s ease; }
+.plain-tabs__tab:hover { color: var(--text-primary); }
+.plain-tabs__tab.active { color: var(--text-primary); font-weight: 700; }
+/* 「大语言模型」页内的「模型 / 供应商」页签：只隔开下方内容，宽度随文字自适应 */
+.settings-llm-view-tabs { margin-bottom: 12px; }
+
 .mcp-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--border-color); }
 .mcp-status-dot.connected { background: #22c55e; }
 
