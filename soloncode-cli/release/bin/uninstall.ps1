@@ -1,4 +1,4 @@
-#requires -Version 2.0
+﻿#requires -Version 2.0
 #
 # Solon Code Uninstaller for Windows PowerShell
 # 完全卸载当前用户的 Solon Code，包括配置目录

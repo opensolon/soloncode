@@ -1,28 +1,9 @@
 #!/usr/bin/env bash
-# Solon Code CLI 免安装启动器（便携模式）
+# Solon Code CLI 启动器：运行同目录下的 bin/soloncode-cli.jar，启动 Web 界面。
 #
-# 直接运行同目录下的 bin/soloncode-cli.jar，无需执行 install.sh。
-# 适合放到 U 盘 / 共享目录里随处运行。
-#
-# 用法（不带参数时默认启动 Web 界面，和双击启动一致）：
-#   ./run.sh                 启动 Web 界面（默认端口 4808，自动打开浏览器）
-#   ./run.sh web 4808        启动 Web 界面并指定端口
-#   ./run.sh cli             进入交互式命令行
-#   ./run.sh --help          查看全部参数
-#
-# 数据目录（可选）：默认仍然使用 ~/.soloncode（与安装版共用配置）。
-# 想让配置、会话、记忆、技能都跟着程序走，设置环境变量 SOLONCODE_HOME：
-#   export SOLONCODE_HOME="/media/usb/soloncode-data"
-#   ./run.sh
+# 免安装：把整个目录放到任意位置即可运行。
 
 set -u
-
-# 默认动作是 Web 界面（双击启动就是这种场景）。
-# 位置参数会被 CLI 当成 flag 序列解析，所以这里补一个 "web"；
-# 想要交互式命令行请显式执行 ./run.sh cli。
-if [ "$#" -eq 0 ]; then
-    set -- web
-fi
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 JAR_FILE="$SCRIPT_DIR/bin/soloncode-cli.jar"
@@ -34,36 +15,9 @@ if [ ! -f "$JAR_FILE" ]; then
 fi
 
 if ! command -v java >/dev/null 2>&1; then
-    echo "[Error] 未找到 java 命令，请先安装 Java 8 或更高版本（JAVA_HOME/bin 需在 PATH 中）。" >&2
+    echo "[Error] 未找到 java 命令，请先安装 Java 8 或更高版本。" >&2
     exit 1
 fi
 
-# 用数组保存参数，路径里带空格（如 /Volumes/My USB）也不会被拆开
-JAVA_ARGS=(-Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8)
-
-# 便携模式：把用户主目录指向 SOLONCODE_HOME，程序会在其下创建 .soloncode/
-if [ -n "${SOLONCODE_HOME:-}" ]; then
-    mkdir -p "$SOLONCODE_HOME" 2>/dev/null || {
-        echo "[Error] 无法创建数据目录：$SOLONCODE_HOME" >&2
-        exit 1
-    }
-    # 转成绝对路径，避免相对路径随调用目录变化
-    SOLONCODE_HOME=$(cd "$SOLONCODE_HOME" && pwd) || exit 1
-    JAVA_ARGS+=("-Duser.home=$SOLONCODE_HOME")
-fi
-
-JAVA_VER=$(java -version 2>&1 | head -n1 | grep -oE '"[0-9]+' | grep -oE '[0-9]+' | head -1)
-[ -n "$JAVA_VER" ] || JAVA_VER=$(java -version 2>&1 | head -n1 | cut -d'"' -f2 | cut -d'.' -f1)
-if [ -n "$JAVA_VER" ] && [ "$JAVA_VER" -ge 21 ]; then
-    JAVA_ARGS+=(--enable-native-access=ALL-UNNAMED)
-fi
-
-# Git Bash / MSYS 下的中文与终端兼容处理（与安装版启动器保持一致）
-if [ -n "${MSYSTEM:-}" ]; then
-    JAVA_ARGS+=(-Djline.terminal.type=xterm-256color)
-    if [ -t 0 ] && [ -t 1 ] && command -v winpty >/dev/null 2>&1; then
-        exec winpty java "${JAVA_ARGS[@]}" -jar "$JAR_FILE" "$@"
-    fi
-fi
-
-exec java "${JAVA_ARGS[@]}" -jar "$JAR_FILE" "$@"
+exec java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 \
+    -jar "$JAR_FILE" web
