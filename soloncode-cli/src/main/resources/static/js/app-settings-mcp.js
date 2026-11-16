@@ -253,6 +253,15 @@
     }
 
     /**
+     * 判断行列表中是否已存在某 key 的赋值行（按 key 前缀匹配，
+     * 避免已有 “Authorization=Bearer ” 这类预填值时重复追加一行）
+     */
+    function hasKvLine(lines, key) {
+        var prefix = key + '=';
+        return lines.some(function (line) { return line.indexOf(prefix) === 0; });
+    }
+
+    /**
      * 用市场草稿填充表单（连接器市场的「安装」入口：只预填，不落库）
      */
     function fillMarketDraft(draft) {
@@ -290,9 +299,9 @@
             if (draft.env) {
                 Object.keys(draft.env).forEach(function (k) { envLines.push(k + '=' + draft.env[k]); });
             }
-            // 待填参数给出 KEY= 占位，用户直接补值即可
+            // 待填参数给出 KEY= 占位，用户直接补值即可（已有同名行则跳过）
             pending.forEach(function (p) {
-                if (p.in === 'env' && envLines.indexOf(p.name + '=') < 0) {
+                if (p.in === 'env' && !hasKvLine(envLines, p.name)) {
                     envLines.push(p.name + '=');
                 }
             });
@@ -305,7 +314,7 @@
                 Object.keys(draft.headers).forEach(function (k) { headerLines.push(k + '=' + draft.headers[k]); });
             }
             pending.forEach(function (p) {
-                if (p.in === 'header' && headerLines.indexOf(p.name + '=') < 0) {
+                if (p.in === 'header' && !hasKvLine(headerLines, p.name)) {
                     headerLines.push(p.name + '=');
                 }
             });
@@ -334,11 +343,45 @@
             parts.push('<span class="mcp-market-hint-req">' + I18n.t('mcp.marketPending', { names: names }) + '</span>');
         }
 
+        // 市场草稿的接入说明（如托管连接需要 Authorization 请求头）
+        if (draft.note) {
+            parts.push('<span class="mcp-market-hint-note">' + escapeHtml(draft.note) + '</span>');
+        }
+
         if (parts.length) {
             $hint.html(parts.join('')).show();
         } else {
             $hint.hide().empty();
         }
+    }
+
+    /**
+     * 取出大小写不敏感的同名请求头（返回用户实际写的那个 key，找不到返回 null）
+     */
+    function findHeaderKey(headers, name) {
+        var found = null;
+        Object.keys(headers || {}).forEach(function (k) {
+            if (!found && k.toLowerCase() === name) found = k;
+        });
+        return found;
+    }
+
+    /**
+     * 只填了 scheme、没有填密钥的授权头，如 "Bearer"、"Basic"（前端 trim 后丢掉了尾部空格）。
+     * 这种值发出去必然 401，保存前直接拦下，避免留下一条连不上的配置。
+     */
+    var AUTH_SCHEME_ONLY = /^(bearer|basic|token|digest|apikey)$/i;
+
+    /**
+     * 校验 Authorization 请求头，返回错误文案（通过时返回 null）
+     */
+    function validateAuthHeader(headers) {
+        var key = findHeaderKey(headers, 'authorization');
+        if (!key) return null;
+        var value = (headers[key] || '').trim();
+        if (!value) return I18n.t('mcp.authHeaderEmpty', { key: key });
+        if (AUTH_SCHEME_ONLY.test(value)) return I18n.t('mcp.authHeaderMissingKey', { key: key, scheme: value });
+        return null;
     }
 
     function buildMcpBodyObj() {
@@ -363,6 +406,9 @@
             if (!/^https?:\/\/.+/.test(url)) { showToast(I18n.t('mcp.urlInvalid'), 'error'); return null; }
             bodyObj.url = url;
             var headers = parseKvLines($('#mcpHeaders').val().trim());
+            // 市场草稿会预填 "Authorization=Bearer "，用户若没补密钥，trim 后只剩 "Bearer"
+            var authErr = validateAuthHeader(headers);
+            if (authErr) { showToast(authErr, 'error'); return null; }
             if (Object.keys(headers).length > 0) bodyObj.headers = headers;
             var timeout = $('#mcpTimeout').val().trim();
             if (timeout) bodyObj.timeout = parseTimeout(timeout) || timeout;
@@ -1001,6 +1047,17 @@
                 appendProgressLog('✗ ' + name + ': ' + I18n.t('mcp.configIncomplete'), true);
                 processNext(index + 1);
                 return;
+            }
+
+            // 导入的配置里 Authorization 若只有 scheme（如 "Bearer"）同样拦下，与表单保存同口径
+            if (mcpBody.type === 'sse' || mcpBody.type === 'streamable') {
+                var importAuthErr = validateAuthHeader(mcpBody.headers || {});
+                if (importAuthErr) {
+                    result.errors.push({ name: name, reason: importAuthErr });
+                    appendProgressLog('✗ ' + name + ': ' + importAuthErr, true);
+                    processNext(index + 1);
+                    return;
+                }
             }
             
             // 调用保存 API

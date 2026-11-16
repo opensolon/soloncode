@@ -2,6 +2,7 @@ package org.noear.solon.codecli.market.mcp;
 
 import org.noear.solon.codecli.market.skill.SkillMarketManager;
 import org.noear.solon.codecli.market.mcp.impl.OfficialRegistryMcpMarket;
+import org.noear.solon.codecli.market.mcp.impl.SmitheryMcpMarket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,10 +37,15 @@ public class McpMarketManager {
     private McpMarket defaultMarket;
 
     private McpMarketManager() {
-        McpMarket official = new OfficialRegistryMcpMarket();
-        register(official);
+        // Smithery：条目最多、带图标与热度（无服务端搜索，适配器内做本地过滤）。
+        // 作为默认市场注册在首位 —— 前端下拉与缺省 marketName 都取第一个/默认实例。
+        SmitheryMcpMarket smithery = new SmitheryMcpMarket();
+        register(smithery);
 
-        this.defaultMarket = official;
+        // 官方 Registry：字段最规范、接口稳定，作为第二源
+        register(new OfficialRegistryMcpMarket());
+
+        this.defaultMarket = smithery;
     }
 
     /**

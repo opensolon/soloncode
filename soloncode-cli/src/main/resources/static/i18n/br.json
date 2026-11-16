@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "O cabeçalho {key} está vazio, informe a chave",
+  "mcp.authHeaderMissingKey": "Authorization contém apenas \"{scheme}\", adicione a chave depois"
 }

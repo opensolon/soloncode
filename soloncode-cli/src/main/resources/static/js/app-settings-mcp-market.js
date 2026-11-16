@@ -159,6 +159,35 @@
         }).join(' / ');
     }
 
+    /**
+     * 图标：优先用市场返回的 iconUrl（经后端代理加载，前端不直连境外域名），
+     * 加载失败或无图标时回退为名称首字母。
+     */
+    function iconHtml(item, iconText) {
+        var iconUrl = item.iconUrl || '';
+        if (!iconUrl) {
+            return '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>';
+        }
+
+        var proxied = '/web/settings/mcp/market/icon?url=' + encodeURIComponent(iconUrl);
+        return '<div class="settings-list-icon has-img">'
+            + '<img src="' + escapeAttr(proxied) + '" alt="" loading="lazy"'
+            + ' onerror="this.parentNode.classList.remove(\'has-img\');this.parentNode.classList.add(\'img-failed\');this.remove();">'
+            + '<span class="icon-fallback">' + escapeHtml(iconText) + '</span>'
+            + '</div>';
+    }
+
+    /**
+     * 使用量：过千折算为 1.2k / 3.5w
+     */
+    function formatUseCount(count) {
+        var n = Number(count) || 0;
+        if (n <= 0) return '';
+        if (n >= 10000) return (Math.round(n / 1000) / 10) + 'w';
+        if (n >= 1000) return (Math.round(n / 100) / 10) + 'k';
+        return String(n);
+    }
+
     function renderList(items, reset) {
         if (reset) {
             $mcpMarketList.html('');
@@ -193,7 +222,7 @@
             var repoUrl = item.repositoryUrl || '';
 
             html += '<div class="settings-list-item is-static" data-id="' + escapeAttr(id) + '">'
-                + '<div class="settings-list-icon">' + escapeHtml(iconText) + '</div>'
+                + iconHtml(item, iconText)
                 + '<div class="settings-list-info">'
                 + '<div class="settings-list-title" title="' + escapeAttr(id) + '">' + escapeHtml(name)
                 + (item.installed ? '<span class="skill-installed-badge">' + I18n.t('mcp.marketInstalledBadge') + '</span>' : '')
@@ -203,6 +232,8 @@
                 + (version ? '<span class="skill-item-version">' + escapeHtml(version) + '</span>' : '')
                 + (transport ? '<span>' + escapeHtml(transport) + '</span>' : '')
                 + (item.owner ? '<span>' + escapeHtml(item.owner) + '</span>' : '')
+                + (item.verified ? '<span class="mcp-market-verified" title="' + I18n.t('mcp.marketVerified') + '">✓ ' + I18n.t('mcp.marketVerified') + '</span>' : '')
+                + (formatUseCount(item.useCount) ? '<span title="' + I18n.t('mcp.marketUses') + '">' + escapeHtml(formatUseCount(item.useCount)) + '</span>' : '')
                 + (repoUrl ? '<button type="button" class="skill-item-detail-link" data-url="' + escapeAttr(repoUrl) + '" title="' + I18n.t('skills.openExternal') + '">↗</button>' : '')
                 + '</div></div>'
                 + '<div class="settings-list-actions">'

@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "Header {key} đang trống, vui lòng nhập khóa",
+  "mcp.authHeaderMissingKey": "Authorization chỉ có \"{scheme}\", hãy thêm khóa vào sau"
 }

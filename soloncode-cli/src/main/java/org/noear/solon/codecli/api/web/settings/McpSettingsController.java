@@ -15,12 +15,16 @@ import org.noear.solon.codecli.market.mcp.McpMarket;
 import org.noear.solon.codecli.market.mcp.McpMarketItem;
 import org.noear.solon.codecli.market.mcp.McpMarketManager;
 import org.noear.solon.codecli.market.mcp.McpMarketPage;
+import org.noear.solon.codecli.market.skill.SkillMarketSslSupplier;
+import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.core.util.IoUtil;
+import org.noear.solon.net.http.HttpResponse;
+import org.noear.solon.net.http.HttpUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,6 +126,66 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         return mcpMarketManager.getMarketByName(marketName).resolve(id, configId);
+    }
+
+    /**
+     * 连接器图标代理 — 由后端拉取市场图标，前端不直连境外域名。
+     *
+     * <p>仅允许已知市场域名（smithery / run.tools），避免被当作任意 URL 代理（SSRF）。</p>
+     *
+     * @param ctx 请求上下文（用于输出二进制）
+     * @param url 图标地址（市场条目返回的 iconUrl）
+     */
+    @Get
+    @Mapping("/web/settings/mcp/market/icon")
+    public void mcpMarketIcon(Context ctx, @Param("url") String url) throws IOException {
+        if (Assert.isEmpty(url) || !isAllowedIconUrl(url)) {
+            ctx.status(400);
+            return;
+        }
+
+        try {
+            HttpUtils http = HttpUtils.http(url)
+                    .header("User-Agent", "SolonCode/1.0")
+                    .header("Accept", "image/*")
+                    .timeout(15000)
+                    .ssl(SkillMarketSslSupplier.getInstance());
+            ProxyConfig.applyIfNeeded(http);
+
+            HttpResponse response = http.exec("GET");
+            if (response.code() != 200) {
+                ctx.status(404);
+                return;
+            }
+
+            byte[] data = response.bodyAsBytes();
+            String contentType = response.contentType();
+            if (contentType == null || !contentType.toLowerCase().startsWith("image/")) {
+                // 部分图床返回 application/octet-stream，按 svg/png 常见场景兜底
+                contentType = "image/png";
+            }
+
+            ctx.contentType(contentType);
+            ctx.headerSet("Cache-Control", "public, max-age=86400");
+            ctx.output(data);
+        } catch (Exception e) {
+            LOG.warn("mcpMarketIcon error: {}", e.getMessage());
+            ctx.status(502);
+        }
+    }
+
+    /**
+     * 图标地址白名单（只放行已知连接器市场域名）
+     */
+    private boolean isAllowedIconUrl(String url) {
+        String lower = url.toLowerCase();
+        if (!lower.startsWith("https://")) {
+            return false;
+        }
+        return lower.contains("://api.smithery.ai/")
+                || lower.contains("://smithery.ai/")
+                || lower.contains(".smithery.ai/")
+                || lower.contains(".run.tools/");
     }
 
     /**

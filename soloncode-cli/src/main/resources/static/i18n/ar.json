@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "الترويسة {key} فارغة، يرجى إدخال المفتاح",
+  "mcp.authHeaderMissingKey": "الترويسة Authorization تحتوي على {scheme} فقط، يرجى إضافة المفتاح بعدها"
 }

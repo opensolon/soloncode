@@ -29,6 +29,8 @@ public class McpServerDraft {
     /** 来源条目 id */
     private String sourceId;
     private String configId;
+    /** 来源说明（接入前的注意事项，如「需在平台端配置密钥」） */
+    private String note;
 
     public McpServerDraft() {
     }
@@ -44,6 +46,7 @@ public class McpServerDraft {
     public McpServerDraft source(String source) { this.source = source; return this; }
     public McpServerDraft sourceId(String sourceId) { this.sourceId = sourceId; return this; }
     public McpServerDraft configId(String configId) { this.configId = configId; return this; }
+    public McpServerDraft note(String note) { this.note = note; return this; }
 
     public String getName() { return name; }
     public String getType() { return type; }
@@ -56,4 +59,5 @@ public class McpServerDraft {
     public String getSource() { return source; }
     public String getSourceId() { return sourceId; }
     public String getConfigId() { return configId; }
+    public String getNote() { return note; }
 }

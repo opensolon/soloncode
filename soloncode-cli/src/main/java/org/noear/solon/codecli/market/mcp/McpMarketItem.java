@@ -16,12 +16,22 @@ public class McpMarketItem {
     /** 命名空间/发布方（如 ai.smithery、io.github.xxx） */
     private String owner;
     private String description;
+    /** 图标地址（由客户端经后端代理加载；无图标时为 null） */
+    private String iconUrl;
     private String version;
     private String repositoryUrl;
+    /** 项目主页（无仓库地址时的可点击入口） */
+    private String homepageUrl;
+    /** 是否官方/平台认证 */
+    private boolean verified;
+    /** 使用量（热度），无此数据的市场为 0 */
+    private long useCount;
     /** 可用传输类型列表（stdio / streamable-http / sse） */
     private List<String> transports;
     /** 更新时间（市场原样返回的 ISO 时间串） */
     private String updatedAt;
+    /** 创建时间（市场原样返回的 ISO 时间串） */
+    private String createdAt;
     /** 是否已存在于本地配置（由控制器标注） */
     private boolean installed;
     /** 用于"是否已安装"比对的标识（包名 / 远程地址），仅后端使用 */
@@ -35,10 +45,15 @@ public class McpMarketItem {
     public McpMarketItem displayName(String displayName) { this.displayName = displayName; return this; }
     public McpMarketItem owner(String owner) { this.owner = owner; return this; }
     public McpMarketItem description(String description) { this.description = description; return this; }
+    public McpMarketItem iconUrl(String iconUrl) { this.iconUrl = iconUrl; return this; }
     public McpMarketItem version(String version) { this.version = version; return this; }
     public McpMarketItem repositoryUrl(String repositoryUrl) { this.repositoryUrl = repositoryUrl; return this; }
+    public McpMarketItem homepageUrl(String homepageUrl) { this.homepageUrl = homepageUrl; return this; }
+    public McpMarketItem verified(boolean verified) { this.verified = verified; return this; }
+    public McpMarketItem useCount(long useCount) { this.useCount = useCount; return this; }
     public McpMarketItem transports(List<String> transports) { this.transports = transports; return this; }
     public McpMarketItem updatedAt(String updatedAt) { this.updatedAt = updatedAt; return this; }
+    public McpMarketItem createdAt(String createdAt) { this.createdAt = createdAt; return this; }
     public McpMarketItem installed(boolean installed) { this.installed = installed; return this; }
     public McpMarketItem matchKeys(List<String> matchKeys) { this.matchKeys = matchKeys; return this; }
 
@@ -47,10 +62,15 @@ public class McpMarketItem {
     public String getDisplayName() { return displayName; }
     public String getOwner() { return owner; }
     public String getDescription() { return description; }
+    public String getIconUrl() { return iconUrl; }
     public String getVersion() { return version; }
     public String getRepositoryUrl() { return repositoryUrl; }
+    public String getHomepageUrl() { return homepageUrl; }
+    public boolean isVerified() { return verified; }
+    public long getUseCount() { return useCount; }
     public List<String> getTransports() { return transports; }
     public String getUpdatedAt() { return updatedAt; }
+    public String getCreatedAt() { return createdAt; }
     public boolean isInstalled() { return installed; }
     public List<String> getMatchKeys() { return matchKeys; }
 }

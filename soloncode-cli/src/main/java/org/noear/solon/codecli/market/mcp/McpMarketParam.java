@@ -9,9 +9,10 @@ package org.noear.solon.codecli.market.mcp;
  * @author noear 2026/11/16 created
  */
 public class McpMarketParam {
-    /** 参数所在位置：env（环境变量）/ header（请求头） */
+    /** 参数所在位置：env（环境变量）/ header（请求头）/ query（URL 查询参数） */
     public static final String IN_ENV = "env";
     public static final String IN_HEADER = "header";
+    public static final String IN_QUERY = "query";
 
     private String name;
     private String description;

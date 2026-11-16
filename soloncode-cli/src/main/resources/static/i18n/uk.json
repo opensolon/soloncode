@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "Заголовок {key} порожній, вкажіть ключ",
+  "mcp.authHeaderMissingKey": "У Authorization вказано лише \"{scheme}\", додайте ключ після нього"
 }

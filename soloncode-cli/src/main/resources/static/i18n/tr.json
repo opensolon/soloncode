@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "{key} başlığı boş, lütfen kimlik bilgisini girin",
+  "mcp.authHeaderMissingKey": "Authorization yalnızca \"{scheme}\" içeriyor, lütfen ardına kimlik bilgisini ekleyin"
 }

@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "Zaglavlje {key} je prazno, unesite ključ",
+  "mcp.authHeaderMissingKey": "Authorization sadrži samo \"{scheme}\", dodajte ključ nakon toga"
 }

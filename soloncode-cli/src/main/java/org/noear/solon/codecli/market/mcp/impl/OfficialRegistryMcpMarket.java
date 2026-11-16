@@ -56,7 +56,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
 
     @Override
     public String name() {
-        return "registry.modelcontextprotocol.io";
+        return "modelcontextprotocol.io";
     }
 
     @Override

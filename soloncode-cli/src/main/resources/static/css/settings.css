@@ -100,6 +100,13 @@
 .settings-list-item.disabled { opacity: 0.5; }
 .settings-list-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, var(--bg-hover), var(--bg-primary)); display: flex; align-items: center; justify-content: center; font-size: var(--fs-md); font-weight: 600; color: var(--text-secondary); flex-shrink: 0; }
 .settings-list-item.disabled .settings-list-icon { opacity: 0.5; }
+/* 市场图标：真实图片 + 字母兜底（图片加载失败时显示字母） */
+.settings-list-icon.has-img { padding: 0; overflow: hidden; background: var(--bg-primary); }
+.settings-list-icon.has-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.settings-list-icon .icon-fallback { display: none; }
+.settings-list-icon.has-img .icon-fallback { display: none; }
+.settings-list-icon.img-failed .icon-fallback { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+.mcp-market-verified { display: inline-flex; align-items: center; gap: 2px; color: var(--primary-color, #4f7cff); }
 .settings-list-info { flex: 1; min-width: 0; }
 .settings-list-title { font-size: var(--fs-base); font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
 .settings-list-desc { font-size: var(--fs-xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

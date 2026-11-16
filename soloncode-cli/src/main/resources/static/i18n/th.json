@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "ส่วนหัว {key} ว่างอยู่ กรุณากรอกคีย์",
+  "mcp.authHeaderMissingKey": "Authorization มีเพียง {scheme} กรุณาเพิ่มคีย์ต่อท้าย"
 }

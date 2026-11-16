@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "ヘッダー {key} が未入力です。資格情報を入力してください",
+  "mcp.authHeaderMissingKey": "Authorization が {scheme} のみです。後ろに資格情報を追加してください"
 }

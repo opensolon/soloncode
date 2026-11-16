@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "来自 {name}",
   "mcp.marketPending": "需填写：{names}",
   "mcp.marketSecretMark": "（机密）",
-  "mcp.marketParamSep": "、"
+  "mcp.marketParamSep": "、",
+  "mcp.marketVerified": "认证",
+  "mcp.marketUses": "使用量",
+  "mcp.authHeaderEmpty": "请求头 {key} 未填写值，请补充密钥",
+  "mcp.authHeaderMissingKey": "Authorization 只填了 {scheme}，请在其后补上密钥"
 }

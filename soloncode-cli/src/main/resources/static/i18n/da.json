@@ -1425,5 +1425,9 @@
   "mcp.marketSource": "From {name}",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
-  "mcp.marketParamSep": ", "
+  "mcp.marketParamSep": ", ",
+  "mcp.marketVerified": "Verified",
+  "mcp.marketUses": "Uses",
+  "mcp.authHeaderEmpty": "Headeren {key} er tom, angiv venligst nøglen",
+  "mcp.authHeaderMissingKey": "Authorization indeholder kun \"{scheme}\", tilføj nøglen efter"
 }
