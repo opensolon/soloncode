@@ -185,7 +185,11 @@ public class McpSettingsController extends BaseSettingsController{
         return lower.contains("://api.smithery.ai/")
                 || lower.contains("://smithery.ai/")
                 || lower.contains(".smithery.ai/")
-                || lower.contains(".run.tools/");
+                || lower.contains(".run.tools/")
+                // 腾讯云 MCP 广场：图标来自腾讯图床与 GitHub 头像
+                || lower.contains("://developer.qcloudimg.com/")
+                || lower.contains("://avatars.githubusercontent.com/")
+                || lower.contains("://raw.githubusercontent.com/");
     }
 
     /**

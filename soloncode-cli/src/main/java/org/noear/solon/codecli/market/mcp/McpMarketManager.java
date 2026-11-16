@@ -3,6 +3,7 @@ package org.noear.solon.codecli.market.mcp;
 import org.noear.solon.codecli.market.skill.SkillMarketManager;
 import org.noear.solon.codecli.market.mcp.impl.OfficialRegistryMcpMarket;
 import org.noear.solon.codecli.market.mcp.impl.SmitheryMcpMarket;
+import org.noear.solon.codecli.market.mcp.impl.TencentMcpMarket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,6 +45,9 @@ public class McpMarketManager {
 
         // 官方 Registry：字段最规范、接口稳定，作为第二源
         register(new OfficialRegistryMcpMarket());
+
+        // 腾讯云 MCP 广场：中文、分类齐全、国内直连（境外源抖动时的兜底）
+        register(new TencentMcpMarket());
 
         this.defaultMarket = smithery;
     }

@@ -13,6 +13,8 @@ import java.util.List;
 public class McpMarketConfig {
     private String configId;
     private String label;
+    /** 市场条目里给这个接入方式起的服务名（如 mcpServers 的键），可用于生成配置名 */
+    private String serverKey;
     /** 标准化后的类型：stdio / sse / streamable */
     private String type;
     private String command;
@@ -27,6 +29,7 @@ public class McpMarketConfig {
 
     public McpMarketConfig configId(String configId) { this.configId = configId; return this; }
     public McpMarketConfig label(String label) { this.label = label; return this; }
+    public McpMarketConfig serverKey(String serverKey) { this.serverKey = serverKey; return this; }
     public McpMarketConfig type(String type) { this.type = type; return this; }
     public McpMarketConfig command(String command) { this.command = command; return this; }
     public McpMarketConfig args(List<String> args) { this.args = args; return this; }
@@ -36,6 +39,7 @@ public class McpMarketConfig {
 
     public String getConfigId() { return configId; }
     public String getLabel() { return label; }
+    public String getServerKey() { return serverKey; }
     public String getType() { return type; }
     public String getCommand() { return command; }
     public List<String> getArgs() { return args; }
