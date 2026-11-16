@@ -3,8 +3,10 @@ package org.noear.solon.codecli.market.skill.impl;
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.market.skill.SkillMarket;
+import org.noear.solon.codecli.market.skill.SkillMarketCategory;
 import org.noear.solon.codecli.market.skill.SkillMarketDetail;
 import org.noear.solon.codecli.market.skill.SkillMarketItem;
+import org.noear.solon.codecli.market.skill.SkillMarketPage;
 import org.noear.solon.codecli.market.skill.SkillMarketSslSupplier;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
@@ -19,6 +21,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -34,7 +39,30 @@ public class SkillhubSkillMarket implements SkillMarket {
     private static final Logger LOG = LoggerFactory.getLogger(SkillhubSkillMarket.class);
 
     private static final String BASE_URL = "https://api.skillhub.cn";
+    /**
+     * 网站技能列表真实接口（分页 + 分类 + 关键字，返回 {code,data:{skills[],total}}）。
+     *
+     * <p>不能用 /api/v1/search 代替：那个接口无分页、limit 封顶 100，且 category 等参数会被静默忽略。</p>
+     */
+    private static final String SKILLS_PAGE_URL = BASE_URL + "/api/skills";
+    /** 分类清单接口（13 个一级分类，带 key/name/nameEn/sortOrder） */
+    private static final String CATEGORIES_URL = BASE_URL + "/api/v1/categories";
+    /** 分类缓存时长：分类清单与条目数变化不频繁，避免每次开市场页都打 14 个请求 */
+    private static final long CATEGORY_CACHE_TTL_MS = 10 * 60 * 1000L;
+    /** /api/skills 的 pageSize 上限（超过返回空） */
+    private static final int MAX_PAGE_SIZE = 100;
     private static final String USER_AGENT = "SolonCode/1.0";
+
+    /** 分类条目数并发拉取（串行 13 个请求要 3~5 秒，卡住分类栏） */
+    private static final ExecutorService COUNT_POOL = Executors.newFixedThreadPool(6, r -> {
+        Thread t = new Thread(r, "skillhub-category-count");
+        t.setDaemon(true);
+        return t;
+    });
+
+    private volatile List<SkillMarketCategory> cachedCategories;
+    private volatile long cachedCategoriesAt;
+
 
     @Override
     public String name() {
@@ -50,6 +78,258 @@ public class SkillhubSkillMarket implements SkillMarket {
 
     @Override
     public Result<List<SkillMarketItem>> trending(int limit) {
+        Result<SkillMarketPage> result = page(null, null, 1, limit);
+        if (result.getCode() == 200) {
+            return Result.succeed(result.getData().getItems());
+        }
+
+        // 新接口异常时退回旧搜索接口，保证列表仍可用（旧接口无分类、无分页）
+        return legacyTrending(limit);
+    }
+
+    @Override
+    public Result<List<SkillMarketItem>> search(String query, int limit) {
+        return search(query, limit, null);
+    }
+
+    @Override
+    public Result<List<SkillMarketItem>> search(String query, int limit, String category) {
+        Result<SkillMarketPage> result = page(query, category, 1, limit);
+        if (result.getCode() == 200) {
+            return Result.succeed(result.getData().getItems());
+        }
+
+        // 旧接口不支持分类，仅在未指定分类时退回
+        if (Assert.isEmpty(category)) {
+            return legacySearch(query, limit);
+        }
+
+        return Result.failure(result.getDescription());
+    }
+
+    /**
+     * 原生分页：{@code /api/skills} 的 {@code page/pageSize} 直接透传，翻页不重复拉前面的数据。
+     *
+     * <p>失败时未指定分类的前提下退回旧搜索接口（一次性取前 pageSize 条，无分页）。</p>
+     */
+    @Override
+    public Result<SkillMarketPage> page(String query, String category, int page, int pageSize) {
+        Result<SkillMarketPage> result = listPage(query, category, page, pageSize);
+        if (result.getCode() == 200) {
+            return result;
+        }
+
+        if (Assert.isEmpty(category) && Math.max(page, 1) == 1) {
+            Result<List<SkillMarketItem>> legacy = legacySearch(query, pageSize);
+            if (legacy.getCode() == 200) {
+                return Result.succeed(new SkillMarketPage()
+                        .page(1)
+                        .items(legacy.getData())
+                        .hasMore(false));
+            }
+            return Result.failure(legacy.getDescription());
+        }
+
+        return result;
+    }
+
+    // ==================== 分类 ====================
+
+    /**
+     * 获取分类清单（带各分类技能数）。
+     *
+     * <p>分类来自 /api/v1/categories；条目数来自 /api/skills?category=X 的 total。
+     * 任一步骤失败都降级：清单失败返回空列表（前端隐藏分类栏），
+     * 条目数失败则该分类 count=0（前端不显示数字），不影响筛选功能本身。</p>
+     */
+    @Override
+    public List<SkillMarketCategory> categories() {
+        List<SkillMarketCategory> cached = cachedCategories;
+        if (cached != null && System.currentTimeMillis() - cachedCategoriesAt < CATEGORY_CACHE_TTL_MS) {
+            return cached;
+        }
+
+        synchronized (this) {
+            if (cachedCategories != null && System.currentTimeMillis() - cachedCategoriesAt < CATEGORY_CACHE_TTL_MS) {
+                return cachedCategories;
+            }
+
+            try {
+                ONode root = ONode.ofJson(httpGet(CATEGORIES_URL));
+                ONode itemsNode = root.get("items");
+                if (itemsNode == null || !itemsNode.isArray()) {
+                    return Collections.emptyList();
+                }
+
+                List<SkillMarketCategory> list = new ArrayList<>();
+                for (ONode node : itemsNode.getArray()) {
+                    // 跳过停用分类
+                    ONode activeNode = node.get("active");
+                    if (activeNode != null && activeNode.isNull() == false && activeNode.getBoolean() == false) {
+                        continue;
+                    }
+
+                    String key = getStringValue(node, "key");
+                    if (key == null || key.isEmpty()) {
+                        continue;
+                    }
+
+                    String name = firstNonEmpty(
+                            getStringValue(node, "name"),
+                            getStringValue(node, "nameEn"),
+                            key);
+
+                    list.add(new SkillMarketCategory().id(key).name(name));
+                }
+
+                fillCounts(list);
+
+                cachedCategories = list;
+                cachedCategoriesAt = System.currentTimeMillis();
+                return list;
+            } catch (Exception e) {
+                LOG.warn("SkillhubMarket.categories error: {}", e.getMessage());
+                return Collections.emptyList();
+            }
+        }
+    }
+
+    /** 并发填充各分类的技能数（单项失败只影响该项的显示） */
+    private void fillCounts(List<SkillMarketCategory> categories) {
+        if (categories.isEmpty()) {
+            return;
+        }
+
+        List<Future<Integer>> futures = new ArrayList<>();
+        for (SkillMarketCategory category : categories) {
+            final String key = category.getId();
+            futures.add(COUNT_POOL.submit(() -> countOf(key)));
+        }
+
+        for (int i = 0; i < categories.size(); i++) {
+            try {
+                categories.get(i).count(futures.get(i).get());
+            } catch (Exception e) {
+                LOG.debug("SkillhubMarket.countOf {} error: {}", categories.get(i).getId(), e.getMessage());
+            }
+        }
+    }
+
+    /** 查询单个分类下的技能总数 */
+    private int countOf(String category) {
+        try {
+            String url = SKILLS_PAGE_URL + "?page=1&pageSize=1&category="
+                    + URLEncoder.encode(category, "UTF-8");
+            ONode data = ONode.ofJson(httpGet(url)).get("data");
+            if (data == null || data.isNull()) {
+                return 0;
+            }
+            ONode totalNode = data.get("total");
+            return (totalNode != null && !totalNode.isNull()) ? totalNode.getInt() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    // ==================== 列表与搜索（新版 /api/skills） ====================
+
+    /**
+     * 拉取一页技能。query 为空表示浏览，category 为空表示全部分类。
+     */
+    private Result<SkillMarketPage> listPage(String query, String category, int page, int pageSize) {
+        try {
+            int currentPage = Math.max(page, 1);
+            int size = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
+
+            StringBuilder url = new StringBuilder(SKILLS_PAGE_URL)
+                    .append("?page=").append(currentPage)
+                    .append("&pageSize=").append(size);
+
+            if (query != null && !query.isEmpty()) {
+                url.append("&keyword=").append(URLEncoder.encode(query, "UTF-8"));
+            }
+            if (category != null && !category.isEmpty()) {
+                url.append("&category=").append(URLEncoder.encode(category, "UTF-8"));
+            }
+
+            ONode root = ONode.ofJson(httpGet(url.toString()));
+
+            ONode codeNode = root.get("code");
+            if (codeNode != null && !codeNode.isNull() && codeNode.getInt() != 0) {
+                return Result.failure(firstNonEmpty(getStringValue(root, "message"), "获取技能列表失败"));
+            }
+
+            ONode data = root.get("data");
+            ONode skillsNode = (data != null && !data.isNull()) ? data.get("skills") : null;
+            if (skillsNode == null || !skillsNode.isArray()) {
+                return Result.succeed(new SkillMarketPage().page(currentPage).hasMore(false));
+            }
+
+            List<SkillMarketItem> items = new ArrayList<>();
+            for (ONode node : skillsNode.getArray()) {
+                items.add(parsePageItem(node));
+            }
+
+            // total 用于「加载更多（剩余 N 个）」与 hasMore 判定；缺省时按「本页是否拉满」推断
+            int total = (data.get("total") != null && !data.get("total").isNull()) ? data.get("total").getInt() : -1;
+            boolean hasMore = (total >= 0)
+                    ? currentPage * size < total
+                    : items.size() >= size;
+
+            return Result.succeed(new SkillMarketPage()
+                    .page(currentPage)
+                    .items(items)
+                    .total(total)
+                    .hasMore(hasMore && !items.isEmpty()));
+        } catch (Exception e) {
+            LOG.warn("SkillhubMarket.listPage error: {}", e.getMessage());
+            return Result.failure("获取技能列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析 /api/skills 的条目。
+     *
+     * <p>该接口字段与 /api/v1/search 不同：没有 displayName/summary，
+     * 但 name 本身就是可读名称（多为中文）、description_zh 为中文简介、iconUrl 为驼峰。</p>
+     */
+    private SkillMarketItem parsePageItem(ONode node) {
+        String slug = getStringValue(node, "slug");
+        String name = getStringValue(node, "name");
+
+        return new SkillMarketItem()
+                .slug(slug)
+                .name(name)
+                .displayName(firstNonEmpty(name, slug))
+                .summary(firstNonEmpty(
+                        getStringValue(node, "summary_zh"),
+                        getStringValue(node, "description_zh"),
+                        getStringValue(node, "summary"),
+                        getStringValue(node, "description")))
+                .description(firstNonEmpty(
+                        getStringValue(node, "description_zh"),
+                        getStringValue(node, "description")))
+                .ownerHandle(firstNonEmpty(
+                        getStringValue(node, "ownerName"),
+                        parseNamespaceHandle(node)))
+                .url("https://skillhub.cn/skills/" + slug)
+                .installs(getLongValue(node, "installs"))
+                .stars(getLongValue(node, "stars"))
+                .version(parseVersion(node))
+                .iconUrl(parseIcon(node));
+    }
+
+    private String parseNamespaceHandle(ONode node) {
+        ONode namespaceNode = node.get("namespace");
+        if (namespaceNode == null || namespaceNode.isNull()) {
+            return null;
+        }
+        return getStringValue(namespaceNode, "handle");
+    }
+
+    // ==================== 列表与搜索（旧版 /api/v1/search，仅作降级） ====================
+
+    private Result<List<SkillMarketItem>> legacyTrending(int limit) {
         try {
             String url = BASE_URL + "/api/v1/search?q=&limit=" + limit;
             String body = httpGet(url);
@@ -67,10 +347,9 @@ public class SkillhubSkillMarket implements SkillMarket {
         }
     }
 
-    @Override
-    public Result<List<SkillMarketItem>> search(String query, int limit) {
+    private Result<List<SkillMarketItem>> legacySearch(String query, int limit) {
         if (Assert.isEmpty(query)) {
-            return trending(limit);
+            return legacyTrending(limit);
         }
 
         try {

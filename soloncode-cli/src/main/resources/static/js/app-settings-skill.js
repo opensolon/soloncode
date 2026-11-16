@@ -10,8 +10,8 @@
  *
  * 后端接口：
  *   GET  /web/settings/skills/markets                     — 获取可用市场列表
- *   GET  /web/settings/skills/proxy?action=trending       — 热门技能列表
- *   GET  /web/settings/skills/proxy?action=search&q=xxx   — 搜索技能
+ *   GET  /web/settings/skills/market/categories           — 获取市场分类清单
+ *   GET  /web/settings/skills/proxy?q=&page=              — 分页获取技能（q 为空=浏览）
  *   POST /web/settings/skills/install  {slug, marketName, mountAlias}  — 安装技能
  *   GET  /web/settings/mounts                             — 挂载列表
  *   GET  /web/settings/mounts/content?alias=&type=SKILLS  — 挂载内技能包列表
@@ -25,6 +25,8 @@
     // ==================== 常量 ====================
 
     var SKILLS_API_BASE = '/web/settings/skills/proxy';
+    /** 技能市场每页条数（SkillHub 的 /api/skills 上限 100，50 条一页在列表长度与首屏速度间比较均衡） */
+    var MARKET_PAGE_SIZE = 50;
 
     // ==================== DOM 引用 ====================
 
@@ -35,6 +37,7 @@
     var $skillsLoading = $('#skillsLoading');
     var $skillsError = $('#skillsError');
     var $skillsStatus = $('#skillsStatus');
+    var $skillsMarketCategories = $('#skillsMarketCategories');
 
     var $skillsViewInstalled = $('#skillsViewInstalled');
     var $skillsViewMarket = $('#skillsViewMarket');
@@ -52,6 +55,15 @@
     var _skillsSearchTimer = null;
     var _currentMarketName = '';  // 当前选中的市场名称
     var _mountPoolsCache = null;  // SKILLS 类型挂载缓存 [{alias, path}, ...]
+    var _skillCategoryKey = '';   // 当前选中的市场分类（空串 = 全部）
+
+    // 技能市场分页状态（后端返回 SkillMarketPage：items/hasMore/total）
+    var _marketPage = 1;              // 当前已加载到的页码
+    var _marketHasMore = false;       // 是否还有下一页
+    var _marketTotal = -1;            // 结果总数（-1 = 未知，如 ClawHub 类不支持分页的市场）
+    var _marketQuery = null;          // 当前列表的搜索关键词（null = 浏览），翻页时沿用
+    var _marketLoadingMore = false;   // 是否正在加载下一页
+    var _marketReqSeq = 0;            // 请求序号，丢弃过期响应（快速切分类/改关键词时）
 
     var _currentView = 'installed';   // 当前子视图：installed | market
     var _marketLoaded = false;        // 市场列表是否已拉取（懒加载）
@@ -141,10 +153,56 @@
             // 默认选中第一个
             _currentMarketName = markets[0].name || '';
             $skillsMarketSelect.val(_currentMarketName);
+
+            // 市场确定后再拉分类（无分类维度的市场会返回空，分类栏自动隐藏）
+            loadCategories();
         }).fail(function () {
             $skillsMarketSelect.html('<option value="">ClawHub</option>');
             _currentMarketName = '';
+            loadCategories();
         });
+    }
+
+    // ==================== 分类筛选 ====================
+
+    /**
+     * 加载当前市场的分类。无分类维度的市场返回空数组，此时隐藏整条分类栏。
+     */
+    function loadCategories() {
+        $.ajax({
+            url: '/web/settings/skills/market/categories?marketName=' + encodeURIComponent(_currentMarketName || ''),
+            method: 'GET',
+            timeout: 20000,
+            dataType: 'json'
+        }).done(function (resp) {
+            var categories = (resp && resp.code === 200 && resp.data) ? resp.data : [];
+            renderCategories(categories);
+        }).fail(function () {
+            // 分类是辅助功能，失败时静默隐藏，不影响主列表
+            renderCategories([]);
+        });
+    }
+
+    function renderCategories(categories) {
+        _skillCategoryKey = '';
+
+        if (!categories || !categories.length) {
+            $skillsMarketCategories.hide().html('');
+            return;
+        }
+
+        var html = '<button type="button" class="mcp-category-chip active" data-key="">'
+            + escapeHtml(I18n.t('skills.marketAllCategories')) + '</button>';
+
+        categories.forEach(function (c) {
+            var count = Number(c.count) || 0;
+            html += '<button type="button" class="mcp-category-chip" data-key="' + escapeAttr(c.id || '') + '" title="' + escapeAttr(c.name || '') + '">'
+                + escapeHtml(c.name || '')
+                + (count > 0 ? '<span class="mcp-category-count">' + count + '</span>' : '')
+                + '</button>';
+        });
+
+        $skillsMarketCategories.html(html).show();
     }
 
 
@@ -617,22 +675,38 @@
     // ==================== 数据加载 ====================
 
     /**
-     * 加载技能列表
-     * @param {string|null} query - 搜索关键词，null 时加载热门技能
+     * 加载技能市场列表（分页）。
+     *
+     * @param {string|null} query - 搜索关键词，null 时浏览默认列表
+     * @param {boolean}     more  - true 时加载下一页并追加，false/省略时从第一页重新加载
      */
-    function loadSkillsList(query) {
-        $skillsStatus.show();
-        $skillsLoading.css('display', 'flex');
-        $skillsError.hide();
-        $skillsList.html('');
+    function loadSkillsList(query, more) {
+        var append = more === true;
+        if (append && (!_marketHasMore || _marketLoadingMore)) return;
 
-        var url;
-        var marketParam = _currentMarketName ? '&marketName=' + encodeURIComponent(_currentMarketName) : '';
-        if (query) {
-            url = SKILLS_API_BASE + '?action=search&q=' + encodeURIComponent(query) + '&limit=50' + marketParam;
+        var seq = ++_marketReqSeq;
+        _marketLoadingMore = append;
+
+        if (append) {
+            _marketPage++;
+            loadMoreBusy(true);
         } else {
-            url = SKILLS_API_BASE + '?action=trending&limit=50' + marketParam;
+            _marketPage = 1;
+            _marketQuery = query || null;
+            _marketHasMore = false;
+            _marketTotal = -1;
+            $skillsStatus.show();
+            $skillsLoading.css('display', 'flex');
+            $skillsError.hide();
+            removeMarketLoadMore();
+            $skillsList.html('');
         }
+
+        var url = SKILLS_API_BASE + '?q=' + encodeURIComponent(_marketQuery || '')
+            + '&limit=' + MARKET_PAGE_SIZE
+            + '&page=' + _marketPage
+            + (_currentMarketName ? '&marketName=' + encodeURIComponent(_currentMarketName) : '')
+            + (_skillCategoryKey ? '&category=' + encodeURIComponent(_skillCategoryKey) : '');
 
         $.ajax({
             url: url,
@@ -641,32 +715,31 @@
             dataType: 'json'
         })
             .done(function (resp) {
-                // 后端返回 Result 包装：{code:200, data:[...], description:""}
+                // 快速切分类/改关键词时，旧请求的响应可能后到，直接丢弃
+                if (seq !== _marketReqSeq) return;
+                $skillsLoading.hide();
+
+                // 后端返回 Result 包装：{code:200, data:{items,hasMore,total}, description:""}
                 // code !== 200 时为业务错误，展示后端返回的具体提示
                 if (resp && resp.code !== undefined && resp.code !== 200) {
-                    $skillsLoading.hide();
-                    var errMsg = (resp.description || I18n.t('skills.loadFailedRetry'));
-                    $skillsError.text(errMsg).show();
+                    marketLoadFailed(append, (resp.description || I18n.t('skills.loadFailedRetry')));
                     return;
                 }
 
-                var payload = resp;
-                if (resp && resp.code !== undefined && resp.data !== undefined) {
-                    payload = resp.data;
-                }
-
-                // 后端 Market 适配器已统一返回 MarketItem 列表
-                var skills = [];
-                if (Array.isArray(payload)) {
-                    skills = payload;
-                }
+                var data = (resp && resp.data !== undefined) ? resp.data : resp;
+                // 兼容旧版后端（data 直接是数组，无分页信息）
+                var skills = Array.isArray(data) ? data : (data.items || []);
+                _marketHasMore = Array.isArray(data) ? false : !!data.hasMore;
+                _marketTotal = (!Array.isArray(data) && typeof data.total === 'number') ? data.total : -1;
 
                 getInstalledSkills(function (installedMap) {
-                    renderSkillsList(skills, installedMap);
+                    if (seq !== _marketReqSeq) return;
+                    renderSkillsList(skills, installedMap, append);
                     $skillsStatus.hide();
                 });
             })
             .fail(function (jqXHR, textStatus) {
+                if (seq !== _marketReqSeq) return;
                 $skillsLoading.hide();
                 var msg;
                 if (textStatus === 'timeout') {
@@ -680,8 +753,62 @@
                 } else {
                     msg = I18n.t('skills.networkErrorHttp', {n: (jqXHR.status || '?')});
                 }
-                $skillsError.text(msg).show();
+                marketLoadFailed(append, msg);
+            })
+            .always(function () {
+                if (seq === _marketReqSeq) _marketLoadingMore = false;
             });
+    }
+
+    /**
+     * 加载失败收尾：首屏失败显示错误块；翻页失败则回退页码并把「加载更多」按钮还原，列表已加载的内容保留。
+     */
+    function marketLoadFailed(append, msg) {
+        _marketLoadingMore = false;
+
+        if (append) {
+            _marketPage = Math.max(_marketPage - 1, 1);
+            loadMoreBusy(false);
+            showToast(msg, 'error');
+        } else {
+            $skillsError.text(msg).show();
+        }
+    }
+
+    /** 切换「加载更多」按钮的忙碌态（找不到按钮时静默忽略） */
+    function loadMoreBusy(busy) {
+        var $btn = $skillsList.find('.skills-market-load-more');
+        if (!$btn.length) return;
+
+        if (busy) {
+            $btn.prop('disabled', true).text(I18n.t('skills.loadingMore'));
+        } else {
+            $btn.prop('disabled', false).text(loadMoreText());
+        }
+    }
+
+    /** 「加载更多」按钮文案：知道总数时带上剩余个数，否则用普通文案 */
+    function loadMoreText() {
+        var loaded = $skillsList.find('.settings-list-item').length;
+        if (_marketTotal > loaded) {
+            return I18n.t('skills.loadMore', {n: _marketTotal - loaded});
+        }
+        return I18n.t('skills.marketLoadMore');
+    }
+
+    function appendMarketLoadMore() {
+        // 先清掉旧按钮：没有下一页时必须把之前那个「加载更多」收起来
+        removeMarketLoadMore();
+        if (!_marketHasMore) return;
+
+        $skillsList.append('<div class="skills-load-more-wrap" style="text-align:center;padding:12px;">'
+            + '<button type="button" class="skills-load-more-btn skills-market-load-more" style="min-width:200px;">'
+            + loadMoreText()
+            + '</button></div>');
+    }
+
+    function removeMarketLoadMore() {
+        $skillsList.find('.skills-load-more-wrap').remove();
     }
 
     // ==================== 渲染 ====================
@@ -725,8 +852,14 @@
             + '</div>';
     }
 
-    function renderSkillsList(skills, installedMap) {
+    function renderSkillsList(skills, installedMap, append) {
         if (!skills || skills.length === 0) {
+            if (append) {
+                // 翻页拿到空页：保留已加载内容，只收起「加载更多」
+                removeMarketLoadMore();
+                return;
+            }
+
             $skillsList.html(
                 '<div class="skill-empty-state">'
                 + '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="1.5">'
@@ -738,7 +871,8 @@
             return;
         }
 
-        // 先统计图标出现次数，用于识别平台默认占位图
+        // 先统计本批图标出现次数，用于识别平台默认占位图（按批统计：分页追加时只看本页，
+        // 跨页才凑够阈值的占位图不会回头修正已渲染的那几条，代价是要重渲染整个列表）
         var iconCounts = countIcons(skills.map(function (skill) {
             return skill.iconUrl || (skill.owner && skill.owner.image) || '';
         }));
@@ -786,7 +920,12 @@
                     + '</div>')
                 + '</div></div>';
         });
-        $skillsList.html(html);
+        if (append) {
+            $skillsList.append(html);
+        } else {
+            $skillsList.html(html);
+        }
+        appendMarketLoadMore();
     }
 
     // ==================== 事件绑定 ====================
@@ -795,6 +934,8 @@
     $skillsMarketSelect.on('change', function () {
         _currentMarketName = $(this).val() || '';
         _installedSkillsCache = null;
+        _skillCategoryKey = '';
+        loadCategories();
         loadSkillsList(null);
     });
 
@@ -994,6 +1135,25 @@
         e.stopPropagation();
         var url = $(this).attr('data-url');
         if (url) window.open(url, '_blank');
+    });
+
+    // 分类切换
+    $skillsMarketCategories.on('click', '.mcp-category-chip', function () {
+        var $chip = $(this);
+        if ($chip.hasClass('active')) return;
+
+        $skillsMarketCategories.find('.mcp-category-chip').removeClass('active');
+        $chip.addClass('active');
+        _skillCategoryKey = $chip.attr('data-key') || '';
+
+        // 切分类时保留当前关键词，回到“全部”则按当前关键词重查
+        loadSkillsList($skillsSearchInput.val().trim() || null);
+    });
+
+    // 市场列表「加载更多」：沿用当前关键词与分类，追加下一页
+    $skillsList.on('click', '.skills-market-load-more', function (e) {
+        e.stopPropagation();
+        loadSkillsList(_marketQuery, true);
     });
 
     // 搜索输入（防抖即时搜索 + 回车立即搜索）

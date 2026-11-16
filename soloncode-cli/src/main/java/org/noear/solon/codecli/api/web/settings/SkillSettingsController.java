@@ -8,6 +8,7 @@ import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
 import org.noear.solon.codecli.market.skill.SkillMarket;
+import org.noear.solon.codecli.market.skill.SkillMarketPage;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -50,27 +51,41 @@ public class SkillSettingsController extends BaseSettingsController{
     }
 
     /**
-     * 技能市场代理接口 — 获取热门技能或搜索技能。
+     * 技能市场代理接口 — 分页获取技能列表（浏览或搜索）。
      * <p>所有外部 API 调用均由后端 Market 适配器完成，前端不直接访问外部服务。</p>
      *
-     * @param action     "trending" 获取热门 | "search" 搜索
-     * @param query      搜索关键词（action=search 时使用）
-     * @param limit      返回数量限制
-     * @param marketName 市场名字（可选，默认使用 ClawHub）
+     * @param query      搜索关键词（空 = 浏览）
+     * @param limit      每页条数
+     * @param page       页码（1 起）
+     * @param category   分类标识（空 = 全部分类；非空时按分类浏览/搜索）
+     * @param marketName 市场名字（可选，默认使用默认市场）
      */
     @Get
     @Mapping("/web/settings/skills/proxy")
-    public Result skillsProxy(Context ctx, @Param(value = "action", defaultValue = "trending") String action,
-                              @Param(value = "q", defaultValue = "") String query,
-                              @Param(value = "limit", defaultValue = "50") int limit,
-                              @Param(value = "per_page", defaultValue = "50") int perPage,
-                              @Param(value = "marketName", defaultValue = "") String marketName) {
+    public Result<SkillMarketPage> skillsProxy(Context ctx,
+                                               @Param(value = "q", defaultValue = "") String query,
+                                               @Param(value = "limit", defaultValue = "50") int limit,
+                                               @Param(value = "per_page", defaultValue = "50") int perPage,
+                                               @Param(value = "page", defaultValue = "1") int page,
+                                               @Param(value = "category", defaultValue = "") String category,
+                                               @Param(value = "marketName", defaultValue = "") String marketName) {
         SkillMarket market = marketManager.getMarketByName(marketName);
-        if ("search".equals(action) && query != null && !query.isEmpty()) {
-            return market.search(query, limit);
-        } else {
-            return market.trending(limit);
-        }
+
+        // 分类与关键词都由 page() 统一处理：都为空即浏览默认列表，与会话动作无需分开分发
+        return market.page(query, category, page, limit);
+    }
+
+    /**
+     * 技能市场分类清单 — 供市场页分类筛选使用。
+     *
+     * <p>无分类维度的市场（如 ClawHub）返回空数组，前端据此隐藏分类栏。</p>
+     *
+     * @param marketName 市场名字（可选，默认使用默认市场）
+     */
+    @Get
+    @Mapping("/web/settings/skills/market/categories")
+    public Result skillsMarketCategories(Context ctx, @Param(value = "marketName", defaultValue = "") String marketName) {
+        return Result.succeed(marketManager.getMarketByName(marketName).categories());
     }
 
     /**

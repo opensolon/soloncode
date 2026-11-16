@@ -3,6 +3,7 @@ package org.noear.solon.codecli.market.skill.impl;
 import org.junit.jupiter.api.*;
 import org.noear.solon.codecli.market.skill.SkillMarketDetail;
 import org.noear.solon.codecli.market.skill.SkillMarketItem;
+import org.noear.solon.codecli.market.skill.SkillMarketPage;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.file.Files;
@@ -357,6 +358,106 @@ public class SkillhubMarketTest {
             assertNotEquals(200, result.getCode(),
                     "不存在的 slug 安装应失败。实际 code=" + result.getCode());
             System.out.println("不存在 slug 的安装结果: " + result.getDescription());
+        }
+    }
+    // ==================== 6. page（分页） ====================
+
+    @Nested
+    @DisplayName("page - 分页")
+    @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+    class PageTest {
+
+        @Test
+        @Order(1)
+        @DisplayName("第一页应返回不超过 pageSize 条并带总数与 hasMore")
+        void testFirstPage() {
+            Result<SkillMarketPage> result = market.page(null, null, 1, 10);
+
+            assertEquals(200, result.getCode(), "分页请求应成功");
+            SkillMarketPage page = result.getData();
+            assertNotNull(page);
+            assertEquals(1, page.getPage());
+            assertEquals(10, page.getItems().size(), "应拉满一页");
+            assertTrue(page.getTotal() > 0, "应返回总数，实际 total=" + page.getTotal());
+            assertTrue(page.isHasMore(), "总量远大于 10 条，应还有下一页");
+        }
+
+        @Test
+        @Order(2)
+        @DisplayName("相邻两页内容不应重叠")
+        void testPagesDoNotOverlap() {
+            Result<SkillMarketPage> first = market.page(null, null, 1, 10);
+            Result<SkillMarketPage> second = market.page(null, null, 2, 10);
+
+            assertEquals(200, first.getCode());
+            assertEquals(200, second.getCode());
+            assertFalse(second.getData().getItems().isEmpty(), "第二页不应为空");
+
+            java.util.Set<String> firstSlugs = new java.util.HashSet<>();
+            for (SkillMarketItem item : first.getData().getItems()) {
+                firstSlugs.add(item.getSlug());
+            }
+
+            for (SkillMarketItem item : second.getData().getItems()) {
+                assertFalse(firstSlugs.contains(item.getSlug()),
+                        "第二页不应重复第一页的条目: " + item.getSlug());
+            }
+        }
+
+        @Test
+        @Order(3)
+        @DisplayName("翻到超出总数的页码应返回空列表且 hasMore=false")
+        void testPageBeyondTotal() {
+            Result<SkillMarketPage> result = market.page(null, null, 99999, 10);
+
+            assertEquals(200, result.getCode(), "越界页码不应报错");
+            assertTrue(result.getData().getItems().isEmpty(), "越界页码应返回空列表");
+            assertFalse(result.getData().isHasMore(), "越界页码不应再提示有更多");
+        }
+
+        @Test
+        @Order(4)
+        @DisplayName("关键词与分类同时生效（取交集，总数不应超过各自单独查询）")
+        void testQueryWithCategory() {
+            Result<SkillMarketPage> byCategory = market.page(null, "education", 1, 10);
+            Result<SkillMarketPage> byQuery = market.page("英语", null, 1, 10);
+            Result<SkillMarketPage> both = market.page("英语", "education", 1, 10);
+
+            assertEquals(200, both.getCode(), "关键词+分类应成功: " + both.getDescription());
+            assertFalse(both.getData().getItems().isEmpty(), "education 下搜'英语'应有结果");
+
+            if (byCategory.getData().getTotal() > 0 && byQuery.getData().getTotal() > 0) {
+                assertTrue(both.getData().getTotal() <= byCategory.getData().getTotal(),
+                        "交集总数不应超过分类总数");
+                assertTrue(both.getData().getTotal() <= byQuery.getData().getTotal(),
+                        "交集总数不应超过关键词总数");
+            }
+        }
+
+        @Test
+        @Order(5)
+        @DisplayName("pageSize 超过接口上限（100）时应被夹到上限而不是报错")
+        void testPageSizeClamped() {
+            Result<SkillMarketPage> result = market.page(null, null, 1, 500);
+
+            assertEquals(200, result.getCode(), "超大 pageSize 不应报错");
+            assertTrue(result.getData().getItems().size() <= 100,
+                    "每页条数应被夹到 100，实际=" + result.getData().getItems().size());
+            assertFalse(result.getData().getItems().isEmpty());
+        }
+
+        @Test
+        @Order(6)
+        @DisplayName("trending/search 应与第一页分页结果一致")
+        void testLegacyMethodsAlignWithFirstPage() {
+            Result<List<SkillMarketItem>> trending = market.trending(10);
+            Result<SkillMarketPage> page = market.page(null, null, 1, 10);
+
+            assertEquals(200, trending.getCode());
+            assertEquals(200, page.getCode());
+            assertEquals(trending.getData().size(), page.getData().getItems().size());
+            assertEquals(trending.getData().get(0).getSlug(), page.getData().getItems().get(0).getSlug(),
+                    "trending 应等价于分页第一页");
         }
     }
 }
