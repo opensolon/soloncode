@@ -1,8 +1,8 @@
-package org.noear.solon.codecli.market.impl;
+package org.noear.solon.codecli.market.skill.impl;
 
 import org.junit.jupiter.api.*;
-import org.noear.solon.codecli.market.MarketDetail;
-import org.noear.solon.codecli.market.MarketItem;
+import org.noear.solon.codecli.market.skill.SkillMarketDetail;
+import org.noear.solon.codecli.market.skill.SkillMarketItem;
 import org.noear.solon.core.handle.Result;
 
 import java.nio.file.Files;
@@ -22,17 +22,17 @@ import static org.junit.jupiter.api.Assertions.*;
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class SkillhubMarketTest {
 
-    private static SkillhubMarket market;
+    private static SkillhubSkillMarket market;
     private static Path tempSkillsDir;
     private static String cachedSlug; // 从 trending 缓存一个真实 slug
 
     @BeforeAll
     static void setUp() throws Exception {
-        market = new SkillhubMarket();
+        market = new SkillhubSkillMarket();
         tempSkillsDir = Files.createTempDirectory("skillhub-test-");
 
         // 预热：获取一个真实 slug 供 detail/install 使用
-        Result<List<MarketItem>> trending = market.trending(5);
+        Result<List<SkillMarketItem>> trending = market.trending(5);
         if (trending.getCode() == 200 && trending.getData() != null && !trending.getData().isEmpty()) {
             cachedSlug = trending.getData().get(0).getSlug();
             System.out.println("缓存的测试 slug: " + cachedSlug);
@@ -80,7 +80,7 @@ public class SkillhubMarketTest {
         @Order(1)
         @DisplayName("limit=5 应返回不超过 5 条结果")
         void testTrendingLimit5() {
-            Result<List<MarketItem>> result = market.trending(5);
+            Result<List<SkillMarketItem>> result = market.trending(5);
 
             assertEquals(200, result.getCode(), "trending 应成功，code=200");
             assertNotNull(result.getData(), "data 不应为 null");
@@ -92,13 +92,13 @@ public class SkillhubMarketTest {
         @Order(2)
         @DisplayName("limit=10 返回的每个 MarketItem 核心字段应非空")
         void testTrendingItemFields() {
-            Result<List<MarketItem>> result = market.trending(10);
+            Result<List<SkillMarketItem>> result = market.trending(10);
 
             assertEquals(200, result.getCode());
-            List<MarketItem> items = result.getData();
+            List<SkillMarketItem> items = result.getData();
             assertFalse(items.isEmpty());
 
-            for (MarketItem item : items) {
+            for (SkillMarketItem item : items) {
                 assertNotNull(item.getSlug(), "slug 不应为 null");
                 assertFalse(item.getSlug().isEmpty(), "slug 不应为空字符串");
                 assertNotNull(item.getDisplayName(), "displayName 不应为 null");
@@ -112,7 +112,7 @@ public class SkillhubMarketTest {
         @Order(3)
         @DisplayName("limit=1 应返回恰好 1 条结果")
         void testTrendingLimit1() {
-            Result<List<MarketItem>> result = market.trending(1);
+            Result<List<SkillMarketItem>> result = market.trending(1);
 
             assertEquals(200, result.getCode());
             assertEquals(1, result.getData().size());
@@ -122,7 +122,7 @@ public class SkillhubMarketTest {
         @Order(4)
         @DisplayName("limit=0 应正常返回（不报错）")
         void testTrendingLimit0() {
-            Result<List<MarketItem>> result = market.trending(0);
+            Result<List<SkillMarketItem>> result = market.trending(0);
 
             // API 可能忽略 limit=0 返回默认列表，也可能返回空列表，两种都算通过
             assertEquals(200, result.getCode(), "limit=0 不应报错");
@@ -141,7 +141,7 @@ public class SkillhubMarketTest {
         @Order(1)
         @DisplayName("搜索 'weather' 应返回包含 weather 相关技能的结果")
         void testSearchWeather() {
-            Result<List<MarketItem>> result = market.search("weather", 10);
+            Result<List<SkillMarketItem>> result = market.search("weather", 10);
 
             assertEquals(200, result.getCode(), "搜索 weather 应成功");
             assertNotNull(result.getData());
@@ -160,7 +160,7 @@ public class SkillhubMarketTest {
         @Order(2)
         @DisplayName("搜索空关键词应等同于 trending")
         void testSearchEmptyQuery() {
-            Result<List<MarketItem>> searchResult = market.search("", 5);
+            Result<List<SkillMarketItem>> searchResult = market.search("", 5);
 
             assertEquals(200, searchResult.getCode());
             assertNotNull(searchResult.getData());
@@ -171,7 +171,7 @@ public class SkillhubMarketTest {
         @Order(3)
         @DisplayName("搜索 null 关键词应等同于 trending")
         void testSearchNullQuery() {
-            Result<List<MarketItem>> result = market.search(null, 5);
+            Result<List<SkillMarketItem>> result = market.search(null, 5);
 
             assertEquals(200, result.getCode());
             assertNotNull(result.getData());
@@ -181,7 +181,7 @@ public class SkillhubMarketTest {
         @Order(4)
         @DisplayName("搜索不存在的关键词应返回空列表而非报错")
         void testSearchNonexistent() {
-            Result<List<MarketItem>> result = market.search("zzzz_nonexistent_skill_xyz_12345", 10);
+            Result<List<SkillMarketItem>> result = market.search("zzzz_nonexistent_skill_xyz_12345", 10);
 
             assertEquals(200, result.getCode(), "搜索不存在关键词不应报错");
             assertNotNull(result.getData());
@@ -191,7 +191,7 @@ public class SkillhubMarketTest {
         @Order(5)
         @DisplayName("搜索中文关键词应正常工作")
         void testSearchChinese() {
-            Result<List<MarketItem>> result = market.search("天气", 10);
+            Result<List<SkillMarketItem>> result = market.search("天气", 10);
 
             assertEquals(200, result.getCode(), "搜索中文不应报错");
             assertNotNull(result.getData());
@@ -212,10 +212,10 @@ public class SkillhubMarketTest {
             Assumptions.assumeTrue(cachedSlug != null, "需要有可用的 slug 才能测试");
             System.out.println("测试 detail 使用的 slug: " + cachedSlug);
 
-            Result<MarketDetail> result = market.detail(cachedSlug);
+            Result<SkillMarketDetail> result = market.detail(cachedSlug);
 
             assertEquals(200, result.getCode(), "detail 应成功，code=200");
-            MarketDetail detail = result.getData();
+            SkillMarketDetail detail = result.getData();
             assertNotNull(detail);
             assertEquals(cachedSlug, detail.getSlug(), "detail 的 slug 应与请求一致");
         }
@@ -226,10 +226,10 @@ public class SkillhubMarketTest {
         void testDetailFieldsPopulated() {
             Assumptions.assumeTrue(cachedSlug != null, "需要有可用的 slug 才能测试");
 
-            Result<MarketDetail> result = market.detail(cachedSlug);
+            Result<SkillMarketDetail> result = market.detail(cachedSlug);
             assertEquals(200, result.getCode());
 
-            MarketDetail detail = result.getData();
+            SkillMarketDetail detail = result.getData();
             assertNotNull(detail.getSlug());
             assertNotNull(detail.getDisplayName(), "displayName 不应为 null");
             assertNotNull(detail.getOwnerHandle(), "ownerHandle 不应为 null");
@@ -242,7 +242,7 @@ public class SkillhubMarketTest {
         @Order(3)
         @DisplayName("使用不存在的 slug 查询应返回失败")
         void testDetailNonexistent() {
-            Result<MarketDetail> result = market.detail("zzz_nonexistent_slug_xyz_99999");
+            Result<SkillMarketDetail> result = market.detail("zzz_nonexistent_slug_xyz_99999");
 
             if (result.getCode() != 200) {
                 assertNotNull(result.getDescription(), "失败时 description 应有值");
@@ -255,7 +255,7 @@ public class SkillhubMarketTest {
         @Order(4)
         @DisplayName("slug 为 null 应返回失败")
         void testDetailNullSlug() {
-            Result<MarketDetail> result = market.detail(null);
+            Result<SkillMarketDetail> result = market.detail(null);
             assertNotEquals(200, result.getCode(), "null slug 应返回非200");
         }
 
@@ -263,7 +263,7 @@ public class SkillhubMarketTest {
         @Order(5)
         @DisplayName("slug 为空字符串应返回失败")
         void testDetailEmptySlug() {
-            Result<MarketDetail> result = market.detail("");
+            Result<SkillMarketDetail> result = market.detail("");
             assertNotEquals(200, result.getCode(), "空 slug 应返回非200");
         }
     }

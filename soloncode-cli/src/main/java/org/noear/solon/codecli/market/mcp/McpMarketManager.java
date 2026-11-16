@@ -1,6 +1,7 @@
-package org.noear.solon.codecli.mcpmarket;
+package org.noear.solon.codecli.market.mcp;
 
-import org.noear.solon.codecli.mcpmarket.impl.OfficialRegistryMcpMarket;
+import org.noear.solon.codecli.market.skill.SkillMarketManager;
+import org.noear.solon.codecli.market.mcp.impl.OfficialRegistryMcpMarket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +13,7 @@ import java.util.Map;
 /**
  * 连接器（MCP）市场管理器 — 管理多个 McpMarket 适配器。
  *
- * <p>与 {@link org.noear.solon.codecli.market.MarketManager} 同构（单例 + register），
+ * <p>与 {@link SkillMarketManager} 同构（单例 + register），
  * 便于后续接入国内源（如腾讯云 MCP 广场）或自建 bundle 源。</p>
  *
  * @author noear 2026/11/16 created

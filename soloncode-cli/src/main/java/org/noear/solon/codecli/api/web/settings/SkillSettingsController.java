@@ -7,7 +7,7 @@ import org.noear.solon.annotation.Get;
 import org.noear.solon.annotation.Mapping;
 import org.noear.solon.annotation.Param;
 import org.noear.solon.annotation.Post;
-import org.noear.solon.codecli.market.Market;
+import org.noear.solon.codecli.market.skill.SkillMarket;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -64,7 +64,7 @@ public class SkillSettingsController extends BaseSettingsController{
                               @Param(value = "limit", defaultValue = "50") int limit,
                               @Param(value = "per_page", defaultValue = "50") int perPage,
                               @Param(value = "marketName", defaultValue = "") String marketName) {
-        Market market = marketManager.getMarketByName(marketName);
+        SkillMarket market = marketManager.getMarketByName(marketName);
         if ("search".equals(action) && query != null && !query.isEmpty()) {
             return market.search(query, limit);
         } else {
@@ -86,7 +86,7 @@ public class SkillSettingsController extends BaseSettingsController{
             return Result.failure("slug is required");
         }
 
-        Market market = marketManager.getMarketByName(marketName);
+        SkillMarket market = marketManager.getMarketByName(marketName);
         return market.detail(slug);
     }
 
@@ -106,7 +106,7 @@ public class SkillSettingsController extends BaseSettingsController{
             return Result.failure("slug is required");
         }
 
-        Market market = marketManager.getMarketByName(marketName);
+        SkillMarket market = marketManager.getMarketByName(marketName);
 
         // 确定安装目标目录：若指定了挂载别名，则安装到对应池目录；否则默认 workspace/skills
         Path skillsDir;

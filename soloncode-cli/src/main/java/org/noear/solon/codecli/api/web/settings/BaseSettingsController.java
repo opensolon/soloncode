@@ -19,7 +19,7 @@ import org.noear.solon.codecli.model.discovery.ModelsAdapterManager;
 import org.noear.solon.codecli.workspace.filer.FileWatchService;
 import org.noear.solon.codecli.workspace.WorkspaceRuntimePort;
 import org.noear.solon.codecli.util.MountPathUtil;
-import org.noear.solon.codecli.market.MarketManager;
+import org.noear.solon.codecli.market.skill.SkillMarketManager;
 import org.noear.solon.codecli.api.web.service.SkinService;
 
 import org.noear.solon.codecli.workspace.WorkspaceManager;
@@ -56,7 +56,7 @@ public class BaseSettingsController {
     /**
      * 技能市场适配器（通过构造函数注入，方便切换不同市场）
      */
-    protected final MarketManager marketManager;
+    protected final SkillMarketManager marketManager;
 
     /**
      * 模型提供商工厂，用于拉取模型列表
@@ -128,7 +128,7 @@ public class BaseSettingsController {
         this.workspaceManager = workspaceManager;
 
         this.skinService = SkinService.getInstance();
-        this.marketManager = MarketManager.getInstance();
+        this.marketManager = SkillMarketManager.getInstance();
         this.modelsAdapterManager = ModelsAdapterManager.getInstance();
         this.modelSpecService = ModelSpecService.getInstance();
     }

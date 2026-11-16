@@ -1,11 +1,11 @@
-package org.noear.solon.codecli.market.impl;
+package org.noear.solon.codecli.market.skill.impl;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
-import org.noear.solon.codecli.market.Market;
-import org.noear.solon.codecli.market.MarketDetail;
-import org.noear.solon.codecli.market.MarketItem;
-import org.noear.solon.codecli.market.MarketSslSupplier;
+import org.noear.solon.codecli.market.skill.SkillMarket;
+import org.noear.solon.codecli.market.skill.SkillMarketDetail;
+import org.noear.solon.codecli.market.skill.SkillMarketItem;
+import org.noear.solon.codecli.market.skill.SkillMarketSslSupplier;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -29,9 +29,9 @@ import java.util.zip.ZipInputStream;
  *
  * @author noear 2026/5/30 created
  */
-public class SkillhubMarket implements Market {
+public class SkillhubSkillMarket implements SkillMarket {
 
-    private static final Logger LOG = LoggerFactory.getLogger(SkillhubMarket.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SkillhubSkillMarket.class);
 
     private static final String BASE_URL = "https://api.skillhub.cn";
     private static final String USER_AGENT = "SolonCode/1.0";
@@ -49,7 +49,7 @@ public class SkillhubMarket implements Market {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<List<MarketItem>> trending(int limit) {
+    public Result<List<SkillMarketItem>> trending(int limit) {
         try {
             String url = BASE_URL + "/api/v1/search?q=&limit=" + limit;
             String body = httpGet(url);
@@ -59,7 +59,7 @@ public class SkillhubMarket implements Market {
                 return Result.failure(root.get("message").getString());
             }
 
-            List<MarketItem> items = parseResults(root);
+            List<SkillMarketItem> items = parseResults(root);
             return Result.succeed(items);
         } catch (Exception e) {
             LOG.warn("SkillhubMarket.trending error: {}", e.getMessage());
@@ -68,7 +68,7 @@ public class SkillhubMarket implements Market {
     }
 
     @Override
-    public Result<List<MarketItem>> search(String query, int limit) {
+    public Result<List<SkillMarketItem>> search(String query, int limit) {
         if (Assert.isEmpty(query)) {
             return trending(limit);
         }
@@ -83,7 +83,7 @@ public class SkillhubMarket implements Market {
                 return Result.failure(root.get("message").getString());
             }
 
-            List<MarketItem> items = parseResults(root);
+            List<SkillMarketItem> items = parseResults(root);
             return Result.succeed(items);
         } catch (Exception e) {
             LOG.warn("SkillhubMarket.search error: {}", e.getMessage());
@@ -94,7 +94,7 @@ public class SkillhubMarket implements Market {
     // ==================== 详情 ====================
 
     @Override
-    public Result<MarketDetail> detail(String slug) {
+    public Result<SkillMarketDetail> detail(String slug) {
         if (Assert.isEmpty(slug)) {
             return Result.failure("slug is required");
         }
@@ -163,7 +163,7 @@ public class SkillhubMarket implements Market {
                 changelog = getStringValue(versionNode, "changelog");
             }
 
-            MarketDetail detail = new MarketDetail()
+            SkillMarketDetail detail = new SkillMarketDetail()
                     .slug(resolvedSlug)
                     .displayName(displayName)
                     .summary(summary)
@@ -199,7 +199,7 @@ public class SkillhubMarket implements Market {
         }
 
         try {
-            Result<MarketDetail> detailResult = detail(slug);
+            Result<SkillMarketDetail> detailResult = detail(slug);
             if (detailResult.getCode() != 200) {
                 return Result.failure(detailResult.getDescription());
             }
@@ -220,7 +220,7 @@ public class SkillhubMarket implements Market {
             HttpUtils httpForDownload = HttpUtils.http(downloadUrl)
                     .header("User-Agent", USER_AGENT)
                     .timeout(30000)
-                    .ssl(MarketSslSupplier.getInstance());
+                    .ssl(SkillMarketSslSupplier.getInstance());
             ProxyConfig.applyIfNeeded(httpForDownload);
                 try (HttpResponse httpResp = httpForDownload.exec("GET")) {
 
@@ -260,7 +260,7 @@ public class SkillhubMarket implements Market {
         HttpUtils http = HttpUtils.http(url)
                 .header("User-Agent", USER_AGENT)
                 .timeout(15000)
-                .ssl(MarketSslSupplier.getInstance());
+                .ssl(SkillMarketSslSupplier.getInstance());
         ProxyConfig.applyIfNeeded(http);
         return http.get();
     }
@@ -272,15 +272,15 @@ public class SkillhubMarket implements Market {
      * 统计字段是平铺的（installs, stars, downloads）而非嵌套在 stats 对象中；
      * 所有者字段为 owner_name 而非 ownerHandle。</p>
      */
-    private List<MarketItem> parseResults(ONode root) {
+    private List<SkillMarketItem> parseResults(ONode root) {
         ONode resultsNode = root.get("results");
         if (resultsNode == null || !resultsNode.isArray()) {
             return Collections.emptyList();
         }
 
-        List<MarketItem> result = new ArrayList<>();
+        List<SkillMarketItem> result = new ArrayList<>();
         for (ONode node : resultsNode.getArray()) {
-            MarketItem item = new MarketItem()
+            SkillMarketItem item = new SkillMarketItem()
                     .slug(getStringValue(node, "slug"))
                     .name(getStringValue(node, "slug"))
                     .displayName(getStringValue(node, "displayName"))

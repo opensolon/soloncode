@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.mcpmarket;
+package org.noear.solon.codecli.market.mcp;
 
 import java.util.List;
 import java.util.Map;

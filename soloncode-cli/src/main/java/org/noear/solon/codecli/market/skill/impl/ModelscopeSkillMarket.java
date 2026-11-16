@@ -1,10 +1,10 @@
-package org.noear.solon.codecli.market.impl;
+package org.noear.solon.codecli.market.skill.impl;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
-import org.noear.solon.codecli.market.Market;
-import org.noear.solon.codecli.market.MarketDetail;
-import org.noear.solon.codecli.market.MarketItem;
+import org.noear.solon.codecli.market.skill.SkillMarket;
+import org.noear.solon.codecli.market.skill.SkillMarketDetail;
+import org.noear.solon.codecli.market.skill.SkillMarketItem;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -28,9 +28,9 @@ import java.util.zip.ZipInputStream;
  *
  * @author noear 2026/7/28 created
  */
-public class ModelscopeMarket implements Market {
+public class ModelscopeSkillMarket implements SkillMarket {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ModelscopeMarket.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ModelscopeSkillMarket.class);
 
     private static final String BASE_URL = "https://modelscope.cn/openapi/v1";
     private static final String SKILLS_PAGE_URL = "https://www.modelscope.cn/skills";
@@ -49,7 +49,7 @@ public class ModelscopeMarket implements Market {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<List<MarketItem>> trending(int limit) {
+    public Result<List<SkillMarketItem>> trending(int limit) {
         try {
             String url = BASE_URL + "/skills?page_size=" + limit + "&sort=downloads";
             String body = httpGet(url);
@@ -59,7 +59,7 @@ public class ModelscopeMarket implements Market {
                 return Result.failure("获取热门技能失败");
             }
 
-            List<MarketItem> items = parseSkills(root);
+            List<SkillMarketItem> items = parseSkills(root);
             return Result.succeed(items);
         } catch (Exception e) {
             LOG.warn("ModelscopeMarket.trending error: {}", e.getMessage());
@@ -68,7 +68,7 @@ public class ModelscopeMarket implements Market {
     }
 
     @Override
-    public Result<List<MarketItem>> search(String query, int limit) {
+    public Result<List<SkillMarketItem>> search(String query, int limit) {
         if (Assert.isEmpty(query)) {
             return trending(limit);
         }
@@ -83,7 +83,7 @@ public class ModelscopeMarket implements Market {
                 return Result.failure("搜索技能失败");
             }
 
-            List<MarketItem> items = parseSkills(root);
+            List<SkillMarketItem> items = parseSkills(root);
             return Result.succeed(items);
         } catch (Exception e) {
             LOG.warn("ModelscopeMarket.search error: {}", e.getMessage());
@@ -94,7 +94,7 @@ public class ModelscopeMarket implements Market {
     // ==================== 详情 ====================
 
     @Override
-    public Result<MarketDetail> detail(String slug) {
+    public Result<SkillMarketDetail> detail(String slug) {
         if (Assert.isEmpty(slug)) {
             return Result.failure("slug is required");
         }
@@ -136,7 +136,7 @@ public class ModelscopeMarket implements Market {
                 }
             }
 
-            MarketDetail detail = new MarketDetail()
+            SkillMarketDetail detail = new SkillMarketDetail()
                     .slug(skillId)
                     .displayName(displayName)
                     .summary(bestDescription)
@@ -169,7 +169,7 @@ public class ModelscopeMarket implements Market {
         }
 
         try {
-            Result<MarketDetail> detailResult = detail(slug);
+            Result<SkillMarketDetail> detailResult = detail(slug);
             if (detailResult.getCode() != 200) {
                 return Result.failure(detailResult.getDescription());
             }
@@ -241,7 +241,7 @@ public class ModelscopeMarket implements Market {
      *
      * <p>响应结构: { success: true, data: { skills: [...], total, page_number, page_size } }</p>
      */
-    private List<MarketItem> parseSkills(ONode root) {
+    private List<SkillMarketItem> parseSkills(ONode root) {
         ONode data = root.get("data");
         if (data == null || data.isNull()) {
             return Collections.emptyList();
@@ -252,7 +252,7 @@ public class ModelscopeMarket implements Market {
             return Collections.emptyList();
         }
 
-        List<MarketItem> result = new ArrayList<>();
+        List<SkillMarketItem> result = new ArrayList<>();
         for (ONode node : skillsNode.getArray()) {
             String skillId = getStringValue(node, "id");
             String displayName = getStringValue(node, "display_name");
@@ -276,7 +276,7 @@ public class ModelscopeMarket implements Market {
 
             String detailUrl = SKILLS_PAGE_URL + "/" + skillId;
 
-            MarketItem item = new MarketItem()
+            SkillMarketItem item = new SkillMarketItem()
                     .slug(skillId)
                     .name(skillId)
                     .displayName(displayName)

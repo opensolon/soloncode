@@ -1,11 +1,11 @@
-package org.noear.solon.codecli.market.impl;
+package org.noear.solon.codecli.market.skill.impl;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
-import org.noear.solon.codecli.market.Market;
-import org.noear.solon.codecli.market.MarketDetail;
-import org.noear.solon.codecli.market.MarketItem;
-import org.noear.solon.codecli.market.MarketSslSupplier;
+import org.noear.solon.codecli.market.skill.SkillMarket;
+import org.noear.solon.codecli.market.skill.SkillMarketDetail;
+import org.noear.solon.codecli.market.skill.SkillMarketItem;
+import org.noear.solon.codecli.market.skill.SkillMarketSslSupplier;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
@@ -26,9 +26,9 @@ import java.util.zip.ZipInputStream;
  *
  * @author noear 2026/5/28 created
  */
-public class ClawhubMarket implements Market {
+public class ClawhubSkillMarket implements SkillMarket {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ClawhubMarket.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ClawhubSkillMarket.class);
 
     private static final String BASE_URL = "https://clawhub.ai";
     private static final String USER_AGENT = "SolonCode/1.0";
@@ -46,7 +46,7 @@ public class ClawhubMarket implements Market {
     // ==================== 列表与搜索 ====================
 
     @Override
-    public Result<List<MarketItem>> trending(int limit) {
+    public Result<List<SkillMarketItem>> trending(int limit) {
         try {
             String url = BASE_URL + "/api/v1/trending?kind=skills&limit=" + limit;
             String body = httpGet(url);
@@ -56,7 +56,7 @@ public class ClawhubMarket implements Market {
                 return Result.failure(root.get("message").getString());
             }
 
-            List<MarketItem> items = parseItems(root);
+            List<SkillMarketItem> items = parseItems(root);
             return Result.succeed(items);
         } catch (Exception e) {
             LOG.warn("ClawhubMarket.trending error: {}", e.getMessage());
@@ -65,7 +65,7 @@ public class ClawhubMarket implements Market {
     }
 
     @Override
-    public Result<List<MarketItem>> search(String query, int limit) {
+    public Result<List<SkillMarketItem>> search(String query, int limit) {
         if (Assert.isEmpty(query)) {
             return trending(limit);
         }
@@ -92,7 +92,7 @@ public class ClawhubMarket implements Market {
     // ==================== 详情 ====================
 
     @Override
-    public Result<MarketDetail> detail(String slug) {
+    public Result<SkillMarketDetail> detail(String slug) {
         if (Assert.isEmpty(slug)) {
             return Result.failure("slug is required");
         }
@@ -111,7 +111,7 @@ public class ClawhubMarket implements Market {
                 return Result.failure("技能不存在: " + slug);
             }
 
-            MarketDetail detail = new MarketDetail()
+            SkillMarketDetail detail = new SkillMarketDetail()
                     .slug(getStringValue(skillNode, "slug"))
                     .displayName(getStringValue(skillNode, "displayName"))
                     .summary(getStringValue(skillNode, "summary"))
@@ -146,7 +146,7 @@ public class ClawhubMarket implements Market {
         }
 
         try {
-            Result<MarketDetail> detailResult = detail(slug);
+            Result<SkillMarketDetail> detailResult = detail(slug);
             if (detailResult.getCode() != 200) {
                 // detail() 已经返回了具体的错误描述，直接透传，不要再次包装
                 return Result.failure(detailResult.getDescription());
@@ -167,7 +167,7 @@ public class ClawhubMarket implements Market {
                 HttpUtils httpForDownload = HttpUtils.http(downloadUrl)
                         .header("User-Agent", USER_AGENT)
                         .timeout(30000)
-                        .ssl(MarketSslSupplier.getInstance());
+                        .ssl(SkillMarketSslSupplier.getInstance());
                 ProxyConfig.applyIfNeeded(httpForDownload);
                 try (HttpResponse httpResp = httpForDownload.exec("GET")) {
 
@@ -210,7 +210,7 @@ public class ClawhubMarket implements Market {
                 HttpUtils http = HttpUtils.http(url)
                         .header("User-Agent", USER_AGENT)
                         .timeout(15000)
-                        .ssl(MarketSslSupplier.getInstance());
+                        .ssl(SkillMarketSslSupplier.getInstance());
                 ProxyConfig.applyIfNeeded(http);
                 return http.get();
             } catch (Exception e) {
@@ -224,7 +224,7 @@ public class ClawhubMarket implements Market {
         throw lastEx;
     }
 
-    private List<MarketItem> parseItems(ONode root) {
+    private List<SkillMarketItem> parseItems(ONode root) {
         ONode itemsNode = root.get("items");
         if (itemsNode != null && itemsNode.isArray()) {
             return parseNodeArray(itemsNode);
@@ -232,8 +232,8 @@ public class ClawhubMarket implements Market {
         return Collections.emptyList();
     }
 
-    private List<MarketItem> parseNodeArray(ONode arrayNode) {
-        List<MarketItem> result = new ArrayList<>();
+    private List<SkillMarketItem> parseNodeArray(ONode arrayNode) {
+        List<SkillMarketItem> result = new ArrayList<>();
         for (ONode node : arrayNode.getArray()) {
             String slug = getStringValue(node, "slug");
 
@@ -257,7 +257,7 @@ public class ClawhubMarket implements Market {
                         : BASE_URL + "/skills/" + slug;
             }
 
-            MarketItem item = new MarketItem()
+            SkillMarketItem item = new SkillMarketItem()
                     .slug(slug)
                     .name(slug)
                     .displayName(getStringValue(node, "displayName"))

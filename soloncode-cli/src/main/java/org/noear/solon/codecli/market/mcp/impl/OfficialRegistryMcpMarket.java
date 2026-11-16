@@ -1,16 +1,16 @@
-package org.noear.solon.codecli.mcpmarket.impl;
+package org.noear.solon.codecli.market.mcp.impl;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.McpTypeResolver;
 import org.noear.solon.codecli.config.ProxyConfig;
-import org.noear.solon.codecli.market.MarketSslSupplier;
-import org.noear.solon.codecli.mcpmarket.McpMarket;
-import org.noear.solon.codecli.mcpmarket.McpMarketConfig;
-import org.noear.solon.codecli.mcpmarket.McpMarketDetail;
-import org.noear.solon.codecli.mcpmarket.McpMarketItem;
-import org.noear.solon.codecli.mcpmarket.McpMarketPage;
-import org.noear.solon.codecli.mcpmarket.McpMarketParam;
-import org.noear.solon.codecli.mcpmarket.McpServerDraft;
+import org.noear.solon.codecli.market.skill.SkillMarketSslSupplier;
+import org.noear.solon.codecli.market.mcp.McpMarket;
+import org.noear.solon.codecli.market.mcp.McpMarketConfig;
+import org.noear.solon.codecli.market.mcp.McpMarketDetail;
+import org.noear.solon.codecli.market.mcp.McpMarketItem;
+import org.noear.solon.codecli.market.mcp.McpMarketPage;
+import org.noear.solon.codecli.market.mcp.McpMarketParam;
+import org.noear.solon.codecli.market.mcp.McpServerDraft;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.http.HttpUtils;
@@ -493,7 +493,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
         HttpUtils http = HttpUtils.http(url)
                 .header("User-Agent", USER_AGENT)
                 .timeout(20000)
-                .ssl(MarketSslSupplier.getInstance());
+                .ssl(SkillMarketSslSupplier.getInstance());
         ProxyConfig.applyIfNeeded(http);
         return http.get();
     }

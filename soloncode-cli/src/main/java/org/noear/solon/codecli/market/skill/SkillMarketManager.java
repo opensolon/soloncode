@@ -1,8 +1,7 @@
-package org.noear.solon.codecli.market;
+package org.noear.solon.codecli.market.skill;
 
-import org.noear.solon.codecli.market.impl.ClawhubMarket;
-import org.noear.solon.codecli.market.impl.ModelscopeMarket;
-import org.noear.solon.codecli.market.impl.SkillhubMarket;
+import org.noear.solon.codecli.market.skill.impl.ClawhubSkillMarket;
+import org.noear.solon.codecli.market.skill.impl.SkillhubSkillMarket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,12 +14,12 @@ import java.util.*;
  *
  * @author noear 2026/5/29 created
  */
-public class MarketManager {
-    private static MarketManager instance;
+public class SkillMarketManager {
+    private static SkillMarketManager instance;
 
-    public static MarketManager getInstance() {
+    public static SkillMarketManager getInstance() {
         if (instance == null) {
-            instance = new MarketManager();
+            instance = new SkillMarketManager();
         }
 
         return instance;
@@ -28,16 +27,16 @@ public class MarketManager {
 
     //-------
 
-    private static final Logger LOG = LoggerFactory.getLogger(MarketManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SkillMarketManager.class);
 
-    private final Map<String, Market> markets = new LinkedHashMap<>();
-    private Market defaultMarket;
+    private final Map<String, SkillMarket> markets = new LinkedHashMap<>();
+    private SkillMarket defaultMarket;
 
-    private MarketManager() {
-        Market skillhub = new SkillhubMarket();
+    private SkillMarketManager() {
+        SkillMarket skillhub = new SkillhubSkillMarket();
         register(skillhub);
 
-        Market clawhub = new ClawhubMarket();
+        SkillMarket clawhub = new ClawhubSkillMarket();
         register(clawhub);
 
 //        Market modelscope = new ModelscopeMarket();
@@ -49,7 +48,7 @@ public class MarketManager {
     /**
      * 注册一个市场适配器
      */
-    public void register(Market market) {
+    public void register(SkillMarket market) {
         markets.put(market.name(), market);
         LOG.info("MarketManager: registered market -> {}", market.name());
     }
@@ -57,11 +56,11 @@ public class MarketManager {
     /**
      * 根据名称获取市场适配器，找不到则返回默认市场
      */
-    public Market getMarketByName(String name) {
+    public SkillMarket getMarketByName(String name) {
         if (name == null || name.isEmpty()) {
             return defaultMarket;
         }
-        Market m = markets.get(name);
+        SkillMarket m = markets.get(name);
         return m != null ? m : defaultMarket;
     }
 
@@ -77,7 +76,7 @@ public class MarketManager {
      */
     public List<MarketInfo> getMarketInfos() {
         List<MarketInfo> infos = new ArrayList<>();
-        for (Market m : markets.values()) {
+        for (SkillMarket m : markets.values()) {
             infos.add(new MarketInfo(m.name(), m.description()));
         }
         return infos;
@@ -86,7 +85,7 @@ public class MarketManager {
     /**
      * 获取默认市场
      */
-    public Market getDefaultMarket() {
+    public SkillMarket getDefaultMarket() {
         return defaultMarket;
     }
 

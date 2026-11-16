@@ -1,11 +1,11 @@
-package org.noear.solon.codecli.market;
+package org.noear.solon.codecli.market.skill;
 
 /**
  * 技能市场列表项实体 — 统一封装技能在列表/搜索中的展示信息。
  *
  * @author noear 2026/5/29 created
  */
-public class MarketItem {
+public class SkillMarketItem {
     private String slug;
     private String name;
     private String displayName;
@@ -17,19 +17,19 @@ public class MarketItem {
     private long stars;
     private String version;    // 最新版本号（可能为空，市场不一定返回）
 
-    public MarketItem() {
+    public SkillMarketItem() {
     }
 
-    public MarketItem slug(String slug) { this.slug = slug; return this; }
-    public MarketItem name(String name) { this.name = name; return this; }
-    public MarketItem displayName(String displayName) { this.displayName = displayName; return this; }
-    public MarketItem summary(String summary) { this.summary = summary; return this; }
-    public MarketItem description(String description) { this.description = description; return this; }
-    public MarketItem ownerHandle(String ownerHandle) { this.ownerHandle = ownerHandle; return this; }
-    public MarketItem url(String url) { this.url = url; return this; }
-    public MarketItem installs(long installs) { this.installs = installs; return this; }
-    public MarketItem stars(long stars) { this.stars = stars; return this; }
-    public MarketItem version(String version) { this.version = version; return this; }
+    public SkillMarketItem slug(String slug) { this.slug = slug; return this; }
+    public SkillMarketItem name(String name) { this.name = name; return this; }
+    public SkillMarketItem displayName(String displayName) { this.displayName = displayName; return this; }
+    public SkillMarketItem summary(String summary) { this.summary = summary; return this; }
+    public SkillMarketItem description(String description) { this.description = description; return this; }
+    public SkillMarketItem ownerHandle(String ownerHandle) { this.ownerHandle = ownerHandle; return this; }
+    public SkillMarketItem url(String url) { this.url = url; return this; }
+    public SkillMarketItem installs(long installs) { this.installs = installs; return this; }
+    public SkillMarketItem stars(long stars) { this.stars = stars; return this; }
+    public SkillMarketItem version(String version) { this.version = version; return this; }
 
     public String getSlug() { return slug; }
     public void setSlug(String slug) { this.slug = slug; }

@@ -1,11 +1,11 @@
-package org.noear.solon.codecli.market;
+package org.noear.solon.codecli.market.skill;
 
 /**
  * 技能详情实体 — 统一封装技能的完整信息。
  *
  * @author noear 2026/5/29 created
  */
-public class MarketDetail {
+public class SkillMarketDetail {
     private String slug;
     private String displayName;
     private String summary;
@@ -23,23 +23,23 @@ public class MarketDetail {
     private Boolean verified;      // 发布方是否认证
     private String securityStatus; // 安全扫描状态描述
 
-    public MarketDetail() {
+    public SkillMarketDetail() {
     }
 
-    public MarketDetail slug(String slug) { this.slug = slug; return this; }
-    public MarketDetail displayName(String displayName) { this.displayName = displayName; return this; }
-    public MarketDetail summary(String summary) { this.summary = summary; return this; }
-    public MarketDetail description(String description) { this.description = description; return this; }
-    public MarketDetail ownerHandle(String ownerHandle) { this.ownerHandle = ownerHandle; return this; }
-    public MarketDetail installs(long installs) { this.installs = installs; return this; }
-    public MarketDetail stars(long stars) { this.stars = stars; return this; }
-    public MarketDetail installSlug(String installSlug) { this.installSlug = installSlug; return this; }
-    public MarketDetail sourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; return this; }
-    public MarketDetail version(String version) { this.version = version; return this; }
-    public MarketDetail changelog(String changelog) { this.changelog = changelog; return this; }
-    public MarketDetail category(String category) { this.category = category; return this; }
-    public MarketDetail verified(Boolean verified) { this.verified = verified; return this; }
-    public MarketDetail securityStatus(String securityStatus) { this.securityStatus = securityStatus; return this; }
+    public SkillMarketDetail slug(String slug) { this.slug = slug; return this; }
+    public SkillMarketDetail displayName(String displayName) { this.displayName = displayName; return this; }
+    public SkillMarketDetail summary(String summary) { this.summary = summary; return this; }
+    public SkillMarketDetail description(String description) { this.description = description; return this; }
+    public SkillMarketDetail ownerHandle(String ownerHandle) { this.ownerHandle = ownerHandle; return this; }
+    public SkillMarketDetail installs(long installs) { this.installs = installs; return this; }
+    public SkillMarketDetail stars(long stars) { this.stars = stars; return this; }
+    public SkillMarketDetail installSlug(String installSlug) { this.installSlug = installSlug; return this; }
+    public SkillMarketDetail sourceUrl(String sourceUrl) { this.sourceUrl = sourceUrl; return this; }
+    public SkillMarketDetail version(String version) { this.version = version; return this; }
+    public SkillMarketDetail changelog(String changelog) { this.changelog = changelog; return this; }
+    public SkillMarketDetail category(String category) { this.category = category; return this; }
+    public SkillMarketDetail verified(Boolean verified) { this.verified = verified; return this; }
+    public SkillMarketDetail securityStatus(String securityStatus) { this.securityStatus = securityStatus; return this; }
 
     public String getSlug() { return slug; }
     public void setSlug(String slug) { this.slug = slug; }

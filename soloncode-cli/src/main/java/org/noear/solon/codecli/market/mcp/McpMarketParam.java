@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.mcpmarket;
+package org.noear.solon.codecli.market.mcp;
 
 /**
  * 连接器市场条目的可配置参数（环境变量或请求头）。

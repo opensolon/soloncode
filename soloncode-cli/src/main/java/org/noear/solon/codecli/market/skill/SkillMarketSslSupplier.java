@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.market;
+package org.noear.solon.codecli.market.skill;
 
 import org.noear.solon.net.http.HttpSslSupplier;
 
@@ -17,14 +17,14 @@ import javax.net.ssl.X509TrustManager;
  *
  * @author noear 2026/10/20 created
  */
-public class MarketSslSupplier implements HttpSslSupplier {
-    private static final MarketSslSupplier INSTANCE = new MarketSslSupplier();
+public class SkillMarketSslSupplier implements HttpSslSupplier {
+    private static final SkillMarketSslSupplier INSTANCE = new SkillMarketSslSupplier();
 
-    public static MarketSslSupplier getInstance() {
+    public static SkillMarketSslSupplier getInstance() {
         return INSTANCE;
     }
 
-    private MarketSslSupplier() {
+    private SkillMarketSslSupplier() {
     }
 
     @Override

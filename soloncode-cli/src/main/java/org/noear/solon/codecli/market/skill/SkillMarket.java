@@ -1,4 +1,4 @@
-package org.noear.solon.codecli.market;
+package org.noear.solon.codecli.market.skill;
 
 import org.noear.solon.core.handle.Result;
 
@@ -12,7 +12,7 @@ import java.util.List;
  *
  * @author noear 2026/5/28 created
  */
-public interface Market {
+public interface SkillMarket {
     /**
      * 获取市场名称
      */
@@ -28,17 +28,17 @@ public interface Market {
     /**
      * 获取热门技能列表
      */
-    Result<List<MarketItem>> trending(int limit);
+    Result<List<SkillMarketItem>> trending(int limit);
 
     /**
      * 搜索技能
      */
-    Result<List<MarketItem>> search(String query, int limit);
+    Result<List<SkillMarketItem>> search(String query, int limit);
 
     /**
      * 获取技能详情
      */
-    Result<MarketDetail> detail(String slug);
+    Result<SkillMarketDetail> detail(String slug);
 
     /**
      * 安装技能 — 下载并解压到指定目录

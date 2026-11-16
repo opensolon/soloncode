@@ -1,11 +1,12 @@
-package org.noear.solon.codecli.mcpmarket;
+package org.noear.solon.codecli.market.mcp;
 
+import org.noear.solon.codecli.market.skill.SkillMarket;
 import org.noear.solon.core.handle.Result;
 
 /**
  * 连接器（MCP）市场接口 — 抽象连接器市场的浏览、搜索与配置生成能力。
  *
- * <p>与技能市场 {@link org.noear.solon.codecli.market.Market} 的区别：
+ * <p>与技能市场 {@link SkillMarket} 的区别：
  * 技能的 install 是「下载并解压到目录」，连接器的 install 等价物是
  * {@link #resolve}「生成可预填的配置草稿」，保存仍走原 MCP 保存链路。</p>
  *

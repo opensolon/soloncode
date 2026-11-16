@@ -42,7 +42,7 @@ import org.noear.solon.codecli.util.OsOpenUtil;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.codecli.workspace.WorkspaceLogRouter;
 import org.noear.solon.Solon;
-import org.noear.solon.codecli.market.Market;
+import org.noear.solon.codecli.market.skill.SkillMarket;
 import org.noear.solon.codecli.api.web.service.SkinService;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
@@ -67,7 +67,7 @@ import java.util.List;
  *   <li><b>LLM 模型管理</b>：从远程拉取模型列表、动态添加/移除/更新模型、设置默认模型、导入导出</li>
  *   <li><b>MCP 服务器管理</b>：服务器列表查询、添加/移除/更新、启用停用、连接检测、批量导入</li>
  *   <li><b>OpenApi 服务器管理</b>：服务器列表查询、添加/移除/更新、启用停用、连接检测、批量导入</li>
- *   <li><b>技能市场</b>：通过 {@link Market} 接口代理技能浏览、搜索和安装（委派给具体适配器）</li>
+ *   <li><b>技能市场</b>：通过 {@link SkillMarket} 接口代理技能浏览、搜索和安装（委派给具体适配器）</li>
  * </ul>
  *
  * <p>所有配置统一通过 {@link AgentSettings} 持久化到单一文件 {@code settings.json}。</p>
@@ -75,7 +75,7 @@ import java.util.List;
  * @author oisin 2026-3-13
  * @author noear 2026-4-18
  * @see WorkspaceWebController 等 controller 包领域 Controller（原 WebController 拆分）
- * @see Market 技能市场接口
+ * @see SkillMarket 技能市场接口
  * @see AgentSettings 统一配置管理
  */
 public class WebSettingsController extends BaseSettingsController {
