@@ -270,8 +270,6 @@
 .plain-tabs__tab { height: 44px; padding: 0; border: none; background: none; font-size: var(--fs-3xl); font-weight: 500; line-height: 1; color: var(--text-secondary); cursor: pointer; transition: color 0.2s ease; }
 .plain-tabs__tab:hover { color: var(--text-primary); }
 .plain-tabs__tab.active { color: var(--text-primary); font-weight: 700; }
-/* 「大语言模型」页内的「模型 / 供应商」页签：只隔开下方内容，宽度随文字自适应 */
-.settings-llm-view-tabs { margin-bottom: 12px; }
 
 .mcp-status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--border-color); }
 .mcp-status-dot.connected { background: #22c55e; }
