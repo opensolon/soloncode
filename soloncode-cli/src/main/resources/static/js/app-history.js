@@ -1501,11 +1501,6 @@ function renderModelUI() {
         var standard = m.standard || 'openai';
         var hasDesc = !!(m.desc);
         var parts = [];
-        // 来源徽标放在最前：短名同名时靠它区分（provider 缺失时回退为 name 前缀）
-        var source = window.modelProviderLabel(m);
-        if (source) {
-            parts.push('<span class="model-item-provider">' + escapeHtml(source) + '</span>');
-        }
         if (hasDesc) {
             parts.push(escapeHtml(m.desc));
         }
@@ -1522,7 +1517,7 @@ function renderModelUI() {
         // data-model 保持完整 name（选中与回填的锚点）；data-search 汇总三种可检索文本
         var searchKey = (m.name + ' ' + (m.model || '') + ' ' + window.modelProviderLabel(m)).toLowerCase();
         html += '<div class="model-dropdown-item' + cls + '" data-model="' + escapeHtml(m.name) + '" data-search="' + escapeHtml(searchKey) + '">'
-            + '<span class="model-item-name">' + escapeHtml(window.modelDisplayName(m)) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
+            + '<span class="model-item-name">' + escapeHtml(m.name) + (ctxLen ? '<span class="model-item-ctx">' + ctxLen + '</span>' : '') + '</span>'
             + buildDescLine(m)
             + '</div>';
     }

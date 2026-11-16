@@ -291,12 +291,11 @@
         var labelMap = {};
         items.forEach(function (it) {
             var cls = it.value === selected ? ' active' : '';
-            var provider = it.provider ? '<span class="model-item-provider">' + esc(it.provider) + '</span> ' : '';
             labelMap[it.value] = it.label;
             html += '<div class="model-dropdown-item' + cls + '" data-value="' + esc(it.value) + '"' +
                 (it.search ? ' data-search="' + esc(it.search.toLowerCase()) + '"' : '') + '>' +
-                '<span class="model-item-name">' + esc(it.label) + '</span>' +
-                (it.desc ? '<span class="model-item-desc">' + provider + esc(it.desc) + '</span>' : '') + '</div>';
+                '<span class="model-item-name">' + esc(it.value) + '</span>' +
+                (it.desc ? '<span class="model-item-desc">' + esc(it.desc) + '</span>' : '') + '</div>';
         });
         if (selected && !items.some(function (x) { return x.value === selected; })) {
             html += '<div class="model-dropdown-item active" data-value="' + esc(selected) + '">' +

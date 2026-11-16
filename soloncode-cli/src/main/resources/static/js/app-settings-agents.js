@@ -444,10 +444,13 @@
     });
 
     $('#agentsRefreshBtn').on('click', function () {
+        var $btn = $(this);
+        if ($btn.prop('disabled')) return;
+        $btn.prop('disabled', true).addClass('is-loading');
         postJson('/web/settings/agents/refresh', {}, function (resp) {
             if (resp.code === 200) { showToast(I18n.t('agents.refreshSuccess')); loadList(); if (typeof window.reloadCommandHints === 'function') window.reloadCommandHints(); }
             else showToast(resp.message || I18n.t('agents.refreshFailed'), 'error');
-        });
+        }, function () { $btn.prop('disabled', false).removeClass('is-loading'); });
     });
 
     $('#agentsFormDeleteBtn').on('click', function () {

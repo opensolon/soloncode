@@ -900,7 +900,7 @@ body {
 .model-name-badge { font-size: var(--fs-xs); color: var(--text-secondary); opacity: 0.85; margin-left: 2px; }
 /* 模型名：窄屏时先让位（弹性收缩），而不是整体溢出把右侧按钮挤出去 */
 .model-selector-current .model-name { max-width: 260px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
-/* 供应商徽标：模型短名同名时靠它区分 */
+/* 供应商徽标（仅智能体设置页的模型下拉在用；输入面板与自动任务的下拉项已不再输出该标记） */
 .model-dropdown-item .model-item-provider { font-size: var(--fs-xs); font-weight: 500; color: var(--text-secondary); opacity: 0.9; flex-shrink: 0; padding: 0 4px; border: 1px solid var(--border-color); border-radius: 4px; line-height: 1.4; }
 
 /* Agents form model selector — reuse toolbar model-selector visuals, but as a full-width form control dropping downward */

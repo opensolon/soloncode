@@ -16,8 +16,8 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 /**
  * 模型显示名契约测试。
  *
- * <p>规则：界面只展示不带供应商前缀的 model 字段（缺失时回退 name）；
- * 选中值、去重键、状态比较一律仍用完整 name，避免同名模型串号。</p>
+ * <p>规则：下拉项展示完整 name（与改动前一致）；触发器展示不带供应商前缀的 model 字段（缺失时回退 name），
+ * 完整 name 保留在 title；选中值、去重键、状态比较一律仍用完整 name，避免同名模型串号。</p>
  */
 public class ModelDisplayNameWebContractTest {
     @Test
@@ -36,15 +36,15 @@ public class ModelDisplayNameWebContractTest {
     }
 
     @Test
-    void chatModelListKeepsNameAsSelectionKeyAndShowsDisplayName() throws IOException {
+    void chatModelListKeepsNameAsSelectionKeyAndShowsFullName() throws IOException {
         String js = resourceText("/static/js/app-history.js");
 
         assertTrue(js.contains("data-model=\"' + escapeHtml(m.name) + '\" data-search=\""),
                 "下拉项 data-model 必须保留完整 name（选中与回填的锚点）");
         assertTrue(js.contains("var cls = m.name === currentModel ? ' active' : '';"),
                 "选中态比较必须用完整 name，否则不同供应商的同名模型会一起高亮");
-        assertTrue(js.contains("escapeHtml(window.modelDisplayName(m))"),
-                "下拉项主标题必须使用显示名");
+        assertTrue(js.contains("'<span class=\"model-item-name\">' + escapeHtml(m.name)"),
+                "下拉项主标题必须显示完整 name（与改动前的列表呈现一致），短名只用于触发器");
         assertTrue(js.contains("function modelDisplayOf(modelName) {"),
                 "触发器需要按 name 反查显示名");
         assertTrue(js.contains("var searchKey = (m.name + ' ' + (m.model || '') + ' ' + window.modelProviderLabel(m)).toLowerCase();"),
