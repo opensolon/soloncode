@@ -1,8 +1,9 @@
 
 ### v2026.11.15
 
-* 添加 soloncode web 自动化任务 技通、连接器的选择
-* 添加 soloncode web 对话 技通、连接器的选择
+* 新增 soloncode web 直接运行模式（不需要安装，双击 run.xxx 即可）
+* 添加 soloncode web 自动化任务可以选择特定的：技能、连接器
+* 添加 soloncode web 可以选择特定的：技能、连接器
 * 调整 soloncode web mcp 更名为 “连接器”
 
 ### v2026.11.11
