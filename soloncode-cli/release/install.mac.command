@@ -15,19 +15,20 @@ status=$?
 
 # 收尾与 Windows 的 install.window.cmd 保持一致：只提示“按回车键退出”，回车后脚本结束。
 # 脚本只能决定自己何时退出；窗口关不关由“终端 → 设置 → 描述文件 → Shell → shell 退出后”决定。
+# 输出文案一律用英文，与 install.sh / install.ps1 保持一致（注释用中文，不影响输出）。
 has_tty() { { : < /dev/tty; } 2>/dev/null; }
 
 if [ "$status" -ne 0 ]; then
-    printf '[Error] 安装没有正常结束（退出码 %s），请查看上方提示。\n' "$status"
+    printf '[Error] Installation did not complete (exit code %s). See the messages above.\n' "$status"
 fi
 
 # 有终端才等回车；完全没有终端（管道、无控制终端）时直接退出。
 # 优先读 /dev/tty：双击时标准输入未必是终端，读 stdin 会立刻 EOF（提示一闪而过）。
 if has_tty; then
-    printf '%s' "按回车键退出..."
+    printf '%s' "Press Enter to exit..."
     IFS= read -r < /dev/tty || true
 elif [ -t 0 ]; then
-    printf '%s' "按回车键退出..."
+    printf '%s' "Press Enter to exit..."
     IFS= read -r || true
 fi
 

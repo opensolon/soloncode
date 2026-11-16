@@ -73,17 +73,26 @@ end tell"
 
 detect_launcher_window
 
+# 输出文案一律用英文，与 uninstall.sh / uninstall.ps1 保持一致（注释用中文，不影响输出）。
 echo ""
 if [ "$status" -ne 0 ]; then
-    printf '[Error] 卸载没有正常结束（退出码 %s），请查看上方提示。\n' "$status"
+    printf '[Error] Uninstall did not complete (exit code %s). See the messages above.\n' "$status"
 fi
-if [ -n "$terminal_tty" ]; then
-    printf '%s' "按回车键关闭窗口..."
-else
-    printf '%s' "按回车键退出..."
+# 有终端才提示并等回车；完全没有终端（管道、无控制终端）时直接退出，不阻塞自动化调用。
+if { : < /dev/tty; } 2>/dev/null || [ -t 0 ]; then
+    if [ -n "$terminal_tty" ]; then
+        printf '%s' "Press Enter to close this window..."
+    else
+        printf '%s' "Press Enter to exit..."
+    fi
+    # 优先读 /dev/tty：双击时标准输入未必是终端，读 stdin 会立刻 EOF（提示一闪而过、窗口马上关掉）。
+    if { : < /dev/tty; } 2>/dev/null; then
+        IFS= read -r < /dev/tty || true
+    else
+        IFS= read -r || true
+    fi
+    echo ""
 fi
-read -r || true
-echo ""
 close_terminal_window
 
 exit "$status"

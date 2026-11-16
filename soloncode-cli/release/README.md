@@ -13,7 +13,7 @@ Mac / Linux / Harmony PC：
 sh install.sh
 ```
 
-macOS 还可以直接双击 `install.mac.command`（会在“终端”里跑 `install.sh`；装完按回车，这个窗口会变成一个普通命令提示符，可以直接敲 `soloncode` / `soloncode web`，输入 `exit` 或按 Cmd+W 关闭窗口）。
+macOS 还可以直接双击 `install.mac.command`（会在“终端”里跑 `install.sh`，装完提示 `Press Enter to exit...`，按回车后脚本结束；窗口是否自动关闭由“终端 → 设置 → 描述文件 → Shell → shell 退出后”这个偏好决定）。
 
 Windows (PowerShell)：
 
@@ -103,7 +103,7 @@ Mac / Linux：
 sh ~/.soloncode/bin/uninstall.sh
 ```
 
-macOS 也可以直接双击 `~/.soloncode/bin/uninstall.mac.command`（会在“终端”里跑 `uninstall.sh`，卸载完按回车关闭窗口）。卸载前请先关掉正在运行的 Web / CLI 窗口，否则进程会残留。
+macOS 也可以直接双击 `~/.soloncode/bin/uninstall.mac.command`（会在“终端”里跑 `uninstall.sh`，卸载完提示 `Press Enter to close this window...`，按回车后脚本结束；窗口是否自动关闭由“终端 → 设置 → 描述文件 → Shell → shell 退出后”这个偏好决定）。卸载前请先关掉正在运行的 Web / CLI 窗口，否则进程会残留。
 
 Windows (PowerShell)：
 
