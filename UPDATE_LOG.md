@@ -2,7 +2,8 @@
 
 ### v2026.11.16
 
-调整 soloncode web 设置面板样式
+* 添加 soloncode web 连接器（MCP）市场
+* 调整 soloncode web 设置面板样式
 
 ### v2026.11.15
 
