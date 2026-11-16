@@ -42,7 +42,8 @@
             <includes>
                 <include>uninstall.sh</include>
                 <include>uninstall.ps1</include>
-                <include>uninstall.cmd</include>
+                <include>uninstall.window.cmd</include>
+                <include>uninstall.mac.command</include>
             </includes>
         </fileSet>
 

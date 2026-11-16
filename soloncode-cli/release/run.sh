@@ -4,18 +4,25 @@
 # 直接运行同目录下的 bin/soloncode-cli.jar，无需执行 install.sh。
 # 适合放到 U 盘 / 共享目录里随处运行。
 #
-# 用法：
-#   ./run.sh                 进入交互式命令行
-#   ./run.sh web             启动 Web 界面（默认端口 4808）
+# 用法（不带参数时默认启动 Web 界面，和双击启动一致）：
+#   ./run.sh                 启动 Web 界面（默认端口 4808，自动打开浏览器）
 #   ./run.sh web 4808        启动 Web 界面并指定端口
+#   ./run.sh cli             进入交互式命令行
 #   ./run.sh --help          查看全部参数
 #
 # 数据目录（可选）：默认仍然使用 ~/.soloncode（与安装版共用配置）。
 # 想让配置、会话、记忆、技能都跟着程序走，设置环境变量 SOLONCODE_HOME：
 #   export SOLONCODE_HOME="/media/usb/soloncode-data"
-#   ./run.sh web
+#   ./run.sh
 
 set -u
+
+# 默认动作是 Web 界面（双击启动就是这种场景）。
+# 位置参数会被 CLI 当成 flag 序列解析，所以这里补一个 "web"；
+# 想要交互式命令行请显式执行 ./run.sh cli。
+if [ "$#" -eq 0 ]; then
+    set -- web
+fi
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 JAR_FILE="$SCRIPT_DIR/bin/soloncode-cli.jar"

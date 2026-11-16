@@ -13,7 +13,7 @@ Mac / Linux / Harmony PC：
 sh install.sh
 ```
 
-macOS 还可以直接双击 `install.mac.command`（会在“终端”里跑 `install.sh`，装完停在窗口里等回车，方便看结果）。
+macOS 还可以直接双击 `install.mac.command`（会在“终端”里跑 `install.sh`；装完按回车直接在这个窗口里启动 `soloncode web`，装完就能用，Ctrl+C 停止）。
 
 Windows (PowerShell)：
 
@@ -35,20 +35,23 @@ Windows 离线安装器及生成的启动器以 Windows PowerShell **2.0～5.1**
 
 不想“安装”也可以直接用发布包里的 `run.sh` / `run.cmd` 启动，它们只做一件事：用 Java 运行同包的 `bin/soloncode-cli.jar`。
 
+不带任何参数时默认启动 **Web 界面**（默认端口 4808，并自动打开浏览器），和双击启动的效果一致；想要交互式命令行，显式传 `cli`。
+
 Mac / Linux / Harmony PC：
 
 ```bash
-sh run.sh                # 交互式命令行
-sh run.sh web            # Web 界面（默认端口 4808）
-sh run.sh web 4808       # Web 界面并指定端口
+sh run.sh                      # Web 界面（默认端口 4808，自动打开浏览器）
+sh run.sh web 4808             # Web 界面并指定端口
+sh run.sh cli                  # 交互式命令行
+sh run.sh --help               # 查看全部参数
 ```
 
 Windows：
 
 ```bat
 run.cmd
-run.cmd web
 run.cmd web 4808
+run.cmd cli
 ```
 
 * Windows 和 macOS 都可以直接双击启动，不用开命令行：Windows 双击 `run.cmd`（程序退出后窗口会停住，方便看提示）；macOS 双击 `run.mac.command`（会在“终端”里运行 `run.sh`，因为 Finder 里双击 `.sh` 只会用编辑器打开）。
@@ -70,7 +73,7 @@ sh run.sh web
 mkdir -p "$SOLONCODE_HOME/.soloncode"
 cp -r skills commands AGENTS.md "$SOLONCODE_HOME/.soloncode/"
 ```
-* 免安装启动器比安装版生成的 `soloncode` 命令更简单：不做“复用已在运行实例并把当前目录打开为工作区”的端口探测，`web` 端口被占用时会直接报错，不会自动接管。
+* 免安装启动器比安装版生成的 `soloncode` 命令更简单：不做“复用已在运行实例并把当前目录打开为工作区”的端口探测，`web` 端口被占用时会直接报错，不会自动接管（所以不要重复双击；先关掉前一个窗口，或改用 `sh run.sh web 0` 让程序自选空闲端口）。
 
 
 ### 4、安装后的主要目录
@@ -84,8 +87,9 @@ cp -r skills commands AGENTS.md "$SOLONCODE_HOME/.soloncode/"
 |   +-- soloncode
 |   +-- soloncode.ps1
 |   +-- uninstall.sh
+|   +-- uninstall.mac.command
 |   +-- uninstall.ps1
-|   +-- uninstall.cmd
+|   +-- uninstall.window.cmd
 +-- skills/                # 全局 Skills
 +-- agents/                # 全局子代理
 +-- commands/              # 全局自定义命令
@@ -118,6 +122,8 @@ Mac / Linux：
 ```bash
 sh ~/.soloncode/bin/uninstall.sh
 ```
+
+macOS 也可以直接双击 `~/.soloncode/bin/uninstall.mac.command`（会在“终端”里跑 `uninstall.sh`，卸载完按回车关闭窗口）。卸载前请先关掉正在运行的 Web / CLI 窗口，否则进程会残留。
 
 Windows (PowerShell)：
 
