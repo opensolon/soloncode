@@ -305,7 +305,11 @@
 /* 连接器市场：表单来源提示 */
 .mcp-market-hint { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border-color); }
 .mcp-market-hint-req { color: #d97706; }
+.mcp-market-hint-opt { color: var(--text-secondary); opacity: 0.85; }
 .mcp-market-hint-note { flex: 0 0 100%; }
+/* 提示里的出处链接（详情页/项目文档） */
+.mcp-market-hint-link { margin-left: 2px; padding: 0; border: 0; background: none; font: inherit; color: var(--accent); text-decoration: underline; cursor: pointer; }
+.mcp-market-hint-link:hover { opacity: 0.8; }
 /* 待填参数的取值说明：每个参数占一行，避免与来源/必填提示挤在同一个横向流里 */
 .mcp-market-hint-param { flex: 0 0 100%; color: var(--text-secondary); opacity: 0.9; }
 .mcp-market-hint-param b { font-weight: 600; color: var(--text-primary); }

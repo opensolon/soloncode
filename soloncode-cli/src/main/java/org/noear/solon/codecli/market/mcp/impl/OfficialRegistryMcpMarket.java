@@ -9,6 +9,7 @@ import org.noear.solon.codecli.market.mcp.McpMarket;
 import org.noear.solon.codecli.market.mcp.McpMarketConfig;
 import org.noear.solon.codecli.market.mcp.McpMarketDetail;
 import org.noear.solon.codecli.market.mcp.McpMarketItem;
+import org.noear.solon.codecli.market.mcp.McpLocaleHint;
 import org.noear.solon.codecli.market.mcp.McpMarketPage;
 import org.noear.solon.codecli.market.mcp.McpMarketParam;
 import org.noear.solon.codecli.market.mcp.McpServerDraft;
@@ -241,6 +242,13 @@ public class OfficialRegistryMcpMarket implements McpMarket {
         }
 
         draft.pendingParams(pending);
+
+        if (!pending.isEmpty() && Assert.isNotEmpty(detail.getHomepageUrl())) {
+            // 参数取值的出处：官方 Registry 的 homepage（通常是源仓库）。
+            // 只说「去哪取」，参数名与取值格式已由 pendingParams 呈现，不再重抄。
+            draft.note(McpLocaleHint.of("mcp.marketNoteDoc"))
+                    .docUrl(detail.getHomepageUrl());
+        }
         return draft;
     }
 

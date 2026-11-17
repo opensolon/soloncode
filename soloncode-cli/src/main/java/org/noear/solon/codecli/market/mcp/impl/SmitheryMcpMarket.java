@@ -7,6 +7,7 @@ import org.noear.solon.codecli.market.mcp.McpMarket;
 import org.noear.solon.codecli.market.mcp.McpMarketConfig;
 import org.noear.solon.codecli.market.mcp.McpMarketDetail;
 import org.noear.solon.codecli.market.mcp.McpMarketItem;
+import org.noear.solon.codecli.market.mcp.McpLocaleHint;
 import org.noear.solon.codecli.market.mcp.McpMarketPage;
 import org.noear.solon.codecli.market.mcp.McpMarketParam;
 import org.noear.solon.codecli.market.mcp.McpServerDraft;
@@ -336,16 +337,16 @@ public class SmitheryMcpMarket implements McpMarket {
         boolean hosted = isHosted(url);
 
         List<McpMarketParam> pending = new ArrayList<>();
-        Map<String, String> headers = new LinkedHashMap<>();
 
         if (hosted) {
             // 鉴权走请求头，不拼进 URL：密钥不会被网关/代理日志记录，
             // 也不会随复制粘贴的地址包而外泄。
-            headers.put(HEADER_AUTHORIZATION, BEARER_PREFIX);
-
+            // 前缀交给 valuePrefix（与另两个市场同一套机制）：表单会预填
+            // "Authorization=Bearer "，用户直接粘 key 即可，前缀不会丢。
             pending.add(new McpMarketParam()
                     .name(HEADER_AUTHORIZATION)
-                    .description("Smithery API Key（在 smithery.ai 账户设置中生成，接在 Bearer 之后）")
+                    .descriptionHint(McpLocaleHint.of("mcp.marketParamSmitheryKey"))
+                    .valuePrefix(BEARER_PREFIX)
                     .required(true)
                     .secret(true)
                     .in(McpMarketParam.IN_HEADER));
@@ -362,18 +363,20 @@ public class SmitheryMcpMarket implements McpMarket {
             }
         }
 
-        draft.url(url).headers(headers);
+        draft.url(url);
         draft.pendingParams(pending);
 
-        String platformHint = platformParams.isEmpty()
-                ? ""
-                : "；另有 " + String.join("、", platformParams) + " 需在 smithery.ai 该连接器配置中填写后生效";
+        // 只留 pendingParams 表达不了的那一条：参数名已在表单里无处可填（属于平台侧配置），
+        // 不写进 note 用户就会以为漏了。其余（“Authorization 怎么填”“去哪个页面拿 key”）
+        // 已分别由 pendingParams 行、参数说明和文档链接覆盖，不再复述。
+        if (!platformParams.isEmpty()) {
+            draft.note(McpLocaleHint.of("mcp.marketNotePlatformParams",
+                    "names", String.join("、", platformParams),
+                    "site", "smithery.ai"));
+        }
 
-        if (hosted) {
-            draft.note("该连接器由 Smithery 托管：请把请求头 Authorization 补成“Bearer <你的 API Key>”"
-                    + "（已预填 Bearer 前缀，直接在后面粘 key 即可）" + platformHint + "。");
-        } else if (!platformHint.isEmpty()) {
-            draft.note("该连接器的部分参数需在其部署端配置后生效" + platformHint + "。");
+        if ((hosted || !platformParams.isEmpty()) && Assert.isNotEmpty(detail.getHomepageUrl())) {
+            draft.docUrl(detail.getHomepageUrl());
         }
 
         return draft;

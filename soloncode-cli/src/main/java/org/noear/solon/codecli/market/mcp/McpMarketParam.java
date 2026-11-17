@@ -15,7 +15,14 @@ public class McpMarketParam {
     public static final String IN_QUERY = "query";
 
     private String name;
+    /** 参数说明（多数来自源站，是源站的语言，不翻译） */
     private String description;
+    /**
+     * 参数说明的本地化版本（本项目自己写的说明，如「API Key 在何处生成」）。
+     *
+     * <p>有值时前端优先用它，没有才用 {@link #description}。</p>
+     */
+    private McpLocaleHint descriptionHint;
     private boolean required;
     private boolean secret;
     private String defaultValue;
@@ -33,6 +40,7 @@ public class McpMarketParam {
 
     public McpMarketParam name(String name) { this.name = name; return this; }
     public McpMarketParam description(String description) { this.description = description; return this; }
+    public McpMarketParam descriptionHint(McpLocaleHint descriptionHint) { this.descriptionHint = descriptionHint; return this; }
     public McpMarketParam required(boolean required) { this.required = required; return this; }
     public McpMarketParam secret(boolean secret) { this.secret = secret; return this; }
     public McpMarketParam defaultValue(String defaultValue) { this.defaultValue = defaultValue; return this; }
@@ -41,6 +49,7 @@ public class McpMarketParam {
 
     public String getName() { return name; }
     public String getDescription() { return description; }
+    public McpLocaleHint getDescriptionHint() { return descriptionHint; }
     public boolean isRequired() { return required; }
     public boolean isSecret() { return secret; }
     public String getDefaultValue() { return defaultValue; }

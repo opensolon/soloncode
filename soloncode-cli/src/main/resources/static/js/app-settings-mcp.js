@@ -387,34 +387,71 @@
     }
 
     /**
-     * 表单顶部来源提示：来源市场 + 需补填的参数
+     * 渲染后端交来的可本地化提示（{key, args}），返回已转义的 HTML 文本。
+     * 兼容纯字符串（老字段）与空值。
+     */
+    function hintText(hint) {
+        if (!hint) return '';
+        if (typeof hint === 'string') return escapeHtml(hint);
+        if (!hint.key) return '';
+        return escapeHtml(I18n.t(hint.key, hint.args || {}));
+    }
+
+    /**
+     * 表单顶部来源提示：来源市场 + 需填写/可选参数 + 取值出处（可点开）
      */
     function renderMarketHint(draft) {
         var $hint = $('#mcpMarketHint');
         var parts = [];
+        var sep = I18n.t('mcp.marketParamSep');
 
         if (draft.source) {
             parts.push('<span>' + I18n.t('mcp.marketSource', { name: escapeHtml(draft.source) }) + '</span>');
         }
 
         var pending = draft.pendingParams || [];
-        if (pending.length) {
-            var names = pending.map(function (p) {
-                return escapeHtml(p.name) + (p.secret ? I18n.t('mcp.marketSecretMark') : '');
-            }).join(I18n.t('mcp.marketParamSep'));
-            parts.push('<span class="mcp-market-hint-req">' + I18n.t('mcp.marketPending', { names: names }) + '</span>');
+
+        // 必填与可选分开：广场里像 SESSIONTOKEN「用临时密钥才需要传」这类项也是空值，
+        // 混进「需填写」会让人误以为是非填不可的。
+        var requiredNames = [];
+        var optionalNames = [];
+        pending.forEach(function (p) {
+            var label = escapeHtml(p.name) + (p.secret ? I18n.t('mcp.marketSecretMark') : '');
+            (p.required ? requiredNames : optionalNames).push(label);
+        });
+        if (requiredNames.length) {
+            parts.push('<span class="mcp-market-hint-req">'
+                + I18n.t('mcp.marketPending', { names: requiredNames.join(sep) }) + '</span>');
+        }
+        if (optionalNames.length) {
+            parts.push('<span class="mcp-market-hint-opt">'
+                + I18n.t('mcp.marketOptional', { names: optionalNames.join(sep) }) + '</span>');
         }
 
-        // 市场草稿的接入说明（如托管连接需要 Authorization 请求头）
-        if (draft.note) {
-            parts.push('<span class="mcp-market-hint-note">' + escapeHtml(draft.note) + '</span>');
+        // 市场草稿的接入说明（如「另有某参数需在平台端配置」），末尾跟一个可点开的出处链接。
+        // 后端只给语言包键 + 参数，文案在这里按当前语言渲染（界面上是二十多种语言，
+        // 而适配器里的中文写死会让非中文用户看到中文）。
+        var noteText = hintText(draft.note);
+        if (noteText || draft.docUrl) {
+            var noteHtml = noteText;
+            if (draft.docUrl) {
+                noteHtml += '<button type="button" class="mcp-market-hint-link" data-url="'
+                    + escapeAttr(draft.docUrl) + '">' + escapeHtml(I18n.t('mcp.marketDocLink')) + '</button>';
+            }
+            parts.push('<span class="mcp-market-hint-note">' + noteHtml + '</span>');
         }
 
         // 每个待填参数的取值说明（去哪里取密钥、是否可留空走 OAuth、值的格式等）
         pending.forEach(function (p) {
-            if (!p.description) return;
-            parts.push('<span class="mcp-market-hint-param"><b>' + escapeHtml(p.name) + '</b> '
-                + escapeHtml(p.description) + '</span>');
+            var desc = hintText(p.descriptionHint) || (p.description ? escapeHtml(p.description) : '');
+            // 已预填了取值前缀（如 "Bearer "）的参数，补一句「直接在后面粘值」：
+            // 否则用户可能把前缀删掉重填，得到一个必然 401 的裸值。
+            if (p.valuePrefix) {
+                var prefixTip = escapeHtml(I18n.t('mcp.marketParamPrefixed', { prefix: p.valuePrefix.trim() }));
+                desc = desc ? desc + ' ' + prefixTip : prefixTip;
+            }
+            if (!desc) return;
+            parts.push('<span class="mcp-market-hint-param"><b>' + escapeHtml(p.name) + '</b> ' + desc + '</span>');
         });
 
         if (parts.length) {
@@ -909,6 +946,13 @@
     // 点击页面其他区域关闭下拉菜单
     $(document).on('click', function () {
         $('#mcpImportMenu').removeClass('show');
+    });
+
+    // 市场提示里的出处链接（详情页/项目文档）：交给系统浏览器打开
+    $(document).on('click', '.mcp-market-hint-link', function (e) {
+        e.stopPropagation();
+        var url = $(this).attr('data-url');
+        if (url) window.open(url, '_blank');
     });
     
     // 下拉菜单项点击事件

@@ -31,8 +31,20 @@ public class McpServerDraft {
     /** 来源条目 id */
     private String sourceId;
     private String configId;
-    /** 来源说明（接入前的注意事项，如「需在平台端配置密钥」） */
-    private String note;
+    /**
+     * 来源说明（接入前的注意事项，如「另有某些参数需在平台端配置」）。
+     *
+     * <p>只放 pendingParams 表达不了的信息：参数清单已由前端按必填/可选分组列出，
+     * 这里不再重抄一遍参数名，也不复述「取值方式见文档」（文档链接已单独给出）。</p>
+     */
+    private McpLocaleHint note;
+    /**
+     * 参数/文档的出处页面（详情页或项目主页）。
+     *
+     * <p>只在「需要用户补参数」时有意义：提示里说「去广场页面或项目文档查取」时，
+     * 得有个能点开的地址，否则用户只能自己搜。</p>
+     */
+    private String docUrl;
 
     public McpServerDraft() {
     }
@@ -49,7 +61,8 @@ public class McpServerDraft {
     public McpServerDraft source(String source) { this.source = source; return this; }
     public McpServerDraft sourceId(String sourceId) { this.sourceId = sourceId; return this; }
     public McpServerDraft configId(String configId) { this.configId = configId; return this; }
-    public McpServerDraft note(String note) { this.note = note; return this; }
+    public McpServerDraft note(McpLocaleHint note) { this.note = note; return this; }
+    public McpServerDraft docUrl(String docUrl) { this.docUrl = docUrl; return this; }
 
     public String getName() { return name; }
     public String getType() { return type; }
@@ -63,5 +76,6 @@ public class McpServerDraft {
     public String getSource() { return source; }
     public String getSourceId() { return sourceId; }
     public String getConfigId() { return configId; }
-    public String getNote() { return note; }
+    public McpLocaleHint getNote() { return note; }
+    public String getDocUrl() { return docUrl; }
 }

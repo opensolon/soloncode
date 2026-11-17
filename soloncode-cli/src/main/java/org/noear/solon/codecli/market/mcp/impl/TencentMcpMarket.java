@@ -10,6 +10,7 @@ import org.noear.solon.codecli.market.mcp.McpMarketConfig;
 import org.noear.solon.codecli.market.mcp.McpMarketCategory;
 import org.noear.solon.codecli.market.mcp.McpMarketDetail;
 import org.noear.solon.codecli.market.mcp.McpMarketItem;
+import org.noear.solon.codecli.market.mcp.McpLocaleHint;
 import org.noear.solon.codecli.market.mcp.McpMarketPage;
 import org.noear.solon.codecli.market.mcp.McpMarketParam;
 import org.noear.solon.codecli.market.mcp.McpServerDraft;
@@ -399,7 +400,6 @@ public class TencentMcpMarket implements McpMarket {
                 .configId(config.getConfigId());
 
         List<McpMarketParam> pending = new ArrayList<>();
-        List<String> placeholders = new ArrayList<>();
 
         if (McpTypeResolver.isStdio(config.getType())) {
             draft.command(config.getCommand()).args(config.getArgs());
@@ -415,7 +415,6 @@ public class TencentMcpMarket implements McpMarket {
                     } else {
                         env.put(param.getName(), "");
                         pending.add(param);
-                        placeholders.add(param.getName());
                     }
                 }
             }
@@ -432,12 +431,10 @@ public class TencentMcpMarket implements McpMarket {
                         } else {
                             headers.put(param.getName(), "");
                             pending.add(param);
-                            placeholders.add(param.getName());
                         }
                     } else {
                         // 广场只有 header 位的远程条目才提供参数；其余按待填提示处理
                         pending.add(param);
-                        placeholders.add(param.getName());
                     }
                 }
             }
@@ -446,9 +443,11 @@ public class TencentMcpMarket implements McpMarket {
 
         draft.pendingParams(pending);
 
-        if (!placeholders.isEmpty()) {
-            draft.note("以下参数需补齐后才能连接：" + String.join("、", placeholders)
-                    + "（在广场页面或项目文档中可查取）");
+        if (!pending.isEmpty()) {
+            // 参数清单已由 pendingParams 呈现（前端按必填/可选分组渲染），这里不再重抄一遍参数名，
+            // 只说「去哪里取」，并给出可点击的广场详情页。
+            draft.note(McpLocaleHint.of("mcp.marketNoteDoc"))
+                    .docUrl(DETAIL_PAGE_URL + detail.getId());
         }
 
         return draft;
