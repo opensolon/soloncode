@@ -1426,6 +1426,8 @@
   "mcp.marketAllCategories": "Todos",
   "mcp.marketFormTitle": "Add Connector (from Market)",
   "mcp.marketSource": "From {name}",
+  "mcp.descriptionLabel": "Description",
+  "mcp.descriptionPlaceholder": "What this connector does (shown to the model to help it pick the right server when there are many tools)",
   "mcp.marketPending": "Required: {names}",
   "mcp.marketSecretMark": " (secret)",
   "mcp.marketParamSep": ", ",

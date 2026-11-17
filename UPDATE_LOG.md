@@ -2,6 +2,10 @@
 
 ### v2026.11.17
 
+* **市场分类清单改为随包内置，分类上不再显示条目数**：三个有分类维度的市场（腾讯云 MCP 广场、SkillHub、ClawHub）原来都在运行期取分类：腾讯云打 `/categories`、SkillHub 打 `/api/v1/categories` 再并发 13 个请求拿各分类 total，ClawHub 最麻烦——分类表是站点前端打包的静态常量（`catalogMetadata-<hash>.js`，文件名带构建 hash），只能「SSR HTML → 入口脚本 → 分类 chunk」三层正则跟着抓，源站一改版就退回内置兜底。分类清单本身是静态内容，现在统一内置为随包的版本化资源（`market/mcp/impl/tencent-categories.json`、`market/skill/impl/skillhub-categories.json`、`market/skill/impl/clawhub-categories.json`，各带 `version` / `snapshotAt` / `source` 便于追溯），由 `MarketCategoryResource` 统一读取并缓存，运行期零网络请求；市场包内已无任何 HTML / 正则抓取代码。分类条目数不再展示，`McpMarketCategory` / `SkillMarketCategory` 去掉 `count`，前端分类条只渲染名称（同时删掉不再使用的 `.mcp-category-count` 样式）。快照为 2026-11-17 实测值：腾讯云 12 项、SkillHub 13 项、ClawHub 14 项，分类名仍是源站原文（中文站中文、英文站英文，不翻译）。**源站新增/改名分类需要更新对应 JSON 才跟上（不再自动发现）。**
+
+* **连接器（MCP）支持描述，工具很多时模型先看服务目录**：① 添加/编辑表单新增「描述」，从连接器市场添加时自动带上市场条目的描述（官方注册表、腾讯、Smithery 三个市场的草稿都带 `description`），导入 JSON 配置时保留 `description`；列表有描述时优先显示描述。描述写进配置（`mcpServers.<name>.description`），运行时传给 MCP 网关。② 配套 solon-ai 网关：MCP 工具超过 100 个且服务不超过 30 个时，模型先看到「服务名（工具数）：描述」目录，再用 `list_server_tools` 查看某个服务的工具；没填描述时取服务端自己上报的说明，再没有就用工具名生成一句。`call_tool` 不再把内部参数（视野、语言）发给第三方 MCP 服务。③ 修复：编辑连接器后工具白/黑名单被清空、已停用的连接器被重新启用；以停用状态新增的连接器配置里仍记为启用。文案：22 个语言文件各加 `mcp.descriptionLabel` / `mcp.descriptionPlaceholder`（简繁中文本地化，其余英文）。
+
 * **移除 `AgentMcpExtension`，子代理声明的 MCP 服务统一走引擎视野（`_mcps_selected`）**：引擎已在委派和直接对话两条路径上把智能体声明写入视野，不再为每次构建的子代理新建一个只含声明服务的网关。行为变化：① 声明以外的 MCP 工具，清单里不显示，`search_tools` 也搜不到（配套 solon-ai 网关 `search_tools` 按视野过滤）；但知道名字时 `get_tool_detail` 与 `call_tool` 仍可用，和技能声明一致；② 直接和智能体对话时按会话选择显示工具，不会再因为会话选了声明以外的服务而一个工具都看不到；③ 会话级子代理（`generate` 未持久化）的声明同样生效；④ 委派时不再重复拉取各服务工具列表。需要「只准用」的硬隔离时，用请求级作用域（`_mcps_allowed`）。
 
 ### v2026.11.16

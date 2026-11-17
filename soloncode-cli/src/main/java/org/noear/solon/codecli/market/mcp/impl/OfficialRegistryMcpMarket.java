@@ -200,6 +200,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
         McpServerDraft draft = new McpServerDraft()
                 .name(suggestName(detail.getName()))
                 .type(config.getType())
+                .description(detail.getDescription())
                 .source(name())
                 .sourceId(detail.getId())
                 .configId(config.getConfigId());

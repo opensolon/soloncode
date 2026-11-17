@@ -103,7 +103,7 @@ public class SmitheryMcpMarket implements McpMarket {
         int pageSize = limit <= 0 ? 30 : Math.min(limit, PAGE_SIZE_MAX);
 
         if (Assert.isNotEmpty(query)) {
-            return searchByQuery(query.trim(), pageSize);
+            return searchByQuery(query.trim(), pageSize, cursor);
         }
 
         int page = parsePage(cursor);
@@ -140,8 +140,11 @@ public class SmitheryMcpMarket implements McpMarket {
      *
      * <p>该注册表无搜索接口，这是在不引入外部搜索引擎前提下的折中方案：
      * 覆盖最常用的长尾查询，且索引 10 分钟内复用，不会每敲一个字就抓一次远端。</p>
+     *
+     * <p>命中结果全在本地索引里，故分页也是对索引切片（游标 = 偏移量），
+     * 与浏览列表的「页码游标」共用同一个 cursor 参数，前端靠 nextCursor 决定是否显示加载更多。</p>
      */
-    private Result<McpMarketPage> searchByQuery(String query, int limit) {
+    private Result<McpMarketPage> searchByQuery(String query, int limit, String cursor) {
         try {
             SearchIndex index = getSearchIndex();
 
@@ -159,14 +162,21 @@ public class SmitheryMcpMarket implements McpMarket {
                 }
                 if (all) {
                     matched.add(index.items.get(i));
-                    if (matched.size() >= limit) {
-                        break;
-                    }
                 }
             }
 
-            // 搜索结果不做游标翻页（本地过滤，一次给全）
-            return Result.succeed(new McpMarketPage().items(matched).nextCursor(null));
+            int offset = parseOffset(cursor);
+            if (offset >= matched.size()) {
+                return Result.succeed(new McpMarketPage()
+                        .items(Collections.<McpMarketItem>emptyList())
+                        .nextCursor(null));
+            }
+
+            int end = Math.min(offset + limit, matched.size());
+            List<McpMarketItem> pageItems = new ArrayList<>(matched.subList(offset, end));
+            String nextCursor = end < matched.size() ? String.valueOf(end) : null;
+
+            return Result.succeed(new McpMarketPage().items(pageItems).nextCursor(nextCursor));
         } catch (Exception e) {
             LOG.warn("SmitheryMcpMarket.search error: {}", e.getMessage());
             return Result.failure("搜索连接器失败: " + e.getMessage());
@@ -315,6 +325,7 @@ public class SmitheryMcpMarket implements McpMarket {
         McpServerDraft draft = new McpServerDraft()
                 .name(suggestName(detail.getDisplayName() != null ? detail.getDisplayName() : detail.getName()))
                 .type(config.getType())
+                .description(detail.getDescription())
                 .source(name())
                 .sourceId(detail.getId())
                 .configId(config.getConfigId());
@@ -546,6 +557,21 @@ public class SmitheryMcpMarket implements McpMarket {
             return page < 1 ? 1 : page;
         } catch (NumberFormatException e) {
             return 1;
+        }
+    }
+
+    /**
+     * 搜索结果游标：本地索引的偏移量（与浏览列表的页码游标语义不同，两者不会混用）
+     */
+    private int parseOffset(String cursor) {
+        if (Assert.isEmpty(cursor)) {
+            return 0;
+        }
+        try {
+            int offset = Integer.parseInt(cursor.trim());
+            return offset < 0 ? 0 : offset;
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 

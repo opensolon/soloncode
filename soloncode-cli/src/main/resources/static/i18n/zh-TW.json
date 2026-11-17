@@ -1426,6 +1426,8 @@
   "mcp.marketAllCategories": "全部",
   "mcp.marketFormTitle": "新增連接器（來自市場）",
   "mcp.marketSource": "來自 {name}",
+  "mcp.descriptionLabel": "描述",
+  "mcp.descriptionPlaceholder": "這個連接器能做什麼（會展示給模型，幫助它在工具較多時選對服務）",
   "mcp.marketPending": "需填寫：{names}",
   "mcp.marketSecretMark": "（機密）",
   "mcp.marketParamSep": "、",

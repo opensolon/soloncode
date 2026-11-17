@@ -425,7 +425,6 @@
 .mcp-category-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border: 1px solid var(--border-color); border-radius: 14px; background: var(--bg-primary); color: var(--text-secondary); font-size: var(--fs-sm); line-height: 1.2; cursor: pointer; transition: border-color 0.15s, color 0.15s, background 0.15s; }
 .mcp-category-chip:hover { border-color: var(--accent); color: var(--text-primary); }
 .mcp-category-chip.active { border-color: var(--accent); background: rgba(var(--accent-rgb, 59,130,246), 0.12); color: var(--accent); font-weight: 500; }
-.mcp-category-count { font-size: 11px; opacity: 0.65; }
 
 /* 通用自定义 select 样式（用于日志级别、接口规范等原生 select） */
 .form-select-custom {

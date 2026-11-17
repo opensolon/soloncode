@@ -2,6 +2,7 @@ package org.noear.solon.codecli.market.skill.impl;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
+import org.noear.solon.codecli.market.MarketCategoryResource;
 import org.noear.solon.codecli.market.skill.SkillMarket;
 import org.noear.solon.codecli.market.skill.SkillMarketCategory;
 import org.noear.solon.codecli.market.skill.SkillMarketDetail;
@@ -21,16 +22,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
  * SkillHub 市场适配器 — 对接 skillhub.cn（ClawHub 中国本土化镜像）。
  *
- * <p>搜索、详情、下载全部使用 skillhub.cn 自有 API（api.skillhub.cn）。</p>
+ * <p>搜索、详情、下载全部使用 skillhub.cn 自有 API（api.skillhub.cn）；分类清单是该站静态内容，
+ * 内置为资源文件（{@link #CATEGORIES_RESOURCE}），与列表、搜索一样不依赖实时抓取。</p>
  *
  * @author noear 2026/5/30 created
  */
@@ -45,24 +44,11 @@ public class SkillhubSkillMarket implements SkillMarket {
      * <p>不能用 /api/v1/search 代替：那个接口无分页、limit 封顶 100，且 category 等参数会被静默忽略。</p>
      */
     private static final String SKILLS_PAGE_URL = BASE_URL + "/api/skills";
-    /** 分类清单接口（13 个一级分类，带 key/name/nameEn/sortOrder） */
-    private static final String CATEGORIES_URL = BASE_URL + "/api/v1/categories";
-    /** 分类缓存时长：分类清单与条目数变化不频繁，避免每次开市场页都打 14 个请求 */
-    private static final long CATEGORY_CACHE_TTL_MS = 10 * 60 * 1000L;
+    /** 分类清单接口（13 个一级分类，带 key/name/nameEn/sortOrder）——仅用于生成内置快照，运行期不调用 */
+    private static final String CATEGORIES_RESOURCE = "skillhub-categories.json";
     /** /api/skills 的 pageSize 上限（超过返回空） */
     private static final int MAX_PAGE_SIZE = 100;
     private static final String USER_AGENT = "SolonCode/1.0";
-
-    /** 分类条目数并发拉取（串行 13 个请求要 3~5 秒，卡住分类栏） */
-    private static final ExecutorService COUNT_POOL = Executors.newFixedThreadPool(6, r -> {
-        Thread t = new Thread(r, "skillhub-category-count");
-        t.setDaemon(true);
-        return t;
-    });
-
-    private volatile List<SkillMarketCategory> cachedCategories;
-    private volatile long cachedCategoriesAt;
-
 
     @Override
     public String name() {
@@ -136,100 +122,21 @@ public class SkillhubSkillMarket implements SkillMarket {
     // ==================== 分类 ====================
 
     /**
-     * 获取分类清单（带各分类技能数）。
+     * 获取分类清单，来自内置资源（{@link #CATEGORIES_RESOURCE}），运行期不请求网络。
      *
-     * <p>分类来自 /api/v1/categories；条目数来自 /api/skills?category=X 的 total。
-     * 任一步骤失败都降级：清单失败返回空列表（前端隐藏分类栏），
-     * 条目数失败则该分类 count=0（前端不显示数字），不影响筛选功能本身。</p>
+     * <p>分类名取源站 {@code name}（中文站为中文），原样展示、不做翻译；分类条目数不再展示，
+     * 因此不再逐分类请求 {@code /api/skills} 的 total（原先 13 个并发请求只为拿数字）。</p>
      */
     @Override
     public List<SkillMarketCategory> categories() {
-        List<SkillMarketCategory> cached = cachedCategories;
-        if (cached != null && System.currentTimeMillis() - cachedCategoriesAt < CATEGORY_CACHE_TTL_MS) {
-            return cached;
+        List<MarketCategoryResource.Entry> entries =
+                MarketCategoryResource.load(SkillhubSkillMarket.class, CATEGORIES_RESOURCE);
+
+        List<SkillMarketCategory> list = new ArrayList<>(entries.size());
+        for (MarketCategoryResource.Entry entry : entries) {
+            list.add(new SkillMarketCategory().id(entry.getId()).name(entry.getName()));
         }
-
-        synchronized (this) {
-            if (cachedCategories != null && System.currentTimeMillis() - cachedCategoriesAt < CATEGORY_CACHE_TTL_MS) {
-                return cachedCategories;
-            }
-
-            try {
-                ONode root = ONode.ofJson(httpGet(CATEGORIES_URL));
-                ONode itemsNode = root.get("items");
-                if (itemsNode == null || !itemsNode.isArray()) {
-                    return Collections.emptyList();
-                }
-
-                List<SkillMarketCategory> list = new ArrayList<>();
-                for (ONode node : itemsNode.getArray()) {
-                    // 跳过停用分类
-                    ONode activeNode = node.get("active");
-                    if (activeNode != null && activeNode.isNull() == false && activeNode.getBoolean() == false) {
-                        continue;
-                    }
-
-                    String key = getStringValue(node, "key");
-                    if (key == null || key.isEmpty()) {
-                        continue;
-                    }
-
-                    // 分类名原样取源站（中文站返回中文），不做翻译；nameEn 仅在源站缺 name 时兜底
-                    String name = firstNonEmpty(
-                            getStringValue(node, "name"),
-                            getStringValue(node, "nameEn"),
-                            key);
-
-                    list.add(new SkillMarketCategory().id(key).name(name));
-                }
-
-                fillCounts(list);
-
-                cachedCategories = list;
-                cachedCategoriesAt = System.currentTimeMillis();
-                return list;
-            } catch (Exception e) {
-                LOG.warn("SkillhubMarket.categories error: {}", e.getMessage());
-                return Collections.emptyList();
-            }
-        }
-    }
-
-    /** 并发填充各分类的技能数（单项失败只影响该项的显示） */
-    private void fillCounts(List<SkillMarketCategory> categories) {
-        if (categories.isEmpty()) {
-            return;
-        }
-
-        List<Future<Integer>> futures = new ArrayList<>();
-        for (SkillMarketCategory category : categories) {
-            final String key = category.getId();
-            futures.add(COUNT_POOL.submit(() -> countOf(key)));
-        }
-
-        for (int i = 0; i < categories.size(); i++) {
-            try {
-                categories.get(i).count(futures.get(i).get());
-            } catch (Exception e) {
-                LOG.debug("SkillhubMarket.countOf {} error: {}", categories.get(i).getId(), e.getMessage());
-            }
-        }
-    }
-
-    /** 查询单个分类下的技能总数 */
-    private int countOf(String category) {
-        try {
-            String url = SKILLS_PAGE_URL + "?page=1&pageSize=1&category="
-                    + URLEncoder.encode(category, "UTF-8");
-            ONode data = ONode.ofJson(httpGet(url)).get("data");
-            if (data == null || data.isNull()) {
-                return 0;
-            }
-            ONode totalNode = data.get("total");
-            return (totalNode != null && !totalNode.isNull()) ? totalNode.getInt() : 0;
-        } catch (Exception e) {
-            return 0;
-        }
+        return list;
     }
 
     // ==================== 列表与搜索（新版 /api/skills） ====================

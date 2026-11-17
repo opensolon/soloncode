@@ -6,6 +6,9 @@ package org.noear.solon.codecli.market.mcp;
  * <p>只有提供分类维度的市场才有数据（如腾讯云 MCP 广场），
  * 其余市场 {@link McpMarket#categories()} 返回空列表，前端据此隐藏分类条。</p>
  *
+ * <p>分类清单是市场侧的静态内容，各适配器从内置资源读取（{@code MarketCategoryResource}），
+ * 只保留 id 与展示名：分类条目数不作为界面信息展示。</p>
+ *
  * @author noear 2026/11/16 created
  */
 public class McpMarketCategory {
@@ -16,17 +19,13 @@ public class McpMarketCategory {
      * （如腾讯云广场为中文、ClawHub 为英文），前端直接渲染。
      */
     private String name;
-    /** 该分类下的条目数，未知时为 0 */
-    private int count;
 
     public McpMarketCategory() {
     }
 
     public McpMarketCategory id(String id) { this.id = id; return this; }
     public McpMarketCategory name(String name) { this.name = name; return this; }
-    public McpMarketCategory count(int count) { this.count = count; return this; }
 
     public String getId() { return id; }
     public String getName() { return name; }
-    public int getCount() { return count; }
 }

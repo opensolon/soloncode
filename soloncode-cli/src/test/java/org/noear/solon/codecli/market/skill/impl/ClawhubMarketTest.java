@@ -15,8 +15,8 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * ClawhubMarket 集成测试 — 真实调用 clawhub.ai，禁止 mock。
  *
- * <p>重点覆盖分类维度：ClawHub 没有分类清单接口，分类表在站点前端资源（catalogMetadata chunk）里，
- * 运行期读源站、取不到才用内置快照；搜索接口支持 category 原生过滤但要求 q 非空；
+ * <p>重点覆盖分类维度：分类清单是站点前端打包的静态常量（没有对应接口），已内置为
+ * {@code clawhub-categories.json}，运行期不抓取；搜索接口支持 category 原生过滤但要求 q 非空；
  * 只按分类浏览走站点列表接口（游标分页，支持「加载更多」）。</p>
  *
  * @author noear 2026/11/16 created
@@ -48,16 +48,14 @@ public class ClawhubMarketTest {
     void categories_源站分类表原样透出() {
         List<SkillMarketCategory> categories = market.categories();
 
-        assertTrue(categories.size() >= 5,
-                "分类表应有数据（源站或内置快照），实际 " + categories.size() + " 项");
+        assertEquals(14, categories.size(),
+                "内置分类快照应为 14 项（源站 category 数组），实际 " + categories.size() + " 项");
 
         Set<String> ids = new HashSet<>();
         for (SkillMarketCategory category : categories) {
             assertNotNull(category.getId(), "分类标识不能为空");
             assertFalse(category.getId().isEmpty());
             assertNotNull(category.getName(), "分类 " + category.getId() + " 缺少展示名");
-            // 站点无分类计数接口，count 保持 0（前端不显示数字）
-            assertEquals(0, category.getCount(), "分类 " + category.getId() + " 的 count 应为 0");
             // 分类名是源站动态内容，必须原样透出：ClawHub 是英文站，不应被翻译成中文
             assertFalse(CJK.matcher(category.getName()).find(),
                     "分类 " + category.getId() + " 的展示名被翻译了，应为源站原样：" + category.getName());

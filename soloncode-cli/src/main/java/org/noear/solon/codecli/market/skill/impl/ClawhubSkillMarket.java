@@ -2,6 +2,7 @@ package org.noear.solon.codecli.market.skill.impl;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
+import org.noear.solon.codecli.market.MarketCategoryResource;
 import org.noear.solon.codecli.market.skill.SkillMarket;
 import org.noear.solon.codecli.market.skill.SkillMarketCategory;
 import org.noear.solon.codecli.market.skill.SkillMarketDetail;
@@ -21,13 +22,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
  * ClawHub 市场适配器 — 对接 clawhub.ai API。
+ *
+ * <p>列表、搜索、详情、下载全部走 JSON 接口（{@code /api/v1/*} 与站点后端
+ * {@code skills:listPublicPageV4}），<b>不做 HTML 解析</b>；分类清单是该站前端打包的静态常量、
+ * 没有对应接口，故内置为资源文件，见 {@link #CATEGORIES_RESOURCE}。</p>
  *
  * @author noear 2026/5/28 created
  */
@@ -37,62 +40,27 @@ public class ClawhubSkillMarket implements SkillMarket {
 
     private static final String BASE_URL = "https://clawhub.ai";
     private static final String USER_AGENT = "SolonCode/1.0";
-    /** 浏览页（SSR）需要浏览器 UA，否则可能拿到不同的渲染结果 */
+    /** 站点接口需要浏览器 UA（列表查询走站点后端），否则可能被拦 */
     private static final String BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             + "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
     /** 搜索接口：支持 category 过滤，但 q 必填（q 为空返回空数组）；返回 {results:[...]} */
     private static final String SEARCH_URL = BASE_URL + "/api/v1/search";
-    /** 浏览页：分类浏览唯一可用通道（无对应 JSON 接口，只能解析 SSR HTML） */
-    private static final String BROWSE_URL = BASE_URL + "/skills";
     /** 搜索接口 limit 上限（传 200/500 均按 100 返回） */
     private static final int MAX_SEARCH_LIMIT = 100;
 
     /**
-     * 分类兜底清单（14 个）。
+     * 分类清单的内置资源（与源站 2026-11-17 的分类表逐项一致）。
      *
-     * <p>ClawHub 没有分类清单接口（{@code /api/v1/categories} 为 404），分类表在站点前端资源里
-     * （{@code catalogMetadata-<hash>.js} 的 category 数组）。运行期优先读源站当前分类表
-     * （{@link #loadSourceCategories()}），失败才用这里兜底。</p>
+     * <p>分类表是站点前端打包的静态常量（{@code catalogMetadata-<hash>.js}），没有对应的 JSON 接口
+     * （{@code /api/v1/categories} 为 404），且文件名带构建 hash、每次发版都会变。原先靠
+     * 「SSR HTML → 入口脚本 → 分类 chunk」三层跟着抓，源站一改版就失效，因此改为随包内置、
+     * 运行期零网络请求；源站增删分类时更新这个文件即可（见 {@code MarketCategoryResource}）。</p>
      *
-     * <p>兜底值与源站 2026-11-16 的分类表逐项一致。<b>分类名属于源站动态内容，原样展示，不做翻译</b>；
-     * 兜底也不是翻译，只是源站取不到时的快照。</p>
-     *
-     * <p>slug 是浏览页 URL 与搜索接口共用的标识（小写，大小写敏感：
-     * {@code ?category=Development} 不生效，必须是小写 slug）。</p>
-     *
-     * <p>条目数（count）站点未提供，保持 0，前端据此不显示数字。</p>
+     * <p>分类名属于源站动态内容，<b>原样展示，不做翻译</b>。slug 是浏览与搜索接口共用的标识
+     * （小写且大小写敏感：{@code ?category=Development} 不生效）。站点未提供各分类条目数。</p>
      */
-    private static final String[][] FALLBACK_CATEGORIES = {
-            {"integrations", "Integrations"},
-            {"automation", "Automation"},
-            {"research", "Research"},
-            {"development", "Development"},
-            {"productivity", "Productivity"},
-            {"communication", "Communication"},
-            {"creative", "Creative"},
-            {"knowledge", "Knowledge"},
-            {"agents", "Agents"},
-            {"operations", "Operations"},
-            {"security", "Security"},
-            {"finance", "Finance"},
-            {"lifestyle", "Lifestyle"},
-            {"other", "Other"}
-    };
-
-    /** 浏览页 SSR 里的入口脚本（文件名带 hash，每次发版都会变） */
-    private static final Pattern SCRIPT_SRC = Pattern.compile("src=\"(/assets/[^\"]+\\.js)\"");
-    /** 入口脚本里引用的分类表 chunk（catalogMetadata-<hash>.js） */
-    private static final Pattern CATALOG_ASSET = Pattern.compile("(catalogMetadata-[A-Za-z0-9_-]+\\.js)");
-    /** 分类表条目形态：{slug:`security`,label:`Security`,...} */
-    private static final Pattern CATEGORY_ENTRY = Pattern.compile("slug:`([^`]+)`,label:`([^`]+)`");
-    /** 分类表数组的首两项（category 数组以 integrations → automation 开头，用它从 purposes/kinds 等其它分类法里区分出来） */
-    private static final String CATEGORY_TAXONOMY_HEAD = "integrations";
-    private static final String CATEGORY_TAXONOMY_NEXT = "automation";
-    private static final String CATEGORY_TAXONOMY_TAIL = "other";
-    /** 解析结果少于这个数量就认为没拿到分类表（源站改版），退回兜底清单 */
-    private static final int CATEGORY_MIN_SIZE = 5;
-    private static final long CATEGORY_CACHE_TTL_MS = 10 * 60 * 1000L;
+    private static final String CATEGORIES_RESOURCE = "clawhub-categories.json";
 
     /**
      * 站点后端（Convex）查询入口 —— 浏览页的列表、以及「加载更多」按钮都由它承载。
@@ -112,10 +80,6 @@ public class ClawhubSkillMarket implements SkillMarket {
     private static final String CONVEX_DIR = "desc";
     /** 游标流复用窗口：前端连续点「加载更多」时复用，超过这个时间就从头取 */
     private static final long STREAM_TTL_MS = 5 * 60 * 1000L;
-
-    /** 源站分类表缓存（取不到也缓存，避免每页都扇出 3 个请求） */
-    private volatile List<SkillMarketCategory> cachedCategories;
-    private volatile long cachedCategoriesAt;
 
     /** 最近一条游标流（市场页同时只有一个列表，不必要多） */
     private volatile CursorStream cursorStream;
@@ -229,98 +193,18 @@ public class ClawhubSkillMarket implements SkillMarket {
     // ==================== 分类 ====================
 
     /**
-     * 分类清单。分类名属于源站动态内容，原样透传、不翻译：
-     * 能读到源站分类表就用源站的（含新增/改名），读不到才用 {@link #FALLBACK_CATEGORIES} 快照。
+     * 分类清单，来自内置资源（{@link #CATEGORIES_RESOURCE}），运行期不请求网络。
+     *
+     * <p>分类名是源站英文原文，原样透出、不翻译；站点没有分类条目数，故不带计数。</p>
      */
     @Override
     public List<SkillMarketCategory> categories() {
-        List<SkillMarketCategory> cached = cachedCategories;
-        if (cached != null && System.currentTimeMillis() - cachedCategoriesAt < CATEGORY_CACHE_TTL_MS) {
-            return cached;
-        }
+        List<MarketCategoryResource.Entry> entries =
+                MarketCategoryResource.load(ClawhubSkillMarket.class, CATEGORIES_RESOURCE);
 
-        synchronized (this) {
-            if (cachedCategories != null && System.currentTimeMillis() - cachedCategoriesAt < CATEGORY_CACHE_TTL_MS) {
-                return cachedCategories;
-            }
-
-            List<SkillMarketCategory> list = loadSourceCategories();
-            if (list == null || list.size() < CATEGORY_MIN_SIZE) {
-                LOG.debug("ClawhubMarket.categories 未取到源站分类表，使用兜底清单");
-                list = fallbackCategories();
-            }
-
-            cachedCategories = list;
-            cachedCategoriesAt = System.currentTimeMillis();
-            return list;
-        }
-    }
-
-    /**
-     * 读源站分类表：浏览页 SSR → 入口脚本 → 分类表 chunk（文件名带 hash，只能逐层跟）。
-     *
-     * <p>任何一步失败返回 null（由调用方用兜底清单），不抛异常。</p>
-     */
-    private List<SkillMarketCategory> loadSourceCategories() {
-        try {
-            String html = httpGet(BROWSE_URL, BROWSER_UA);
-            Matcher script = SCRIPT_SRC.matcher(html);
-            if (script.find() == false) {
-                return null;
-            }
-
-            String indexJs = httpGet(BASE_URL + script.group(1), BROWSER_UA);
-            Matcher catalog = CATALOG_ASSET.matcher(indexJs);
-            if (catalog.find() == false) {
-                return null;
-            }
-
-            String metaJs = httpGet(BASE_URL + "/assets/" + catalog.group(1), BROWSER_UA);
-            return parseCategoryTaxonomy(metaJs);
-        } catch (Exception e) {
-            LOG.debug("ClawhubMarket.loadSourceCategories error: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * 从分类表 chunk 里切出 category 数组。
-     *
-     * <p>同一个文件里有 4 套分类法（purposes / kinds / category …），slug 会重复，
-     * 按首个 {@code integrations} 定位会落到 purposes 那套（实测踩过）。
-     * 所以用「{@code integrations} 紧接 {@code automation}」这对开头来认 category 数组，
-     * 再一直收到末项 {@code other}。</p>
-     */
-    private List<SkillMarketCategory> parseCategoryTaxonomy(String js) {
-        List<String[]> pairs = new ArrayList<>();
-        Matcher entry = CATEGORY_ENTRY.matcher(js);
-        while (entry.find()) {
-            pairs.add(new String[]{entry.group(1), entry.group(2)});
-        }
-
-        for (int i = 0; i < pairs.size() - 1; i++) {
-            if (CATEGORY_TAXONOMY_HEAD.equals(pairs.get(i)[0]) == false
-                    || CATEGORY_TAXONOMY_NEXT.equals(pairs.get(i + 1)[0]) == false) {
-                continue;
-            }
-
-            List<SkillMarketCategory> list = new ArrayList<>();
-            for (int j = i; j < pairs.size(); j++) {
-                list.add(new SkillMarketCategory().id(pairs.get(j)[0]).name(pairs.get(j)[1]));
-                if (CATEGORY_TAXONOMY_TAIL.equals(pairs.get(j)[0])) {
-                    break;
-                }
-            }
-            return list;
-        }
-
-        return null;
-    }
-
-    private static List<SkillMarketCategory> fallbackCategories() {
-        List<SkillMarketCategory> list = new ArrayList<>(FALLBACK_CATEGORIES.length);
-        for (String[] category : FALLBACK_CATEGORIES) {
-            list.add(new SkillMarketCategory().id(category[0]).name(category[1]));
+        List<SkillMarketCategory> list = new ArrayList<>(entries.size());
+        for (MarketCategoryResource.Entry entry : entries) {
+            list.add(new SkillMarketCategory().id(entry.getId()).name(entry.getName()));
         }
         return list;
     }
@@ -653,15 +537,11 @@ public class ClawhubSkillMarket implements SkillMarket {
     // ==================== 内部工具方法 ====================
 
     private String httpGet(String url) throws Exception {
-        return httpGet(url, USER_AGENT);
-    }
-
-    private String httpGet(String url, String userAgent) throws Exception {
         Exception lastEx = null;
         for (int i = 0; i < 3; i++) {
             try {
                 HttpUtils http = HttpUtils.http(url)
-                        .header("User-Agent", userAgent)
+                        .header("User-Agent", USER_AGENT)
                         .timeout(15000)
                         .ssl(SkillMarketSslSupplier.getInstance());
                 ProxyConfig.applyIfNeeded(http);

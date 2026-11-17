@@ -217,6 +217,9 @@ public class McpSettingsController extends BaseSettingsController{
             item.put("type", params.getTypeOrTransport() != null ? params.getTypeOrTransport() : "stdio");
             item.put("enabled", params.isEnabled());
             item.put("scope", params.getScope() != null ? params.getScope() : AgentFlags.SCOPE_USER);
+            if (Assert.isNotEmpty(params.getDescription())) {
+                item.put("description", params.getDescription());
+            }
             if (McpTypeResolver.isStdio(params.getTypeOrTransport())) {
                 item.put("command", params.getCommand());
                 if (params.getArgs() != null) {
@@ -277,6 +280,8 @@ public class McpSettingsController extends BaseSettingsController{
         McpServerDo params = new McpServerDo();
         params.setType(type);
         params.setScope(scope);
+        params.setEnabled(enabled);
+        params.setDescription(descriptionOf(root));
 
         if (McpTypeResolver.isStdio(type)) {
             params.setCommand(root.get("command").getString());
@@ -379,7 +384,7 @@ public class McpSettingsController extends BaseSettingsController{
         if (type == null) {
             type = McpTypeResolver.standardize(existing.getTypeOrTransport());
         }
-        boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : true;
+        boolean enabled = root.hasKey("enabled") ? root.get("enabled").getBoolean(true) : existing.isEnabled();
         String scope = root.hasKey("scope") ? root.get("scope").getString() : (existing.getScope() != null ? existing.getScope() : AgentFlags.SCOPE_USER);
         if (Assert.isEmpty(scope) || (!AgentFlags.SCOPE_LOCAL.equals(scope))) {
             scope = AgentFlags.SCOPE_USER;
@@ -388,6 +393,12 @@ public class McpSettingsController extends BaseSettingsController{
         McpServerDo params = new McpServerDo();
         params.setType(type);
         params.setScope(scope);
+        params.setEnabled(enabled);
+        // 描述：请求里有该键就覆盖（空串=清除），没有就保留原值
+        params.setDescription(root.hasKey("description") ? descriptionOf(root) : existing.getDescription());
+        // 工具白/黑名单由单独的工具管理接口维护，编辑连接信息时原样保留
+        params.setAllowedTools(existing.getAllowedTools());
+        params.setDisallowedTools(existing.getDisallowedTools());
 
         if (McpTypeResolver.isStdio(type)) {
             params.setCommand(root.hasKey("command") ? root.get("command").getString() : existing.getCommand());
@@ -438,6 +449,19 @@ public class McpSettingsController extends BaseSettingsController{
         syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server updated: {}", name);
         return Result.succeed();
+    }
+
+    /**
+     * 读取请求里的描述（去首尾空白；空串或缺失为 null）
+     */
+    private static String descriptionOf(ONode root) {
+        String description = root.get("description").getString();
+        if (description == null) {
+            return null;
+        }
+
+        description = description.trim();
+        return description.isEmpty() ? null : description;
     }
 
     /**
@@ -685,6 +709,10 @@ public class McpSettingsController extends BaseSettingsController{
             server.put("name", name);
             server.put("enabled", true);
             server.put("scope", "user");
+            String description = descriptionOf(cfg);
+            if (description != null) {
+                server.put("description", description);
+            }
 
             // 检测服务器类型
             String type = cfg.get("type").getString();

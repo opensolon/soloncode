@@ -135,10 +135,8 @@
             + escapeHtml(I18n.t('mcp.marketAllCategories')) + '</button>';
 
         categories.forEach(function (c) {
-            var count = Number(c.count) || 0;
             html += '<button type="button" class="mcp-category-chip" data-id="' + escapeAttr(c.id || '') + '" title="' + escapeAttr(c.name || '') + '">'
                 + escapeHtml(c.name || '')
-                + (count > 0 ? '<span class="mcp-category-count">' + count + '</span>' : '')
                 + '</button>';
         });
 
@@ -146,6 +144,21 @@
     }
 
     // ==================== 列表加载 ====================
+
+    /**
+     * 切换「加载更多」按钮的忙碌态。
+     * 失败时必须回滚，否则按钮会卡在禁用态、用户再也点不动。
+     */
+    function loadMoreBusy(busy) {
+        var $btn = $mcpMarketList.find('.mcp-market-load-more');
+        if (!$btn.length) return;
+
+        if (busy) {
+            $btn.prop('disabled', true).text(I18n.t('common.loading'));
+        } else {
+            $btn.prop('disabled', false).text(I18n.t('mcp.marketLoadMore'));
+        }
+    }
 
     function loadList(reset) {
         // 切分类/改关键词会连续发请求，用序号丢弃过期响应（否则慢请求会把新结果覆盖）
@@ -176,6 +189,7 @@
                 $mcpMarketLoading.hide();
 
                 if (resp && resp.code !== undefined && resp.code !== 200) {
+                    loadMoreBusy(false);
                     $mcpMarketError.text(resp.description || resp.message || I18n.t('mcp.marketLoadFailed')).show();
                     return;
                 }
@@ -192,6 +206,7 @@
             .fail(function (jqXHR, textStatus) {
                 if (seq !== _reqSeq) return;
                 $mcpMarketLoading.hide();
+                loadMoreBusy(false);
                 var msg = I18n.t('mcp.marketLoadFailed');
                 if (textStatus === 'timeout') msg = I18n.t('mcp.marketTimeout');
                 else if (jqXHR && jqXHR.status) msg = I18n.t('mcp.marketLoadFailedHttp', { n: jqXHR.status });
@@ -447,8 +462,7 @@
 
     // 加载更多
     $mcpMarketList.on('click', '.mcp-market-load-more', function () {
-        var $btn = $(this);
-        $btn.prop('disabled', true).text(I18n.t('common.loading'));
+        loadMoreBusy(true);
         loadList(false);
     });
 

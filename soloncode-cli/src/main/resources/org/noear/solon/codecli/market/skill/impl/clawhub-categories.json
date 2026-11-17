@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-11-17",
+  "snapshotAt": "2026-11-17",
+  "source": "https://clawhub.ai/assets/catalogMetadata-<hash>.js（经 /skills SSR → 入口脚本逐层定位）",
+  "note": "ClawHub 分类表快照（14 项，源站 category 数组）。该清单是站点前端打包的静态常量，没有对应 JSON 接口，故内置为资源文件、运行期不抓取。分类名是源站英文原文，原样展示不翻译；站点未提供各分类条目数。",
+  "categories": [
+    {"id": "integrations", "name": "Integrations"},
+    {"id": "automation", "name": "Automation"},
+    {"id": "research", "name": "Research"},
+    {"id": "development", "name": "Development"},
+    {"id": "productivity", "name": "Productivity"},
+    {"id": "communication", "name": "Communication"},
+    {"id": "creative", "name": "Creative"},
+    {"id": "knowledge", "name": "Knowledge"},
+    {"id": "agents", "name": "Agents"},
+    {"id": "operations", "name": "Operations"},
+    {"id": "security", "name": "Security"},
+    {"id": "finance", "name": "Finance"},
+    {"id": "lifestyle", "name": "Lifestyle"},
+    {"id": "other", "name": "Other"}
+  ]
+}

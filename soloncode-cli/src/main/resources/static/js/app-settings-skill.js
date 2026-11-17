@@ -203,10 +203,8 @@
             + escapeHtml(I18n.t('skills.marketAllCategories')) + '</button>';
 
         categories.forEach(function (c) {
-            var count = Number(c.count) || 0;
             html += '<button type="button" class="mcp-category-chip" data-key="' + escapeAttr(c.id || '') + '" title="' + escapeAttr(c.name || '') + '">'
                 + escapeHtml(c.name || '')
-                + (count > 0 ? '<span class="mcp-category-count">' + count + '</span>' : '')
                 + '</button>';
         });
 

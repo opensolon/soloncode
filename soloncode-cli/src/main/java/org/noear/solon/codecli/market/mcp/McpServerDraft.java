@@ -17,6 +17,8 @@ public class McpServerDraft {
     private String name;
     /** 标准化类型：stdio / sse / streamable */
     private String type;
+    /** 服务描述（来自市场条目，预填到表单的描述字段；会出现在 MCP 网关的服务目录里） */
+    private String description;
     private String command;
     private List<String> args;
     private Map<String, String> env;
@@ -37,6 +39,7 @@ public class McpServerDraft {
 
     public McpServerDraft name(String name) { this.name = name; return this; }
     public McpServerDraft type(String type) { this.type = type; return this; }
+    public McpServerDraft description(String description) { this.description = description; return this; }
     public McpServerDraft command(String command) { this.command = command; return this; }
     public McpServerDraft args(List<String> args) { this.args = args; return this; }
     public McpServerDraft env(Map<String, String> env) { this.env = env; return this; }
@@ -50,6 +53,7 @@ public class McpServerDraft {
 
     public String getName() { return name; }
     public String getType() { return type; }
+    public String getDescription() { return description; }
     public String getCommand() { return command; }
     public List<String> getArgs() { return args; }
     public Map<String, String> getEnv() { return env; }

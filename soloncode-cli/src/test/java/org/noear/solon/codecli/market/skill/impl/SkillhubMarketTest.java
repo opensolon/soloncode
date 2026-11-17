@@ -450,14 +450,31 @@ public class SkillhubMarketTest {
         @Order(6)
         @DisplayName("trending/search 应与第一页分页结果一致")
         void testLegacyMethodsAlignWithFirstPage() {
-            Result<List<SkillMarketItem>> trending = market.trending(10);
-            Result<SkillMarketPage> page = market.page(null, null, 1, 10);
+            // 两次请求之间列表可能被源站更新顶掉首位（实测偶发），稍重试几次再判定，避免假失败
+            String trendingSlug = null;
+            String pageSlug = null;
+            int trendingSize = -1;
+            int pageSize = -1;
 
-            assertEquals(200, trending.getCode());
-            assertEquals(200, page.getCode());
-            assertEquals(trending.getData().size(), page.getData().getItems().size());
-            assertEquals(trending.getData().get(0).getSlug(), page.getData().getItems().get(0).getSlug(),
-                    "trending 应等价于分页第一页");
+            for (int attempt = 0; attempt < 3; attempt++) {
+                Result<List<SkillMarketItem>> trending = market.trending(10);
+                Result<SkillMarketPage> page = market.page(null, null, 1, 10);
+
+                assertEquals(200, trending.getCode());
+                assertEquals(200, page.getCode());
+
+                trendingSize = trending.getData().size();
+                pageSize = page.getData().getItems().size();
+                trendingSlug = trending.getData().get(0).getSlug();
+                pageSlug = page.getData().getItems().get(0).getSlug();
+
+                if (trendingSize == pageSize && trendingSlug.equals(pageSlug)) {
+                    return;
+                }
+            }
+
+            assertEquals(trendingSize, pageSize);
+            assertEquals(trendingSlug, pageSlug, "trending 应等价于分页第一页");
         }
     }
 }

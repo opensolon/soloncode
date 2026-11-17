@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-11-17",
+  "snapshotAt": "2026-11-17",
+  "source": "POST https://cloud.tencent.com/developer/api/mcp/categories",
+  "note": "腾讯云 MCP 广场分类清单快照，按源站 weight 倒序。分类名是源站中文原文，原样展示不翻译；分类条目数不再展示，故不落快照。",
+  "categories": [
+    {"id": "100", "name": "腾讯产品MCP"},
+    {"id": "106", "name": "搜索与信息检索"},
+    {"id": "105", "name": "数据库与文件"},
+    {"id": "107", "name": "支付与交易"},
+    {"id": "108", "name": "位置服务"},
+    {"id": "109", "name": "社交媒体"},
+    {"id": "110", "name": "设计与创意"},
+    {"id": "111", "name": "文档工具"},
+    {"id": "104", "name": "浏览器自动化"},
+    {"id": "112", "name": "内容抓取"},
+    {"id": "101", "name": "开发者工具"},
+    {"id": "113", "name": "其他"}
+  ]
+}

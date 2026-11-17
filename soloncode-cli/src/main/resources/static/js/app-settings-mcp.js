@@ -63,7 +63,8 @@
             list.forEach(function (item) {
                 var name = item.name || '';
                 var type = item.type || 'stdio';
-                var detail = type === 'stdio' ? (item.command || '') : (item.url || '');
+                // 有描述时优先展示描述（比命令或地址更能说明用途）
+                var detail = item.description || (type === 'stdio' ? (item.command || '') : (item.url || ''));
                 var icon = iconMap[type] || 'M';
                 html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="settings-list-icon">' + escapeHtml(icon) + '</div>'
@@ -225,7 +226,7 @@
         mcpEditName = null;
         $mcpSaveBtn.text(I18n.t('mcp.saveBtn'));
         $('#mcpName').val('').prop('readOnly', false).removeClass('readonly-gray');
-        $('#mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
+        $('#mcpDescription, #mcpCommand, #mcpArgs, #mcpEnv, #mcpRemoteUrl, #mcpHeaders, #mcpTimeout').val('');
         $('#mcpMarketHint').hide().empty();
         setScopeValue('mcpScope', 'user');
         setScopeReadonly('mcpScope', false);
@@ -236,6 +237,7 @@
         var type = server.type || 'stdio';
         setMcpType(type);
         setScopeValue('mcpScope', server.scope || 'user');
+        $('#mcpDescription').val(server.description || '');
 
         if (type === 'stdio') {
             $('#mcpCommand').val(server.command || '');
@@ -288,6 +290,8 @@
         }
         setMcpType(type);
         setScopeValue('mcpScope', 'user');
+        // 市场条目的描述转为连接器描述（用户可改）
+        $('#mcpDescription').val(draft.description || '');
 
         var pending = draft.pendingParams || [];
 
@@ -390,7 +394,12 @@
         if (!name) { showToast(I18n.t('mcp.nameRequired'), 'error'); return null; }
         if (!/^[a-zA-Z0-9_-]+$/.test(name)) { showToast(I18n.t('mcp.nameInvalid'), 'error'); return null; }
 
-        var bodyObj = { name: name, type: type, enabled: true, scope: $('#mcpScope').val() || 'user' };
+        // 编辑时保留原启用状态（启停由列表开关管理，编辑连接信息不应顺手把停用的服务重新打开）
+        var editing = mcpEditName ? mcpCachedList.find(function (s) { return s.name === mcpEditName; }) : null;
+        var enabled = editing ? editing.enabled !== false : true;
+        // 描述总是发送：空串表示清除
+        var bodyObj = { name: name, type: type, enabled: enabled, scope: $('#mcpScope').val() || 'user',
+            description: $('#mcpDescription').val().trim() };
 
         if (type === 'stdio') {
             var command = $('#mcpCommand').val().trim();

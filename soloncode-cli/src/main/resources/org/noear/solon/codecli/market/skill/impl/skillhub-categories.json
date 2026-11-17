@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-11-17",
+  "snapshotAt": "2026-11-17",
+  "source": "GET https://api.skillhub.cn/api/v1/categories",
+  "note": "SkillHub 一级分类快照（源站 count=13，均为 active），按源站 sortOrder 升序。分类名取源站 name（中文站为中文），原样展示不翻译；nameEn 仅在源站缺 name 时兜底。",
+  "categories": [
+    {"id": "pay-skill", "name": "Pay Skill"},
+    {"id": "office-efficiency", "name": "办公效率"},
+    {"id": "content-creation", "name": "内容创作"},
+    {"id": "dev-programming", "name": "开发编程"},
+    {"id": "data-analysis", "name": "数据分析"},
+    {"id": "design-media", "name": "设计多媒体"},
+    {"id": "ai-agent", "name": "AI Agent"},
+    {"id": "knowledge-management", "name": "知识管理"},
+    {"id": "business-ops", "name": "商业运营"},
+    {"id": "education", "name": "教育学习"},
+    {"id": "professional", "name": "行业专业"},
+    {"id": "it-ops-security", "name": "IT 运维与安全"},
+    {"id": "life-service", "name": "生活服务"}
+  ]
+}

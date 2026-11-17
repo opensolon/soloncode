@@ -1426,6 +1426,8 @@
   "mcp.marketAllCategories": "全部",
   "mcp.marketFormTitle": "添加连接器（来自市场）",
   "mcp.marketSource": "来自 {name}",
+  "mcp.descriptionLabel": "描述",
+  "mcp.descriptionPlaceholder": "这个连接器能做什么（会展示给模型，帮助它在工具较多时选对服务）",
   "mcp.marketPending": "需填写：{names}",
   "mcp.marketSecretMark": "（机密）",
   "mcp.marketParamSep": "、",
