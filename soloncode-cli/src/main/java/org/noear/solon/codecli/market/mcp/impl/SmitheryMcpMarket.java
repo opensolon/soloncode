@@ -60,6 +60,9 @@ public class SmitheryMcpMarket implements McpMarket {
     private static final String BASE_URL = "https://registry.smithery.ai";
     private static final String USER_AGENT = "SolonCode/1.0";
 
+    /** 官网地址（只作浏览入口，接口在 registry 子域） */
+    private static final String SITE_SERVERS_PAGE_URL = "https://smithery.ai/servers";
+
     /** 分页上限（服务端允许的最大 pageSize） */
     private static final int PAGE_SIZE_MAX = 100;
     /** 本地搜索索引扫描的页数（每页 100 条，按热度取前 N 页） */
@@ -375,8 +378,15 @@ public class SmitheryMcpMarket implements McpMarket {
                     "site", "smithery.ai"));
         }
 
-        if ((hosted || !platformParams.isEmpty()) && Assert.isNotEmpty(detail.getHomepageUrl())) {
-            draft.docUrl(detail.getHomepageUrl());
+        // 详情接口不返回 homepage（该字段只在列表节点里），所以这里过去恒为 null、docUrl 从未设过。
+        // 也不能按 https://smithery.ai/servers/{qualifiedName} 直接拼：该路径确实是站点的规范形式
+        // （页面自身的 <link rel="canonical"> 就长这样，且大小写敏感：Tavily 有页、tavily 没有），
+        // 但注册表里只有约 7% 的条目在新站有落地页——实测 60 条仅 4 条 200，
+        // brave/gmail/github/slack/googledrive 这些老牌托管服务一律 404；
+        // sitemap.xml 亦不可用（仅收录 129 条，且含已下线条目）。
+        // 点开即 404 比没有链接更糟，故统一指向带关键词的服务列表页。
+        if (hosted || !platformParams.isEmpty()) {
+            draft.docUrl(serversPageUrl(detail.getId()));
         }
 
         return draft;
@@ -536,6 +546,27 @@ public class SmitheryMcpMarket implements McpMarket {
                 || lower.contains("secret")
                 || lower.contains("password")
                 || lower.contains("apikey");
+    }
+
+    /**
+     * 站点上定位条目的链接。
+     *
+     * <p>不拼 {@code /servers/{qualifiedName}}：命中率太低（多数条目在新站没有落地页），
+     * 拼出来大概率是 404 页。这里退一步给服务列表页并带上关键词——页面本身有搜索框，
+     * 用户按名字即可找到条目；关键词不被站点侧采纳时，链接也只是落在列表页，不会失效。</p>
+     */
+    static String serversPageUrl(String qualifiedName) {
+        if (Assert.isEmpty(qualifiedName) || qualifiedName.trim().isEmpty()) {
+            return SITE_SERVERS_PAGE_URL;
+        }
+
+        try {
+            // 斜杠保留原样：qualifiedName 形如 owner/name，编码成 %2F 反而不利于检索
+            String query = URLEncoder.encode(qualifiedName.trim(), "UTF-8").replace("%2F", "/");
+            return SITE_SERVERS_PAGE_URL + "?q=" + query;
+        } catch (Exception e) {
+            return SITE_SERVERS_PAGE_URL;
+        }
     }
 
     /**
