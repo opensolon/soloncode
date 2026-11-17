@@ -310,11 +310,19 @@ public class ChatWebController extends AbstractWebController {
     @Mapping("/web/chat/skills")
     public Result<Map> skills(@Param("sessionId") String sessionId) throws Exception {
         String userId = getCurrentUserId();
-        AgentSession session = sessionManager().getOwnedSession(sessionId, userId);
+        AgentSession session = sessionManager().getSessionOrNull(sessionId);
 
         Map<String, Object> data = new LinkedHashMap<>();
-        data.put("skills", engine().getSessionSkills(session));
-        data.put("mcps", engine().getSessionMcps(session));
+        if (session == null) {
+            // 会话尚未建立（例如刚打开的新对话）：查询接口不建会话，避免每切一次对话就多一个空会话目录
+            data.put("skills", null);
+            data.put("mcps", null);
+        } else {
+            // 已有会话：沿用归属校验（未认领的顺手认领），再读会话级选择
+            session = sessionManager().getOwnedSession(sessionId, userId);
+            data.put("skills", engine().getSessionSkills(session));
+            data.put("mcps", engine().getSessionMcps(session));
+        }
         return Result.succeed(data);
     }
 

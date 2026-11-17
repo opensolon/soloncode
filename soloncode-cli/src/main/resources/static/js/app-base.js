@@ -187,6 +187,8 @@ function setActiveSession(sessionId) {
     if (isStreaming) setBtnStopMode();
     else setBtnSendMode();
     if (typeof modelsLoaded !== 'undefined' && modelsLoaded) refreshSessionModel(sessionId);
+    // 技能 / 连接器的选中同样是会话级状态，必须随会话切换同步（否则会把上一个对话的勾选带过来）
+    if (window.Capabilities && typeof window.Capabilities.syncSession === 'function') window.Capabilities.syncSession();
     if (typeof resetContextIndicator === 'function') resetContextIndicator();
     if (typeof renderQueueDock === 'function') renderQueueDock();
     if (typeof updateStreamingPlaceholder === 'function') updateStreamingPlaceholder();

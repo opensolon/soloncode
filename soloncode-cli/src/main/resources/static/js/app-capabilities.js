@@ -20,8 +20,10 @@
     ];
 
     var options = null;          // { skills: [...], mcpServers: [...] }
-    var selection = { skills: null, mcps: null };  // null = 不限制
-    var loadedSessionId = null;
+    // 选择按会话隔离：sessionId → { skills, mcps }（null = 不限制）。
+    // 绝不能只留一份全局状态，否则切到另一个对话时会把上一个会话的勾选带过去。
+    var selections = {};
+    var loadedKeys = {};         // 已从服务端拉过选择的会话；未拉过的会话按「不限制」显示
     var widgets = [];
 
     function t(key, params) {
@@ -30,6 +32,26 @@
 
     function currentSessionId() {
         return (typeof window.SESSION_ID !== 'undefined' && window.SESSION_ID) || null;
+    }
+
+    /** 缓存键：无会话（理论上不会出现）时落到 _default，避免 undefined 键混在一起 */
+    function currentKey() {
+        return currentSessionId() || '_default';
+    }
+
+    /** 取（必要时创建）某个会话的选择态 */
+    function stateOf(key) {
+        var state = selections[key];
+        if (!state) {
+            state = { skills: null, mcps: null };
+            selections[key] = state;
+        }
+        return state;
+    }
+
+    /** 当前会话的选择态——所有读写都必须走这里 */
+    function current() {
+        return stateOf(currentKey());
     }
 
     function esc(text) {
@@ -133,7 +155,7 @@
     }
 
     function selectedCount(field) {
-        var list = selection[field];
+        var list = current()[field];
         return list ? list.length : 0;
     }
 
@@ -211,7 +233,7 @@
     function render(widget) {
         var field = widget.dim.field;
         // 计数与勾选只看当前可用项：已禁用 / 未启用的不显示，也就不该算进标签
-        var selected = filterAvailable(field, selection[field]);
+        var selected = filterAvailable(field, current()[field]);
 
         widget.$items.html(itemsHtml(itemsOf(field), selected, widget.$search.val()));
 
@@ -232,35 +254,67 @@
         widgets.forEach(render);
     }
 
-    function refreshSelection(callback) {
-        var sessionId = currentSessionId();
-        if (!sessionId) { callback && callback(); return; }
+    /** 拉取指定会话的技能 / MCP 选择，写进该会话的缓存；只有仍是当前会话时才重绘 */
+    function loadSelection(sessionId, callback) {
+        var key = sessionId || '_default';
+        if (!sessionId) {
+            loadedKeys[key] = true;
+            renderAll();
+            callback && callback();
+            return;
+        }
 
         $.get('/web/chat/skills', { sessionId: sessionId })
             .done(function (res) {
                 var data = (res && res.data) || {};
-                selection.skills = data.skills && data.skills.length ? data.skills : null;
-                selection.mcps = data.mcps && data.mcps.length ? data.mcps : null;
-                loadedSessionId = sessionId;
-                renderAll();
+                var state = stateOf(key);
+                state.skills = data.skills && data.skills.length ? data.skills : null;
+                state.mcps = data.mcps && data.mcps.length ? data.mcps : null;
+                loadedKeys[key] = true;
+                // 请求期间可能已经切到别的会话：只更新缓存，不动当前界面
+                if (currentKey() === key) renderAll();
             })
             .always(function () {
                 callback && callback();
             });
     }
 
+    /**
+     * 切会话后同步：先用该会话自己的缓存重绘（未知即空态），未拉过再从服务端补。
+     * 由 app-base.js 的 setActiveSession 调用——模型、子代理都在那里刷新，选择器同理。
+     */
+    function syncSession() {
+        var key = currentKey();
+        renderAll();
+        if (!loadedKeys[key]) loadSelection(currentSessionId());
+    }
+
+    /** 打开下拉时确保拿到的是本会话的选择 */
+    function refreshSelection(callback) {
+        var key = currentKey();
+        if (loadedKeys[key]) {
+            renderAll();
+            callback && callback();
+            return;
+        }
+        loadSelection(currentSessionId(), callback);
+    }
+
     function save(field, previous) {
         var sessionId = currentSessionId();
         if (!sessionId) return;
 
+        var key = sessionId;
+        var state = stateOf(key);
         var payload = { sessionId: sessionId };
-        var value = field && selection[field] != null ? filterAvailable(field, selection[field]) : null;
+        var value = field && state[field] != null ? filterAvailable(field, state[field]) : null;
         payload[field] = value == null ? '' : value.join(',');
 
         $.post('/web/chat/skills/select', payload).fail(function (err) {
             // 保存失败则回到点击前的状态，避免界面显示已选中、引擎却不认
+            // （回滚写回请求发起时的那个会话，别污染当前会话）
             console.error('Failed to save capability selection:', err);
-            selection[field] = previous;
+            stateOf(key)[field] = previous;
             renderAll();
             if (window.showToast) window.showToast(t('chatcap.saveFailed'), 'error');
         });
@@ -268,7 +322,8 @@
 
     function toggle(widget, value) {
         var field = widget.dim.field;
-        var previous = selection[field];
+        var state = current();
+        var previous = state[field];
         var selected = previous ? previous.slice() : [];
 
         var index = selected.indexOf(value);
@@ -279,16 +334,17 @@
         }
 
         // 全取消与「不限制」等价：清空而非存空数组
-        selection[field] = selected.length ? selected : null;
+        state[field] = selected.length ? selected : null;
         renderAll();
         save(field, previous);
     }
 
     function clear(widget) {
         var field = widget.dim.field;
-        if (selection[field] == null) return;
-        var previous = selection[field];
-        selection[field] = null;
+        var state = current();
+        if (state[field] == null) return;
+        var previous = state[field];
+        state[field] = null;
         renderAll();
         save(field, previous);
     }
@@ -319,8 +375,8 @@
 
             if (opening) {
                 $root.addClass('open');
-                // 切会话后第一次打开：重新拉取该会话的选择
-                if (loadedSessionId !== currentSessionId()) {
+                // 该会话的选择未拉过（刚切过来 / 首次加载）：先拉再渲染
+                if (!loadedKeys[currentKey()]) {
                     refreshSelection();
                 } else {
                     render(widget);
@@ -421,14 +477,20 @@
         openAdd: openAdd,
         normalize: normalize,
         filterAvailable: filterAvailable,
-        itemsHtml: itemsHtml
+        itemsHtml: itemsHtml,
+        // 切会话后由宿主同步：本文件的勾选与标签随会话走，不跨对话残留
+        syncSession: syncSession
     };
 
     window.reloadCapabilities = function () {
         options = null;
+        // 选项重载后按当前会话重新校准：已缓存的会话保持不动，未缓存的重新拉
+        var key = currentKey();
+        loadedKeys[key] = false;
         $.get('/web/chat/skills/options').done(function (res) {
             options = (res && res.data) || {};
-            refreshSelection();
+            if (currentKey() === key) refreshSelection();
+            else renderAll();
         });
     };
 
