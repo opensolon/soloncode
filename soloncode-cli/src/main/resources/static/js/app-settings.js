@@ -123,23 +123,63 @@
         return view || currentLlmView;
     }
 
+    // ===== 「大语言模型」页：两屏切换（页签 + 列表 ⇄ 编辑表单） =====
+    // 第一屏（#llmPaneMain）= 页签 + 模型/供应商列表，第二屏（#llmPaneForm）= 编辑表单。
+    // 动效与「设置 / 挂载」页点条目一致：小位移 + 淡入淡出，页签跟着列表一起退场，不做纵向收起。
+    // 这里只切 class（过渡与高度由 CSS 完成），列表/表单自身的显示隐藏仍归各自模块管。
+    var $llmPager = $('#llmPager');
+    var llmPagerRO = null;
+
+    function llmPagerSync() {
+        if (!$llmPager.length) return;
+        var $pane = $llmPager.find('.settings-pager__pane.is-active');
+        // 面板隐藏时量到的是 0，保留上一次的高度，等 ResizeObserver 重新同步；
+        // 向上取整，避免亚像素取整把最后一行裁掉
+        var h = $pane.length ? Math.ceil($pane[0].getBoundingClientRect().height) : 0;
+        if (h > 0) $llmPager.css('height', h + 'px');
+    }
+
+    function llmPagerShow(view) {
+        if (!$llmPager.length) return;
+        var isForm = view === 'form';
+        $('#llmPaneMain').toggleClass('is-active', !isForm);
+        $('#llmPaneForm').toggleClass('is-active', isForm);
+        // 仅作状态标记（供 switchLlmView 判断当前停在哪一屏），位移与淡入淡出全由 CSS 根据 is-active 完成
+        $llmPager.toggleClass('is-pushed', isForm);
+        llmPagerSync();
+    }
+
+    // 当前屏高度会因列表异步渲染、子视图切换、开关面板而变化，交给 ResizeObserver 兜底
+    function llmPagerWatch() {
+        if (llmPagerRO || typeof ResizeObserver === 'undefined' || !$llmPager.length) return;
+        llmPagerRO = new ResizeObserver(function () { llmPagerSync(); });
+        $llmPager.find('.settings-pager__pane').each(function () { llmPagerRO.observe(this); });
+    }
+    llmPagerWatch();
+    window._settingsCore.llmPagerShow = llmPagerShow;
+    window._settingsCore.llmPagerSync = llmPagerSync;
+
     /**
      * 切换「大语言模型」页内的子视图。
      * skipLoad=true 只做显示切换（进页面/关闭面板复位时用），避免和随后的 load 重复请求。
      */
     function switchLlmView(view, skipLoad) {
         currentLlmView = view === 'providers' ? 'providers' : 'models';
+        // 子视图只在第一屏（列表）里切；万一仍停在编辑表单，先推回列表
+        if ($llmPager.hasClass('is-pushed')) llmPagerShow('list');
         $('#llmViewToggle .plain-tabs__tab').removeClass('active')
             .filter('[data-view="' + currentLlmView + '"]').addClass('active');
         if (currentLlmView === 'providers') {
             $('#llmViewModels').hide();
             $('#llmViewProviders').show();
+            llmPagerSync();
             if (skipLoad) return;
             // 切进去先回列表页：上次可能停留在编辑表单，不归位会看起来像「供应商列表空页」
             if (window.settingsProviders) window.settingsProviders.showList();
         } else {
             $('#llmViewProviders').hide();
             $('#llmViewModels').show();
+            llmPagerSync();
             if (skipLoad) return;
             if (mod('_settingsLlm')) { mod('_settingsLlm').showList(); mod('_settingsLlm').load(); }
         }

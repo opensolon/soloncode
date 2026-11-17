@@ -227,9 +227,10 @@
         currentProvider = provider;
         fetchedModels = (provider && provider.models) ? provider.models.slice() : [];
 
-        // 切换视图
-        $listView.hide();
+        // 整屏推屏：表单从右侧推入，页签与列表一起滑走（列表保持可见，等动画结束由非当前屏隐藏）
+        $('#llmFormView').hide();
         $formView.show();
+        window._settingsCore.llmPagerShow('form');
 
         // 设置标题
         $formTitle.text(I18n.t(provider ? 'provider.editTitle' : 'provider.addTitle'));
@@ -252,9 +253,8 @@
     }
 
     function showList() {
-        $formView.hide();
-        $listView.addClass('slide-back').show();
-        setTimeout(function(){ $listView.removeClass('slide-back'); }, 260);
+        $listView.show();
+        window._settingsCore.llmPagerShow('list');
         currentProvider = null;
         fetchedModels = [];
         loadProvidersList();

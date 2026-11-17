@@ -276,6 +276,9 @@
    用法：容器 .plain-tabs + 若干 .plain-tabs__tab
    字号与 .settings-section-title 一致，用于「页签即标题」的场景（页内不再重复标题） */
 .plain-tabs { display: inline-flex; align-items: center; gap: 24px; }
+
+/* 「模型 / 供应商」子视图页签行：只做布局，进出表单时随整屏一起横向平移（见 .settings-pager） */
+.llm-view-toggle { display: flex; align-items: flex-start; }
 .plain-tabs__tab { height: 44px; padding: 0; border: none; background: none; font-size: var(--fs-3xl); font-weight: 500; line-height: 1; color: var(--text-secondary); cursor: pointer; transition: color 0.2s ease; }
 .plain-tabs__tab:hover { color: var(--text-primary); }
 .plain-tabs__tab.active { color: var(--text-primary); font-weight: 700; }
@@ -523,6 +526,29 @@
 }
 .settings-view-form { animation: settings-slide-in-right 0.25s ease-out; }
 .settings-view-list.slide-back { animation: settings-slide-in-left 0.25s ease-out; }
+
+/* ===== 两屏切换（大语言模型页：页签 + 列表 ⇄ 编辑表单） =====
+   动效与「设置 / 挂载」页点条目一致：0.25s 小位移 + 淡入淡出，不做整屏横向平移。
+   主屏（页签 + 列表）退回左侧 24px，表单从右侧 40px 推入；返回时各自退回自己那一侧。
+   两屏叠在同一格子里，当前屏回到文档流提供高度；
+   容器高度由脚本按当前屏内容写到内联 height 上（auto 无法过渡） */
+.settings-pager { position: relative; overflow: hidden; transition: height 0.25s ease-out; }
+.settings-pager__track { position: relative; width: 100%; }
+.settings-pager__pane {
+    position: absolute; top: 0; left: 0; width: 100%; z-index: 1;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity 0.12s ease-in, transform 0.18s ease-in, visibility 0s 0.18s;
+}
+/* 非当前屏各自待在自己那一侧，轮到时就从那一侧推入 */
+.settings-pager__track > .settings-pager__pane:first-child { transform: translateX(-24px); }
+.settings-pager__track > .settings-pager__pane:last-child { transform: translateX(40px); }
+.settings-pager__track > .settings-pager__pane.is-active {
+    position: relative; z-index: 2;
+    opacity: 1; visibility: visible; pointer-events: auto; transform: translateX(0);
+    transition: opacity 0.25s ease-out, transform 0.25s ease-out, visibility 0s 0s;
+}
+/* 两屏切换已接管过渡：取消旧的淡入位移动画，避免两套动画叠加 */
+#llmPager .settings-view-form, #llmPager .settings-view-list { animation: none; }
 
 /* 返回按钮 */
 .settings-back-btn { background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 4px 6px; border-radius: 6px; display: inline-flex; align-items: center; transition: all 0.15s; }

@@ -21,8 +21,10 @@
     var $llmFormView = $('#llmFormView');
     var llmEditName = null;
 
-    function showLlmListView() { $llmFormView.hide(); $llmListView.addClass('slide-back').show(); setTimeout(function(){ $llmListView.removeClass('slide-back'); }, 260); }
-    function showLlmFormView(title, isEdit) { $llmFormTitle.text(title || I18n.t('llm.formTitle.add')); $llmListView.hide(); $llmFormView.show(); $('#llmFormActions').toggle(!!isEdit); }
+    // 列表 ⇄ 表单：整屏横向推屏（页签与列表作为一个整体一起滑走，表单从右侧推入）
+    // 具体进/出由 core.llmPagerShow 切 class，这里只管两屏内部元素的显示
+    function showLlmListView() { core.llmPagerShow('list'); $llmListView.show(); }
+    function showLlmFormView(title, isEdit) { $('#providersFormView').hide(); $llmFormTitle.text(title || I18n.t('llm.formTitle.add')); $llmFormView.show(); $('#llmFormActions').toggle(!!isEdit); core.llmPagerShow('form'); }
 
     // ==================== LLM 管理 ====================
 

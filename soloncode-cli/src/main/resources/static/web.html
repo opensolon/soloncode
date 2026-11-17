@@ -1292,238 +1292,248 @@
                 </div>
                 <!-- LLM Tab -->
                 <div class="settings-tab-content" id="settingsTabLlm">
-                    <!-- 顶部子视图切换：模型 / 供应商（合并前的两个独立 Tab） -->
-                    <div class="plain-tabs" id="llmViewToggle">
-                        <button type="button" class="plain-tabs__tab active" data-view="models" data-i18n="llm.title">模型</button>
-                        <button type="button" class="plain-tabs__tab" data-view="providers" data-i18n="provider.title">供应商</button>
-                    </div>
-                    <div class="settings-view-group" id="llmViewModels">
-                    <!-- List View -->
-                    <div class="settings-view settings-view-list" id="llmListView">
-                        <div class="settings-section">
-                            <div class="settings-section-header">
-                                <div>
-                                    <div class="settings-section-desc" data-i18n="llm.desc">配置 AI 模型的连接参数与默认设定</div>
+                    <!-- 横向推屏：第一屏 = 页签 + 列表（一起左移），第二屏 = 编辑表单从右侧推入 -->
+                    <div class="settings-pager" id="llmPager">
+                        <div class="settings-pager__track">
+                            <div class="settings-pager__pane is-active" id="llmPaneMain">
+                                <div class="llm-view-toggle" id="llmViewToggle">
+                                    <div class="plain-tabs">
+                                        <button type="button" class="plain-tabs__tab active" data-view="models" data-i18n="llm.title">模型</button>
+                                        <button type="button" class="plain-tabs__tab" data-view="providers" data-i18n="provider.title">供应商</button>
+                                    </div>
                                 </div>
-                                <div class="llm-header-actions">
-                                    <button class="settings-add-btn" id="llmAddBtn" data-i18n="llm.addBtn">+ 添加模型</button>
+                                <div class="settings-view-group" id="llmViewModels">
+                                <!-- List View -->
+                                <div class="settings-view settings-view-list" id="llmListView">
+                                    <div class="settings-section">
+                                        <div class="settings-section-header">
+                                            <div>
+                                                <div class="settings-section-desc" data-i18n="llm.desc">配置 AI 模型的连接参数与默认设定</div>
+                                            </div>
+                                            <div class="llm-header-actions">
+                                                <button class="settings-add-btn" id="llmAddBtn" data-i18n="llm.addBtn">+ 添加模型</button>
+                                            </div>
+                                        </div>
+                                        <div class="llm-model-list" id="llmModelList"></div>
+                                    </div>
                                 </div>
+                                </div><!-- /#llmViewModels -->
+                                <!-- 供应商视图：由原「供应商」Tab 整体迁入 -->
+                                <div class="settings-view-group" id="llmViewProviders" style="display:none">
+                                <!-- List View -->
+                                <div class="settings-view settings-view-list" id="providersListView">
+                                    <div class="settings-section">
+                                        <div class="settings-section-header">
+                                            <div>
+                                                 <div class="settings-section-desc" data-i18n="provider.desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div>
+                                            </div>
+                                            <div class="openapi-header-actions">
+                                                <button class="settings-add-btn" id="providerAddBtn" data-i18n="provider.addBtn">+ 添加供应商</button>
+                                            </div>
+                                        </div>
+                                        <div class="openapi-server-list" id="providerList"></div>
+                                    </div>
+                                </div>
+                                </div><!-- /#llmViewProviders -->
                             </div>
-                            <div class="llm-model-list" id="llmModelList"></div>
-                        </div>
-                    </div>
-                    <!-- Form View -->
-                    <div class="settings-view settings-view-form" id="llmFormView" style="display:none">
-                        <div class="settings-section">
-                            <div class="settings-section-header">
-                                <div class="settings-title-row">
-                                    <button class="settings-back-btn" id="llmBackBtn" title="返回" data-i18n-title="common.back">
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                    </button>
-                                    <span class="settings-section-title" id="llmFormTitle">添加模型</span>
-                                </div>
-                                <div class="settings-form-actions" id="llmFormActions" style="display:none">
-                                    <button class="settings-form-action-btn" id="llmFormCopyBtn" title="复制" data-i18n-title="common.copy">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                                         <span data-i18n="llm.copy">复制</span>
-                                    </button>
-                                    <button class="settings-form-action-btn danger" id="llmFormDeleteBtn" title="删除" data-i18n-title="common.delete">
-                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                         <span data-i18n="llm.delete">删除</span>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="llm-add-form" id="llmAddForm">
-                                <div class="form-group">
-                                    <label data-i18n="form.name">名称 <span class="required">*</span></label>
-                                    <input type="text" id="llmName" placeholder="my-model"/>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.scope">作用域</label>
-                                    <input type="hidden" id="llmScope" value="user"/>
-                                    <input type="hidden" id="llmProvider" value=""/>
-                                    <div class="settings-scope-toggle" data-target="llmScope">
-                                        <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="scope.user">用户（全局）</button>
-                                        <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="scope.workspace">工作区（本地）</button>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiStandard">API 规范</label>
-                                    <select id="llmStandard" class="form-select-custom">
-                                        <option value="" data-i18n="llm.standard.fullUrl">FullUrl / 完整地址（自动检测）</option>
-                                        <option value="openai" data-i18n="llm.standard.openai">OpenAI Completions BaseUrl / 兼容接口</option>
-                                        <option value="openai-responses" data-i18n="llm.standard.openaiResponses">OpenAI Responses BaseUrl / 兼容接口</option>
-                                        <option value="anthropic" data-i18n="llm.standard.anthropic">Anthropic BaseUrl / 兼容接口</option>
-                                        <option value="google" data-i18n="llm.standard.google">Google v1Beta BaseUrl / 兼容接口</option>
-                                        <option value="ollama" data-i18n="llm.standard.ollama">Ollama BaseUrl</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiUrl">API 地址 <span class="required">*</span></label>
-                                    <input type="text" id="llmApiUrl" placeholder="https://api.deepseek.com/v1/chat/completions"/>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiKey">API 密钥</label>
-                                    <div class="password-input-group">
-                                        <input type="password" id="llmApiKey" autocomplete="new-password"/>
-                                        <button class="password-toggle" id="llmApiKeyToggle" title="显示/隐藏" data-i18n-title="form.showHide">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="form-row-4col">
-                                    <div class="form-group">
-                                        <label data-i18n="llm.model">模型 <span class="required">*</span></label>
-                                        <input type="text" id="llmModel" placeholder="deepseek-v4-flash" />
-                                    </div>
-                                    <div class="form-group">
-                                        <label data-i18n="llm.contextLength">上下文长度</label>
-                                         <input type="text" inputmode="numeric" id="llmContextLength" placeholder="1000k（模型上下文长度）" data-i18n-placeholder="llm.contextLengthPlaceholder" list="contextLengthList" autocomplete="off"/>
-                                        <datalist id="contextLengthList">
-                                            <option value="128k">
-                                            <option value="256k">
-                                            <option value="512k">
-                                            <option value="1m">
-                                        </datalist>
-                                    </div>
-                                    <div class="form-group">
-                                        <label data-i18n="llm.timeout">超时时间（可选）</label>
-                                         <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）" data-i18n-placeholder="llm.timeoutPlaceholder"/>
-                                    </div>
-                                    <div class="form-group">
-                                        <label data-i18n="llm.concurrency">子代理并发数（可选）</label>
-                                         <input type="text" inputmode="numeric" id="llmConcurrency" placeholder="5（默认跟随通用设置）" data-i18n-placeholder="llm.concurrencyPlaceholder" autocomplete="off"/>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <div class="form-label-row">
-                                        <label data-i18n="llm.defaultOptions">默认选项（可选，JSON 格式）</label>
-                                        <button type="button" class="provider-model-icon-btn" id="llmFormatJsonBtn" title="格式化 JSON" data-i18n-title="llm.formatJson">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <polyline points="16 18 22 12 16 6"/>
-                                                <polyline points="8 6 2 12 8 18"/>
-                                            </svg>
-                                        </button>
-                                    </div>
-                                    <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"thinking":{"type":"enabled"},"reasoning_effort":"high"}'></textarea>
-                                    <div class="form-hint" data-i18n="llm.defaultOptionsHint">会话模型选择器中的「推理强度」会覆盖此处；选 auto 则使用本配置或供应商默认。</div>
-                                </div>
-                                <div class="form-actions" style="justify-content:space-between">
-                                    <label class="llm-default-checkbox">
-                                        <input type="checkbox" id="llmIsDefaultModel"/>
-                                        <span class="llm-default-checkmark"></span>
-                                        <span data-i18n="llm.setDefault">设为默认模型</span>
-                                    </label>
-                                    <div class="settings-inline-actions">
-                                        <button class="btn-secondary" id="llmTestBtn">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                                             <span data-i18n="llm.testBtn">测试连接</span>
-                                        </button>
-                                        <button class="btn-primary" id="llmSaveBtn" data-i18n="llm.saveBtn">保存</button>
-                                    </div>
-                                </div>
-                                <div class="llm-check-result" id="llmCheckResult" style="display:none;"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    </div><!-- /#llmViewModels -->
-                    <!-- 供应商视图：由原「供应商」Tab 整体迁入 -->
-                    <div class="settings-view-group" id="llmViewProviders" style="display:none">
-                    <!-- List View -->
-                    <div class="settings-view settings-view-list" id="providersListView">
-                        <div class="settings-section">
-                            <div class="settings-section-header">
-                                <div>
-                                     <div class="settings-section-desc" data-i18n="provider.desc">管理 AI 模型供应商配置，支持自动拉取模型列表</div>
-                                </div>
-                                <div class="openapi-header-actions">
-                                    <button class="settings-add-btn" id="providerAddBtn" data-i18n="provider.addBtn">+ 添加供应商</button>
-                                </div>
-                            </div>
-                            <div class="openapi-server-list" id="providerList"></div>
-                        </div>
-                    </div>
-                    <!-- Form View -->
-                    <div class="settings-view settings-view-form" id="providersFormView" style="display:none">
-                        <div class="settings-section">
-                            <div class="settings-section-header">
-                                <div class="settings-title-row">
-                                    <button class="settings-back-btn" id="providerBackBtn" title="返回" data-i18n-title="common.back">
-                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                                     </button>
-                                    <span class="settings-section-title" id="providerFormTitle">添加供应商</span>
-                                </div>
-                                <div class="settings-form-actions" id="providerFormActions" style="display:none">
-                                    <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除" data-i18n-title="provider.deleteTitle">
-                                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-                                         <span data-i18n="provider.deleteBtn">删除</span>
-                                     </button>
-                                </div>
-                            </div>
-                            <div class="openapi-add-form" id="providerAddForm">
-                                <div class="form-group">
-                                    <label data-i18n="form.name">名称 <span class="required">*</span></label>
-                                    <input type="text" id="providerName" placeholder="deepseek"/>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.scope">作用域</label>
-                                 <input type="hidden" id="providerScope" value="user"/>
-                                 <div class="settings-scope-toggle" data-target="providerScope">
-                                     <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="scope.user">用户（全局）</button>
-                                     <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="scope.workspace">工作区（本地）</button>
-                                 </div>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiStandard">API 规范</label>
-                                    <select id="providerStandard" class="form-select-custom">
-                                        <option value="openai" data-i18n="provider.standard.openai">OpenAI Completions BaseUrl / 兼容接口</option>
-                                        <option value="openai-responses" data-i18n="provider.standard.openaiResponses">OpenAI Responses BaseUrl / 兼容接口</option>
-                                        <option value="anthropic" data-i18n="provider.standard.anthropic">Anthropic BaseUrl / 兼容接口</option>
-                                        <option value="google" data-i18n="provider.standard.google">Google v1Beta BaseUrl / 兼容接口</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiUrl">API 地址 <span class="required">*</span></label>
-                                    <input type="text" id="providerApiUrl" placeholder="https://api.deepseek.com/v1"/>
-                                </div>
-                                <div class="form-group">
-                                    <label data-i18n="form.apiKey">API 密钥</label>
-                                    <div class="password-input-group">
-                                        <input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
-                                        <button class="password-toggle" id="providerApiKeyToggle" title="显示/隐藏" data-i18n-title="form.showHide">
-                                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <div class="form-group-header">
-                                        <label data-i18n="provider.models.title">模型管理</label>
-                                        <div class="provider-model-header-actions">
-                                            <button type="button" class="provider-model-text-btn" id="providerModelsSelectAll" data-i18n="provider.selectAll">全选</button>
-                                            <button type="button" class="provider-model-text-btn" id="providerModelsInvert" data-i18n="provider.invert">反选</button>
-                                            <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型" data-i18n-title="provider.models.addTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                            </button>
-                                            <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表" data-i18n-title="provider.models.fetchTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                                            </button>
-                                            <button class="provider-model-icon-btn icon-btn-clear" id="providerClearModelsBtn" title="清空模型列表" data-i18n-title="provider.models.clearTitle">
-                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                            </button>
+                            <div class="settings-pager__pane" id="llmPaneForm">
+                                <!-- Form View -->
+                                <div class="settings-view settings-view-form" id="llmFormView" style="display:none">
+                                    <div class="settings-section">
+                                        <div class="settings-section-header">
+                                            <div class="settings-title-row">
+                                                <button class="settings-back-btn" id="llmBackBtn" title="返回" data-i18n-title="common.back">
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                                </button>
+                                                <span class="settings-section-title" id="llmFormTitle">添加模型</span>
+                                            </div>
+                                            <div class="settings-form-actions" id="llmFormActions" style="display:none">
+                                                <button class="settings-form-action-btn" id="llmFormCopyBtn" title="复制" data-i18n-title="common.copy">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                                                     <span data-i18n="llm.copy">复制</span>
+                                                </button>
+                                                <button class="settings-form-action-btn danger" id="llmFormDeleteBtn" title="删除" data-i18n-title="common.delete">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                                     <span data-i18n="llm.delete">删除</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div class="llm-add-form" id="llmAddForm">
+                                            <div class="form-group">
+                                                <label data-i18n="form.name">名称 <span class="required">*</span></label>
+                                                <input type="text" id="llmName" placeholder="my-model"/>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.scope">作用域</label>
+                                                <input type="hidden" id="llmScope" value="user"/>
+                                                <input type="hidden" id="llmProvider" value=""/>
+                                                <div class="settings-scope-toggle" data-target="llmScope">
+                                                    <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="scope.user">用户（全局）</button>
+                                                    <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="scope.workspace">工作区（本地）</button>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.apiStandard">API 规范</label>
+                                                <select id="llmStandard" class="form-select-custom">
+                                                    <option value="" data-i18n="llm.standard.fullUrl">FullUrl / 完整地址（自动检测）</option>
+                                                    <option value="openai" data-i18n="llm.standard.openai">OpenAI Completions BaseUrl / 兼容接口</option>
+                                                    <option value="openai-responses" data-i18n="llm.standard.openaiResponses">OpenAI Responses BaseUrl / 兼容接口</option>
+                                                    <option value="anthropic" data-i18n="llm.standard.anthropic">Anthropic BaseUrl / 兼容接口</option>
+                                                    <option value="google" data-i18n="llm.standard.google">Google v1Beta BaseUrl / 兼容接口</option>
+                                                    <option value="ollama" data-i18n="llm.standard.ollama">Ollama BaseUrl</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.apiUrl">API 地址 <span class="required">*</span></label>
+                                                <input type="text" id="llmApiUrl" placeholder="https://api.deepseek.com/v1/chat/completions"/>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.apiKey">API 密钥</label>
+                                                <div class="password-input-group">
+                                                    <input type="password" id="llmApiKey" autocomplete="new-password"/>
+                                                    <button class="password-toggle" id="llmApiKeyToggle" title="显示/隐藏" data-i18n-title="form.showHide">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="form-row-4col">
+                                                <div class="form-group">
+                                                    <label data-i18n="llm.model">模型 <span class="required">*</span></label>
+                                                    <input type="text" id="llmModel" placeholder="deepseek-v4-flash" />
+                                                </div>
+                                                <div class="form-group">
+                                                    <label data-i18n="llm.contextLength">上下文长度</label>
+                                                     <input type="text" inputmode="numeric" id="llmContextLength" placeholder="1000k（模型上下文长度）" data-i18n-placeholder="llm.contextLengthPlaceholder" list="contextLengthList" autocomplete="off"/>
+                                                    <datalist id="contextLengthList">
+                                                        <option value="128k">
+                                                        <option value="256k">
+                                                        <option value="512k">
+                                                        <option value="1m">
+                                                    </datalist>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label data-i18n="llm.timeout">超时时间（可选）</label>
+                                                     <input type="text" id="llmTimeout" placeholder="120s（默认 120 秒）" data-i18n-placeholder="llm.timeoutPlaceholder"/>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label data-i18n="llm.concurrency">子代理并发数（可选）</label>
+                                                     <input type="text" inputmode="numeric" id="llmConcurrency" placeholder="5（默认跟随通用设置）" data-i18n-placeholder="llm.concurrencyPlaceholder" autocomplete="off"/>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="form-label-row">
+                                                    <label data-i18n="llm.defaultOptions">默认选项（可选，JSON 格式）</label>
+                                                    <button type="button" class="provider-model-icon-btn" id="llmFormatJsonBtn" title="格式化 JSON" data-i18n-title="llm.formatJson">
+                                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                            <polyline points="16 18 22 12 16 6"/>
+                                                            <polyline points="8 6 2 12 8 18"/>
+                                                        </svg>
+                                                    </button>
+                                                </div>
+                                                <textarea id="llmDefaultOptions" rows="4" placeholder='{"temperature":0.2,"top_p":0.5,"thinking":{"type":"enabled"},"reasoning_effort":"high"}'></textarea>
+                                                <div class="form-hint" data-i18n="llm.defaultOptionsHint">会话模型选择器中的「推理强度」会覆盖此处；选 auto 则使用本配置或供应商默认。</div>
+                                            </div>
+                                            <div class="form-actions" style="justify-content:space-between">
+                                                <label class="llm-default-checkbox">
+                                                    <input type="checkbox" id="llmIsDefaultModel"/>
+                                                    <span class="llm-default-checkmark"></span>
+                                                    <span data-i18n="llm.setDefault">设为默认模型</span>
+                                                </label>
+                                                <div class="settings-inline-actions">
+                                                    <button class="btn-secondary" id="llmTestBtn">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                                         <span data-i18n="llm.testBtn">测试连接</span>
+                                                    </button>
+                                                    <button class="btn-primary" id="llmSaveBtn" data-i18n="llm.saveBtn">保存</button>
+                                                </div>
+                                            </div>
+                                            <div class="llm-check-result" id="llmCheckResult" style="display:none;"></div>
                                         </div>
                                     </div>
-                                    <div class="provider-models-list" id="providerModelsList"></div>
-                                    <div class="provider-models-empty" id="providerModelsEmpty" ><span data-i18n="provider.modelsEmpty.prefix">点击右侧</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> <span data-i18n="provider.modelsEmpty.middle">添加模型，或</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> <span data-i18n="provider.modelsEmpty.suffix">从 API 拉取</span></div>
                                 </div>
 
-                                <div class="form-actions form-actions-end">
-                                    <button class="btn-primary" id="providerSaveBtn" data-i18n="provider.saveBtn">保存</button>
+                                <!-- Form View -->
+                                <div class="settings-view settings-view-form" id="providersFormView" style="display:none">
+                                    <div class="settings-section">
+                                        <div class="settings-section-header">
+                                            <div class="settings-title-row">
+                                                <button class="settings-back-btn" id="providerBackBtn" title="返回" data-i18n-title="common.back">
+                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                                                 </button>
+                                                <span class="settings-section-title" id="providerFormTitle">添加供应商</span>
+                                            </div>
+                                            <div class="settings-form-actions" id="providerFormActions" style="display:none">
+                                                <button class="settings-form-action-btn danger" id="providerFormDeleteBtn" title="删除" data-i18n-title="provider.deleteTitle">
+                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                                     <span data-i18n="provider.deleteBtn">删除</span>
+                                                 </button>
+                                            </div>
+                                        </div>
+                                        <div class="openapi-add-form" id="providerAddForm">
+                                            <div class="form-group">
+                                                <label data-i18n="form.name">名称 <span class="required">*</span></label>
+                                                <input type="text" id="providerName" placeholder="deepseek"/>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.scope">作用域</label>
+                                             <input type="hidden" id="providerScope" value="user"/>
+                                             <div class="settings-scope-toggle" data-target="providerScope">
+                                                 <button class="settings-scope-btn active" data-scope="user" type="button" data-i18n="scope.user">用户（全局）</button>
+                                                 <button class="settings-scope-btn" data-scope="workspace" type="button" data-i18n="scope.workspace">工作区（本地）</button>
+                                             </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.apiStandard">API 规范</label>
+                                                <select id="providerStandard" class="form-select-custom">
+                                                    <option value="openai" data-i18n="provider.standard.openai">OpenAI Completions BaseUrl / 兼容接口</option>
+                                                    <option value="openai-responses" data-i18n="provider.standard.openaiResponses">OpenAI Responses BaseUrl / 兼容接口</option>
+                                                    <option value="anthropic" data-i18n="provider.standard.anthropic">Anthropic BaseUrl / 兼容接口</option>
+                                                    <option value="google" data-i18n="provider.standard.google">Google v1Beta BaseUrl / 兼容接口</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.apiUrl">API 地址 <span class="required">*</span></label>
+                                                <input type="text" id="providerApiUrl" placeholder="https://api.deepseek.com/v1"/>
+                                            </div>
+                                            <div class="form-group">
+                                                <label data-i18n="form.apiKey">API 密钥</label>
+                                                <div class="password-input-group">
+                                                    <input type="password" id="providerApiKey" placeholder="sk-xxx" autocomplete="new-password"/>
+                                                    <button class="password-toggle" id="providerApiKeyToggle" title="显示/隐藏" data-i18n-title="form.showHide">
+                                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="form-group-header">
+                                                    <label data-i18n="provider.models.title">模型管理</label>
+                                                    <div class="provider-model-header-actions">
+                                                        <button type="button" class="provider-model-text-btn" id="providerModelsSelectAll" data-i18n="provider.selectAll">全选</button>
+                                                        <button type="button" class="provider-model-text-btn" id="providerModelsInvert" data-i18n="provider.invert">反选</button>
+                                                        <button class="provider-model-icon-btn" id="providerAddModelBtn" title="手动添加模型" data-i18n-title="provider.models.addTitle">
+                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                                        </button>
+                                                        <button class="provider-model-icon-btn" id="providerFetchModelsBtn" title="从 API 拉取模型列表" data-i18n-title="provider.models.fetchTitle">
+                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                                                        </button>
+                                                        <button class="provider-model-icon-btn icon-btn-clear" id="providerClearModelsBtn" title="清空模型列表" data-i18n-title="provider.models.clearTitle">
+                                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div class="provider-models-list" id="providerModelsList"></div>
+                                                <div class="provider-models-empty" id="providerModelsEmpty" ><span data-i18n="provider.modelsEmpty.prefix">点击右侧</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> <span data-i18n="provider.modelsEmpty.middle">添加模型，或</span> <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg> <span data-i18n="provider.modelsEmpty.suffix">从 API 拉取</span></div>
+                                            </div>
+
+                                            <div class="form-actions form-actions-end">
+                                                <button class="btn-primary" id="providerSaveBtn" data-i18n="provider.saveBtn">保存</button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    </div><!-- /#llmViewProviders -->
                 </div>
                 <!-- Skills Tab -->
                 <div class="settings-tab-content" id="settingsTabSkills">
