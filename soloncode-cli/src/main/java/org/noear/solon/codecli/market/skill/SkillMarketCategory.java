@@ -11,6 +11,10 @@ package org.noear.solon.codecli.market.skill;
 public class SkillMarketCategory {
     /** 分类标识（由市场定义，原样回传给 search 的 category 参数） */
     private String id;
+    /**
+     * 分类展示名。<b>属于市场的动态内容，必须原样展示，不做翻译</b>
+     * （不同市场语种不同：如 SkillHub 为中文、ClawHub 为英文），前端直接渲染。
+     */
     private String name;
     /** 该分类下的技能数，未知时为 0（前端不显示） */
     private int count;

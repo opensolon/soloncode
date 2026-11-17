@@ -174,6 +174,7 @@ public class SkillhubSkillMarket implements SkillMarket {
                         continue;
                     }
 
+                    // 分类名原样取源站（中文站返回中文），不做翻译；nameEn 仅在源站缺 name 时兜底
                     String name = firstNonEmpty(
                             getStringValue(node, "name"),
                             getStringValue(node, "nameEn"),

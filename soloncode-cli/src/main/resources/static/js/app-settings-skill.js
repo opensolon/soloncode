@@ -183,6 +183,7 @@
         });
     }
 
+    // 分类名是市场返回的动态内容，原样展示（不查 i18n）；只有「全部」是界面文案，才走 i18n
     function renderCategories(categories) {
         _skillCategoryKey = '';
 

@@ -11,6 +11,10 @@ package org.noear.solon.codecli.market.mcp;
 public class McpMarketCategory {
     /** 分类标识（由市场定义，原样回传给 list 的 categoryId 参数） */
     private String id;
+    /**
+     * 分类展示名。<b>属于市场的动态内容，必须原样展示，不做翻译</b>
+     * （如腾讯云广场为中文、ClawHub 为英文），前端直接渲染。
+     */
     private String name;
     /** 该分类下的条目数，未知时为 0 */
     private int count;
