@@ -48,6 +48,13 @@ public class AgentFlags {
         return "v2026.11.17";
     }
 
+    /**
+     * 当前运行 SolonCode 的 JVM 版本（如 "21.0.1"、"1.8.0_402"）
+     */
+    public static String getJavaVersion() {
+        return System.getProperty("java.version");
+    }
+
     private static String lastVersion;
 
     public static String getLastVersion() {

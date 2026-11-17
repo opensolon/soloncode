@@ -354,7 +354,7 @@ public class CliShell implements Runnable {
 
         String path = new File(engine.getWorkspace()).getAbsolutePath();
         // 连带版本号，紧凑排列
-        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
+        terminal.writer().println(BOLD + "SolonCode" + RESET + DIM + " " + AgentFlags.getVersion() + " Java:" + AgentFlags.getJavaVersion() + " PID-" + Utils.pid() + " Model:" + modelName + RESET);
         terminal.writer().println(DIM + path + RESET);
         terminal.writer().println(DIM + "Tips: " +
                 RESET + "(esc)" + DIM + " interrupt | " +
@@ -377,7 +377,7 @@ public class CliShell implements Runnable {
 
         String path = new File(engine.getWorkspace()).getAbsolutePath();
 
-        System.out.println("SolonCode" + " " + AgentFlags.getVersion() + " PID-" + Utils.pid() + " Model:" + modelName);
+        System.out.println("SolonCode" + " " + AgentFlags.getVersion() + " Java:" + AgentFlags.getJavaVersion() + " PID-" + Utils.pid() + " Model:" + modelName);
         System.out.println(path);
         System.out.println(DateUtil.format(new Date(), "yyyy-MM-dd HH:mm"));
         System.out.println(text);
