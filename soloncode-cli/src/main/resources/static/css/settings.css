@@ -166,6 +166,8 @@
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
 .btn-primary { padding: 8px 20px; border: none; border-radius: 8px; background: var(--accent-fill, var(--accent)); color: #fff; font-size: var(--fs-base); cursor: pointer; transition: opacity 0.15s; }
 .btn-primary:hover { opacity: 0.85; }
+/* 禁用态必须有可见差异：MCP 保存等长耗时操作靠它告诉用户“已受理” */
+.btn-primary:disabled, .btn-primary[disabled] { opacity: 0.55; cursor: not-allowed; }
 .btn-secondary { padding: 8px 20px; border: 1px solid var(--border-color); border-radius: 8px; background: none; color: var(--text-secondary); font-size: var(--fs-base); cursor: pointer; transition: all 0.15s; }
 .btn-secondary:hover { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -303,10 +305,22 @@
 /* 连接器市场：表单来源提示 */
 .mcp-market-hint { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; font-size: var(--fs-sm); line-height: 1.6; color: var(--text-secondary); background: var(--bg-secondary); border: 1px solid var(--border-color); }
 .mcp-market-hint-req { color: #d97706; }
+.mcp-market-hint-note { flex: 0 0 100%; }
+/* 待填参数的取值说明：每个参数占一行，避免与来源/必填提示挤在同一个横向流里 */
+.mcp-market-hint-param { flex: 0 0 100%; color: var(--text-secondary); opacity: 0.9; }
+.mcp-market-hint-param b { font-weight: 600; color: var(--text-primary); }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 /* 空状态引导 */
 .mcp-empty-state { text-align: center; padding: 40px 20px; }
+
+/* MCP 后台连接状态徽标 */
+.mcp-state-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: var(--fs-2xs); line-height: 1.6; font-weight: 400; white-space: nowrap; }
+.mcp-state-badge.is-pending { color: #d97706; background: rgba(217, 119, 6, 0.12); }
+.mcp-state-badge.is-ok { color: #16a34a; background: rgba(22, 163, 74, 0.12); }
+.mcp-state-badge.is-fail { color: #dc2626; background: rgba(220, 38, 38, 0.12); }
+/* 连接失败原因：单行截断，完整内容看 title */
+.mcp-state-error { margin-top: 2px; font-size: var(--fs-2xs); color: #dc2626; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcp-empty-icon { margin-bottom: 12px; opacity: 0.4; }
 .mcp-empty-title { font-size: var(--fs-md); font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
 .mcp-empty-desc { font-size: var(--fs-sm); color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; }

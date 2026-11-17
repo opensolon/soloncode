@@ -4,6 +4,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.McpTypeResolver;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.market.MarketCategoryResource;
+import org.noear.solon.codecli.market.mcp.McpAuthTemplate;
 import org.noear.solon.codecli.market.mcp.McpMarket;
 import org.noear.solon.codecli.market.mcp.McpMarketConfig;
 import org.noear.solon.codecli.market.mcp.McpMarketCategory;
@@ -590,12 +591,17 @@ public class TencentMcpMarket implements McpMarket {
                 isHeader = false;
             }
 
+            // 占位文案多数是中文取密钥指引（如“请输入腾讯云 SecretId”），本身就是给用户看的提示；
+            // 少数写法带鉴权方案（“Bearer xxx”），方案部分可预填到等号后。
+            String placeholder = str(node, "placeholder");
+
             params.add(new McpMarketParam()
                     .name(name)
-                    .description(str(node, "placeholder"))
+                    .description(McpAuthTemplate.hint(placeholder))
                     .required(Boolean.TRUE.equals(boolObj(node, "required")))
                     .secret(isSecretName(name))
                     .defaultValue(defaultValue)
+                    .valuePrefix(McpAuthTemplate.schemePrefix(placeholder))
                     .in(isHeader ? McpMarketParam.IN_HEADER : McpMarketParam.IN_ENV));
         }
 

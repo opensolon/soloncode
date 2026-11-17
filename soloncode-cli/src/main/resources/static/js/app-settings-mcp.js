@@ -42,12 +42,47 @@
         $mcpFormView.hide();
         $('#mcpMarketView').hide();
         $mcpListView.show();
+        fetchMcpList();
+    }
+
+    // 仅拉取并渲染，不动视图：后台连接期间轮询复用，避免把用户从其它页面踢回列表
+    function fetchMcpList() {
         $.get('/web/settings/mcp/servers', function (resp) {
             if (resp.code === 200 && resp.data) {
                 mcpCachedList = resp.data;
                 renderMcpList(resp.data);
+                scheduleMcpStatusPoll(resp.data);
             }
         }).fail(function () { console.error('[Settings] Failed to load MCP servers'); });
+    }
+
+    // ==================== 后台连接状态轮询 ====================
+    // 保存/启用后连接在后台串行执行（npx 冷启动可能数十秒），仅在该期间短轮询，全部落定即停
+    var mcpPollTimer = null;
+    var mcpPollCount = 0;
+    var MCP_POLL_INTERVAL = 1500;
+    var MCP_POLL_MAX = 80;
+
+    function mcpIsPending(item) {
+        return !!item && (item.state === 'pending' || item.state === 'connecting');
+    }
+
+    function scheduleMcpStatusPoll(list) {
+        var busy = (list || []).some(mcpIsPending);
+        if (!busy) {
+            mcpPollCount = 0;
+            return;
+        }
+        if (mcpPollTimer) return;
+        if (mcpPollCount >= MCP_POLL_MAX) {
+            mcpPollCount = 0;
+            return;
+        }
+        mcpPollTimer = setTimeout(function () {
+            mcpPollTimer = null;
+            mcpPollCount++;
+            fetchMcpList();
+        }, MCP_POLL_INTERVAL);
     }
 
     function renderMcpList(list) {
@@ -73,11 +108,27 @@
                     detailHtml = detailHtml ? detailHtml + ' · ' + hint : hint;
                 }
                 var icon = iconMap[type] || 'M';
+
+                // 后台连接状态徽标（无 state 时不展示：启动时已连上或未纳管）
+                var state = item.state || '';
+                var stateHtml = '';
+                if (state === 'pending' || state === 'connecting') {
+                    stateHtml = ' <span class="mcp-state-badge is-pending">' + escapeHtml(I18n.t('mcp.state.connecting')) + '</span>';
+                } else if (state === 'connected') {
+                    stateHtml = ' <span class="mcp-state-badge is-ok">' + escapeHtml(I18n.t('mcp.state.connected', { n: item.toolCount || 0 })) + '</span>';
+                } else if (state === 'failed') {
+                    stateHtml = ' <span class="mcp-state-badge is-fail">' + escapeHtml(I18n.t('mcp.state.failed')) + '</span>';
+                }
+
+                var stateErrorHtml = (state === 'failed' && item.statusMessage)
+                    ? '<div class="mcp-state-error">' + escapeHtml(item.statusMessage) + '</div>'
+                    : '';
+
                 html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="settings-list-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="settings-list-info">'
-                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('mcp.scope.workspace') + '</span>' : '') + '</div>'
-                    + '<div class="settings-list-desc">' + detailHtml + '</div>'
+                    + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('mcp.scope.workspace') + '</span>' : '') + stateHtml + '</div>'
+                    + '<div class="settings-list-desc">' + detailHtml + stateErrorHtml + '</div>'
                     + '</div><div class="settings-list-actions">'
                     + '<button class="settings-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="' + I18n.t('mcp.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? I18n.t('mcp.toggleDisable') : I18n.t('mcp.toggleEnable')) + '">'
@@ -313,7 +364,7 @@
             // 待填参数给出 KEY= 占位，用户直接补值即可（已有同名行则跳过）
             pending.forEach(function (p) {
                 if (p.in === 'env' && !hasKvLine(envLines, p.name)) {
-                    envLines.push(p.name + '=');
+                    envLines.push(p.name + '=' + (p.valuePrefix || ''));
                 }
             });
             $('#mcpEnv').val(envLines.join('\n'));
@@ -326,7 +377,7 @@
             }
             pending.forEach(function (p) {
                 if (p.in === 'header' && !hasKvLine(headerLines, p.name)) {
-                    headerLines.push(p.name + '=');
+                    headerLines.push(p.name + '=' + (p.valuePrefix || ''));
                 }
             });
             $('#mcpHeaders').val(headerLines.join('\n'));
@@ -358,6 +409,13 @@
         if (draft.note) {
             parts.push('<span class="mcp-market-hint-note">' + escapeHtml(draft.note) + '</span>');
         }
+
+        // 每个待填参数的取值说明（去哪里取密钥、是否可留空走 OAuth、值的格式等）
+        pending.forEach(function (p) {
+            if (!p.description) return;
+            parts.push('<span class="mcp-market-hint-param"><b>' + escapeHtml(p.name) + '</b> '
+                + escapeHtml(p.description) + '</span>');
+        });
 
         if (parts.length) {
             $hint.html(parts.join('')).show();
@@ -479,14 +537,17 @@
         var isEdit = !!mcpEditName;
         var url = isEdit ? '/web/settings/mcp/servers/update' : '/web/settings/mcp/servers/add';
 
-        $mcpSaveBtn.prop('disabled', true);
+        $mcpSaveBtn.prop('disabled', true).text(I18n.t('mcp.saving'));
         $.ajax({ url: url, method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json' })
             .done(function (resp) {
                 if (resp.code === 200) { showToast(isEdit ? I18n.t('mcp.updated') : I18n.t('mcp.added')); loadMcpList(); showMcpListView(); resetMcpForm(); }
                 else showToast((isEdit ? I18n.t('mcp.updateFailed') : I18n.t('mcp.addFailed')) + ': ' + (resp.message || I18n.t('toast.unknownError')), 'error');
             })
             .fail(function () { showToast(I18n.t('toast.networkError'), 'error'); })
-            .always(function () { $mcpSaveBtn.prop('disabled', false); });
+            .always(function () {
+                $mcpSaveBtn.prop('disabled', false)
+                    .text(mcpEditName ? I18n.t('mcp.updateBtn') : I18n.t('mcp.saveBtn'));
+            });
     });
 
     // MCP 表单 - 复制按钮
@@ -515,7 +576,7 @@
         $btn.prop('disabled', true).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 1s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> ' + I18n.t('mcp.testing'));
         $mcpCheckResult.hide();
 
-        $.ajax({ url: '/web/settings/mcp/servers/check', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json', timeout: 15000 })
+        $.ajax({ url: '/web/settings/mcp/servers/check', method: 'POST', data: JSON.stringify(bodyObj), contentType: 'application/json', dataType: 'json', timeout: 90000 })
             .done(function (resp) {
                 var ok = resp.code === 200;
                 var svg = ok

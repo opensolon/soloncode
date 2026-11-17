@@ -20,6 +20,13 @@ public class McpMarketParam {
     private boolean secret;
     private String defaultValue;
     private String in = IN_ENV;
+    /**
+     * 需要预填在等号之后的前缀（如 {@code "Bearer "}）。
+     *
+     * <p>源站把鉴权方案写在取值模板里（{@code "Bearer {api_key}"}），与密钥本身不在一处；
+     * 只给出 {@code Authorization=} 会让用户粘出裸值。带前缀预填后用户直接补 key 即可。</p>
+     */
+    private String valuePrefix;
 
     public McpMarketParam() {
     }
@@ -30,6 +37,7 @@ public class McpMarketParam {
     public McpMarketParam secret(boolean secret) { this.secret = secret; return this; }
     public McpMarketParam defaultValue(String defaultValue) { this.defaultValue = defaultValue; return this; }
     public McpMarketParam in(String in) { this.in = in; return this; }
+    public McpMarketParam valuePrefix(String valuePrefix) { this.valuePrefix = valuePrefix; return this; }
 
     public String getName() { return name; }
     public String getDescription() { return description; }
@@ -37,6 +45,7 @@ public class McpMarketParam {
     public boolean isSecret() { return secret; }
     public String getDefaultValue() { return defaultValue; }
     public String getIn() { return in; }
+    public String getValuePrefix() { return valuePrefix; }
 
     /**
      * 是否需要用户手工填写（必填、或需要保密的值都不预填）。

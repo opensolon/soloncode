@@ -213,7 +213,16 @@ public class BaseSettingsController {
      * <p>必须在 {@link #saveSettings()} 之后调用：其它工作区 reload 需读到最新磁盘值。</p>
      */
     protected void syncAssetsToOtherWorkspaces(String tag, Consumer<AssetSyncContext> syncer) {
-        WorkspaceContext cur = currentContext();
+        syncAssetsToOtherWorkspaces(tag, currentContext(), syncer);
+    }
+
+    /**
+     * 同 {@link #syncAssetsToOtherWorkspaces(String, Consumer)}，但由调用方显式给出来源工作区。
+     *
+     * <p>后台线程（如 MCP 异步连接）无法使用 {@link #currentContext()}，必须用请求线程捕获的上下文，
+     * 否则会落到默认工作区上。</p>
+     */
+    protected void syncAssetsToOtherWorkspaces(String tag, WorkspaceContext cur, Consumer<AssetSyncContext> syncer) {
         List<String> warnings = new ArrayList<>();
 
         for (WorkspaceContext ctx : allContexts()) {
@@ -309,7 +318,14 @@ public class BaseSettingsController {
      * MCP 服务器保存后同步到其它工作区。
      */
     protected void syncMcpServersToOtherWorkspaces() {
-        syncAssetsToOtherWorkspaces("mcpServers", sync ->
+        syncMcpServersToOtherWorkspaces(currentContext());
+    }
+
+    /**
+     * MCP 服务器保存后同步到其它工作区（显式来源工作区版本，供后台线程使用）。
+     */
+    protected void syncMcpServersToOtherWorkspaces(WorkspaceContext cur) {
+        syncAssetsToOtherWorkspaces("mcpServers", cur, sync ->
                 applyMcpDiff(sync.engine, sync.before.mcpServers, sync.after.mcpServers, new ArrayList<>(), sync.warnings));
     }
 

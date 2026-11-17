@@ -16,6 +16,7 @@ import org.noear.solon.codecli.market.mcp.McpMarketItem;
 import org.noear.solon.codecli.market.mcp.McpMarketManager;
 import org.noear.solon.codecli.market.mcp.McpMarketPage;
 import org.noear.solon.codecli.workspace.WorkspaceManager;
+import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Result;
 import org.noear.solon.core.handle.UploadedFile;
@@ -39,6 +40,11 @@ public class McpSettingsController extends BaseSettingsController{
      * 日志记录器
      */
     private static final Logger LOG = LoggerFactory.getLogger(McpSettingsController.class);
+
+    /**
+     * MCP 后台连接器：配置先落盘并立即返回，真实连接串行在后台执行，状态供列表接口读取。
+     */
+    private final McpConnectService connectService = McpConnectService.getInstance();
 
     /**
      * 构造函数：支持自定义所有依赖。
@@ -208,6 +214,7 @@ public class McpSettingsController extends BaseSettingsController{
     @Get
     @Mapping("/web/settings/mcp/servers")
     public Result<List<Map>> mcpServers() throws Exception {
+        WorkspaceContext wctx = currentContext();
         List<Map> list = new ArrayList<>();
         for (Map.Entry<String, McpServerDo> entry : settings().getMcpServers().entrySet()) {
             String name = entry.getKey();
@@ -237,6 +244,17 @@ public class McpSettingsController extends BaseSettingsController{
                     item.put("timeout", params.getTimeout().getSeconds() + "s");
                 }
             }
+
+            // 后台连接状态：无记录表示启动时已连接或未纳管，前端不展示徽标
+            McpConnectService.Status status = connectService.statusOf(wctx, name);
+            if (status != null) {
+                item.put("state", status.getState());
+                item.put("toolCount", status.getToolCount());
+                if (Assert.isNotEmpty(status.getMessage())) {
+                    item.put("statusMessage", status.getMessage());
+                }
+            }
+
             list.add(item);
         }
 
@@ -314,14 +332,10 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         settings().getMcpServers().put(name, params);
-
-        // 如果启用，同步到引擎
-        if (enabled) {
-            engine().addMcpServer(name, params);
-        }
-
         saveSettings();
-        syncMcpServersToOtherWorkspaces();
+
+        // 先落盘、立即返回：真实连接（尤其 npx 首次运行需要下载依赖）交给后台单线程串行执行
+        scheduleConnect(currentContext(), name, params);
         LOG.info("[Settings] MCP server added: {}", name);
         return Result.succeed();
     }
@@ -342,6 +356,7 @@ public class McpSettingsController extends BaseSettingsController{
         settings().getMcpServers().remove(name);
         saveSettings();
         engine().removeMcpServer(name);
+        connectService.clear(currentContext(), name);
         syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server removed: {}", name);
         return Result.succeed();
@@ -373,6 +388,7 @@ public class McpSettingsController extends BaseSettingsController{
         if (!lookupName.equals(name)) {
             settings().getMcpServers().remove(lookupName);
             engine().removeMcpServer(lookupName);
+            connectService.clear(currentContext(), lookupName);
         } else {
             // 名称没变，仍然先从引擎移除（稍后重新添加）
             engine().removeMcpServer(name);
@@ -439,14 +455,10 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         settings().getMcpServers().put(name, params);
-
-        // 如果启用，同步到引擎
-        if (enabled) {
-            engine().addMcpServer(name, params);
-        }
-
         saveSettings();
-        syncMcpServersToOtherWorkspaces();
+
+        // 同新增：配置已落盘，连接在后台串行执行，失败原因会进列表状态
+        scheduleConnect(currentContext(), name, params);
         LOG.info("[Settings] MCP server updated: {}", name);
         return Result.succeed();
     }
@@ -474,7 +486,7 @@ public class McpSettingsController extends BaseSettingsController{
             return Result.failure("name is required");
         }
 
-        McpServerParameters params = settings().getMcpServers().get(name);
+        McpServerDo params = settings().getMcpServers().get(name);
         if (params == null) {
             return Result.failure("Server not found: " + name);
         } else {
@@ -482,17 +494,28 @@ public class McpSettingsController extends BaseSettingsController{
         }
 
         if (enabled) {
-            // 启用：添加到引擎
-            engine().addMcpServer(name, params);
+            // 启用：先落盘，连接交给后台（与新增/更新同一口径）
+            saveSettings();
+            scheduleConnect(currentContext(), name, params);
         } else {
-            // 停用：从引擎移除
+            // 停用：移除连接是即时的（关进程），保持同步；其它工作区同步也很轻
             engine().removeMcpServer(name);
+            saveSettings();
+            connectService.mark(currentContext(), name, McpConnectService.STATE_DISABLED, null);
+            syncMcpServersToOtherWorkspaces();
         }
 
-        saveSettings();
-        syncMcpServersToOtherWorkspaces();
         LOG.info("[Settings] MCP server toggled: {} -> {}", name, enabled);
         return Result.succeed();
+    }
+
+    /**
+     * 提交后台连接：连接完成后（无论成败）再把配置同步到其它已加载工作区。
+     *
+     * <p>多工作区同步内部也会对每个工作区真实连接，绝不能留在请求线程上——那是保存变慢的另一个乘数。</p>
+     */
+    private void scheduleConnect(WorkspaceContext wctx, String name, McpServerDo params) {
+        connectService.connect(wctx, name, params, () -> syncMcpServersToOtherWorkspaces(wctx));
     }
 
     /**
@@ -514,8 +537,10 @@ public class McpSettingsController extends BaseSettingsController{
                 }
 
                 // 使用 McpClientProvider 进行真实的 MCP 初始化连接测试
+                // 显式给超时：stdio 分支不传超时会落回库默认 30s，npx 冷启动必然超时（且超时会被重试一次）
                 McpClientProvider.Builder builder = McpClientProvider.builder()
                         .channel(McpChannel.STDIO)
+                        .timeout(Duration.ofSeconds(120))
                         .command(command);
 
                 // 设置参数
@@ -550,6 +575,7 @@ public class McpSettingsController extends BaseSettingsController{
 
                 McpClientProvider.Builder builder = McpClientProvider.builder()
                         .channel(channel)
+                        .timeout(Duration.ofSeconds(120))
                         .url(url);
 
                 // 设置自定义 headers
@@ -855,6 +881,18 @@ public class McpSettingsController extends BaseSettingsController{
         final Collection<FunctionTool> allTools;
         McpClientProvider provider = engine().getMcpServer(name);
         if (provider == null) {
+            // 后台连接未完成/已失败时不再现场重试（那是又一次冷启动，会把请求线程一起堵住）
+            McpConnectService.Status status = connectService.statusOf(currentContext(), name);
+            if (status != null) {
+                if (McpConnectService.STATE_FAILED.equals(status.getState())) {
+                    return Result.failure("连接失败: " + (status.getMessage() != null ? status.getMessage() : "unknown"));
+                }
+                if (McpConnectService.STATE_PENDING.equals(status.getState())
+                        || McpConnectService.STATE_CONNECTING.equals(status.getState())) {
+                    return Result.failure("连接中，请稍后重试");
+                }
+            }
+
             provider = McpClientProviders.fromMcpServer(serverParameters);
             try {
                 allTools = provider.getTools();

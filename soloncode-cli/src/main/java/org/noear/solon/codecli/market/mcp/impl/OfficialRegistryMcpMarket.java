@@ -4,6 +4,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.McpTypeResolver;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.market.skill.SkillMarketSslSupplier;
+import org.noear.solon.codecli.market.mcp.McpAuthTemplate;
 import org.noear.solon.codecli.market.mcp.McpMarket;
 import org.noear.solon.codecli.market.mcp.McpMarketConfig;
 import org.noear.solon.codecli.market.mcp.McpMarketDetail;
@@ -393,7 +394,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
             }
             params.add(new McpMarketParam()
                     .name(envName)
-                    .description(str(envNode, "description"))
+                    .description(McpAuthTemplate.hint(str(envNode, "description")))
                     .required(bool(envNode, "isRequired"))
                     .secret(bool(envNode, "isSecret"))
                     .defaultValue(str(envNode, "default"))
@@ -408,6 +409,111 @@ public class OfficialRegistryMcpMarket implements McpMarket {
                 .runtime(command)
                 .args(args)
                 .params(params);
+    }
+
+    /**
+     * 把一条 {@code remotes[].headers[]} 转成待填参数。
+     *
+     * <p>三处细节都是按实测数据做的：</p>
+     * <ul>
+     *     <li><b>取值模板</b>：{@code value = "Bearer {api_key}"} 里花括号是待填变量，
+     *     但方案前缀 {@code "Bearer "} 能直接预填；只给 {@code Authorization=} 时
+     *     用户粘出来的是裸 key，服务端必然 401；</li>
+     *     <li><b>variables</b>：模板变量的机密性/必填写在 {@code variables.<name>}，
+     *     与 header 自身的 isSecret/isRequired 互补（部分提供方只写其中一处）；</li>
+     *     <li><b>placeholder 与 description</b>：没有 value 时前缀只能从占位文案
+     *     （{@code "Bearer vera_live_..."}）或描述首词取；而 description 本身就是
+     *     给用户看的取密钥指引，需透传到表单（含“可留空走 OAuth”这类关键说明）。</li>
+     * </ul>
+     */
+    static McpMarketParam headerParam(ONode headerNode) {
+        String headerName = str(headerNode, "name");
+        if (Assert.isEmpty(headerName)) {
+            return null;
+        }
+
+        String value = str(headerNode, "value");
+        String placeholder = str(headerNode, "placeholder");
+
+        // 模板变量：变量名来自 value 的 {name}，元数据在 variables.name
+        ONode varNode = variableOf(headerNode, McpAuthTemplate.variableName(value));
+
+        boolean secret = bool(headerNode, "isSecret")
+                || (varNode != null && bool(varNode, "isSecret"))
+                || (value != null && value.contains("{"))
+                // Authorization 里放的一定是凭据；源站常不标 isSecret，这里补上
+                || isAuthorizationHeader(headerName);
+        boolean required = bool(headerNode, "isRequired")
+                || (varNode != null && bool(varNode, "isRequired"));
+
+        String description = str(headerNode, "description");
+        if (description == null && varNode != null) {
+            description = str(varNode, "description");
+        }
+        if (description == null) {
+            description = placeholder;
+        }
+
+        return new McpMarketParam()
+                .name(headerName)
+                .description(McpAuthTemplate.hint(description))
+                .required(required)
+                .secret(secret)
+                .defaultValue(secret ? null : value)
+                .valuePrefix(prefillPrefix(headerName, value, placeholder, description))
+                .in(McpMarketParam.IN_HEADER);
+    }
+
+    /**
+     * 可预填的鉴权方案前缀：取值模板优先，其次占位文案。
+     *
+     * <p>两者都没有时，仅对 {@code Authorization} 头从描述首词取方案：其他头的描述多是普通说明，
+     * 把 {@code "Bearer "} 预填到 {@code x-api-key} 这类头上反而是错的。</p>
+     */
+    private static String prefillPrefix(String headerName, String value, String placeholder, String description) {
+        String prefix = McpAuthTemplate.literalPrefix(value);
+        if (prefix != null) {
+            return prefix;
+        }
+        prefix = McpAuthTemplate.schemePrefix(value);
+        if (prefix != null) {
+            return prefix;
+        }
+        prefix = McpAuthTemplate.schemePrefix(placeholder);
+        if (prefix != null) {
+            return prefix;
+        }
+        if (isAuthorizationHeader(headerName)) {
+            return McpAuthTemplate.schemePrefix(description);
+        }
+        return null;
+    }
+
+    private static boolean isAuthorizationHeader(String headerName) {
+        return "authorization".equalsIgnoreCase(headerName);
+    }
+
+    /**
+     * 取模板变量节点：先按变量名精确取，取不到且 {@code variables} 只有一个键时用它
+     * （提供方改过变量名而 value 未同步时仍能拿到机密性标记）。
+     */
+    private static ONode variableOf(ONode headerNode, String varName) {
+        ONode variablesNode = headerNode.get("variables");
+        if (variablesNode == null || !variablesNode.isObject()) {
+            return null;
+        }
+        if (varName != null) {
+            ONode node = variablesNode.get(varName);
+            if (node != null && node.isObject()) {
+                return node;
+            }
+        }
+        Map<String, ONode> variables = variablesNode.getObject();
+        if (variables != null && variables.size() == 1) {
+            ONode only = variables.values().iterator().next();
+            return only != null && only.isObject() ? only : null;
+        }
+        return null;
     }
 
     private McpMarketConfig toRemoteConfig(ONode remote, int index) {
@@ -425,20 +531,10 @@ public class OfficialRegistryMcpMarket implements McpMarket {
 
         List<McpMarketParam> params = new ArrayList<>();
         for (ONode headerNode : arrayOf(remote, "headers")) {
-            String headerName = str(headerNode, "name");
-            if (Assert.isEmpty(headerName)) {
-                continue;
+            McpMarketParam param = headerParam(headerNode);
+            if (param != null) {
+                params.add(param);
             }
-            String value = str(headerNode, "value");
-            boolean secret = bool(headerNode, "isSecret") || (value != null && value.contains("{"));
-
-            params.add(new McpMarketParam()
-                    .name(headerName)
-                    .description(str(headerNode, "description"))
-                    .required(bool(headerNode, "isRequired"))
-                    .secret(secret)
-                    .defaultValue(secret ? null : value)
-                    .in(McpMarketParam.IN_HEADER));
         }
 
         return new McpMarketConfig()
@@ -513,7 +609,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
         return child.getArray();
     }
 
-    private String str(ONode node, String key) {
+    private static String str(ONode node, String key) {
         if (node == null) {
             return null;
         }
@@ -525,7 +621,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
         return value == null || value.isEmpty() ? null : value;
     }
 
-    private boolean bool(ONode node, String key) {
+    private static boolean bool(ONode node, String key) {
         ONode child = node.get(key);
         return child != null && !child.isNull() && child.getBoolean();
     }
