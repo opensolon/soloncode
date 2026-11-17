@@ -276,7 +276,7 @@ public class LastTraceService {
                 turn.put("group", group);
                 turn.put("callId", callId);
                 turn.put("name", call.getName());
-                turn.put("title", ToolViewUtil.buildToolTitle(call.getName(), null, null));
+                turn.put("title", ToolViewUtil.buildToolTitle(call.getName(), call.getArguments(), null, null));
                 // tool.start 用模型给的原始参数（与实时流一致：展示层过滤只作用于 tool.end）
                 turn.put("args", copyArgs(call.getArguments()));
 

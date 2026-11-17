@@ -63,14 +63,21 @@
             list.forEach(function (item) {
                 var name = item.name || '';
                 var type = item.type || 'stdio';
-                // 有描述时优先展示描述（比命令或地址更能说明用途）
-                var detail = item.description || (type === 'stdio' ? (item.command || '') : (item.url || ''));
+                // 有描述时优先展示描述（比命令或地址更能说明用途）；
+                // 没有时展示命令或地址，并用灰色提示引导补填（描述会进入模型看到的服务目录）
+                var description = (item.description || '').trim();
+                var detail = description || (type === 'stdio' ? (item.command || '') : (item.url || ''));
+                var detailHtml = escapeHtml(detail);
+                if (!description) {
+                    var hint = '<span class="settings-muted-text">' + escapeHtml(I18n.t('mcp.noDescription')) + '</span>';
+                    detailHtml = detailHtml ? detailHtml + ' · ' + hint : hint;
+                }
                 var icon = iconMap[type] || 'M';
                 html += '<div class="settings-list-item' + (item.enabled === false ? ' disabled' : '') + '" data-name="' + escapeAttr(name) + '">'
                     + '<div class="settings-list-icon">' + escapeHtml(icon) + '</div>'
                     + '<div class="settings-list-info">'
                     + '<div class="settings-list-title">' + escapeHtml(name) + ' <span class="settings-inline-tag">[' + escapeHtml(type) + ']</span>' + (item.scope === 'workspace' ? ' <span class="mounts-scope-badge scope-workspace">' + I18n.t('mcp.scope.workspace') + '</span>' : '') + '</div>'
-                    + (detail ? '<div class="settings-list-desc">' + escapeHtml(detail) + '</div>' : '')
+                    + '<div class="settings-list-desc">' + detailHtml + '</div>'
                     + '</div><div class="settings-list-actions">'
                     + '<button class="settings-action-btn edit mcp-edit-btn" data-name="' + escapeAttr(name) + '" title="' + I18n.t('mcp.edit') + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'
                     + '<label class="toggle-switch" title="' + ((item.enabled !== false) ? I18n.t('mcp.toggleDisable') : I18n.t('mcp.toggleEnable')) + '">'

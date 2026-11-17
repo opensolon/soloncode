@@ -653,6 +653,24 @@ class PackageBoundaryTest {
                         + ", goal=" + goal + ", loop=" + loop);
     }
 
+    /**
+     * 构建引擎时三个重试次数必须各自读对应的设置项。
+     *
+     * <p>曾经把「模型重试次数」传给了 {@code mcpRetries}：启动后设置页的「MCP 重试次数」不起作用，
+     * 要在设置页保存一次（运行期路径写对了）才生效。</p>
+     */
+    @Test
+    void engineRetryOptionsReadTheirOwnSettings() throws IOException {
+        Path file = SRC.resolve("workspace/WorkspaceManager.java");
+        String content = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+
+        for (String kind : new String[]{"api", "model", "mcp"}) {
+            String getter = "get" + Character.toUpperCase(kind.charAt(0)) + kind.substring(1) + "Retries()";
+            String call = "." + kind + "Retries(wsSettings.getGeneral()." + getter + ")";
+            assertTrue(content.contains(call), "引擎构建必须写成 " + call);
+        }
+    }
+
     private static List<Path> javaFiles(Path dir) throws IOException {
         if (!Files.isDirectory(dir)) {
             return new ArrayList<>();

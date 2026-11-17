@@ -20,6 +20,8 @@ import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.core.util.Assert;
 
+import java.util.Map;
+
 /**
  * 工具事件的「可见性」与「标题」规则 —— 实时流（{@link WebEventMapper}）与
  * 历史回放（last-trace 接口）必须共用同一份判定，否则同一次工具调用在两条路径下
@@ -28,6 +30,11 @@ import org.noear.solon.core.util.Assert;
  * @author noear
  */
 public final class ToolViewUtil {
+    /** MCP 网关的中转调用工具名（模型经它调用具体的 MCP 工具） */
+    static final String MCP_CALL_TOOL = "call_tool";
+    /** 标题里服务名、工具名各自的最大长度（参数来自模型，防止异常值撑爆标题） */
+    private static final int MCP_NAME_MAX = 64;
+
     private ToolViewUtil() {
     }
 
@@ -64,20 +71,67 @@ public final class ToolViewUtil {
     /**
      * 构造工具卡片标题：子代理调用加 {@code agentName/} 前缀，主代理直接用工具名。
      *
+     * <p>MCP 网关的 {@code call_tool} 只是中转，单看工具名分不出调的是哪个连接器的哪个工具，
+     * 因此按参数补成 {@code call_tool · 服务/工具}（缺服务名时为 {@code call_tool · 工具}）。</p>
+     *
      * @param toolName       工具名
+     * @param args           模型给的工具参数（可为 null）
      * @param taskAgentName  task 包装事件透出的子代理名（优先）
      * @param eventAgentName 事件自身的代理名（"main" 视为主代理）
      */
-    public static String buildToolTitle(String toolName, String taskAgentName, String eventAgentName) {
+    public static String buildToolTitle(String toolName, Map<String, Object> args, String taskAgentName, String eventAgentName) {
+        String title = toolName;
+        if (MCP_CALL_TOOL.equals(toolName)) {
+            String target = mcpTargetOf(args);
+            if (target != null) {
+                title = toolName + " · " + target;
+            }
+        }
+
         if (Assert.isNotEmpty(taskAgentName)) {
-            return taskAgentName + "/" + toolName;
+            return taskAgentName + "/" + title;
         }
 
         // agentName 为空时不加前缀，避免拼出 "null/xxx"
         if (Assert.isNotEmpty(eventAgentName) && "main".equals(eventAgentName) == false) {
-            return eventAgentName + "/" + toolName;
+            return eventAgentName + "/" + title;
         }
 
-        return toolName;
+        return title;
+    }
+
+    /**
+     * 从 call_tool 参数里取出「服务/工具」；没有工具名时返回 null（标题保持原样）。
+     */
+    private static String mcpTargetOf(Map<String, Object> args) {
+        if (args == null) {
+            return null;
+        }
+
+        String tool = nameOf(args.get("tool_name"));
+        if (tool == null) {
+            return null;
+        }
+
+        String server = nameOf(args.get("server_name"));
+        return server == null ? tool : server + "/" + tool;
+    }
+
+    private static String nameOf(Object value) {
+        if (value == null) {
+            return null;
+        }
+
+        String text = String.valueOf(value).trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+
+        // 名字理应是单行短串；异常值压成一行并截断，避免撑坏卡片标题
+        text = text.replaceAll("\\s+", " ");
+        if (text.length() > MCP_NAME_MAX) {
+            text = text.substring(0, MCP_NAME_MAX) + "…";
+        }
+        return text;
     }
 }

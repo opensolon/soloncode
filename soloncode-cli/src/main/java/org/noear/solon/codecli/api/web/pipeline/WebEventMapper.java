@@ -310,9 +310,8 @@ public class WebEventMapper {
             return WebEvent.EMPTY;
         }
 
-        String toolTitle = ToolViewUtil.buildToolTitle(toolName, taskAgentName, event.getAgentName());
-
         Map<String, Object> args = event.getArgs();
+        String toolTitle = ToolViewUtil.buildToolTitle(toolName, args, taskAgentName, event.getAgentName());
         WebEvent<ToolStartPayload> evt = WebEvent.ofToolCallStart(toolName, toolTitle, args);
         evt.getPayload().setCallId(event.getCallId());
         return evt;
@@ -324,7 +323,7 @@ public class WebEventMapper {
             return WebEvent.EMPTY;
         }
 
-        String toolTitle = ToolViewUtil.buildToolTitle(toolName, taskAgentName, event.getAgentName());
+        String toolTitle = ToolViewUtil.buildToolTitle(toolName, event.getArgs(), taskAgentName, event.getAgentName());
 
         return WebEvent.of(WebEventNames.TOOL_END, ToolEndPayload.builder()
                 .callId(event.getCallId())

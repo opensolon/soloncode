@@ -806,7 +806,7 @@ public class WorkspaceManager implements WorkspaceRegistry {
                 .hitlEnabled(wsSettings.getGeneral().isHitlEnabled())
                 .apiRetries(wsSettings.getGeneral().getApiRetries())
                 .modelRetries(wsSettings.getGeneral().getModelRetries())
-                .mcpRetries(wsSettings.getGeneral().getModelRetries())
+                .mcpRetries(wsSettings.getGeneral().getMcpRetries())
                 .toolsAdd(wsSettings.getPermission().getTools())
                 .disallowedToolsAdd(wsSettings.getPermission().getDisallowedTools())
                 .cacheControl(CacheControl.ofEphemeral())
