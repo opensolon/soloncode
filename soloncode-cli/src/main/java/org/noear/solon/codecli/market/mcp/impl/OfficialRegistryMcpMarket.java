@@ -291,6 +291,9 @@ public class OfficialRegistryMcpMarket implements McpMarket {
             repositoryUrl = str(repositoryNode, "url");
         }
 
+        // 项目主页：注册表用 websiteUrl，供无仓库地址时作为「打开外部页面」入口
+        String homepageUrl = str(serverNode, "websiteUrl");
+
         return new McpMarketItem()
                 .id(id)
                 .name(name)
@@ -299,6 +302,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
                 .description(str(serverNode, "description"))
                 .version(str(serverNode, "version"))
                 .repositoryUrl(repositoryUrl)
+                .homepageUrl(homepageUrl)
                 .transports(transports)
                 .matchKeys(matchKeys)
                 .updatedAt(updatedAt);
@@ -315,6 +319,7 @@ public class OfficialRegistryMcpMarket implements McpMarket {
         detail.description(item.getDescription());
         detail.version(item.getVersion());
         detail.repositoryUrl(item.getRepositoryUrl());
+        detail.homepageUrl(item.getHomepageUrl());
         detail.transports(item.getTransports());
         detail.matchKeys(item.getMatchKeys());
         detail.updatedAt(item.getUpdatedAt());

@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>重点覆盖分类维度：ClawHub 没有分类清单接口，分类表在站点前端资源（catalogMetadata chunk）里，
  * 运行期读源站、取不到才用内置快照；搜索接口支持 category 原生过滤但要求 q 非空；
- * 只按分类浏览只能取浏览页 SSR。</p>
+ * 只按分类浏览走站点列表接口（游标分页，支持「加载更多」）。</p>
  *
  * @author noear 2026/11/16 created
  */
@@ -121,11 +121,11 @@ public class ClawhubMarketTest {
     }
 
     /**
-     * 分类浏览：搜索接口要求 q 非空，无关键词时只能解析浏览页 SSR。
+     * 分类浏览：无关键词时走站点列表接口（skills:listPublicPageV4），分类由服务端过滤。
      */
     @Test
     @Order(6)
-    void search_仅分类浏览走浏览页() {
+    void search_仅分类浏览走站点列表接口() {
         Result<List<SkillMarketItem>> result = market.search(null, 50, "finance");
 
         assertEquals(200, result.getCode(), result.getDescription());
@@ -161,32 +161,98 @@ public class ClawhubMarketTest {
         assertTrue(firstSlugs.isEmpty(), "第 1、2 页出现重复条目: " + firstSlugs);
     }
 
+    /**
+     * 分类浏览的分页：站点列表接口是游标分页（不透明游标，不能由页码反推），
+     * 所以程序侧按顺序前进，逐页不能重复。
+     */
     @Test
     @Order(8)
-    void page_分类浏览只有第一页() {
-        Result<SkillMarketPage> first = market.page(null, "security", 1, 50);
+    void page_分类浏览可多页且不重复() {
+        Result<SkillMarketPage> first = market.page(null, "security", 1, 20);
         assertEquals(200, first.getCode(), first.getDescription());
-        assertFalse(first.getData().getItems().isEmpty(), "security 分类浏览应有数据");
-        // 浏览页无法翻页（page 参数无效），如实报告没有更多
-        assertFalse(first.getData().isHasMore(), "分类浏览不支持翻页，hasMore 必须为 false");
+        assertEquals(20, first.getData().getItems().size(), "首页应取满 20 条");
+        assertTrue(first.getData().isHasMore(), "security 分类不止 20 条，应报告还有更多");
 
-        Result<SkillMarketPage> second = market.page(null, "security", 2, 50);
-        assertEquals(200, second.getCode(), second.getDescription());
-        assertTrue(second.getData().getItems().isEmpty(), "第二页应为空");
+        Set<String> seen = slugs(first.getData().getItems());
+        assertEquals(20, seen.size(), "同一页内出现重复条目");
+
+        for (int page = 2; page <= 3; page++) {
+            Result<SkillMarketPage> next = market.page(null, "security", page, 20);
+            assertEquals(200, next.getCode(), next.getDescription());
+            assertEquals(20, next.getData().getItems().size(), "第 " + page + " 页应取满 20 条");
+
+            Set<String> current = slugs(next.getData().getItems());
+            current.retainAll(seen);
+            assertTrue(current.isEmpty(), "第 " + page + " 页与前面页重复: " + current);
+            seen.addAll(slugs(next.getData().getItems()));
+        }
+
+        // 每页都取满 → 三页共 60 条不重复
+        assertEquals(60, seen.size());
+    }
+
+    /** 分类浏览的条目应带上站点掌握的可展示信息（版本 / 下载量 / 发布方头像） */
+    @Test
+    @Order(9)
+    void page_分类浏览条目带版本与图标() {
+        Result<SkillMarketPage> page = market.page(null, "integrations", 1, 20);
+        assertEquals(200, page.getCode(), page.getDescription());
+        assertFalse(page.getData().getItems().isEmpty());
+
+        int withVersion = 0, withIcon = 0, withInstalls = 0;
+        for (SkillMarketItem item : page.getData().getItems()) {
+            if (item.getVersion() != null && item.getVersion().isEmpty() == false) withVersion++;
+            if (item.getIconUrl() != null && item.getIconUrl().isEmpty() == false) withIcon++;
+            if (item.getInstalls() > 0) withInstalls++;
+        }
+
+        assertTrue(withVersion > 0, "应至少有一条带版本号");
+        assertTrue(withIcon > 0, "应至少有一条带发布方头像");
+        assertTrue(withInstalls > 0, "应至少有一条带下载量");
+    }
+
+    /**
+     * 不能出现「点了加载更多却什么都没有」：返回空页时必须同时 hasMore=false。
+     *
+     * <p>这里不强行把某个分类翻到底（源站每个分类都是万条量级，翻到底要几百次请求），
+     * 而是逐页前进若干页，验证空页与 hasMore 的一致性；一旦到底，则后续页必须一直为空。</p>
+     */
+    @Test
+    @Order(10)
+    void page_不会出现空页却声称还有更多() {
+        boolean reachedEnd = false;
+
+        for (int p = 1; p <= 6; p++) {
+            Result<SkillMarketPage> page = market.page(null, "other", p, 40);
+            assertEquals(200, page.getCode(), page.getDescription());
+
+            if (page.getData().getItems().isEmpty()) {
+                assertFalse(page.getData().isHasMore(), "第 " + p + " 页为空却声称还有更多");
+                reachedEnd = true;
+                break;
+            }
+        }
+
+        if (reachedEnd) {
+            Result<SkillMarketPage> after = market.page(null, "other", 7, 40);
+            assertEquals(200, after.getCode(), after.getDescription());
+            assertTrue(after.getData().getItems().isEmpty(), "到底之后的页应为空");
+        }
     }
 
     @Test
-    @Order(9)
-    void page_未分类的浏览走trending() {
+    @Order(11)
+    void page_无关键词无分类走站点默认列表() {
         Result<SkillMarketPage> page = market.page(null, null, 1, 5);
 
         assertEquals(200, page.getCode(), page.getDescription());
         assertNotNull(page.getData().getItems());
-        assertFalse(page.getData().getItems().isEmpty(), "热门列表应有数据");
+        assertFalse(page.getData().getItems().isEmpty(), "默认列表应有数据");
+        assertEquals(5, page.getData().getItems().size(), "应按请求的每页条数返回");
     }
 
     @Test
-    @Order(10)
+    @Order(12)
     void detail_真实技能() {
         Result<List<SkillMarketItem>> list = market.search(KEYWORD, 5);
         assertEquals(200, list.getCode(), list.getDescription());

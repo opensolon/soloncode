@@ -94,22 +94,53 @@ public class ClawhubSkillMarket implements SkillMarket {
     private static final int CATEGORY_MIN_SIZE = 5;
     private static final long CATEGORY_CACHE_TTL_MS = 10 * 60 * 1000L;
 
-    /** 浏览页列表条目（href 形如 /owner/slug，块内无嵌套 a 标签） */
-    private static final Pattern BROWSE_ITEM = Pattern.compile(
-            "<a class=\"skill-list-item[^\"]*\" href=\"([^\"]+)\"[^>]*>(.*?)</a>", Pattern.DOTALL);
-    private static final Pattern BROWSE_NAME = Pattern.compile(
-            "class=\"skill-list-item-name\"[^>]*>([^<]*)<");
-    private static final Pattern BROWSE_OWNER = Pattern.compile(
-            "class=\"skill-list-item-owner\">@(?:<!-- -->)?([^<]*)<");
-    private static final Pattern BROWSE_SUMMARY = Pattern.compile(
-            "class=\"skill-list-item-summary\">(.*?)</p>", Pattern.DOTALL);
-    /** 下载量：定位 lucide-download 图标的结束标签后再取数字（svg 的 path 里也有数字，不能用懒匹配直接取） */
-    private static final Pattern BROWSE_DOWNLOADS = Pattern.compile(
-            "lucide-download[\\s\\S]*?</svg>\\s*(?:<!-- -->)?([\\d.,]+[kKmM]?)");
+    /**
+     * 站点后端（Convex）查询入口 —— 浏览页的列表、以及「加载更多」按钮都由它承载。
+     *
+     * <p>地址取自站点前端运行时配置 {@code VITE_CONVEX_URL}（{@code /assets/runtimeEnv-<hash>.js}）。
+     * 这是站点自己的后端接口，无公开契约；变了下沉到本类，只需改这里。</p>
+     */
+    private static final String CONVEX_QUERY_URL = "https://wry-manatee-359.convex.cloud/api/query";
+    /** 技能列表查询（与站点浏览页同款，支持 categorySlug + 游标分页） */
+    private static final String CONVEX_LIST_PATH = "skills:listPublicPageV4";
+    /** numItems 实测上限：传 40 返回 40，传 50/100/200 仍按 40 返回 */
+    private static final int CONVEX_MAX_CHUNK = 40;
+    /** 单次请求最多向上游取几块（正常翻页只需 1~2 块，这里只兜住页码跳跃） */
+    private static final int CONVEX_MAX_CHUNKS_PER_CALL = 8;
+    /** 排序，与站点浏览页一致（更新时间的倒序） */
+    private static final String CONVEX_SORT = "updated";
+    private static final String CONVEX_DIR = "desc";
+    /** 游标流复用窗口：前端连续点「加载更多」时复用，超过这个时间就从头取 */
+    private static final long STREAM_TTL_MS = 5 * 60 * 1000L;
 
     /** 源站分类表缓存（取不到也缓存，避免每页都扇出 3 个请求） */
     private volatile List<SkillMarketCategory> cachedCategories;
     private volatile long cachedCategoriesAt;
+
+    /** 最近一条游标流（市场页同时只有一个列表，不必要多） */
+    private volatile CursorStream cursorStream;
+
+    /**
+     * 游标分页流：同一份列表的顺次翻页共享它，避免每页都从头重放。
+     */
+    private static final class CursorStream {
+        /** 复用标识：分类 + 每页条数 */
+        final String key;
+        final String category;
+        /** 已取到但还没发出去的条目 */
+        final List<SkillMarketItem> buffer = new ArrayList<>();
+        /** 本次流里已发过的 slug（上游列表变动时防止重复展示） */
+        final Set<String> seen = new HashSet<>();
+        String cursor;
+        boolean exhausted;
+        int servedPages;
+        long touchedAt = System.currentTimeMillis();
+
+        CursorStream(String key, String category) {
+            this.key = key;
+            this.category = category;
+        }
+    }
 
     @Override
     public String name() {
@@ -158,8 +189,8 @@ public class ClawhubSkillMarket implements SkillMarket {
     public Result<List<SkillMarketItem>> search(String query, int limit, String category) {
         if (hasText(query) == false) {
             if (hasText(category)) {
-                // 分类浏览（无关键词）：改取浏览页
-                Result<SkillMarketPage> browseResult = categoryBrowse(category, 1);
+                // 分类浏览（无关键词）：走站点列表接口
+                Result<SkillMarketPage> browseResult = browsePage(category, 1, Math.max(limit, 1));
                 if (browseResult.getCode() != 200) {
                     return Result.failure(browseResult.getDescription());
                 }
@@ -295,10 +326,10 @@ public class ClawhubSkillMarket implements SkillMarket {
     }
 
     /**
-     * 分页。分类浏览与关键词搜索走不同通道：
+     * 分页。分类/全量浏览与关键词搜索走不同通道：
      * <ul>
-     *     <li>有关键词：搜索接口按 {@code need = page * pageSize} 取数后本地切片（上游 limit 封顶 100）；</li>
-     *     <li>无关键词仅有分类：取浏览页（每页固定 20 条，page 参数无效，只有第一页有数据）。</li>
+     *     <li>无关键词：站点列表查询 {@code skills:listPublicPageV4} 原生游标分页，分类由服务端过滤；</li>
+     *     <li>有关键词：搜索接口按 {@code need = page * pageSize} 取数后本地切片（上游 limit 封顶 100）。</li>
      * </ul>
      */
     @Override
@@ -306,8 +337,8 @@ public class ClawhubSkillMarket implements SkillMarket {
         int currentPage = Math.max(page, 1);
         int size = Math.max(pageSize, 1);
 
-        if (hasText(query) == false && hasText(category)) {
-            return categoryBrowse(category, currentPage);
+        if (hasText(query) == false) {
+            return browsePage(category, currentPage, size);
         }
 
         int need = currentPage * size;
@@ -341,31 +372,170 @@ public class ClawhubSkillMarket implements SkillMarket {
     }
 
     /**
-     * 分类浏览：解析浏览页 SSR HTML。
+     * 分类/全量浏览（无关键词）：站点列表接口的游标分页。
      *
-     * <p>站点未开放按分类取列表的 JSON 接口（{@code /api/v1/skills?category=} 等参数被静默忽略），
-     * 只有浏览页做了服务端过滤，且 {@code page} 参数无效、单页固定 20 条。</p>
+     * <p>游标是不透明的（服务端索引键），无法从页码反推，所以用 {@link CursorStream} 按页顺序前进：
+     * 前端顺序点「加载更多」时每页只需 1~2 次上游调用；页码跳跃（或换了分类/每页条数）则重开一个流，
+     * 从头快进到目标页。缓存只保留最近一条流（市场页同时只有一个列表）。</p>
      */
-    private Result<SkillMarketPage> categoryBrowse(String category, int page) {
-        if (page > 1) {
-            return Result.succeed(new SkillMarketPage()
-                    .page(page)
-                    .items(Collections.<SkillMarketItem>emptyList())
-                    .hasMore(false));
-        }
+    private Result<SkillMarketPage> browsePage(String category, int page, int pageSize) {
+        String key = (hasText(category) ? category : "") + "|" + pageSize;
 
         try {
-            String url = BROWSE_URL + "?category=" + URLEncoder.encode(category, "UTF-8");
-            List<SkillMarketItem> items = parseBrowseItems(httpGet(url, BROWSER_UA));
+            CursorStream stream = cursorStream;
+            boolean reuse = stream != null
+                    && stream.key.equals(key)
+                    && stream.servedPages == page - 1
+                    && System.currentTimeMillis() - stream.touchedAt < STREAM_TTL_MS;
 
-            return Result.succeed(new SkillMarketPage()
-                    .page(1)
-                    .items(items)
-                    .hasMore(false));
+            if (reuse == false) {
+                stream = new CursorStream(key, category);
+                cursorStream = stream;
+            }
+
+            synchronized (stream) {
+                if (reuse == false) {
+                    // 快进：丢掉目标页之前的页
+                    for (int p = 1; p < page; p++) {
+                        takePage(stream, pageSize);
+                    }
+                }
+
+                List<SkillMarketItem> items = takePage(stream, pageSize);
+                boolean hasMore = stream.buffer.isEmpty() == false || stream.exhausted == false;
+
+                return Result.succeed(new SkillMarketPage()
+                        .page(page)
+                        .items(items)
+                        .hasMore(hasMore));
+            }
         } catch (Exception e) {
-            LOG.warn("ClawhubMarket.categoryBrowse error: {}", e.getMessage());
-            return Result.failure("获取分类技能失败: " + e.getMessage());
+            LOG.warn("ClawhubMarket.browsePage error: {}", e.getMessage());
+            return Result.failure("获取技能列表失败: " + e.getMessage());
         }
+    }
+
+    /** 从流里取一页（不够则继续向上游取块），取完即从缓冲区移除 */
+    private List<SkillMarketItem> takePage(CursorStream stream, int pageSize) throws Exception {
+        int chunks = 0;
+        while (stream.buffer.size() < pageSize
+                && stream.exhausted == false
+                && chunks < CONVEX_MAX_CHUNKS_PER_CALL) {
+            fetchChunk(stream);
+            chunks++;
+        }
+
+        int n = Math.min(pageSize, stream.buffer.size());
+        List<SkillMarketItem> items = new ArrayList<>(stream.buffer.subList(0, n));
+        stream.buffer.subList(0, n).clear();
+        stream.servedPages++;
+        stream.touchedAt = System.currentTimeMillis();
+        return items;
+    }
+
+    /** 向上游取一块（最多 {@link #CONVEX_MAX_CHUNK} 条），结果并入流的缓冲区 */
+    private void fetchChunk(CursorStream stream) throws Exception {
+        ONode args = new ONode()
+                .set("numItems", CONVEX_MAX_CHUNK)
+                .set("sort", CONVEX_SORT)
+                .set("dir", CONVEX_DIR);
+
+        if (hasText(stream.category)) {
+            args.set("categorySlug", stream.category);
+        }
+        if (stream.cursor != null) {
+            args.set("cursor", stream.cursor);
+        }
+
+        String payload = new ONode()
+                .set("path", CONVEX_LIST_PATH)
+                .set("args", args)
+                .set("format", "json")
+                .toJson();
+
+        ONode root = ONode.ofJson(httpPost(CONVEX_QUERY_URL, payload));
+        if ("success".equals(getStringValue(root, "status")) == false) {
+            throw new IllegalStateException(String.valueOf(getStringValue(root, "errorMessage")));
+        }
+
+        ONode value = root.get("value");
+        ONode pageNode = (value == null || value.isNull()) ? null : value.get("page");
+
+        int added = 0;
+        if (pageNode != null && pageNode.isArray()) {
+            for (ONode itemNode : pageNode.getArray()) {
+                SkillMarketItem item = parseConvexItem(itemNode);
+                if (item == null || stream.seen.add(item.getSlug()) == false) {
+                    continue;
+                }
+                stream.buffer.add(item);
+                added++;
+            }
+        }
+
+        String nextCursor = (value == null || value.isNull()) ? null : getStringValue(value, "nextCursor");
+        boolean hasMore = value != null && value.isNull() == false
+                && value.get("hasMore") != null && value.get("hasMore").getBoolean();
+
+        // 空块 / 说是到底 / 游标原地打转，都当到底，避免死循环
+        if (hasMore == false || nextCursor == null || nextCursor.isEmpty()
+                || nextCursor.equals(stream.cursor) || added == 0) {
+            stream.exhausted = true;
+        } else {
+            stream.cursor = nextCursor;
+        }
+    }
+
+    /** 把站点列表条目映射成市场条目（字段与站点展示一致：下载量、版本、发布方头像） */
+    private SkillMarketItem parseConvexItem(ONode itemNode) {
+        ONode skillNode = itemNode.get("skill");
+        if (skillNode == null || skillNode.isNull()) {
+            return null;
+        }
+
+        String slug = getStringValue(skillNode, "slug");
+        if (hasText(slug) == false) {
+            return null;
+        }
+
+        String displayName = getStringValue(skillNode, "displayName");
+        if (hasText(displayName) == false) {
+            displayName = slug;
+        }
+
+        String ownerHandle = getStringValue(itemNode, "ownerHandle");
+        if (hasText(ownerHandle) == false) {
+            ONode ownerNode = itemNode.get("owner");
+            if (ownerNode != null && ownerNode.isNull() == false) {
+                ownerHandle = getStringValue(ownerNode, "handle");
+            }
+        }
+
+        String version = null;
+        ONode latestVersionNode = itemNode.get("latestVersion");
+        if (latestVersionNode != null && latestVersionNode.isNull() == false) {
+            version = getStringValue(latestVersionNode, "version");
+        }
+
+        SkillMarketItem item = new SkillMarketItem()
+                .slug(slug)
+                .name(displayName)
+                .displayName(displayName)
+                .summary(getStringValue(skillNode, "summary"))
+                .ownerHandle(ownerHandle)
+                .url(hasText(ownerHandle) ? BASE_URL + "/" + ownerHandle + "/" + slug : BASE_URL + "/skills/" + slug)
+                .version(version);
+
+        ONode statsNode = skillNode.get("stats");
+        if (statsNode != null && statsNode.isNull() == false) {
+            long downloads = getLongValue(statsNode, "downloads");
+            item.installs(downloads > 0 ? downloads : getLongValue(statsNode, "installs"));
+            item.stars(getLongValue(statsNode, "stars"));
+        }
+
+        item.iconUrl(parseIcon(itemNode));
+
+        return item;
     }
 
     // ==================== 详情 ====================
@@ -507,6 +677,37 @@ public class ClawhubSkillMarket implements SkillMarket {
         throw lastEx;
     }
 
+    /** POST JSON（带重试），用于站点列表接口 */
+    private String httpPost(String url, String jsonBody) throws Exception {
+        Exception lastEx = null;
+        for (int i = 0; i < 3; i++) {
+            try {
+                HttpUtils http = HttpUtils.http(url)
+                        .header("User-Agent", BROWSER_UA)
+                        .header("Content-Type", "application/json")
+                        .timeout(15000)
+                        .ssl(SkillMarketSslSupplier.getInstance());
+                ProxyConfig.applyIfNeeded(http);
+                http.bodyOfJson(jsonBody);
+
+                try (HttpResponse response = http.exec("POST")) {
+                    String body = response.bodyAsString();
+                    if (response.code() >= 300) {
+                        throw new IllegalStateException("HTTP " + response.code() + ": " + body);
+                    }
+                    return body;
+                }
+            } catch (Exception e) {
+                lastEx = e;
+                LOG.warn("httpPost attempt {} failed: {}", i + 1, e.getMessage());
+                if (i < 2) {
+                    Thread.sleep(1000);
+                }
+            }
+        }
+        throw lastEx;
+    }
+
     private List<SkillMarketItem> parseItems(ONode root) {
         ONode itemsNode = root.get("items");
         if (itemsNode != null && itemsNode.isArray()) {
@@ -520,100 +721,6 @@ public class ClawhubSkillMarket implements SkillMarket {
         }
 
         return Collections.emptyList();
-    }
-
-    /**
-     * 解析浏览页 SSR HTML 的列表条目。
-     *
-     * <p>条目结构：{@code <a class="skill-list-item..." href="/owner/slug">…}，
-     * 内部含名称、所有者、简介、主题、分类、更新时间/收藏数/下载数。
-     * 浏览页不输出图标，因此 iconUrl 为 null，前端显示首字母徽标。</p>
-     */
-    private List<SkillMarketItem> parseBrowseItems(String html) {
-        List<SkillMarketItem> items = new ArrayList<>();
-        if (html == null || html.isEmpty()) {
-            return items;
-        }
-
-        Matcher matcher = BROWSE_ITEM.matcher(html);
-        while (matcher.find()) {
-            String href = matcher.group(1);
-            String block = matcher.group(2);
-
-            String displayName = unescapeHtml(firstMatch(BROWSE_NAME, block));
-            if (displayName == null || displayName.isEmpty()) {
-                continue;
-            }
-
-            // href 形如 /owner/slug
-            String[] parts = href.split("/");
-            if (parts.length < 3) {
-                continue;
-            }
-            String hrefOwner = parts[1];
-            String slug = parts[2];
-
-            String owner = unescapeHtml(firstMatch(BROWSE_OWNER, block));
-
-            items.add(new SkillMarketItem()
-                    .slug(slug)
-                    .name(displayName)
-                    .displayName(displayName)
-                    .summary(unescapeHtml(firstMatch(BROWSE_SUMMARY, block)))
-                    .ownerHandle(hasText(owner) ? owner : hrefOwner)
-                    .url(BASE_URL + href)
-                    .installs(parseCount(firstMatch(BROWSE_DOWNLOADS, block))));
-        }
-
-        return items;
-    }
-
-    /** 取正则第一个分组，未命中返回 null */
-    private String firstMatch(Pattern pattern, String text) {
-        Matcher matcher = pattern.matcher(text);
-        return matcher.find() ? matcher.group(1) : null;
-    }
-
-    /**
-     * 解析站点展示的计数（带 k/M 后缀，如 {@code 59.6k}）。
-     * 仅用于列表粗略展示，精度不保证。
-     */
-    private long parseCount(String text) {
-        if (hasText(text) == false) {
-            return 0;
-        }
-
-        String value = text.trim().replace(",", "");
-        double multiplier = 1;
-
-        char last = Character.toLowerCase(value.charAt(value.length() - 1));
-        if (last == 'k') {
-            multiplier = 1000;
-            value = value.substring(0, value.length() - 1);
-        } else if (last == 'm') {
-            multiplier = 1000000;
-            value = value.substring(0, value.length() - 1);
-        }
-
-        try {
-            return (long) (Double.parseDouble(value) * multiplier);
-        } catch (NumberFormatException e) {
-            return 0;
-        }
-    }
-
-    /** 反转义 SSR 输出里的常见 HTML 实体 */
-    private String unescapeHtml(String text) {
-        if (text == null || text.indexOf('&') < 0) {
-            return text;
-        }
-
-        return text.replace("&amp;", "&")
-                .replace("&quot;", "\"")
-                .replace("&#x27;", "'")
-                .replace("&#39;", "'")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">");
     }
 
     private boolean hasText(String text) {
@@ -704,17 +811,20 @@ public class ClawhubSkillMarket implements SkillMarket {
      * 解析图标地址：优先搜索接口的 icon 字段，回退发布方头像（publisher.image，多为 GitHub 头像）；
      * 发布方缺失（如 skills.sh 来源）时返回 null，前端显示首字母。
      */
+    /** 把图标字段也认作发布方头像：搜索接口是 publisher.image，站点列表接口是 owner.image */
     private String parseIcon(ONode node) {
         String icon = getStringValue(node, "icon");
         if (icon != null && !icon.isEmpty()) {
             return icon;
         }
 
-        ONode publisherNode = node.get("publisher");
-        if (publisherNode != null && !publisherNode.isNull()) {
-            String image = getStringValue(publisherNode, "image");
-            if (image != null && !image.isEmpty()) {
-                return image;
+        for (String ownerKey : new String[]{"publisher", "owner"}) {
+            ONode ownerNode = node.get(ownerKey);
+            if (ownerNode != null && ownerNode.isNull() == false) {
+                String image = getStringValue(ownerNode, "image");
+                if (image != null && !image.isEmpty()) {
+                    return image;
+                }
             }
         }
         return null;

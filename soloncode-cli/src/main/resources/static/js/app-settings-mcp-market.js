@@ -299,7 +299,8 @@
 
             var version = item.version ? 'v' + String(item.version).replace(/^v/i, '') : '';
             var transport = transportLabel(item.transports);
-            var repoUrl = item.repositoryUrl || '';
+            // 外部页面地址：优先仓库地址，其次项目主页（腾讯、Smithery 市场只提供主页）
+            var externalUrl = item.repositoryUrl || item.homepageUrl || '';
 
             html += '<div class="settings-list-item is-static" data-id="' + escapeAttr(id) + '">'
                 + iconHtml(item, iconText, isPlaceholderIcon(item.iconUrl, iconCounts))
@@ -314,7 +315,7 @@
                 + (item.owner ? '<span>' + escapeHtml(item.owner) + '</span>' : '')
                 + (item.verified ? '<span class="mcp-market-verified" title="' + I18n.t('mcp.marketVerified') + '">✓ ' + I18n.t('mcp.marketVerified') + '</span>' : '')
                 + (formatUseCount(item.useCount) ? '<span title="' + I18n.t('mcp.marketUses') + '">' + escapeHtml(formatUseCount(item.useCount)) + '</span>' : '')
-                + (repoUrl ? '<button type="button" class="skill-item-detail-link" data-url="' + escapeAttr(repoUrl) + '" title="' + I18n.t('skills.openExternal') + '">↗</button>' : '')
+                + (externalUrl ? '<button type="button" class="skill-item-detail-link" data-url="' + escapeAttr(externalUrl) + '" title="' + I18n.t('skills.openExternal') + '">↗</button>' : '')
                 + '</div></div>'
                 + '<div class="settings-list-actions">'
                 + '<div class="skill-install-wrap">'
