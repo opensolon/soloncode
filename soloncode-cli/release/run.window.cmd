@@ -31,10 +31,22 @@ if not exist "%JAR_FILE%" (
     goto :fail
 )
 
-where java >nul 2>nul
-if errorlevel 1 (
-    echo [Error] java not found. Install Java 8 or newer and add JAVA_HOME\bin to PATH.
-    goto :fail
+rem Prefer a JDK shipped next to this script (portable USB setups): jdk\bin\java.exe.
+rem Only the exact name "jdk" is recognized on purpose (no jdk* wildcard).
+rem Fall back to the java found on PATH when there is none.
+set "JAVA_EXE="
+if exist "%~dp0jdk\bin\java.exe" (
+    set "JAVA_EXE=%~dp0jdk\bin\java.exe"
+    set "JAVA_HOME=%~dp0jdk"
+    set "PATH=%~dp0jdk\bin;%PATH%"
+) else (
+    where java >nul 2>nul
+    if errorlevel 1 (
+        echo [Error] java not found. Install Java 8 or newer and add JAVA_HOME\bin to PATH.
+        echo         Or unpack a JDK into the jdk directory next to this script.
+        goto :fail
+    )
+    set "JAVA_EXE=java"
 )
 
 rem JDK 24+ treats System.load as a restricted method; jansi loading its native
@@ -43,10 +55,10 @@ rem --enable-native-access=ALL-UNNAMED silences them (JDK 16+, so 17/21/25, all
 rem accept the flag; JDK 8/11 treat it as an unknown option and refuse to start,
 rem hence the probe below instead of an unconditional flag).
 set "NATIVE_ACCESS="
-java --enable-native-access=ALL-UNNAMED -version >nul 2>nul
+"%JAVA_EXE%" --enable-native-access=ALL-UNNAMED -version >nul 2>nul
 if not errorlevel 1 set "NATIVE_ACCESS=--enable-native-access=ALL-UNNAMED"
 
-java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 %NATIVE_ACCESS% -jar "%JAR_FILE%" web
+"%JAVA_EXE%" -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 %NATIVE_ACCESS% -jar "%JAR_FILE%" web
 set "RC=%ERRORLEVEL%"
 
 :fail

@@ -50,6 +50,11 @@ run.window.cmd
 * 两个平台都可以直接双击启动，不用开命令行：Windows 双击 `run.window.cmd`（程序退出后窗口会停住，方便看提示）；macOS 双击 `run.mac.command`（会在“终端”里运行 `run.sh`，因为 Finder 里双击 `.sh` 只会用编辑器打开）。
 * 启动器不接受参数，也不会做端口探测或接管已在运行的实例：4808 被占用时会直接报错，先关掉前一个窗口再启动。
 * 这个包可以放在 U 盘、网络共享目录等任意位置，换台机器（对方机器有 Java 8+）就能跑。
+* 也可以自带 JDK：把解压好的 JDK 目录改名为 `jdk` 放在包根（与 `run.sh` / `run.window.cmd` 同级），启动器会优先用它，不依赖对方机器预装 Java；没有这个目录时才回退到系统 `java`。
+    * Linux / Windows：`jdk/bin/java`（或 `jdk\bin\java.exe`）。
+    * macOS：既可以是 `jdk/bin/java`，也可以是解压后多一层目录的 `jdk/Contents/Home/bin/java`。
+    * 只认 `jdk` 这一个目录名，不做通配匹配：带版本号的解压目录（如 `jdk-17`）需要手动改名为 `jdk`。
+    * 启动器会先跑一次 `java -version` 确认可用；若这个 JDK 跑不起来（比如把 Linux 版拷到了 macOS），会打一条 Warn 并改用系统 `java`。带了 `jdk` 目录时 `JAVA_HOME` 与 `PATH` 也一并指向它。
 * 数据固定写到用户主目录（`~/.soloncode`，Windows 为 `%USERPROFILE%\.soloncode`），和安装版共用同一份配置。
 * 注意：包根的 `AGENTS.md`、`skills/`、`commands/` 是给安装脚本用的，程序运行时只从 `~/.soloncode/` 读取。想在新环境里预置，把它们复制到该目录下即可。
 * 如果 macOS 提示“无法验证开发者”，执行一次：`xattr -d com.apple.quarantine run.mac.command install.mac.command run.sh install.sh`。
