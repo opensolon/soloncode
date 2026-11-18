@@ -325,8 +325,10 @@ fi
 JAVA_OPTS="-Dfile.encoding=UTF-8"
 # JDK 24+ 把 System.load 归入受限方法（jansi 加载本地库会触发），会打四行
 # “restricted method” WARNING；加 --enable-native-access=ALL-UNNAMED 可消除。
-# 该参数 JDK 16+（含 17/21/25）都认识，JDK 8/11 会当未知参数直接启动失败，
-# 所以直接探测一次，而不是靠版本号猜测。
+# 参数名和取值在 17/21/24/25 上完全一致，无需按版本分支；17/21 上本就没有这个
+# WARNING（JEP 472 从 24 才开始），加了只是无害空转。JDK 16 及更早（含 8/11）
+# 不认 ALL-UNNAMED 这个取值，会当未知参数直接启动失败，所以直接探测一次，
+# 而不是靠版本号猜测。
 if java --enable-native-access=ALL-UNNAMED -version >/dev/null 2>&1; then
     JAVA_OPTS="$JAVA_OPTS --enable-native-access=ALL-UNNAMED"
 fi

@@ -399,12 +399,38 @@ try { $OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::OutputEncoding 
 $JavaArgs = @("-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-Dstdin.encoding=UTF-8")
 # JDK 24+ reports System.load as a restricted method (jansi loads a native library) and
 # prints four "restricted method" WARNING lines. --enable-native-access=ALL-UNNAMED
-# silences them: JDK 16+ (so 17/21/25) accepts the flag, JDK 8/11 rejects it and refuses
-# to start, hence a one-shot probe instead of guessing the version.
+# silences them. Flag name and value are identical on JDK 17/21/24/25; on 17/21 it is
+# accepted as a no-op (JEP 472 only warns from 24 on). JDK 16 and older (incl. 8/11)
+# reject ALL-UNNAMED as an unknown option and refuse to start, hence a one-shot probe
+# instead of guessing the version.
+#
+# The probe must not go through the PowerShell pipeline: "& java ... 2>&1" turns every
+# stderr line of a native command into an error record, and with
+# $ErrorActionPreference = "Stop" (or $PSNativeCommandUseErrorActionPreference = $true
+# on PowerShell 7) that records are terminating. The previous catch{} then swallowed the
+# error and the flag was silently dropped, so JDK 24+ kept printing the warnings.
+# System.Diagnostics.Process has neither problem and works on PowerShell 2.0 as well.
+$nativeAccessSupported = $false
 try {
-    $null = & java --enable-native-access=ALL-UNNAMED -version 2>&1
-    if ($LASTEXITCODE -eq 0) { $JavaArgs += "--enable-native-access=ALL-UNNAMED" }
-} catch { }
+    $nativeAccessInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $nativeAccessInfo.FileName = "java"
+    $nativeAccessInfo.Arguments = "--enable-native-access=ALL-UNNAMED -version"
+    $nativeAccessInfo.UseShellExecute = $false
+    $nativeAccessInfo.CreateNoWindow = $true
+    $nativeAccessInfo.RedirectStandardOutput = $true
+    $nativeAccessInfo.RedirectStandardError = $true
+    $nativeAccessProbe = New-Object System.Diagnostics.Process
+    $nativeAccessProbe.StartInfo = $nativeAccessInfo
+    if ($nativeAccessProbe.Start()) {
+        # -version writes to stderr; both streams stay tiny, so reading them in order is safe.
+        $null = $nativeAccessProbe.StandardError.ReadToEnd()
+        $null = $nativeAccessProbe.StandardOutput.ReadToEnd()
+        $nativeAccessProbe.WaitForExit()
+        if ($nativeAccessProbe.ExitCode -eq 0) { $nativeAccessSupported = $true }
+        $nativeAccessProbe.Dispose()
+    }
+} catch { $nativeAccessSupported = $false }
+if ($nativeAccessSupported) { $JavaArgs += "--enable-native-access=ALL-UNNAMED" }
 & java @JavaArgs -jar $JarFile @RestArgs
 exit $LASTEXITCODE
 '@

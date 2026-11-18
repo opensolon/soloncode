@@ -51,9 +51,10 @@ if exist "%~dp0jdk\bin\java.exe" (
 
 rem JDK 24+ treats System.load as a restricted method; jansi loading its native
 rem library then prints four "restricted method" WARNING lines. Passing
-rem --enable-native-access=ALL-UNNAMED silences them (JDK 16+, so 17/21/25, all
-rem accept the flag; JDK 8/11 treat it as an unknown option and refuse to start,
-rem hence the probe below instead of an unconditional flag).
+rem --enable-native-access=ALL-UNNAMED silences them. Flag name and value are
+rem identical on JDK 17/21/24/25 (on 17/21 it is accepted as a no-op: JEP 472 only
+rem warns from 24 on). JDK 16 and older (incl. 8/11) reject ALL-UNNAMED as an
+rem unknown option and refuse to start, hence the probe below, not a version check.
 set "NATIVE_ACCESS="
 "%JAVA_EXE%" --enable-native-access=ALL-UNNAMED -version >nul 2>nul
 if not errorlevel 1 set "NATIVE_ACCESS=--enable-native-access=ALL-UNNAMED"
