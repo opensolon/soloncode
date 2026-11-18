@@ -2,9 +2,10 @@
 
 ### v2026.11.17
 
-* 修复 soloncode web 技能 / 连接器的选中会跨对话残留（现在严格与对话绑定）：原实现整个输入面板只有一份全局 `selection` 和单个 `loadedSessionId`，切会话时既不重绘也不重置——在 A 对话选完技能发消息，切到 B 对话工具栏仍然显示 A 的勾选，用户再点一下就会把 A 的选择连同新选择一起写进 B。现在改为按 sessionId 缓存（`selections` / `loadedKeys`），`setActiveSession` 与模型、子代理同一时机调用新增的 `Capabilities.syncSession()`，切到未缓存会话时先按空态渲染再补拉；异步返回只写自己那次请求的会话缓存（`if (currentKey() === key) renderAll()`），保存失败的回滚也只写回发起请求的会话。配套把 `GET /web/chat/skills` 从 `getOwnedSession` 改为「会话不存在就返回空、不建会话」——查询接口不该有建目录的副作用，否则每点一次「新对话」都会多一个空会话。新增 `CapabilitySessionScopeWebContractTest` 3 例锁住「不得回到全局单份选择态」「切会话必须同步」「异步结果不得串会话」。
+* 修复 soloncode web 技能 / 连接器的选中会跨对话残留
 * 优化 soloncode web 连接器（MCP）市场，并增加分类
 * 优化 soloncode web 技能（Skill）市场，并增加分类
+* 优化 "直接运行" 模式支持自带 jdk
 
 ### v2026.11.16
 
