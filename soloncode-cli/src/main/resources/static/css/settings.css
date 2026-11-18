@@ -267,6 +267,14 @@
 .password-toggle { position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--text-secondary); padding: 2px; border-radius: 4px; display: flex; align-items: center; transition: color 0.15s; }
 .password-toggle:hover { color: var(--text-primary); }
 
+/* 挂载「映射路径」+ 浏览本地目录按钮（后端弹原生对话框，与工作区 Home 同一接口） */
+.mounts-path-row { display: flex; align-items: stretch; gap: 8px; }
+.mounts-path-row input { flex: 1; min-width: 0; }
+.mounts-path-pick { flex: none; width: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-input-box); color: var(--text-secondary); cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s; }
+.mounts-path-pick:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.mounts-path-pick:disabled { opacity: 0.45; cursor: default; }
+.mounts-path-pick.spin svg { animation: spin 1.2s linear infinite; }
+
 .mcp-type-toggle { display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; }
 .mcp-type-btn { flex: 1; padding: 6px 16px; border: none; background: none; color: var(--text-secondary); font-size: var(--fs-sm); cursor: pointer; transition: all 0.15s; }
 .mcp-type-btn.active { background: var(--accent-fill, var(--accent)); color: #fff; }

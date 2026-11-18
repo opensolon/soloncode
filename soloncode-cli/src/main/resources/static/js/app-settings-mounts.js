@@ -27,6 +27,53 @@
     var mountsCurrentRealPath = null;
     var mountsEditAlias = null;
     var $mountsTypeBtns = $('#mountsTypeToggle .mcp-type-btn');
+    var $mountsPickBtn = $('#mountsPickBtn');
+    var mountsPickAvailable = false;
+
+    // 「浏览本地目录」按钮：只在本机支持原生目录框且处于添加模式时显示（编辑时路径只读）
+    function syncMountsPickBtn() {
+        var show = mountsPickAvailable && !mountsEditAlias;
+        $mountsPickBtn.toggle(show).prop('disabled', !show);
+    }
+
+    // 打开本机原生目录框，选中后只回填「映射路径」，仍由「保存」提交
+    function pickMountsFolder() {
+        if ($mountsPickBtn.prop('disabled')) return;
+        $mountsPickBtn.prop('disabled', true).addClass('spin');
+        // 超时兜底：服务端默认 300s 销毁对话框，前端略放宽 20s，保证按钮不会一直转
+        var abortCtl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var abortTimer = abortCtl ? setTimeout(function () { abortCtl.abort(); }, 320000) : null;
+        var opts = { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'purpose=mount' };
+        if (abortCtl) opts.signal = abortCtl.signal;
+        function done() {
+            $mountsPickBtn.removeClass('spin');
+            if (abortTimer) clearTimeout(abortTimer);
+            syncMountsPickBtn();
+        }
+        fetch('/web/workspace/pick-directory', opts)
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                if (res.code !== 200) { done(); showToast(res.description || res.message || 'pick failed', 'error'); return; }
+                if (res.data && res.data.headless) {
+                    // 桌面会话可能在页面加载后消失：静默降级为手工输入
+                    mountsPickAvailable = false;
+                    done();
+                    return;
+                }
+                done();
+                var p = res.data && res.data.path;
+                if (!p) return; // 用户取消，静默返回
+                $('#mountsPath').val(p).trigger('focus');
+            })
+            .catch(function () { done(); showToast(I18n.t('sidebar.wsPickTimeout'), 'error'); });
+    }
+
+    $mountsPickBtn.on('click', pickMountsFolder);
+    // 初始化时探测一次能力（GET 无副作用）：非本机访问或无桌面时保持隐藏
+    fetch('/web/workspace/pick-directory').then(function (r) { return r.json(); }).then(function (res) {
+        mountsPickAvailable = !!(res && res.code === 200 && res.data && res.data.available);
+        syncMountsPickBtn();
+    }).catch(function () { });
 
     function showMountsListView() { $mountsFormView.hide(); $mountsSkillsView.hide(); $mountsListView.addClass('slide-back').show(); setTimeout(function(){ $mountsListView.removeClass('slide-back'); }, 260); }
     function showMountsFormView(title) { $mountsFormTitle.text(title || I18n.t('mounts.addTitle')); $mountsListView.hide(); $mountsSkillsView.hide(); $mountsFormView.show(); }
@@ -134,6 +181,7 @@
         else { $('#mountsDescription').removeClass('readonly-gray'); }
 
         $mountsSaveBtn.text(I18n.t('mounts.updateBtn'));
+        syncMountsPickBtn();
         showMountsFormView(I18n.t('mounts.editTitle'));
     }
 
@@ -376,6 +424,7 @@
         $('#mountsFormActions').hide();
         $('#mountsPresetsDivider, .mounts-presets').show();
         $mountsSaveBtn.text(I18n.t('mounts.saveBtn')).show();
+        syncMountsPickBtn();
         showMountsFormView(I18n.t('mounts.addTitle'));
     });
     $('#mountsBackBtn').on('click', function () { mountsEditAlias = null; showMountsListView(); });

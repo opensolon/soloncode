@@ -243,6 +243,8 @@ public class WorkspaceWebController extends AbstractWebController {
      *   <li><b>超时自动关闭</b>：见 {@link DirectoryPickerUtil#DEFAULT_TIMEOUT_MS}</li>
      * </ul>
      *
+     * <p>可选参数 purpose：mount 表示为设置页「挂载 - 映射路径」选择目录（仅影响对话框标题），缺省为工作区。</p>
+     *
      * @param ctx Solon 请求上下文（用于来源 IP 校验）
      * @return 选中结果：{path}；用户取消时 path 为 null（code=200）
      */
@@ -269,7 +271,8 @@ public class WorkspaceWebController extends AbstractWebController {
         }
 
         try {
-            String path = DirectoryPickerUtil.pick("选择工作区目录");
+            String title = "mount".equals(ctx.param("purpose")) ? "选择挂载目录" : "选择工作区目录";
+            String path = DirectoryPickerUtil.pick(title);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("path", path);
