@@ -20,6 +20,7 @@ import org.jline.terminal.Terminal;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActTrace;
+import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
 import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
@@ -366,6 +367,13 @@ class CliHostSink implements HostSink {
                 buf.append(", ");
             }
             buf.append(trace.getMetrics().getTotalTokens()).append("tk");
+
+            // 上下文占用：本轮 prompt tokens 占模型上下文窗口的比例，接近上限时
+            // 该收手或开新会话，否则会被截断。
+            String contextInfo = contextInfo(trace);
+            if (contextInfo != null) {
+                buf.append(", ").append(contextInfo);
+            }
         }
         if (startTime > 0) {
             if (buf.length() > 2) {
@@ -376,6 +384,44 @@ class CliHostSink implements HostSink {
         }
         buf.append(")");
         return buf;
+    }
+
+    /**
+     * 上下文占用信息，形如 {@code ctx 12.3k/128k (10%)}。
+     *
+     * <p>模型未配置上下文长度时返回 null，避免显示无意义的百分比。</p>
+     */
+    private static String contextInfo(ReActTrace trace) {
+        if (trace.getOptions() == null || trace.getOptions().getChatModel() == null) {
+            return null;
+        }
+        ChatModel chatModel = trace.getOptions().getChatModel();
+        if (chatModel.getConfig() == null) {
+            return null;
+        }
+        long contextLength = chatModel.getConfig().getContextLength();
+        if (contextLength <= 0) {
+            return null;
+        }
+        long promptTokens = trace.getMetrics().getPromptTokens();
+        if (promptTokens <= 0) {
+            return null;
+        }
+        long percent = Math.round(promptTokens * 100.0 / contextLength);
+        return "ctx " + formatTokens(promptTokens) + "/" + formatTokens(contextLength)
+                + " (" + percent + "%)";
+    }
+
+    /** token 数的紧凑写法：1234 -> 1.2k，123456 -> 124k。 */
+    private static String formatTokens(long tokens) {
+        if (tokens < 1000) {
+            return String.valueOf(tokens);
+        }
+        if (tokens < 1_000_000) {
+            double k = tokens / 1000.0;
+            return (k < 10 ? String.format("%.1f", k) : String.format("%.0f", k)) + "k";
+        }
+        return String.format("%.1f", tokens / 1_000_000.0) + "m";
     }
 
     static String clearThink(String chunk) {
