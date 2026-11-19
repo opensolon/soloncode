@@ -39,6 +39,7 @@ import org.noear.solon.ai.harness.input.RejectReason;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.talents.todo.TodoTalent;
 import org.noear.solon.codecli.config.AgentSettings;
+import org.noear.solon.codecli.util.MarkdownTableRenderer;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.lang.Nullable;
 import org.slf4j.Logger;
@@ -232,14 +233,21 @@ class CliHostSink implements HostSink {
                     } else {
                         terminal.writer().print("\n  ");
                     }
-                    terminal.writer().print(trimmed.replace("\n", "\n  "));
+                    terminal.writer().print(indent(MarkdownTableRenderer.render(trimmed)));
                     firstReasonDelta = false;
                 }
             } else {
                 // 连续的思考内容，保持缩进替换即可
-                terminal.writer().print(delta.replace("\n", "\n  "));
+                terminal.writer().print(indent(MarkdownTableRenderer.render(delta)));
             }
             terminal.flush();
+        }
+
+        /**
+         * 给每行加上两格缩进，与回复正文的缩进风格保持一致。
+         */
+        private String indent(String text) {
+            return text.replace("\n", "\n  ");
         }
 
         private void onReasonEnd(ReasonEndEvent e) {
