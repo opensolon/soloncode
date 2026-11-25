@@ -14,11 +14,17 @@ import org.noear.solon.ai.chat.tool.ToolResult;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessExtension;
 import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.harness.command.CommandInput;
+import org.noear.solon.ai.harness.command.CommandOutput;
+import org.noear.solon.ai.harness.command.ParsedCommand;
+import org.noear.solon.ai.harness.command.builtin.ClearCommand;
+import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.util.TraceUtil;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Proxy;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -146,5 +152,38 @@ class SubtaskSessionEndToEndTest {
         ToolResult stale = task("web-p1", id);
         assertTrue(stale.isError() && stale.getContent().contains("<task_id>") == false, stale.getContent());
         assertFalse(Files.exists(nested), "续跑查无此任务时不得建出子会话目录");
+    }
+
+    private void clear(AgentSession session) {
+        CommandInput in = CommandInput.of(HarnessInput.of(session, "/clear"), ParsedCommand.parse("/clear"), null);
+        CommandOutput out = (CommandOutput) Proxy.newProxyInstance(
+                CommandOutput.class.getClassLoader(), new Class<?>[]{CommandOutput.class}, (p, m, a) -> null);
+        new ClearCommand().execute(engine, in, out);
+    }
+
+    @Test
+    void clearRemovesSubtaskSessionsOfThatSessionOnly() throws Exception {
+        SessionManager manager = start();
+        AgentSession p1 = manager.getSession("web-p1");
+        bindTrace(p1);
+        bindTrace(manager.getSession("web-p2"));
+
+        String id1 = taskIdOf(task("web-p1", null));
+        String id2 = taskIdOf(task("web-p2", null));
+        Path p1Subtasks = sessionsRoot().resolve("web-p1").resolve(SessionManager.SUBTASKS_DIR);
+        Path nested2 = sessionsRoot().resolve("web-p2").resolve(SessionManager.SUBTASKS_DIR).resolve(id2);
+        assertTrue(Files.isDirectory(p1Subtasks.resolve(id1)));
+
+        clear(p1);
+
+        assertFalse(Files.exists(p1Subtasks), "/clear 连带删除本会话的 subtasks/");
+        assertTrue(Files.isDirectory(sessionsRoot().resolve("web-p1")), "父会话目录保留");
+        assertTrue(Files.isDirectory(nested2), "别的会话的子任务不受影响");
+
+        // 清空后旧 task_id 已失效，续跑不会把子会话写回来
+        bindTrace(p1);
+        ToolResult stale = task("web-p1", id1);
+        assertTrue(stale.isError() && stale.getContent().contains("<task_id>") == false, stale.getContent());
+        assertFalse(Files.exists(p1Subtasks.resolve(id1)));
     }
 }

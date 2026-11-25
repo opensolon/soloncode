@@ -32,9 +32,11 @@ import java.util.concurrent.TimeUnit;
  *
  * <p>子代理任务会话（目录名满足 {@link SessionIdOwnership#isSubtask} 的完整格式；仅前缀相同的目录如
  * {@code task-board} 不动）存在父会话目录之下（{@code sessions/<父>/subtasks/<taskId>/}，见 {@link SessionManager}），
- * 随父会话目录一并删除；另按过期兜底：最近修改超过 {@link #SUBTASK_TTL_MS} 即删（快照原子写会刷新目录修改时间），
+ * 随父会话目录一并删除，清空会话（{@code /clear}）时也一并删除（见 {@link SessionManager}）；
+ * 另按过期兜底：最近修改超过 {@link #SUBTASK_TTL_MS} 即删（快照原子写会刷新目录修改时间），
  * 避免长期不删的会话（如 CLI 的固定会话）下子会话越积越多；{@code subtasks/} 清空后一并删掉。
- * 旧版本平铺在 sessions 下的子任务会话同样按过期清理。</p>
+ * 旧版本平铺在 sessions 下的子任务会话同样按过期清理。回退（rewind / rerun）删掉的消息不连带删子会话，
+ * 同样交给过期兜底。</p>
  *
  * <p>web.html 新建对话时会先创建会话目录（含 _meta.json，位于 ~/.soloncode/workspaces/&lt;标识&gt;/sessions/），
  * 用户未发消息即切走就会留下无实质内容的空壳目录，且会一直被 sessions 列表扫描。
@@ -58,7 +60,10 @@ public class SessionJanitor {
     public static final String WEB_SESSION_PREFIX = "web-";
     /** 新鲜度保护窗口：最近修改在窗口内的目录可能正在被写入，暂不清理 */
     private static final long FRESH_WINDOW_MS = 10 * 60 * 1000L;
-    /** 子代理任务会话保留时长（过期后不能再续跑，也不能回放子过程） */
+    /**
+     * 子代理任务会话保留时长。过期后不能再续跑（task 工具返回不存在，模型会重新委派）；
+     * 回放最后一轮时取不到子会话，前端退回普通工具卡显示，不报错。
+     */
     public static final long SUBTASK_TTL_MS = TimeUnit.DAYS.toMillis(7);
 
     private SessionJanitor() {
@@ -188,6 +193,7 @@ public class SessionJanitor {
 
     /**
      * 逐文件删除目录内容后删目录；任何失败都返回 false（下次再试），不抛异常。
+     * 目录里的软链接只删链接本身，不进入链接指向的目录。
      */
     private static boolean deleteDirectory(Path dir) {
         try {
@@ -208,8 +214,9 @@ public class SessionJanitor {
         }
     }
 
-    private static boolean deleteRecursively(File file) {
-        if (file.isDirectory()) {
+    /** 递归删除文件或目录；软链接只删链接本身（含顶层），不进入指向的目录。失败返回 false，不抛异常。 */
+    static boolean deleteRecursively(File file) {
+        if (Files.isSymbolicLink(file.toPath()) == false && file.isDirectory()) {
             File[] children = file.listFiles();
             if (children != null) {
                 for (File c : children) {

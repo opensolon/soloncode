@@ -8,6 +8,7 @@ import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.stream.Stream;
@@ -229,5 +230,68 @@ class SessionManagerTest {
         assertNull(manager.getLoadedSession("s3"));
         assertTrue(Files.isDirectory(sessionsRoot().resolve("s3")), "evict 不删磁盘");
         assertNotNull(manager.getSessionOrNull("s3"), "磁盘仍在，可重新加载");
+    }
+
+    @Test
+    void clearAlsoRemovesSubtasksOfThatSessionOnly() throws IOException {
+        SessionManager manager = new SessionManager(workspace.toString());
+        String id = "task-0123456789abcdef0123456789abcdef";
+        AgentSession p1 = manager.getSession("web-p1");
+        Path parent = sessionsRoot().resolve("web-p1");
+        Path sub = parent.resolve(SessionManager.SUBTASKS_DIR).resolve(id);
+        Files.createDirectories(sub);
+        Files.write(sub.resolve(id + ".snapshot.json"), "{}".getBytes());
+        Files.write(parent.resolve("_meta.json"), "{}".getBytes());
+        Path otherSub = sessionsRoot().resolve("web-p2").resolve(SessionManager.SUBTASKS_DIR).resolve(id);
+        Files.createDirectories(otherSub);
+
+        p1.clear();
+        assertFalse(Files.exists(parent.resolve(SessionManager.SUBTASKS_DIR)), "清空会话连带删除 subtasks/");
+        assertTrue(Files.isRegularFile(parent.resolve("_meta.json")), "父会话其它文件不动");
+        assertTrue(Files.isDirectory(otherSub), "别的会话不受影响");
+
+        p1.clear(); // 没有子任务时清空不出错、不建目录
+        assertFalse(Files.exists(parent.resolve(SessionManager.SUBTASKS_DIR)));
+
+        // 从磁盘加载回来的会话同样连带删除
+        Files.createDirectories(sub);
+        manager.evictSession("web-p1");
+        manager.getSessionOrNull("web-p1").clear();
+        assertFalse(Files.exists(parent.resolve(SessionManager.SUBTASKS_DIR)));
+    }
+
+    @Test
+    void clearOfSubtaskSessionsDoesNotCascade() throws IOException {
+        SessionManager manager = new SessionManager(workspace.toString());
+        String id = "task-0123456789abcdef0123456789abcdef";
+        // 旧版平铺的子会话目录下即使有 subtasks/ 也不动（只有普通会话才连带删除）
+        Path flat = sessionsRoot().resolve(id).resolve(SessionManager.SUBTASKS_DIR);
+        Files.createDirectories(flat);
+
+        manager.getSession(id, false).clear();
+        assertTrue(Files.isDirectory(flat));
+    }
+
+    @Test
+    void clearDoesNotFollowSymlinks() throws IOException {
+        SessionManager manager = new SessionManager(workspace.toString());
+        AgentSession p1 = manager.getSession("web-p1");
+        Path outside = workspace.resolve("outside");
+        Files.createDirectories(outside);
+        Path keep = Files.write(outside.resolve("keep.txt"), "x".getBytes());
+
+        // subtasks/ 里有指向外部目录的链接：只删链接
+        Path subtasks = sessionsRoot().resolve("web-p1").resolve(SessionManager.SUBTASKS_DIR);
+        Files.createDirectories(subtasks);
+        Files.createSymbolicLink(subtasks.resolve("task-0123456789abcdef0123456789abcdef"), outside);
+        p1.clear();
+        assertFalse(Files.exists(subtasks, LinkOption.NOFOLLOW_LINKS));
+        assertTrue(Files.isRegularFile(keep), "链接指向的内容不得被删");
+
+        // subtasks 本身是链接：同样只删链接
+        Files.createSymbolicLink(subtasks, outside);
+        p1.clear();
+        assertFalse(Files.exists(subtasks, LinkOption.NOFOLLOW_LINKS));
+        assertTrue(Files.isRegularFile(keep), "链接指向的内容不得被删");
     }
 }

@@ -7,10 +7,13 @@ import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.workspace.WorkspaceDataUtil;
 import org.noear.solon.lang.NonNull;
 import org.noear.solon.lang.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,7 +34,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>子代理任务会话（{@link SessionIdOwnership#isSubtask}）存在父会话目录之下：
  * {@code sessions/<父会话>/subtasks/<taskId>/}（引擎经 {@link #getSession(String, String, boolean)} 带父会话标识来取），
  * 删父会话目录即连带删除。它们不放进内存缓存（每次按需从磁盘打开；同一任务同一时刻只有一个写入方，
- * 由 TaskTalent 的运行锁保证），过期目录仍由 {@link SessionJanitor#cleanSessions(Path)} 按过期兜底清理。
+ * 由 TaskTalent 的运行锁保证）。清空会话（{@code /clear} → {@link AgentSession#clear()}）时连带删除整个 {@code subtasks/}，
+ * 其余目录由 {@link SessionJanitor#cleanSessions(Path)} 按过期兜底清理。
  * 旧版本平铺在 {@code sessions/<taskId>/} 的子会话只读兼容（不迁移，到期后由清理器删除）。</p>
  *
  * <p>会话 ID 必须非空，且解析后是 sessions 目录的直接子目录（防 {@code ../} 越界）；子任务会话的父会话 ID 同样校验，
@@ -43,6 +47,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SessionManager implements AgentSessionProvider {
     /** 子代理任务会话在父会话目录下的子目录名 */
     public static final String SUBTASKS_DIR = "subtasks";
+
+    private static final Logger LOG = LoggerFactory.getLogger(SessionManager.class);
 
     private final String workspace;
     private final Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
@@ -79,7 +85,7 @@ public class SessionManager implements AgentSessionProvider {
 
         if (createIfAbsent) {
             Path dir = resolveSessionPath(sessionId);
-            return sessionMap.computeIfAbsent(sessionId, key -> new FileAgentSession(key, dir.toString()));
+            return sessionMap.computeIfAbsent(sessionId, key -> new HostSession(key, dir));
         }
 
         Path dir = sessionPathOrNull(sessionId);
@@ -87,7 +93,7 @@ public class SessionManager implements AgentSessionProvider {
             return null;
         }
         return sessionMap.computeIfAbsent(sessionId, key ->
-                Files.isDirectory(dir) ? new FileAgentSession(key, dir.toString()) : null); // 返回 null 时不写入
+                Files.isDirectory(dir) ? new HostSession(key, dir) : null); // 返回 null 时不写入
     }
 
     /**
@@ -132,6 +138,7 @@ public class SessionManager implements AgentSessionProvider {
         }
         return new FileAgentSession(sessionId, nested.toString());
     }
+
 
     /** 子任务会话在父会话目录下的存储路径 */
     static Path subtaskPath(Path parentDir, String taskId) {
@@ -256,5 +263,32 @@ public class SessionManager implements AgentSessionProvider {
             return null;
         }
         return root.equals(dir.getParent()) ? dir : null;
+    }
+
+    /**
+     * 普通会话（非子任务）：清空时连带删除本会话目录下的 {@code subtasks/}（子任务会话存放位置属宿主约定）。
+     *
+     * <p>不判断是否还有子任务在跑：会话忙时 {@code /clear} 本就进不来；父流已中断、子任务线程还没停的极端情况下，
+     * 它结束时会把自己的目录写回来，由过期清理兜底。删除失败同样留给过期清理，不影响清空本身。
+     * 软链接只删链接本身。子任务会话与旧版平铺的子会话仍是普通 {@link FileAgentSession}，不走这里。</p>
+     */
+    private static final class HostSession extends FileAgentSession {
+        private final Path dir;
+
+        HostSession(String sessionId, Path dir) {
+            super(sessionId, dir.toString());
+            this.dir = dir;
+        }
+
+        @Override
+        public void clear() {
+            super.clear();
+
+            Path subtasks = dir.resolve(SUBTASKS_DIR);
+            if (Files.exists(subtasks, LinkOption.NOFOLLOW_LINKS)
+                    && SessionJanitor.deleteRecursively(subtasks.toFile()) == false) {
+                LOG.warn("[Clear] Failed to remove subtask sessions of {}, left to expiry cleanup", getSessionId());
+            }
+        }
     }
 }
