@@ -528,7 +528,22 @@ function loadMessages(sess) {
         onTraceReady(null);
     });
 
+    /* 刷新/重启后首屏恢复会话时，语言包可能还没加载完，此时 I18n.t() 会原样返回 key
+     * （如思考块标题显示成 "msg.thinking"）。请求照常并行发出，只把建 DOM 推迟到语言包就绪；
+     * 加载期间的实时 chunk 仍由 _loadingHistory 缓存，不会丢。 */
+    var whenI18nReady = (window.I18n && typeof window.I18n.ready === 'function')
+        ? function(fn) { window.I18n.ready(fn); }
+        : function(fn) { fn(); };
+
     $.get('/web/chat/messages?sessionId=' + encodeURIComponent(sess.sessionId), function(resp) {
+        whenI18nReady(function() { renderHistoryMessages(resp); });
+    }).fail(function() {
+        gate.domDone = true;
+        gate.lastAssistantRow = null;
+        tryFinishLoad();
+    });
+
+    function renderHistoryMessages(resp) {
         var realContainer = sess.container;
         try {
             var msgs = resp.data;
@@ -622,11 +637,7 @@ function loadMessages(sess) {
             gate.domDone = true;
             tryFinishLoad();
         }
-    }).fail(function() {
-        gate.domDone = true;
-        gate.lastAssistantRow = null;
-        tryFinishLoad();
-    });
+    }
 }
 
 /* Load on startup：会话列表关键路径立即拉；hints 可延后 */

@@ -893,7 +893,7 @@ function ensureThinkingBlockInGroup(sess, group) {
     var initiallyExpanded = window.cliPrintSimplified === false;
     var block = $('<div>').addClass('reason-group-think streaming')[0];
     if (initiallyExpanded) $(block).addClass('expanded');
-    block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label">' + I18n.t('msg.thinking') + '</span>'
+    block.innerHTML = '<div class="reason-group-think-header" aria-expanded="' + initiallyExpanded + '"><span class="reason-group-think-label" data-i18n="msg.thinking">' + I18n.t('msg.thinking') + '</span>'
         + '<svg class="reason-group-think-spinner" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>'
         + '<i class="layui-icon layui-icon-right reason-group-think-toggle"></i></div>'
         + '<div class="reason-group-think-body"><div class="md-content"></div></div>';

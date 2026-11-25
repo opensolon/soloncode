@@ -295,6 +295,39 @@
          */
         getLocale: function () {
             return this.locale;
+        },
+
+        /**
+         * 当前语言包是否已加载（未加载时 t() 会原样返回 key）
+         * @returns {boolean}
+         */
+        isReady: function () {
+            return !!this.messages[this.locale];
+        },
+
+        /**
+         * 语言包就绪后执行回调：已就绪则立即执行，否则等 i18n:loaded / i18n:switched，
+         * 语言包加载失败时不发事件，超时后照常执行（届时 t() 回退为 key，不能卡住调用方）。
+         * 用于页面启动阶段就要用 I18n.t() 生成 DOM 的场景（如刷新后恢复会话与执行过程）。
+         * @param {Function} cb
+         * @param {number} [timeoutMs] 默认 3000
+         */
+        ready: function (cb, timeoutMs) {
+            if (typeof cb !== 'function') return;
+            if (this.isReady()) { cb(); return; }
+            var done = false;
+            var timer = null;
+            var fire = function () {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                document.removeEventListener('i18n:loaded', fire);
+                document.removeEventListener('i18n:switched', fire);
+                cb();
+            };
+            document.addEventListener('i18n:loaded', fire);
+            document.addEventListener('i18n:switched', fire);
+            timer = setTimeout(fire, timeoutMs > 0 ? timeoutMs : 3000);
         }
     };
 
