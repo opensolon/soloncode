@@ -51,7 +51,7 @@ public class SessionJanitorTest {
         // 写入 meta 后目录 mtime 变新，重新压回新鲜度窗口
         Files.setLastModifiedTime(metaOnly, FileTime.fromMillis(System.currentTimeMillis() - 60 * 60 * 1000L));
 
-        List<String> removed = SessionJanitor.cleanWebSessions(tmp);
+        List<String> removed = SessionJanitor.cleanSessions(tmp);
 
         assertTrue(removed.contains("web-empty"));
         assertTrue(removed.contains("web-meta-only"));
@@ -83,11 +83,33 @@ public class SessionJanitorTest {
         Path fresh = tmp.resolve("web-fresh");
         Files.createDirectories(fresh); // 不压时间，处于新鲜窗口
 
-        List<String> removed = SessionJanitor.cleanWebSessions(tmp);
+        List<String> removed = SessionJanitor.cleanSessions(tmp);
 
         assertTrue(removed.isEmpty(), "不应删除任何目录: " + removed);
         for (Path p : Arrays.asList(withMsg, withQueue, withSnapshotQueue, labeled, pinned, notWeb, fresh)) {
             assertTrue(Files.isDirectory(p), "应保留: " + p);
         }
+    }
+
+    @Test
+    @DisplayName("子任务会话（task- 前缀）过期即删，未过期保留，其它前缀不受影响")
+    public void cleanExpiredSubtaskSessions() throws Exception {
+        long expired = System.currentTimeMillis() - SessionJanitor.SUBTASK_TTL_MS - 60_000L;
+        Path oldTask = mkSession("task-0123456789abcdef0123456789abcdef");
+        Files.write(oldTask.resolve("x.messages.ndjson"), "{}\n".getBytes());
+        Files.setLastModifiedTime(oldTask, FileTime.fromMillis(expired));
+        Path liveTask = mkSession("task-fedcba9876543210fedcba9876543210");
+        Path oldNumeric = mkSession("123456");
+        Files.setLastModifiedTime(oldNumeric, FileTime.fromMillis(expired));
+        Path oldLookalike = mkSession("task-board");
+        Files.setLastModifiedTime(oldLookalike, FileTime.fromMillis(expired));
+
+        List<String> removed = SessionJanitor.cleanSessions(tmp);
+
+        assertEquals(Arrays.asList("task-0123456789abcdef0123456789abcdef"), removed);
+        assertFalse(Files.exists(oldTask), "过期子任务会话（即使有消息）应删除");
+        assertTrue(Files.isDirectory(liveTask));
+        assertTrue(Files.isDirectory(oldNumeric), "非 web- / task- 前缀不动");
+        assertTrue(Files.isDirectory(oldLookalike), "只是前缀相同、不合子任务 ID 格式的目录不动");
     }
 }

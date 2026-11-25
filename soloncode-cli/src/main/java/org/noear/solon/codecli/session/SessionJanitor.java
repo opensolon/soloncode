@@ -25,9 +25,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
- * 会话僵尸目录清理器。
+ * 会话目录清理器：僵尸 web 会话 + 过期的子代理任务会话。
+ *
+ * <p>子代理任务会话（目录名满足 {@link SessionIdOwnership#isSubtask} 的完整格式，与主会话同在 sessions 下；
+ * 仅前缀相同的目录如 {@code task-board} 不动）：最近修改超过
+ * {@link #SUBTASK_TTL_MS} 即删（快照原子写会刷新目录修改时间）。不随父会话删除——父会话里的子任务索引
+ * 可能已被回退/清空，崩溃遗留也找不全，统一按过期兜底。</p>
  *
  * <p>web.html 新建对话时会先创建会话目录（含 _meta.json，位于 ~/.soloncode/workspaces/&lt;标识&gt;/sessions/），
  * 用户未发消息即切走就会留下无实质内容的空壳目录，且会一直被 sessions 列表扫描。
@@ -51,17 +57,19 @@ public class SessionJanitor {
     public static final String WEB_SESSION_PREFIX = "web-";
     /** 新鲜度保护窗口：最近修改在窗口内的目录可能正在被写入，暂不清理 */
     private static final long FRESH_WINDOW_MS = 10 * 60 * 1000L;
+    /** 子代理任务会话保留时长（过期后不能再续跑，也不能回放子过程） */
+    public static final long SUBTASK_TTL_MS = TimeUnit.DAYS.toMillis(7);
 
     private SessionJanitor() {
     }
 
     /**
-     * 清理指定 sessions 根目录下的僵尸 web 会话目录。
+     * 清理指定 sessions 根目录下的僵尸 web 会话目录与过期子任务会话目录（启动时、每次列会话时调用）。
      *
      * @param sessionsRoot sessions 根目录（~/.soloncode/workspaces/&lt;标识&gt;/sessions/）
      * @return 被清理的会话 ID 列表（无删除或目录不存在时为空列表）
      */
-    public static List<String> cleanWebSessions(Path sessionsRoot) {
+    public static List<String> cleanSessions(Path sessionsRoot) {
         List<String> removed = new ArrayList<>();
         if (sessionsRoot == null || !Files.isDirectory(sessionsRoot)) {
             return removed;
@@ -73,10 +81,15 @@ public class SessionJanitor {
                     continue;
                 }
                 String name = dir.getFileName().toString();
-                if (!name.startsWith(WEB_SESSION_PREFIX)) {
+                boolean expired;
+                if (name.startsWith(WEB_SESSION_PREFIX)) {
+                    expired = isZombieWebSession(dir);
+                } else if (SessionIdOwnership.isSubtask(name)) {
+                    expired = isExpiredSubtaskSession(dir);
+                } else {
                     continue;
                 }
-                if (isZombieWebSession(dir) && deleteDirectory(dir)) {
+                if (expired && deleteDirectory(dir)) {
                     removed.add(name);
                 }
             }
@@ -84,6 +97,15 @@ public class SessionJanitor {
             LOG.warn("[SessionJanitor] Failed to scan sessions root {}: {}", sessionsRoot, e.getMessage());
         }
         return removed;
+    }
+
+    /** 子任务会话目录是否已过期（最近修改超过 {@link #SUBTASK_TTL_MS}） */
+    static boolean isExpiredSubtaskSession(Path sessionDir) {
+        try {
+            return System.currentTimeMillis() - Files.getLastModifiedTime(sessionDir).toMillis() > SUBTASK_TTL_MS;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     /**
@@ -142,7 +164,7 @@ public class SessionJanitor {
                 }
             }
             Files.deleteIfExists(dir);
-            LOG.info("[SessionJanitor] Removed zombie web session dir: {}", dir);
+            LOG.info("[SessionJanitor] Removed session dir: {}", dir);
             return true;
         } catch (Exception e) {
             LOG.debug("[SessionJanitor] Skip remove (in use or failed): {} ({})", dir, e.getMessage());

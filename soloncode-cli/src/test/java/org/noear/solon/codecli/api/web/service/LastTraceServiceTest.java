@@ -1,6 +1,8 @@
 package org.noear.solon.codecli.api.web.service;
 
 import org.junit.jupiter.api.Test;
+import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
@@ -9,6 +11,7 @@ import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.tool.ToolCall;
 import org.noear.solon.ai.chat.tool.ToolResult;
 import org.noear.solon.codecli.config.AgentFlags;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.extension.steer.SteerProtocol;
 
 import java.util.ArrayList;
@@ -548,6 +551,63 @@ public class LastTraceServiceTest {
     }
 
     /** 构造一条「带 toolCalls 的助手消息」——即模型发起工具调用的那一轮 */
+    @Test
+    public void subtask_process_should_be_attached_from_sub_session() {
+        /* 子代理跑在自己的子会话里：主 trace 只有一次 task 调用，结果消息带 _subtasks 索引，
+         * 回放据此从子会话提供者取回子 trace。子会话没有历史渲染，最终回答正文也要回放。 */
+        Map<String, AgentSession> store = new HashMap<>();
+        AgentSessionProvider subSessions = (id, create) ->
+                create ? store.computeIfAbsent(id, InMemoryAgentSession::of) : store.get(id);
+        String taskId = "task-0123456789abcdef0123456789abcdef";
+
+        ReActTrace subTrace = new ReActTrace();
+        ToolCall read = new ToolCall("0", "call_s1", "read", "{}", new HashMap<>());
+        subTrace.getWorkingMemory().addMessage(newToolCallMessage(null, read));
+        subTrace.getWorkingMemory().addMessage(ChatMessage.ofTool("ok", "read", "call_s1"));
+        addFinalAnswer(subTrace, "子任务结论");
+        AgentSession sub = subSessions.getSession(taskId, true);
+        sub.getContext().put("__explore", subTrace);
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("agentName", "explore");
+        meta.put("traceKey", "__explore");
+        meta.put("status", TaskTalent.STATUS_FAILURE);
+        meta.put("failureKind", "rate_limit");
+        sub.getContext().put(TaskTalent.META_SUBTASK, meta);
+
+        ReActTrace trace = new ReActTrace();
+        ToolCall task = new ToolCall("0", "call_t1", TaskTalent.TOOL_TASK, "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, task));
+        Map<String, Object> ref = new HashMap<>();
+        ref.put("taskId", taskId);
+        ref.put("agentName", "explore");
+        ref.put("description", "查代码");
+        ToolResult result = ToolResult.error("<task_result>...</task_result>");
+        result.metas().put(TaskTalent.META_SUBTASKS, Collections.singletonList(ref));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool(result, TaskTalent.TOOL_TASK, "call_t1", false));
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null, subSessions));
+        assertEquals(1, events.size());
+        List<?> subtasks = (List<?>) events.get(0).get("subtasks");
+        assertNotNull(subtasks, "task 工具事件必须挂上子代理过程");
+        Map<?, ?> st = (Map<?, ?>) subtasks.get(0);
+        assertEquals(taskId, st.get("taskId"));
+        assertEquals("explore", st.get("agentName"));
+        assertEquals("查代码", st.get("description"));
+        assertEquals(TaskTalent.STATUS_FAILURE, st.get("status"));
+
+        List<Map<?, ?>> subEvents = new ArrayList<>();
+        for (Object o : (List<?>) st.get("events")) {
+            subEvents.add((Map<?, ?>) o);
+        }
+        assertEquals(Arrays.asList("tool", "note"), kinds(subEvents), "子代理的最终回答正文也要回放");
+        assertEquals("子任务结论", subEvents.get(1).get("text"));
+
+        // 子会话取不到（过期 / 未落盘）：退回普通工具卡
+        List<Map<?, ?>> fallback = events(service.buildLastTrace(newSession(trace), false, null,
+                (id, create) -> null));
+        assertNull(fallback.get(0).get("subtasks"));
+    }
+
     private AssistantMessage newToolCallMessage(String content, ToolCall call) {
         return new AssistantMessage(content, "", Collections.singletonList(call), null);
     }

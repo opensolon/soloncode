@@ -1464,7 +1464,12 @@ function processWebEventNow(sess, webEvt) {
                 // 子代理 ReAct 一启动就建组占位：早于首个 thought.delta，
                 // 补上「子代理构建 + 首次模型调用」这段界面空白；后续事件按 taskId 复用同一组。
                 if (taskId) {
-                    segment = ensureStreamSegment(sess, taskId, taskDescription || p.title, agentName || p.agentName);
+                    /* 同一 taskId 再次 task.start = 子任务续跑（模型带 task_id 重试）：
+                     *  - 本轮流里已有该组：接在原组后面，并从终态拨回 running；
+                     *  - 只有更早消息里有同 ID 的组（跨轮续跑）：在本轮气泡里新建，不回头往旧消息里追加。 */
+                    var resumedSeg = sess.taskSegments[taskId];
+                    segment = ensureStreamSegment(sess, taskId, taskDescription || p.title, agentName || p.agentName, !resumedSeg);
+                    if (resumedSeg) reopenTaskGroup(segment);
                     sourceEl = segment && segment.groupEl;
                 }
                 break;
@@ -1966,59 +1971,15 @@ function replayLastTrace(sess, data, anchorRow) {
          * 跨消息必须换 reasonId，否则后一条的思考会挤进已收尾的思考块里。
          * 组内多段交替是安全的：正文到来时 finishThinkingBlock 会把思考块收尾并置空，
          * 下一段思考于是新建一个块，按 DOM 顺序追加在正文之后。 */
+        /* 子代理过程：后端从子会话取回了子 trace，就像实时流那样还原成 task-group，
+         * 并同样隐藏 task/multitask 主卡。取不到子会话（过期 / 未落盘）时不带 subtasks，退回普通工具卡。 */
+        if (e.kind === 'tool' && e.subtasks && e.subtasks.length) {
+            replayed += replaySubtasks(sess, runId, e.subtasks, running);
+            continue;
+        }
+
         var reasonId = 'replay-' + (runId || 'last') + '-g' + (e.group || 1);
-
-        if (e.kind === 'thinking') {
-            if (!e.text) continue;
-            processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId, 'thought.delta', { delta: e.text }));
-            replayed++;
-            continue;
-        }
-
-        if (e.kind === 'note') {
-            if (!e.text) continue;
-            processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId, 'message.delta', { delta: e.text }));
-            replayed++;
-            continue;
-        }
-
-        if (e.kind !== 'tool' || !e.callId) continue;
-
-        processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId, 'tool.start', {
-            name: e.name,
-            title: e.title || e.name,
-            args: e.args || {},
-            callId: e.callId
-        }));
-
-        if (e.done) {
-            var result = e.result || '';
-            if (e.resultTruncated) {
-                result += '\n\n… 内容过长已截断（共 ' + (e.resultChars || 0) + ' 字符）';
-            } else if (e.omitted) {
-                result = '… 本轮结果体积过大，已省略';
-            }
-            /* args 必须用后端加工过的 endArgs：实时流的 tool.end 走 ToolPresentationFilter，
-             * edit 的 edits 已换成 diff、write/todowrite 的正文已提到 result 并从 args 摘除。
-             * 若这里仍传 tool.start 的原始 args，diff 视图会是空的、正文会重复铺一遍。 */
-            processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId, 'tool.end', {
-                name: e.name,
-                title: e.title || e.name,
-                args: e.endArgs || e.args || {},
-                diff: e.diff || null,
-                lsp: e.lsp || null,
-                isError: !!e.isError,
-                result: result,
-                callId: e.callId
-            }));
-        } else if (!running) {
-            /* 无结果且任务已不在跑 = 被中断。回放没有后续事件来收尾这张卡，
-             * 放着会永久转圈；也不能标成绿勾假称成功，故落到 warn 态。
-             * 任务仍在跑时保持 pending，等实时的 tool.end 来精确配对完成。 */
-            markReplayUnfinishedTool(sess, e.callId);
-        }
-
-        replayed++;
+        if (replayTraceEvent(sess, runId, reasonId, e, running, null)) replayed++;
     }
 
     if (!replayed) return false;
@@ -2040,6 +2001,91 @@ function replayLastTrace(sess, data, anchorRow) {
 }
 window.replayLastTrace = replayLastTrace;
 
+/* 回放一条思考 / 正文 / 工具事件（主过程与子代理过程共用）。
+ * task 非空时事件归入该子任务的 task-group。@return 是否产出了内容 */
+function replayTraceEvent(sess, runId, reasonId, e, running, task) {
+    if (e.kind === 'thinking' || e.kind === 'note') {
+        if (!e.text) return false;
+        processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId,
+            e.kind === 'thinking' ? 'thought.delta' : 'message.delta', { delta: e.text }, task));
+        return true;
+    }
+
+    if (e.kind !== 'tool' || !e.callId) return false;
+
+    processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId, 'tool.start', {
+        name: e.name,
+        title: e.title || e.name,
+        args: e.args || {},
+        callId: e.callId
+    }, task));
+
+    if (e.done) {
+        var result = e.result || '';
+        if (e.resultTruncated) {
+            result += '\n\n… 内容过长已截断（共 ' + (e.resultChars || 0) + ' 字符）';
+        } else if (e.omitted) {
+            result = '… 本轮结果体积过大，已省略';
+        }
+        /* args 必须用后端加工过的 endArgs：实时流的 tool.end 走 ToolPresentationFilter，
+         * edit 的 edits 已换成 diff、write/todowrite 的正文已提到 result 并从 args 摘除。
+         * 若这里仍传 tool.start 的原始 args，diff 视图会是空的、正文会重复铺一遍。 */
+        processWebEventNow(sess, makeReplayEvent(sess, runId, reasonId, 'tool.end', {
+            name: e.name,
+            title: e.title || e.name,
+            args: e.endArgs || e.args || {},
+            diff: e.diff || null,
+            lsp: e.lsp || null,
+            isError: !!e.isError,
+            result: result,
+            callId: e.callId
+        }, task));
+    } else if (!running) {
+        /* 无结果且任务已不在跑 = 被中断。回放没有后续事件来收尾这张卡，
+         * 放着会永久转圈；也不能标成绿勾假称成功，故落到 warn 态。
+         * 任务仍在跑时保持 pending，等实时的 tool.end 来精确配对完成。 */
+        markReplayUnfinishedTool(sess, e.callId);
+    }
+    return true;
+}
+
+/* 回放子代理过程：task.start → 子事件（带 taskId）→ task.done，复用实时流的 task-group 渲染。
+ *  - 实时流已建过该组（运行中刷新、WS 早于快照）：交给实时流继续，不重复回放；
+ *  - 同一子任务续跑过多次时，子会话里已是完整过程，第一次出现时整段回放，后面的同 ID 自然跳过；
+ *  - 终态：success → 绿勾；failure → 红叉；仍是 running 而整轮已结束 = 被中断，也落红叉。 */
+function replaySubtasks(sess, runId, subtasks, running) {
+    // 先收尾主过程里当前组的思考块：后续内容进入 task-group，没有事件会再帮它停转
+    finishReplayThinkingBlocks(sess);
+
+    var n = 0;
+    for (var i = 0; i < subtasks.length; i++) {
+        var st = subtasks[i];
+        if (!st || !st.taskId) continue;
+        if (findTaskGroupEl(sess, st.taskId)) continue;
+
+        var task = { taskId: st.taskId, agentName: st.agentName || null, taskDescription: st.description || null };
+        processWebEventNow(sess, makeReplayEvent(sess, runId, null, 'task.start',
+            { taskId: st.taskId, title: st.description, agentName: st.agentName }, task));
+
+        var evs = st.events || [];
+        for (var j = 0; j < evs.length; j++) {
+            var e = evs[j];
+            if (!e || !e.kind || e.kind === 'steer') continue;
+            var reasonId = 'replay-' + (runId || 'last') + '-t' + st.taskId + '-g' + (e.group || 1);
+            replayTraceEvent(sess, runId, reasonId, e, running, task);
+        }
+        finishReplayThinkingBlocks(sess);
+
+        var stillRunning = st.status === 'running' && running;
+        if (!stillRunning) {
+            processWebEventNow(sess, makeReplayEvent(sess, runId, null, 'task.done',
+                { taskId: st.taskId, title: st.description, status: st.status === 'success' ? 'done' : 'error' }, task));
+        }
+        n++;
+    }
+    return n;
+}
+
 /* 按「组」判定哪些事件已由实时流渲染过。
  *
  * 一组 = 同一条 AssistantMessage 产出的思考、正文与工具卡。去重只能靠 callId（思考与正文
@@ -2060,7 +2106,16 @@ function collectReplayedGroups(sess, events) {
         var g = e.group || 1;
         if (!stat[g]) stat[g] = { total: 0, seen: 0 };
         stat[g].total++;
-        if (sess.container.querySelector('[data-call-id="' + e.callId + '"]')) stat[g].seen++;
+        // 带子代理过程的 task/multitask 不出主卡：以它的 task-group 是否都已在 DOM 为准
+        if (e.subtasks && e.subtasks.length) {
+            var allSeen = true;
+            for (var k = 0; k < e.subtasks.length; k++) {
+                if (!e.subtasks[k] || !findTaskGroupEl(sess, e.subtasks[k].taskId)) { allSeen = false; break; }
+            }
+            if (allSeen) stat[g].seen++;
+        } else if (sess.container.querySelector('[data-call-id="' + e.callId + '"]')) {
+            stat[g].seen++;
+        }
     }
 
     for (var g2 in stat) {
@@ -2192,16 +2247,18 @@ function replaySteers(sess, texts, seen) {
     return n;
 }
 
-/* 合成一个与实时流同构的 webEvent；replay 标记供渲染层区分「回放」与「实时」 */
-function makeReplayEvent(sess, runId, reasonId, event, payload) {
+/* 合成一个与实时流同构的 webEvent；replay 标记供渲染层区分「回放」与「实时」。
+ * task（可选）= { taskId, agentName, taskDescription }：子代理事件的信封字段，决定归入哪个 task-group */
+function makeReplayEvent(sess, runId, reasonId, event, payload, task) {
     return {
         event: event,
         payload: payload,
         sessionId: sess.sessionId,
         runId: runId || null,
-        taskId: null,
+        taskId: task ? task.taskId : null,
         reasonId: reasonId,
-        agentName: null,
+        agentName: task ? task.agentName : null,
+        taskDescription: task ? task.taskDescription : null,
         replay: true
     };
 }

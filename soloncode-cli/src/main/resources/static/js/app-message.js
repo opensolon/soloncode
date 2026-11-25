@@ -592,6 +592,17 @@ function applyTaskDoneChunk(sess, chunk) {
     }
 }
 
+/**
+ * 子任务续跑：把已结算（done/error）的 task-group 拨回 running。
+ * setTaskGroupStatus 里 error 是粘性的（防迟到事件把红叉洗掉），续跑是唯一允许撤销终态的入口。
+ */
+function reopenTaskGroup(segment) {
+    if (!segment || !segment.groupEl || segment.status === 'running') return;
+    segment.status = null;
+    segment.finishedAt = null;
+    setTaskGroupStatus(segment, 'running');
+}
+
 /** L1 标题簇文案：有 description 时 badge 展示 agentName；仅 agentName 时直接作标题，避免重复。 */
 function buildTaskGroupTitleParts(segment) {
     var titleText = segment.taskDescription || segment.agentName || I18n.t('msg.subTask');
@@ -711,18 +722,20 @@ function createTaskGroupElement(sess, segment) {
     return { groupEl: group, bodyEl: body };
 }
 
-/* 在已渲染 DOM 中查找指定 taskId 的 task-group（resetStreamState 清索引但保留 DOM 的迟到场景） */
+/* 在已渲染 DOM 中查找指定 taskId 的 task-group（resetStreamState 清索引但保留 DOM 的迟到场景）。
+ * 倒序取最新一个：子任务跨轮续跑时同一 taskId 会在新气泡里另建一组。 */
 function findTaskGroupEl(sess, taskId) {
     if (!sess || !sess.container || !taskId) return null;
     var els = sess.container.querySelectorAll('.task-group[data-task-id]');
-    for (var i = 0; i < els.length; i++) {
+    for (var i = els.length - 1; i >= 0; i--) {
         if (els[i].getAttribute('data-task-id') === taskId) return els[i];
     }
     return null;
 }
 
-/* 为 taskId 保持唯一的 task-group；主代理输出仍按连续流片段追加，避免任务组重复创建。 */
-function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
+/* 为 taskId 保持唯一的 task-group；主代理输出仍按连续流片段追加，避免任务组重复创建。
+ * fresh=true：本轮索引里没有时直接新建，不复用 DOM 里更早消息中的同 ID 分组（task.start 用）。 */
+function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh) {
     ensureAssistantBubble(sess);
     if (taskId) {
         var taskSegment = sess.taskSegments[taskId];
@@ -744,7 +757,7 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName) {
         // ★ 迟到 chunk 场景：resetStreamState 清空了内存索引但保留了已渲染 DOM。
         //   若该 taskId 的 task-group 已存在，复用外壳重建索引（不新建 DOM、不重复建组），
         //   避免“每个思考消息新建一个分组 + 同一 taskId 出现多个 task-group”。
-        var existingGroup = findTaskGroupEl(sess, taskId);
+        var existingGroup = fresh ? null : findTaskGroupEl(sess, taskId);
         if (existingGroup) {
             var now = Date.now();
             var bodyEl = $(existingGroup).find('.task-group-body')[0] || null;

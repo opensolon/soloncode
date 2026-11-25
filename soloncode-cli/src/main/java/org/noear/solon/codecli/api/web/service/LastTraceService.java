@@ -16,14 +16,15 @@
 package org.noear.solon.codecli.api.web.service;
 
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.ToolMessage;
-import org.noear.solon.ai.chat.message.UserMessage;
 import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
+import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.extension.steer.SteerProtocol;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.event.WebEventNames;
@@ -67,6 +68,12 @@ import java.util.Map;
  * <p>运行中插话是零持久化的（steer 的投递链路不写 ndjson），它唯一的留存处就是
  * WorkingMemory 里那条带 {@code source=steer} 的 UserMessage。若不回放，刷新后用户会看到
  * 「AI 忽然改了方向」却找不到自己那句纠偏。</p>
+ *
+ * <h3>子代理过程</h3>
+ * <p>子代理跑在自己的子会话里（task_id 即子会话 ID），主 trace 只留一次 task 调用与最终产出。
+ * task/multitask 的结果消息带 {@link TaskTalent#META_SUBTASKS} 索引，据此从子会话提供者取回
+ * 子 trace，用同一套线性扫描抽出事件，挂在该工具事件的 {@code subtasks} 上，供前端还原成 task-group。
+ * 子会话是新建的空会话，没有历史渲染，所以子代理的最终回答正文也要回放。</p>
  *
  * @author noear
  */
@@ -113,6 +120,16 @@ public class LastTraceService {
      * @return 供前端回放的结构化数据，永不返回 null
      */
     public Map<String, Object> buildLastTrace(AgentSession session, boolean running, String lastUserMsg) {
+        return buildLastTrace(session, running, lastUserMsg, null);
+    }
+
+    /**
+     * 还原指定会话最后一轮的执行过程（含子代理过程）。
+     *
+     * @param subSessions 子代理会话提供者（null 表示不还原子代理过程）
+     */
+    public Map<String, Object> buildLastTrace(AgentSession session, boolean running, String lastUserMsg,
+                                              AgentSessionProvider subSessions) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("aligned", false);
         data.put("running", running);
@@ -138,7 +155,9 @@ public class LastTraceService {
         }
 
         List<Map<String, Object>> events = new ArrayList<>();
-        boolean truncated = extractEvents(workingMemory, trace.getRunId(), events);
+        Budget budget = new Budget();
+        extractEvents(workingMemory, trace.getRunId(), events, budget, false, subSessions);
+        boolean truncated = budget.truncated;
 
         if (hasVisible(events) == false) {
             // 无可回放的过程（纯对话轮 / 全被判为历史），保持 aligned=false 让前端走原路径。
@@ -191,15 +210,23 @@ public class LastTraceService {
     }
 
     /**
+     * 工具结果体积预算：主过程与子代理过程共用一个上限。
+     */
+    private static class Budget {
+        int totalChars;
+        boolean truncated;
+    }
+
+    /**
      * 线性扫描 WorkingMemory，按原序抽出可回放事件。
      *
      * @param currentRunId 当前 trace 的 runId，用于判别历史消息与最终回答
-     * @return 是否发生过内容截断
+     * @param subtask      是否为子代理过程（子会话无历史渲染，最终回答正文也要回放）
+     * @param subSessions  子代理会话提供者（null 表示不展开子代理过程）
      */
-    private boolean extractEvents(Prompt workingMemory, String currentRunId, List<Map<String, Object>> events) {
+    private void extractEvents(Prompt workingMemory, String currentRunId, List<Map<String, Object>> events,
+                               Budget budget, boolean subtask, AgentSessionProvider subSessions) {
         List<ChatMessage> messages = workingMemory.getMessages();
-        boolean truncated = false;
-        int totalChars = 0;
         int group = 0;
         boolean assistantSeen = false;
 
@@ -238,7 +265,7 @@ public class LastTraceService {
 
             /* 最终回答（带当前 runId）：正文已落 ndjson 由历史渲染，重复输出会出现两份答案；
              * 但思考只存在于 WorkingMemory，历史渲染时被 stripThinkTags 剥掉了，必须回放。 */
-            boolean isFinalAnswer = isCurrentRunAssistant(am, currentRunId);
+            boolean isFinalAnswer = subtask == false && isCurrentRunAssistant(am, currentRunId);
 
             for (Segment seg : splitSegments(am)) {
                 if (seg.think == false && isFinalAnswer) {
@@ -289,10 +316,10 @@ public class LastTraceService {
                     turn.put("done", true);
                     // 成败由结构化标记决定（前端不解析文案）；截断分支也要保留
                     turn.put("isError", resultMsg.isError());
-                    if (totalChars >= MAX_TOTAL_CHARS) {
+                    if (budget.totalChars >= MAX_TOTAL_CHARS) {
                         turn.put("result", "");
                         turn.put("omitted", true);
-                        truncated = true;
+                        budget.truncated = true;
                     } else {
                         /* 交给实时流同一个展示层过滤器加工，而不是直接把工具原始返回当结果下发。
                          * 少了这一步，write/todowrite 的正文（真正要展示的内容藏在 args 里）不会被
@@ -308,10 +335,17 @@ public class LastTraceService {
                             turn.put("result", shown.substring(0, MAX_RESULT_CHARS));
                             turn.put("resultTruncated", true);
                             turn.put("resultChars", shown.length());
-                            totalChars += MAX_RESULT_CHARS;
-                            truncated = true;
+                            budget.totalChars += MAX_RESULT_CHARS;
+                            budget.truncated = true;
                         } else {
-                            totalChars += (shown == null) ? 0 : shown.length();
+                            budget.totalChars += (shown == null) ? 0 : shown.length();
+                        }
+                    }
+
+                    if (subSessions != null) {
+                        List<Map<String, Object>> subtasks = extractSubtasks(resultMsg, subSessions, budget);
+                        if (subtasks.isEmpty() == false) {
+                            turn.put("subtasks", subtasks);
                         }
                     }
                 }
@@ -319,8 +353,73 @@ public class LastTraceService {
                 events.add(turn);
             }
         }
+    }
 
-        return truncated;
+    /**
+     * 按 task/multitask 结果上的子任务索引取回子代理过程。
+     *
+     * <p>取不到子会话（内存提供者已过期、宿主未落盘）就跳过该项，前端退回只显示那张工具卡。
+     * 只取不建：{@code getSession(id, false)} 不存在时返回 null 且无副作用。</p>
+     */
+    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, AgentSessionProvider subSessions, Budget budget) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        Object index = resultMsg.getMetadataAs(TaskTalent.META_SUBTASKS);
+        if ((index instanceof List) == false) {
+            return out;
+        }
+
+        for (Object item : (List<?>) index) {
+            if ((item instanceof Map) == false) {
+                continue;
+            }
+            Map<?, ?> ref = (Map<?, ?>) item;
+            String taskId = asString(ref.get("taskId"));
+            String agentName = asString(ref.get("agentName"));
+            if (Assert.isEmpty(taskId) || Assert.isEmpty(agentName)) {
+                continue;
+            }
+
+            AgentSession sub;
+            try {
+                sub = subSessions.getSession(taskId, false);
+            } catch (Throwable e) {
+                continue;
+            }
+            if (sub == null) {
+                continue;
+            }
+
+            ReActTrace subTrace = TaskTalent.subtaskTraceOf(sub);
+            if (subTrace == null) {
+                continue;
+            }
+            Prompt memory = subTrace.getWorkingMemory();
+            if (memory == null || Assert.isEmpty(memory.getMessages())) {
+                continue;
+            }
+
+            List<Map<String, Object>> subEvents = new ArrayList<>();
+            extractEvents(memory, subTrace.getRunId(), subEvents, budget, true, null);
+
+            Map<String, Object> st = new LinkedHashMap<>();
+            st.put("taskId", taskId);
+            st.put("index", ref.get("index"));
+            st.put("agentName", agentName);
+            st.put("description", asString(ref.get("description")));
+            Object meta = sub.getContext().get(TaskTalent.META_SUBTASK);
+            if (meta instanceof Map) {
+                st.put("status", asString(((Map<?, ?>) meta).get("status")));
+                st.put("failureKind", asString(((Map<?, ?>) meta).get("failureKind")));
+            }
+            st.put("events", subEvents);
+            out.add(st);
+        }
+
+        return out;
+    }
+
+    private static String asString(Object v) {
+        return (v == null) ? null : String.valueOf(v);
     }
 
     /**

@@ -390,12 +390,14 @@ public class WebEventMapper {
 
     private WebEvent<?> onTaskDoneEvent(RunEndEvent event, String runId, String taskId,
                                         String taskAgentName, String taskDescription, boolean isMultitask) {
-        boolean abnormal = (event != null && event.isAbnormal());
+        // 与任务结果同口径：模型服务失败 / 回合用尽才算失败。不看 isAbnormal()：
+        // returnDirect 工具与 Feedback 也会标异常结束，但任务是完成了的
+        boolean failed = (event != null && TaskTalent.failureKindOf(event) != null);
         return WebEvent.of(WebEventNames.TASK_DONE, TaskDonePayload.builder()
                 .taskId(taskId)
                 .parentTaskId(runId)
                 .title(taskDescription)
-                .status(abnormal ? "error" : "done")
+                .status(failed ? "error" : "done")
                 .isMultitask(isMultitask)
                 .build());
     }

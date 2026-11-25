@@ -827,8 +827,8 @@ public class WorkspaceManager implements WorkspaceRegistry {
         // web / 自动化会话的 goal / loop 后台轮次由入口的宿主骨架（WebGate 内的 HarnessHost）在
         // onWorkspaceReady 预热时登记执行器（认领谓词 SessionIdOwnership::isWeb），与用户轮次同一条链
 
-        //清理 web 端遗留的僵尸会话目录（新建对话未发消息即切走产生的空壳）
-        SessionJanitor.cleanWebSessions(sessionsRoot);
+        //清理 web 端遗留的僵尸会话目录（新建对话未发消息即切走产生的空壳）与过期的子任务会话（task- 前缀）
+        SessionJanitor.cleanSessions(sessionsRoot);
 
         for (Map.Entry<String, MountDo> entry : wsSettings.getMountPools().entrySet()) {
             MountDo mount = entry.getValue();

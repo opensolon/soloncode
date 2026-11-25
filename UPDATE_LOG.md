@@ -1,4 +1,10 @@
 
+### vNEXT
+
+* 添加 soloncode 子代理任务可由模型接着做（失败后从断点重试，完成后可追问；子任务会话以 task- 开头存在 sessions 下，重启后仍可续，7 天后自动清理）
+* 添加 soloncode web 刷新后可还原子代理执行过程
+* 添加 soloncode 支持项目里的 AGENTS.md（参考 opencode，由 harness 加载）：会话工作目录由近及远到项目根，每层的 AGENTS.md 都会读取，主代理与子代理（explore、general 等）都会遵守；每次运行现读进系统提示词，运行中途改了这些文件，模型会收到一条变更说明（给出最新内容）；读到子目录文件时会自动加载该目录的 AGENTS.md；只认 AGENTS.md，不读 CLAUDE.md。原有的 .soloncode/AGENTS.md（没有时读 ~/.soloncode/AGENTS.md）照旧
+
 ### v2026.11.20
 
 * 优化 soloncode ls,grep,glob 性能

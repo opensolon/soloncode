@@ -28,6 +28,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  * <p>{@link #evictSession(String)} 与 {@link #getLoadedSession(String)} 对应：把已加载的会话移出内存。</p>
  *
+ * <p>子代理任务会话（{@link SessionIdOwnership#isSubtask}）也存在 sessions 下，但不放进内存缓存
+ * （每次按需从磁盘打开；同一任务同一时刻只有一个写入方，由 TaskTalent 的运行锁保证），
+ * 过期目录由 {@link SessionJanitor#cleanSessions(Path)} 清理。</p>
+ *
  * <p>会话 ID 必须非空，且解析后是 sessions 目录的直接子目录（防 {@code ../} 越界）。
  * 新建类方法遇到非法 ID 抛 {@link IllegalArgumentException}；只取类方法返回 null。</p>
  *
@@ -55,6 +59,15 @@ public class SessionManager implements AgentSessionProvider {
      */
     @Override
     public @Nullable AgentSession getSession(String sessionId, boolean createIfAbsent) {
+        if (SessionIdOwnership.isSubtask(sessionId)) {
+            // 子任务会话不常驻内存；FileAgentSession 构造即建目录，只取时必须先判存在
+            Path dir = createIfAbsent ? resolveSessionPath(sessionId) : sessionPathOrNull(sessionId);
+            if (dir == null || (createIfAbsent == false && Files.isDirectory(dir) == false)) {
+                return null;
+            }
+            return new FileAgentSession(sessionId, dir.toString());
+        }
+
         if (createIfAbsent) {
             Path dir = resolveSessionPath(sessionId);
             return sessionMap.computeIfAbsent(sessionId, key -> new FileAgentSession(key, dir.toString()));

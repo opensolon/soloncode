@@ -65,6 +65,31 @@ class SessionManagerTest {
     }
 
     @Test
+    void subtaskSessionsAreNeverCached() {
+        SessionManager manager = new SessionManager(workspace.toString());
+        String id = "task-0123456789abcdef0123456789abcdef";
+
+        assertNull(manager.getSession(id, false), "不存在时只取返回 null");
+        assertFalse(Files.exists(sessionsRoot().resolve(id)), "只取不得建出目录");
+
+        AgentSession created = manager.getSession(id, true);
+        assertTrue(Files.isDirectory(sessionsRoot().resolve(id)), "子任务会话与主会话同在 sessions 下");
+        assertNull(manager.getLoadedSession(id), "子任务会话不常驻内存");
+
+        AgentSession reopened = manager.getSession(id, false);
+        assertNotNull(reopened, "目录存在时从磁盘重开");
+        assertNotSame(created, reopened);
+        assertNull(manager.getLoadedSession(id));
+
+        assertThrows(IllegalArgumentException.class, () -> manager.getSession("task-../x", true));
+        assertNull(manager.getSession("task-../x", false));
+
+        // 只是前缀相同、不合完整格式的按主会话对待（正常缓存）
+        AgentSession lookalike = manager.getSession("task-board", true);
+        assertSame(lookalike, manager.getLoadedSession("task-board"));
+    }
+
+    @Test
     void getSessionOrNullReturnsCachedInstanceEvenBeforeDirectoryExists() {
         SessionManager manager = new SessionManager(workspace.toString());
         AgentSession created = manager.getSession("s2");
