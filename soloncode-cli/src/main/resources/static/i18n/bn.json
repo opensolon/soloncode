@@ -887,6 +887,8 @@
   "msg.taskDone": " সম্পন্ন হয়েছে,",
   "msg.taskFailed": " ব্যর্থ হয়েছে,",
   "msg.taskRunning": " চলছে,",
+  "msg.taskInterrupted": " বাধাপ্রাপ্ত,",
+  "msg.taskInterruptedHint": "বাধাপ্রাপ্ত (এ পর্যন্ত অগ্রগতি সংরক্ষিত)",
   "msg.thinking": "চিন্তা",
   "msg.waitingForApproval": "এই টুল চালানোর জন্য অনুমোদনের অপেক্ষায়",
   "openapi.addBtn": "+ সার্ভার যোগ করুন",

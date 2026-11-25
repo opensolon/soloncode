@@ -887,6 +887,8 @@
   "msg.taskDone": " zakończono, ",
   "msg.taskFailed": " niepowodzenie, ",
   "msg.taskRunning": " w toku, ",
+  "msg.taskInterrupted": " przerwano, ",
+  "msg.taskInterruptedHint": "Przerwano (dotychczasowy przebieg zachowany)",
   "msg.thinking": "Myślenie",
   "msg.waitingForApproval": "Oczekiwanie na autoryzację wykonania tego narzędzia",
   "openapi.addBtn": "+ Dodaj serwer",

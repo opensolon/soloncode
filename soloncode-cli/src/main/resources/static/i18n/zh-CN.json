@@ -898,6 +898,8 @@
   "msg.taskDone": " 已完成，",
   "msg.taskFailed": " 失败，",
   "msg.taskRunning": " 运行中，",
+  "msg.taskInterrupted": " 已中断，",
+  "msg.taskInterruptedHint": "已中断（保留已执行的过程）",
   "msg.thinking": "思考",
   "msg.waitingForApproval": "等待授权以执行该工具",
   "openapi.addBtn": "+ 添加服务器",

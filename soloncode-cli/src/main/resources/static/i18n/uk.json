@@ -887,6 +887,8 @@
   "msg.taskDone": " завершено, ",
   "msg.taskFailed": " помилка, ",
   "msg.taskRunning": " виконується, ",
+  "msg.taskInterrupted": " перервано, ",
+  "msg.taskInterruptedHint": "Перервано (виконану частину збережено)",
   "msg.thinking": "Мислення",
   "msg.waitingForApproval": "Очікування схвалення для виконання цього інструмента",
   "openapi.addBtn": "+ Додати сервер",

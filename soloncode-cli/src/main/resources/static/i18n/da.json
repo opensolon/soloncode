@@ -887,6 +887,8 @@
   "msg.taskDone": " fuldført, ",
   "msg.taskFailed": " mislykkedes, ",
   "msg.taskRunning": " kører, ",
+  "msg.taskInterrupted": " afbrudt, ",
+  "msg.taskInterruptedHint": "Afbrudt (fremskridt indtil nu bevares)",
   "msg.thinking": "Tænker",
   "msg.waitingForApproval": "Venter på godkendelse for at udføre dette værktøj",
   "openapi.addBtn": "+ Tilføj server",

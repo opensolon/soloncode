@@ -75,6 +75,11 @@ import java.util.Map;
  * 子 trace，用同一套线性扫描抽出事件，挂在该工具事件的 {@code subtasks} 上，供前端还原成 task-group。
  * 子会话是新建的空会话，没有历史渲染，所以子代理的最终回答正文也要回放。</p>
  *
+ * <h3>执行中的那一步</h3>
+ * <p>引擎要等一步的工具全部执行完才把调用与结果写进 WorkingMemory，此前调用只在 lastReasonMessage 里。
+ * 子任务运行中刷新、或进程在子任务中途退出后重启时，结果消息还不存在，索引改从父 trace 的
+ * {@link TaskTalent#EXTRA_RUNNING_SUBTASKS} 取，见 {@code extractPendingStep}。</p>
+ *
  * @author noear
  */
 public class LastTraceService {
@@ -157,6 +162,7 @@ public class LastTraceService {
         List<Map<String, Object>> events = new ArrayList<>();
         Budget budget = new Budget();
         extractEvents(workingMemory, trace.getRunId(), events, budget, false, subSessions);
+        extractPendingStep(trace, events, budget, subSessions);
         boolean truncated = budget.truncated;
 
         if (hasVisible(events) == false) {
@@ -356,19 +362,164 @@ public class LastTraceService {
     }
 
     /**
-     * 按 task/multitask 结果上的子任务索引取回子代理过程。
+     * 回放「还没写进工作记忆的那一步」：工具执行期间，引擎要等这一步的工具全部执行完，才把调用与结果
+     * 成对写进工作记忆，此前调用只在 {@link ReActTrace#getLastReasonMessage()} 里。
      *
-     * <p>取不到子会话（内存提供者已过期、宿主未落盘）就跳过该项，前端退回只显示那张工具卡。
-     * 只取不建：{@code getSession(id, false)} 不存在时返回 null 且无副作用。</p>
+     * <p>输出这一步的思考与正文；工具只输出能关联到子会话的 task/multitask 调用（done=false，挂上子代理过程）。
+     * 其余调用不输出：同一批里排在前面的可能已执行完，但结果无处可取，画出来只会是一张假的转圈卡片；
+     * 运行中的那张卡由实时 tool.end 补上。</p>
+     *
+     * <p>关联来源：父 trace 的 {@link TaskTalent#EXTRA_RUNNING_SUBTASKS}（调用 id → 子任务索引），
+     * 没有时退回调用参数里的 task_id（续跑）；两者都要用子会话记下的 parentCallId 反向校验。
+     * 进程中途退出时，委派前那次父快照已把这一步连同索引存下，重启后同样可回放。</p>
      */
-    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, AgentSessionProvider subSessions, Budget budget) {
+    private void extractPendingStep(ReActTrace trace, List<Map<String, Object>> events, Budget budget,
+                                    AgentSessionProvider subSessions) {
+        AssistantMessage pending = trace.getLastReasonMessage();
+        if (pending == null || Assert.isEmpty(pending.getToolCalls())) {
+            return;
+        }
+        if (isInWorkingMemory(trace.getWorkingMemory().getMessages(), pending)) {
+            return;
+        }
+
+        int group = 1;
+        for (Map<String, Object> e : events) {
+            Object g = e.get("group");
+            if (g instanceof Integer && (Integer) g >= group) {
+                group = (Integer) g + 1;
+            }
+        }
+
+        for (Segment seg : splitSegments(pending)) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("kind", seg.think ? KIND_THINKING : KIND_NOTE);
+            e.put("group", group);
+            e.put("text", clampSegment(seg.text));
+            events.add(e);
+        }
+
+        if (subSessions == null) {
+            return;
+        }
+
+        Object running = trace.getExtra(TaskTalent.EXTRA_RUNNING_SUBTASKS);
+        for (ToolCall call : pending.getToolCalls()) {
+            if (call == null || Assert.isEmpty(call.getUuid())) {
+                continue;
+            }
+            if (TaskTalent.TOOL_TASK.equals(call.getName()) == false
+                    && TaskTalent.TOOL_MULTITASK.equals(call.getName()) == false) {
+                continue;
+            }
+
+            Object index = (running instanceof Map) ? ((Map<?, ?>) running).get(call.getUuid()) : null;
+            if ((index instanceof List) == false) {
+                index = indexFromArgs(call);
+            }
+
+            List<Map<String, Object>> subtasks = extractSubtasks((List<?>) index, call.getUuid(), subSessions, budget);
+            if (subtasks.isEmpty()) {
+                continue;
+            }
+
+            Map<String, Object> turn = new LinkedHashMap<>();
+            turn.put("kind", KIND_TOOL);
+            turn.put("group", group);
+            turn.put("callId", call.getUuid());
+            turn.put("name", call.getName());
+            turn.put("title", ToolViewUtil.buildToolTitle(call.getName(), call.getArguments(), null, null));
+            turn.put("args", copyArgs(call.getArguments()));
+            turn.put("done", false);
+            turn.put("subtasks", subtasks);
+            events.add(turn);
+        }
+    }
+
+    /** 这一步是否已成对写进工作记忆（按调用 uuid 判定） */
+    private static boolean isInWorkingMemory(List<ChatMessage> messages, AssistantMessage pending) {
+        ToolCall first = pending.getToolCalls().get(0);
+        String uuid = (first == null) ? null : first.getUuid();
+        if (Assert.isEmpty(uuid)) {
+            // 无法判定时按「已在」处理：宁可不回放，也不重复输出
+            return true;
+        }
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage msg = messages.get(i);
+            if (msg instanceof AssistantMessage && Assert.isNotEmpty(((AssistantMessage) msg).getToolCalls())) {
+                for (ToolCall call : ((AssistantMessage) msg).getToolCalls()) {
+                    if (call != null && uuid.equals(call.getUuid())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 没有登记索引时的兑底：续跑调用的参数里本就带着 task_id（即子会话 ID）。
+     * 新任务的 ID 是委派时才生成的，这里取不到。
+     */
+    private static List<Map<String, Object>> indexFromArgs(ToolCall call) {
         List<Map<String, Object>> out = new ArrayList<>();
-        Object index = resultMsg.getMetadataAs(TaskTalent.META_SUBTASKS);
-        if ((index instanceof List) == false) {
+        Map<String, Object> args = call.getArguments();
+        if (args == null) {
             return out;
         }
 
-        for (Object item : (List<?>) index) {
+        if (TaskTalent.TOOL_TASK.equals(call.getName())) {
+            addArgsItem(out, args, 1);
+        } else if (args.get("tasks") instanceof List) {
+            int i = 0;
+            for (Object t : (List<?>) args.get("tasks")) {
+                i++;
+                if (t instanceof Map) {
+                    Map<?, ?> op = (Map<?, ?>) t;
+                    addArgsItem(out, op, op.get("index") == null ? i : op.get("index"));
+                }
+            }
+        }
+        return out;
+    }
+
+    private static void addArgsItem(List<Map<String, Object>> out, Map<?, ?> op, Object index) {
+        String taskId = asString(op.get("task_id"));
+        if (TaskTalent.isTaskId(taskId) == false) {
+            return;
+        }
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("taskId", taskId);
+        item.put("index", index);
+        item.put("agentName", asString(op.get("agent_name")));
+        item.put("description", asString(op.get("description")));
+        out.add(item);
+    }
+
+    /**
+     * 按 task/multitask 结果上的子任务索引取回子代理过程。
+     */
+    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, AgentSessionProvider subSessions, Budget budget) {
+        Object index = resultMsg.getMetadataAs(TaskTalent.META_SUBTASKS);
+        if ((index instanceof List) == false) {
+            return new ArrayList<>();
+        }
+        return extractSubtasks((List<?>) index, null, subSessions, budget);
+    }
+
+    /**
+     * 按子任务索引取回子代理过程。
+     *
+     * <p>取不到子会话（内存提供者已过期、宿主未落盘、新任务还没启动）就跳过该项，前端退回只显示那张工具卡。
+     * 只取不建：{@code getSession(id, false)} 不存在时返回 null 且无副作用。</p>
+     *
+     * @param parentCallId 非 null 时只收子会话 parentCallId 与之相等的项（运行中索引的反向校验：
+     *                     不等说明还没启动，或已被后来的调用续跑）
+     */
+    private List<Map<String, Object>> extractSubtasks(List<?> index, String parentCallId,
+                                                      AgentSessionProvider subSessions, Budget budget) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : index) {
             if ((item instanceof Map) == false) {
                 continue;
             }
@@ -389,6 +540,12 @@ public class LastTraceService {
                 continue;
             }
 
+            Object meta = sub.getContext().get(TaskTalent.META_SUBTASK);
+            if (parentCallId != null && ((meta instanceof Map) == false
+                    || parentCallId.equals(asString(((Map<?, ?>) meta).get("parentCallId"))) == false)) {
+                continue;
+            }
+
             ReActTrace subTrace = TaskTalent.subtaskTraceOf(sub);
             if (subTrace == null) {
                 continue;
@@ -406,7 +563,6 @@ public class LastTraceService {
             st.put("index", ref.get("index"));
             st.put("agentName", agentName);
             st.put("description", asString(ref.get("description")));
-            Object meta = sub.getContext().get(TaskTalent.META_SUBTASK);
             if (meta instanceof Map) {
                 st.put("status", asString(((Map<?, ?>) meta).get("status")));
                 st.put("failureKind", asString(((Map<?, ?>) meta).get("failureKind")));

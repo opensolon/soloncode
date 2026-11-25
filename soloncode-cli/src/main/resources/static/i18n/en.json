@@ -898,6 +898,8 @@
   "msg.taskDone": " completed, ",
   "msg.taskFailed": " failed, ",
   "msg.taskRunning": " running, ",
+  "msg.taskInterrupted": " interrupted, ",
+  "msg.taskInterruptedHint": "Interrupted (progress so far is kept)",
   "msg.thinking": "Thinking",
   "msg.waitingForApproval": "Waiting for approval to execute this tool",
   "openapi.addBtn": "+ Add Server",

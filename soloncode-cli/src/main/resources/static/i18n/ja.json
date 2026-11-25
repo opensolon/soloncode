@@ -892,6 +892,8 @@
   "msg.taskDone": " 完了、",
   "msg.taskFailed": " 失敗、",
   "msg.taskRunning": " 実行中、",
+  "msg.taskInterrupted": " 中断、",
+  "msg.taskInterruptedHint": "中断されました（実行済みの経過は保持）",
   "msg.thinking": "思考中",
   "msg.waitingForApproval": "このツールを実行するための承認待ちです",
   "openapi.addBtn": "+ サーバーを追加",

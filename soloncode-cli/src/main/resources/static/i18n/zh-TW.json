@@ -887,6 +887,8 @@
   "msg.taskDone": " 已完成，",
   "msg.taskFailed": " 失敗，",
   "msg.taskRunning": " 執行中，",
+  "msg.taskInterrupted": " 已中斷，",
+  "msg.taskInterruptedHint": "已中斷（保留已執行的過程）",
   "msg.thinking": "思考",
   "msg.waitingForApproval": "等待授權以執行該工具",
   "openapi.addBtn": "+ 新增伺服器",

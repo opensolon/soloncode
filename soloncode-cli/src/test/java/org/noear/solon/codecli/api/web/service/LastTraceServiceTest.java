@@ -608,6 +608,139 @@ public class LastTraceServiceTest {
         assertNull(fallback.get(0).get("subtasks"));
     }
 
+    // ---------- 执行中的那一步（调用只在 lastReasonMessage 里） ----------
+
+    /** 子会话：一步 read 工具，状态与发起它的父调用按参数给 */
+    private void putSubSession(Map<String, AgentSession> store, String taskId, String parentCallId, String status) {
+        ReActTrace subTrace = new ReActTrace();
+        ChatMessage prompt = ChatMessage.ofUser("去查");
+        subTrace.getWorkingMemory().addMessage(prompt);
+        ToolCall read = new ToolCall("0", "call_r_" + taskId, "read", "{}", new HashMap<>());
+        subTrace.getWorkingMemory().addMessage(newToolCallMessage(null, read));
+        subTrace.getWorkingMemory().addMessage(ChatMessage.ofTool("ok", "read", "call_r_" + taskId));
+
+        AgentSession sub = InMemoryAgentSession.of(taskId);
+        sub.getContext().put("__explore", subTrace);
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("agentName", "explore");
+        meta.put("traceKey", "__explore");
+        meta.put("status", status);
+        if (parentCallId != null) {
+            meta.put("parentCallId", parentCallId);
+        }
+        sub.getContext().put(TaskTalent.META_SUBTASK, meta);
+        store.put(taskId, sub);
+    }
+
+    private Map<String, Object> indexItem(String taskId, int index) {
+        Map<String, Object> item = new HashMap<>();
+        item.put("taskId", taskId);
+        item.put("index", index);
+        item.put("agentName", "explore");
+        item.put("description", "d" + index);
+        return item;
+    }
+
+    /** 主 trace：本轮任务提示 + 已完成的一步 bash；执行中的一步由用例自己设 */
+    private ReActTrace mainTraceWithOneDoneStep() {
+        ReActTrace trace = new ReActTrace();
+        ChatMessage goal = ChatMessage.ofUser("调研一下");
+        goal.addMetadata(AgentTrace.META_RUN_ID, trace.getRunId());
+        goal.addMetadata(AgentTrace.META_FIRST, 1);
+        trace.getWorkingMemory().addMessage(goal);
+        ToolCall bash = new ToolCall("0", "call_b", "bash", "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, bash));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool("ok", "bash", "call_b"));
+        return trace;
+    }
+
+    @Test
+    public void pending_multitask_should_attach_started_subtasks_via_running_index() {
+        Map<String, AgentSession> store = new HashMap<>();
+        AgentSessionProvider subSessions = (id, create) -> store.get(id);
+        String started = "task-0123456789abcdef0123456789abcdef";
+        String queued = "task-fedcba9876543210fedcba9876543210";
+
+        ReActTrace trace = mainTraceWithOneDoneStep();
+        ToolCall sibling = new ToolCall("0", "call_g", "grep", "{}", new HashMap<>());
+        ToolCall multi = new ToolCall("1", "call_m", TaskTalent.TOOL_MULTITASK, "{}", new HashMap<>());
+        trace.setLastReasonMessage(new AssistantMessage("分头去查", "拆成两路", Arrays.asList(sibling, multi), null));
+        Map<String, Object> running = new HashMap<>();
+        running.put(multi.getUuid(), Arrays.asList(indexItem(started, 1), indexItem(queued, 2)));
+        trace.setExtra(TaskTalent.EXTRA_RUNNING_SUBTASKS, running);
+        // 已启动的有子会话；排队中的还没有
+        putSubSession(store, started, multi.getUuid(), TaskTalent.STATUS_RUNNING);
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, subSessions));
+        assertEquals(Arrays.asList("tool", "thinking", "note", "tool"), kinds(events),
+                "执行中的一步：思考、正文与能关联到子会话的 multitask；同批的 grep 不输出");
+        assertEquals(2, events.get(1).get("group"), "执行中的一步单独成组");
+        assertEquals(2, events.get(3).get("group"));
+
+        Map<?, ?> turn = events.get(3);
+        assertEquals(multi.getUuid(), turn.get("callId"));
+        assertEquals(false, turn.get("done"));
+        List<?> subtasks = (List<?>) turn.get("subtasks");
+        assertEquals(1, subtasks.size(), "还没启动的不挂");
+        Map<?, ?> st = (Map<?, ?>) subtasks.get(0);
+        assertEquals(started, st.get("taskId"));
+        assertEquals(TaskTalent.STATUS_RUNNING, st.get("status"));
+        assertEquals(1, ((List<?>) st.get("events")).size());
+
+        // 不给子会话提供者：只回放思考与正文
+        assertEquals(Arrays.asList("tool", "thinking", "note"),
+                kinds(events(service.buildLastTrace(newSession(trace), true, null))));
+    }
+
+    @Test
+    public void pending_index_with_other_parent_call_should_be_ignored() {
+        // 子会话已被后来的调用续跑（parentCallId 不是这次）：反向校验不过，不挂
+        Map<String, AgentSession> store = new HashMap<>();
+        String taskId = "task-0123456789abcdef0123456789abcdef";
+        ReActTrace trace = mainTraceWithOneDoneStep();
+        ToolCall task = new ToolCall("0", "call_t", TaskTalent.TOOL_TASK, "{}", new HashMap<>());
+        trace.setLastReasonMessage(newToolCallMessage(null, task));
+        Map<String, Object> running = new HashMap<>();
+        running.put(task.getUuid(), Collections.singletonList(indexItem(taskId, 1)));
+        trace.setExtra(TaskTalent.EXTRA_RUNNING_SUBTASKS, running);
+        putSubSession(store, taskId, "other-call", TaskTalent.STATUS_RUNNING);
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, (id, c) -> store.get(id)));
+        assertEquals(Collections.singletonList("tool"), kinds(events), "只剩已完成的 bash");
+    }
+
+    @Test
+    public void pending_step_already_in_working_memory_should_not_repeat() {
+        // 这一步已成对写入（lastReasonMessage 仍指向它）：不能再输出一份
+        ReActTrace trace = mainTraceWithOneDoneStep();
+        AssistantMessage done = (AssistantMessage) trace.getWorkingMemory().getMessages().get(1);
+        trace.setLastReasonMessage(done);
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null, (id, c) -> null));
+        assertEquals(Collections.singletonList("tool"), kinds(events));
+    }
+
+    @Test
+    public void pending_resume_without_index_should_fall_back_to_task_id_arg() {
+        // 没有登记索引时，续跑调用参数里的 task_id 就是子会话 ID（同样要过反向校验）
+        Map<String, AgentSession> store = new HashMap<>();
+        String taskId = "task-0123456789abcdef0123456789abcdef";
+        Map<String, Object> args = new HashMap<>();
+        args.put("agent_name", "explore");
+        args.put("description", "接着查");
+        args.put("task_id", taskId);
+        ToolCall task = new ToolCall("0", "call_t", TaskTalent.TOOL_TASK, "{}", args);
+        ReActTrace trace = mainTraceWithOneDoneStep();
+        trace.setLastReasonMessage(newToolCallMessage(null, task));
+        putSubSession(store, taskId, task.getUuid(), TaskTalent.STATUS_RUNNING);
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, (id, c) -> store.get(id)));
+        assertEquals(Arrays.asList("tool", "tool"), kinds(events));
+        Map<?, ?> st = (Map<?, ?>) ((List<?>) events.get(1).get("subtasks")).get(0);
+        assertEquals(taskId, st.get("taskId"));
+        assertEquals("接着查", st.get("description"));
+    }
+
     private AssistantMessage newToolCallMessage(String content, ToolCall call) {
         return new AssistantMessage(content, "", Collections.singletonList(call), null);
     }

@@ -887,6 +887,8 @@
   "msg.taskDone": " hoàn tất, ",
   "msg.taskFailed": " thất bại, ",
   "msg.taskRunning": " đang chạy, ",
+  "msg.taskInterrupted": " bị gián đoạn, ",
+  "msg.taskInterruptedHint": "Bị gián đoạn (giữ lại tiến trình đã chạy)",
   "msg.thinking": "Suy nghĩ",
   "msg.waitingForApproval": "Đang chờ phê duyệt để thực thi công cụ này",
   "openapi.addBtn": "+ Thêm máy chủ",

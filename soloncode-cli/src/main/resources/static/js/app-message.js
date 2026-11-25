@@ -427,6 +427,9 @@ function buildTaskGroupAriaLabel(segment, expanded) {
     if (segment.status === 'done') {
         return title + I18n.t('msg.taskDone', {detail: detail}) + stateLabel;
     }
+    if (segment.status === 'interrupted') {
+        return title + I18n.t('msg.taskInterrupted', {detail: detail}) + stateLabel + (expanded ? '' : I18n.t('msg.clickToExpand'));
+    }
     return title + I18n.t('msg.taskRunning', {detail: detail}) + stateLabel + (expanded ? '' : I18n.t('msg.clickToExpand'));
 }
 
@@ -442,6 +445,10 @@ function updateTaskGroupStatusIcon(segment) {
     } else if (status === 'error') {
         icon.className = 'tool-status-icon reject';
         icon.innerHTML = '<i class="layui-icon layui-icon-close" style="font-size:12px"></i>';
+    } else if (status === 'interrupted') {
+        // 与主过程未完成工具卡同一口径（markReplayUnfinishedTool）：用户停止 / 进程退出不算错误
+        icon.className = 'tool-status-icon warn';
+        icon.innerHTML = '<i class="layui-icon layui-icon-tips" style="font-size:12px"></i>';
     } else {
         icon.className = 'tool-status-icon loading';
         icon.innerHTML = '';
@@ -503,21 +510,32 @@ function scheduleTaskGroupMetaUpdate(segment) {
     });
 }
 
+/** 任务组终态（done / error / interrupted）：迟到的 chunk 不得把它打回 running */
+function isTaskGroupTerminal(status) {
+    return status === 'done' || status === 'error' || status === 'interrupted';
+}
+
 function setTaskGroupStatus(segment, status) {
     if (!segment || !segment.groupEl || !status) return;
-    // error 优先；done 不覆盖 error
+    // error 优先；done 不覆盖 error；interrupted 同样是终态，只有 error 能盖过它（续跑走 reopenTaskGroup）
     if (segment.status === 'error' && status !== 'error') return;
+    if (segment.status === 'interrupted' && status !== 'error' && status !== 'interrupted') return;
     if (segment.status === status && status !== 'running') {
         scheduleTaskGroupMetaUpdate(segment);
         return;
     }
     segment.status = status;
     segment.updatedAt = Date.now();
-    if (status === 'done' || status === 'error') {
+    if (status === 'done' || status === 'error' || status === 'interrupted') {
         segment.finishedAt = segment.finishedAt || Date.now();
     }
-    $(segment.groupEl).removeClass('is-running is-done is-error');
+    $(segment.groupEl).removeClass('is-running is-done is-error is-interrupted');
     $(segment.groupEl).addClass('is-' + status);
+    if (status === 'interrupted' && window.I18n) {
+        segment.groupEl.setAttribute('title', I18n.t('msg.taskInterruptedHint'));
+    } else {
+        segment.groupEl.removeAttribute('title');
+    }
     updateTaskGroupStatusIcon(segment);
     scheduleTaskGroupMetaUpdate(segment);
 }
@@ -533,7 +551,7 @@ function recordTaskGroupToolStart(segment, toolName, toolTitle, args) {
     segment.lastActionLabel = argsStr ? (name + ' ' + argsStr) : name;
     segment.updatedAt = Date.now();
     // 已 task_done 的终态不因迟到 action_start 打回 running
-    if (segment.status !== 'error' && segment.status !== 'done') setTaskGroupStatus(segment, 'running');
+    if (!isTaskGroupTerminal(segment.status)) setTaskGroupStatus(segment, 'running');
     else scheduleTaskGroupMetaUpdate(segment);
 }
 
@@ -549,19 +567,27 @@ function recordTaskGroupReason(segment) {
     segment.reasonCount = (segment.reasonCount || 0) + 1;
     segment.updatedAt = Date.now();
     // 已 task_done 的终态不因迟到 reason 打回 running
-    if (segment.status !== 'error' && segment.status !== 'done') setTaskGroupStatus(segment, 'running');
+    if (!isTaskGroupTerminal(segment.status)) setTaskGroupStatus(segment, 'running');
     else scheduleTaskGroupMetaUpdate(segment);
 }
 
-function finalizeTaskGroups(sess) {
+/**
+ * 整轮收尾时结算全部 task-group。
+ * @param stopped 本轮因用户 Stop 结束：父流已取消，后端不会再推被打断子任务的 task.done，
+ *                仍在 running 的组按「已中断」结算（与刷新后回放 failureKind=cancelled 同一口径），而不是绿勾
+ */
+function finalizeTaskGroups(sess, stopped) {
     if (!sess || !sess.taskSegments) return;
     for (var taskId in sess.taskSegments) {
         if (!Object.prototype.hasOwnProperty.call(sess.taskSegments, taskId)) continue;
         var segment = sess.taskSegments[taskId];
         if (!segment || !segment.groupEl) continue;
-        // 非 error → done（绿勾）；error 保留红叉与 is-error 左边框
+        // 非终态：Stop → interrupted（warn），否则 → done（绿勾）；error / interrupted 保留各自图标
         // 已由 task_done 提前结算的 segment 会走 status 短路，只刷新 meta
-        if (segment.status !== 'error') setTaskGroupStatus(segment, 'done');
+        if (segment.status !== 'error' && segment.status !== 'interrupted') {
+            var settled = (stopped && !isTaskGroupTerminal(segment.status)) ? 'interrupted' : 'done';
+            setTaskGroupStatus(segment, settled);
+        }
         else {
             segment.finishedAt = segment.finishedAt || Date.now();
             updateTaskGroupStatusIcon(segment);
@@ -580,7 +606,7 @@ function applyTaskDoneChunk(sess, chunk) {
     var segment = ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName);
     if (!segment || !segment.taskId) return;
 
-    var status = (chunk.status === 'error') ? 'error' : 'done';
+    var status = (chunk.status === 'error' || chunk.status === 'interrupted') ? chunk.status : 'done';
 
     if (status === 'error' && chunk.text) {
         // 异常正文写入 task-group，避免只有图标没有原因
@@ -770,8 +796,9 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh) {
                 bodyEl: bodyEl,
                 groupEl: existingGroup,
                 reasonEntries: {},
-                // 从 DOM 状态 class 恢复终态，避免已 done/error 的分组被迟到 chunk 打回 running
+                // 从 DOM 状态 class 恢复终态，避免已 done/error/interrupted 的分组被迟到 chunk 打回 running
                 status: existingGroup.classList.contains('is-error') ? 'error'
+                    : existingGroup.classList.contains('is-interrupted') ? 'interrupted'
                     : (existingGroup.classList.contains('is-done') ? 'done' : 'running'),
                 userToggled: false,
                 createdAt: now,
@@ -1026,7 +1053,7 @@ function markTaskGroupUpdated(sess, segment) {
     if (!segment || !segment.groupEl || !segment.taskId) return;
     segment.updatedAt = Date.now();
     // 已 task_done 的终态不再被后续迟到 chunk 打回 running
-    if (segment.status !== 'error' && segment.status !== 'done') {
+    if (!isTaskGroupTerminal(segment.status)) {
         setTaskGroupStatus(segment, 'running');
     } else {
         scheduleTaskGroupMetaUpdate(segment);
@@ -1691,6 +1718,9 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
         if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
         return reused;
     }
+    // 刷新后：加载期间缓存的实时事件在回放之后补发，回放已把这次调用画成完成卡时不再新建第二张
+    var rendered = findRenderedToolCard(sess, callId);
+    if (rendered) return rendered;
     var group = ensureReasonGroup(sess, segment, reasonId);
     if (group && group.thinkingBlockEl) finishThinkingBlock(sess, streamReasonKey(segment, reasonId));
     var card = createToolCard(toolName, args, toolTitle, agentName, 'loading');
@@ -1701,6 +1731,14 @@ function appendActionStartChunk(sess, segment, toolName, args, toolTitle, reason
     registerPendingToolCard(sess, card, callId, streamReasonKey(segment, reasonId));
     if (segment && segment.taskId) recordTaskGroupToolStart(segment, toolName, toolTitle, args);
     return card;
+}
+
+/* 按 callId 找已上屏的工具卡（主过程与子任务共用）。
+ * 只认引擎生成的 uuid：文本模式的 callId 是「工具名-序号」，跨步骤会重复，不能拿来去重。 */
+function findRenderedToolCard(sess, callId) {
+    if (!sess || !sess.container || !callId) return null;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(callId)) return null;
+    return sess.container.querySelector('.tool-card[data-call-id="' + callId + '"]');
 }
 
 function resolveTaskSegmentFromCard(sess, card) {
@@ -1716,6 +1754,11 @@ function appendActionEndChunk(sess, segment, toolName, text, args, toolTitle, re
     var pendingMatch = findPendingToolCard(sess, callId, null);
     var card = pendingMatch.pending && pendingMatch.pending.started ? pendingMatch.pending.card : null;
     if (card) delete sess.pendingToolCards[pendingMatch.key];
+    // 同上：回放已画过同一次调用的卡片就复用它重填结果，不再新建
+    if (!card) {
+        card = findRenderedToolCard(sess, callId);
+        if (card) bindToolCardToggle(card);
+    }
     if (!card) {
         if (!segment) segment = ensureStreamSegment(sess, null, null, null);
         var group = ensureReasonGroup(sess, segment, reasonId);

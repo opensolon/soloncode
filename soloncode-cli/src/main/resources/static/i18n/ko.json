@@ -887,6 +887,8 @@
   "msg.taskDone": " 완료, ",
   "msg.taskFailed": " 실패, ",
   "msg.taskRunning": " 실행 중, ",
+  "msg.taskInterrupted": " 중단됨, ",
+  "msg.taskInterruptedHint": "중단됨 (실행된 과정은 유지)",
   "msg.thinking": "생각 중",
   "msg.waitingForApproval": "이 도구를 실행하기 위한 승인을 기다리는 중",
   "openapi.addBtn": "+ 서버 추가",

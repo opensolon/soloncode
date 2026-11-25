@@ -892,6 +892,8 @@
   "msg.taskDone": " terminée, ",
   "msg.taskFailed": " échouée, ",
   "msg.taskRunning": " en cours, ",
+  "msg.taskInterrupted": " interrompue, ",
+  "msg.taskInterruptedHint": "Interrompue (la progression est conservée)",
   "msg.thinking": "Réflexion",
   "msg.waitingForApproval": "En attente d'approbation pour exécuter cet outil",
   "openapi.addBtn": "+ Ajouter un serveur",

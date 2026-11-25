@@ -887,6 +887,8 @@
   "msg.taskDone": " tamamlandı, ",
   "msg.taskFailed": " başarısız, ",
   "msg.taskRunning": " çalışıyor, ",
+  "msg.taskInterrupted": " kesildi, ",
+  "msg.taskInterruptedHint": "Kesildi (şimdiye kadarki ilerleme korunur)",
   "msg.thinking": "Düşünüyor",
   "msg.waitingForApproval": "Bu aracı çalıştırmak için onay bekleniyor",
   "openapi.addBtn": "+ Sunucu Ekle",

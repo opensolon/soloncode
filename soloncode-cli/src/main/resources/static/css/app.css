@@ -724,9 +724,11 @@ body {
 .task-group { position: relative; margin: 0; border: none; border-left: 4px solid var(--reason-group-think-border); border-radius: 0; overflow: hidden; background: var(--reason-group-think-bg); transition: border-left-color 0.15s; }
 /* running/done 统一灰色左边框；仅 error 用红色强提示 */
 .task-group.is-error { border-left-color: var(--error-border); }
+/* 被中断（用户停止 / 进程退出后重启）：与未完成工具卡的 warn 图标同色，不算错误 */
+.task-group.is-interrupted { border-left-color: var(--color-warning); }
 /* 左侧灰边透明热区：仅作为鼠标点击区域；键盘交互统一由可见标题承担。 */
 .task-group-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 12px; z-index: 3; cursor: pointer; user-select: none; }
-.task-group:not(.is-error):has(.task-group-rail:hover) { border-left-color: var(--text-tertiary); }
+.task-group:not(.is-error):not(.is-interrupted):has(.task-group-rail:hover) { border-left-color: var(--text-tertiary); }
 
 /* Header 两行：L1 图标(22px)+title(文本+贴字 badge)+stats+toggle；L2 最近 tool 动作 */
 .task-group-header { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 12px; cursor: pointer; user-select: none; font-size: var(--fs-base); color: var(--text-primary); background: var(--bg-primary); transition: background 0.15s; }

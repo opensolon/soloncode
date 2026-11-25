@@ -1709,8 +1709,8 @@ function finishStream(sess) {
     finishPendingTool(sess);
     sess.hitlApprovedCards = {};
 
-    // 结算全部 task-group：非 error → done（绿勾）；error 保留红叉
-    if (typeof finalizeTaskGroups === 'function') finalizeTaskGroups(sess);
+    // 结算全部 task-group：error 保留红叉；运行中的组 Stop → 已中断（父流已取消，被打断的子任务收不到 task.done），否则 → done
+    if (typeof finalizeTaskGroups === 'function') finalizeTaskGroups(sess, wasStopped);
     // 本轮总计时定格（Context 条）
     if (typeof stopRoundElapsed === 'function') stopRoundElapsed(sess);
 
@@ -2052,7 +2052,9 @@ function replayTraceEvent(sess, runId, reasonId, e, running, task) {
 /* 回放子代理过程：task.start → 子事件（带 taskId）→ task.done，复用实时流的 task-group 渲染。
  *  - 实时流已建过该组（运行中刷新、WS 早于快照）：交给实时流继续，不重复回放；
  *  - 同一子任务续跑过多次时，子会话里已是完整过程，第一次出现时整段回放，后面的同 ID 自然跳过；
- *  - 终态：success → 绿勾；failure → 红叉；仍是 running 而整轮已结束 = 被中断，也落红叉。 */
+ *  - 终态：success → 绿勾；failure → 红叉；仍是 running 而整轮已结束（进程中途退出）或因用户停止而失败
+ *    （failureKind=cancelled/interrupted）= 被中断，落 warn，与主过程未完成的工具卡一致；
+ *  - 仍在跑：不发 task.done，任务组保持运行中，之后的实时事件按 taskId 接在同一组后面。 */
 function replaySubtasks(sess, runId, subtasks, running) {
     // 先收尾主过程里当前组的思考块：后续内容进入 task-group，没有事件会再帮它停转
     finishReplayThinkingBlocks(sess);
@@ -2079,11 +2081,19 @@ function replaySubtasks(sess, runId, subtasks, running) {
         var stillRunning = st.status === 'running' && running;
         if (!stillRunning) {
             processWebEventNow(sess, makeReplayEvent(sess, runId, null, 'task.done',
-                { taskId: st.taskId, title: st.description, status: st.status === 'success' ? 'done' : 'error' }, task));
+                { taskId: st.taskId, title: st.description, status: replayTaskDoneStatus(st) }, task));
         }
         n++;
     }
     return n;
+}
+
+/* 回放子任务的终态（调用方已排除「仍在跑」） */
+function replayTaskDoneStatus(st) {
+    if (st.status === 'success') return 'done';
+    if (st.status === 'running') return 'interrupted';
+    if (st.failureKind === 'cancelled' || st.failureKind === 'interrupted') return 'interrupted';
+    return 'error';
 }
 
 /* 按「组」判定哪些事件已由实时流渲染过。

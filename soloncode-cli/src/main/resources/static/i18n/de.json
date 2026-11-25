@@ -892,6 +892,8 @@
   "msg.taskDone": " abgeschlossen, ",
   "msg.taskFailed": " fehlgeschlagen, ",
   "msg.taskRunning": " läuft, ",
+  "msg.taskInterrupted": " unterbrochen, ",
+  "msg.taskInterruptedHint": "Unterbrochen (bisheriger Verlauf bleibt erhalten)",
   "msg.thinking": "Denkt nach",
   "msg.waitingForApproval": "Warte auf Genehmigung zur Ausführung dieses Tools",
   "openapi.addBtn": "+ Server hinzufügen",

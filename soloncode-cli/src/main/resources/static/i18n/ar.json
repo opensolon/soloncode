@@ -887,6 +887,8 @@
   "msg.taskDone": " اكتملت، ",
   "msg.taskFailed": " فشلت، ",
   "msg.taskRunning": " قيد التشغيل، ",
+  "msg.taskInterrupted": " تمت مقاطعتها، ",
+  "msg.taskInterruptedHint": "تمت المقاطعة (يُحتفظ بالتقدم المُنجز)",
   "msg.thinking": "تفكير",
   "msg.waitingForApproval": "في انتظار الموافقة لتنفيذ هذه الأداة",
   "openapi.addBtn": "+ إضافة خادم",

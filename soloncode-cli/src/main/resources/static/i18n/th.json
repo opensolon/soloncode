@@ -887,6 +887,8 @@
   "msg.taskDone": " เสร็จสมบูรณ์, ",
   "msg.taskFailed": " ล้มเหลว, ",
   "msg.taskRunning": " กำลังทำงาน, ",
+  "msg.taskInterrupted": " ถูกขัดจังหวะ, ",
+  "msg.taskInterruptedHint": "ถูกขัดจังหวะ (เก็บความคืบหน้าที่ทำไปแล้ว)",
   "msg.thinking": "กำลังคิด",
   "msg.waitingForApproval": "กำลังรอการอนุมัติเพื่อดำเนินการเครื่องมือนี้",
   "openapi.addBtn": "+ เพิ่มเซิร์ฟเวอร์",

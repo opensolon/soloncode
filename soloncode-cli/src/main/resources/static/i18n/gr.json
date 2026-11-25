@@ -887,6 +887,8 @@
   "msg.taskDone": " ολοκληρώθηκε, ",
   "msg.taskFailed": " απέτυχε, ",
   "msg.taskRunning": " εκτελείται, ",
+  "msg.taskInterrupted": " διακόπηκε, ",
+  "msg.taskInterruptedHint": "Διακόπηκε (η πρόοδος διατηρείται)",
   "msg.thinking": "Σκέψη",
   "msg.waitingForApproval": "Αναμονή έγκρισης για την εκτέλεση αυτού του εργαλείου",
   "openapi.addBtn": "+ Προσθήκη διακομιστή",
