@@ -765,6 +765,11 @@ public class GitService {
             return Result.failure(400, "paths is required");
         }
 
+        // git-summary 被停用时 selectedAgent 会静默回落到主代理，这里先拦下并明确告知
+        if (engine.resolveAgent(null, "git-summary") == null) {
+            return Result.failure(400, "git-summary agent is disabled");
+        }
+
         try {
             final SummaryText text = SummaryText.of(locale != null ? locale : engine.getLocale());
 

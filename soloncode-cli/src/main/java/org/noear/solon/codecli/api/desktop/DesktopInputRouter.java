@@ -148,7 +148,7 @@ final class DesktopInputRouter {
         if (Assert.isNotEmpty(requestedAgent) && !"default".equals(requestedAgent)) {
             // 请求体显式指定：先做格式与可用性校验，无效则直接报错（与迁移前一致）
             requestedAgent = requestedAgent.trim();
-            if (!gate.isValidAgentName(requestedAgent) || !engine.getAgentManager().hasAgent(requestedAgent)) {
+            if (!gate.isValidAgentName(requestedAgent) || engine.resolveAgent(session, requestedAgent) == null) {
                 socket.send(new ONode().set("type", "error")
                         .set("sessionId", sessionId)
                         .set("text", "Agent 不可用或已禁用")

@@ -168,7 +168,7 @@ public class WsGate extends SimpleWebSocketListener {
 
         if (Assert.isNotEmpty(agentName)) {
             String normalizedAgent = agentName.trim();
-            if (!isValidAgentName(normalizedAgent) || !engine.getAgentManager().hasAgent(normalizedAgent)) {
+            if (!isValidAgentName(normalizedAgent) || engine.resolveAgent(session, normalizedAgent) == null) {
                 throw new IllegalArgumentException("Goal Agent is unavailable");
             }
             engine.setSessionAgent(session, normalizedAgent);
