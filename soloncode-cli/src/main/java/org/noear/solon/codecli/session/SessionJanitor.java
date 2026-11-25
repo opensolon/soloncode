@@ -30,10 +30,11 @@ import java.util.concurrent.TimeUnit;
 /**
  * 会话目录清理器：僵尸 web 会话 + 过期的子代理任务会话。
  *
- * <p>子代理任务会话（目录名满足 {@link SessionIdOwnership#isSubtask} 的完整格式，与主会话同在 sessions 下；
- * 仅前缀相同的目录如 {@code task-board} 不动）：最近修改超过
- * {@link #SUBTASK_TTL_MS} 即删（快照原子写会刷新目录修改时间）。不随父会话删除——父会话里的子任务索引
- * 可能已被回退/清空，崩溃遗留也找不全，统一按过期兜底。</p>
+ * <p>子代理任务会话（目录名满足 {@link SessionIdOwnership#isSubtask} 的完整格式；仅前缀相同的目录如
+ * {@code task-board} 不动）存在父会话目录之下（{@code sessions/<父>/subtasks/<taskId>/}，见 {@link SessionManager}），
+ * 随父会话目录一并删除；另按过期兜底：最近修改超过 {@link #SUBTASK_TTL_MS} 即删（快照原子写会刷新目录修改时间），
+ * 避免长期不删的会话（如 CLI 的固定会话）下子会话越积越多；{@code subtasks/} 清空后一并删掉。
+ * 旧版本平铺在 sessions 下的子任务会话同样按过期清理。</p>
  *
  * <p>web.html 新建对话时会先创建会话目录（含 _meta.json，位于 ~/.soloncode/workspaces/&lt;标识&gt;/sessions/），
  * 用户未发消息即切走就会留下无实质内容的空壳目录，且会一直被 sessions 列表扫描。
@@ -67,7 +68,7 @@ public class SessionJanitor {
      * 清理指定 sessions 根目录下的僵尸 web 会话目录与过期子任务会话目录（启动时、每次列会话时调用）。
      *
      * @param sessionsRoot sessions 根目录（~/.soloncode/workspaces/&lt;标识&gt;/sessions/）
-     * @return 被清理的会话 ID 列表（无删除或目录不存在时为空列表）
+     * @return 被清理的会话 ID 列表（嵌套的子任务会话记为 {@code <父会话>/<taskId>}；无删除或目录不存在时为空列表）
      */
     public static List<String> cleanSessions(Path sessionsRoot) {
         List<String> removed = new ArrayList<>();
@@ -81,6 +82,9 @@ public class SessionJanitor {
                     continue;
                 }
                 String name = dir.getFileName().toString();
+                if (SessionIdOwnership.isSubtask(name) == false) {
+                    cleanNestedSubtasks(dir, name, removed);
+                }
                 boolean expired;
                 if (name.startsWith(WEB_SESSION_PREFIX)) {
                     expired = isZombieWebSession(dir);
@@ -97,6 +101,38 @@ public class SessionJanitor {
             LOG.warn("[SessionJanitor] Failed to scan sessions root {}: {}", sessionsRoot, e.getMessage());
         }
         return removed;
+    }
+
+    /** 清理一个会话目录下过期的子任务会话；{@code subtasks/} 已空时一并删掉（非空删除失败即放弃，不影响并发新建） */
+    private static void cleanNestedSubtasks(Path sessionDir, String sessionId, List<String> removed) {
+        Path subtasks = sessionDir.resolve(SessionManager.SUBTASKS_DIR);
+        if (Files.isDirectory(subtasks) == false) {
+            return;
+        }
+
+        boolean empty = true;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(subtasks)) {
+            for (Path dir : stream) {
+                String name = dir.getFileName().toString();
+                if (Files.isDirectory(dir) && SessionIdOwnership.isSubtask(name)
+                        && isExpiredSubtaskSession(dir) && deleteDirectory(dir)) {
+                    removed.add(sessionId + "/" + name);
+                } else {
+                    empty = false;
+                }
+            }
+        } catch (Exception e) {
+            LOG.warn("[SessionJanitor] Failed to scan subtasks of {}: {}", sessionDir, e.getMessage());
+            return;
+        }
+
+        if (empty) {
+            try {
+                Files.deleteIfExists(subtasks);
+            } catch (Exception e) {
+                LOG.debug("[SessionJanitor] Skip remove subtasks dir: {} ({})", subtasks, e.getMessage());
+            }
+        }
     }
 
     /** 子任务会话目录是否已过期（最近修改超过 {@link #SUBTASK_TTL_MS}） */

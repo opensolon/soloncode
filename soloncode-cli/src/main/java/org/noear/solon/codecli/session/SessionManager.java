@@ -28,16 +28,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * </ul>
  * <p>{@link #evictSession(String)} 与 {@link #getLoadedSession(String)} 对应：把已加载的会话移出内存。</p>
  *
- * <p>子代理任务会话（{@link SessionIdOwnership#isSubtask}）也存在 sessions 下，但不放进内存缓存
- * （每次按需从磁盘打开；同一任务同一时刻只有一个写入方，由 TaskTalent 的运行锁保证），
- * 过期目录由 {@link SessionJanitor#cleanSessions(Path)} 清理。</p>
+ * <p>子代理任务会话（{@link SessionIdOwnership#isSubtask}）存在父会话目录之下：
+ * {@code sessions/<父会话>/subtasks/<taskId>/}（引擎经 {@link #getSession(String, String, boolean)} 带父会话标识来取），
+ * 删父会话目录即连带删除。它们不放进内存缓存（每次按需从磁盘打开；同一任务同一时刻只有一个写入方，
+ * 由 TaskTalent 的运行锁保证），过期目录仍由 {@link SessionJanitor#cleanSessions(Path)} 按过期兜底清理。
+ * 旧版本平铺在 {@code sessions/<taskId>/} 的子会话只读兼容（不迁移，到期后由清理器删除）。</p>
  *
- * <p>会话 ID 必须非空，且解析后是 sessions 目录的直接子目录（防 {@code ../} 越界）。
+ * <p>会话 ID 必须非空，且解析后是 sessions 目录的直接子目录（防 {@code ../} 越界）；子任务会话的父会话 ID 同样校验，
+ * 子任务 ID 本身由 {@link SessionIdOwnership#isSubtask} 的完整格式保证是单段名。
  * 新建类方法遇到非法 ID 抛 {@link IllegalArgumentException}；只取类方法返回 null。</p>
  *
  * @author noear 2026/7/12 created
  */
 public class SessionManager implements AgentSessionProvider {
+    /** 子代理任务会话在父会话目录下的子目录名 */
+    public static final String SUBTASKS_DIR = "subtasks";
+
     private final String workspace;
     private final Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
@@ -56,16 +62,19 @@ public class SessionManager implements AgentSessionProvider {
      * {@link IllegalArgumentException}。{@code createIfAbsent=false}：只取已存在的——内存命中直接返回，
      * 否则仅当会话目录已存在时加载并缓存，目录不存在或 ID 非法返回 null（不建目录、不放缓存）。
      * 判存与加载在同一个 {@code computeIfAbsent} 内，是原子的。</p>
+     *
+     * <p>子任务会话 ID：只读旧版本平铺在 {@code sessions/<taskId>/} 的数据；新建抛 {@link IllegalArgumentException}
+     * （必须经 {@link #getSession(String, String, boolean)} 带父会话标识，建在父会话之下）。</p>
      */
-    @Override
     public @Nullable AgentSession getSession(String sessionId, boolean createIfAbsent) {
         if (SessionIdOwnership.isSubtask(sessionId)) {
-            // 子任务会话不常驻内存；FileAgentSession 构造即建目录，只取时必须先判存在
-            Path dir = createIfAbsent ? resolveSessionPath(sessionId) : sessionPathOrNull(sessionId);
-            if (dir == null || (createIfAbsent == false && Files.isDirectory(dir) == false)) {
-                return null;
+            // 不带父会话标识：只读旧版本平铺的子会话，绝不新建（新子会话只能建在父会话之下）。
+            // 子任务会话不常驻内存；FileAgentSession 构造即建目录，必须先判存在
+            if (createIfAbsent) {
+                throw new IllegalArgumentException("Subtask session requires parentSessionId: " + sessionId);
             }
-            return new FileAgentSession(sessionId, dir.toString());
+            Path dir = sessionPathOrNull(sessionId);
+            return dir != null && Files.isDirectory(dir) ? new FileAgentSession(sessionId, dir.toString()) : null;
         }
 
         if (createIfAbsent) {
@@ -79,6 +88,54 @@ public class SessionManager implements AgentSessionProvider {
         }
         return sessionMap.computeIfAbsent(sessionId, key ->
                 Files.isDirectory(dir) ? new FileAgentSession(key, dir.toString()) : null); // 返回 null 时不写入
+    }
+
+    /**
+     * 获取会话（{@link AgentSessionProvider} 唯一方法）：{@code parentSessionId} 为 null 时等同 {@link #getSession(String, boolean)}；
+     * 子代理任务会话存在 {@code sessions/<父会话>/subtasks/<taskId>/}，其它 ID 忽略父会话标识。
+     *
+     * <p>查找顺序：父会话下的嵌套目录 → 旧版本的平铺目录（只读兼容）。都没有时：只取返回 null、不建目录；
+     * 新建只建在嵌套目录，且要求父会话目录已存在（不为已删除的父会话建空壳），否则抛 {@link IllegalStateException}。
+     * 父会话 ID 非法（含子任务 ID：不嵌套两层）时，新建抛 {@link IllegalArgumentException}、只取返回 null。</p>
+     */
+    @Override
+    public @Nullable AgentSession getSession(String sessionId, @Nullable String parentSessionId, boolean createIfAbsent) {
+        if (parentSessionId == null || SessionIdOwnership.isSubtask(sessionId) == false) {
+            return getSession(sessionId, createIfAbsent);
+        }
+
+        Path parentDir = SessionIdOwnership.isSubtask(parentSessionId) ? null : sessionPathOrNull(parentSessionId);
+        if (parentDir == null) {
+            if (createIfAbsent) {
+                throw new IllegalArgumentException("Invalid parentSessionId: " + parentSessionId);
+            }
+            return null;
+        }
+
+        // 子任务 ID 已按完整格式校验（task- 加 32 位十六进制），是合法的单段名
+        Path nested = subtaskPath(parentDir, sessionId);
+        if (Files.isDirectory(nested)) {
+            return new FileAgentSession(sessionId, nested.toString());
+        }
+
+        // 旧数据兼容：升级前平铺在 sessions 下的子会话（归属仍由 TaskTalent 比对元数据里的 parentSessionId）
+        Path legacy = sessionPathOrNull(sessionId);
+        if (legacy != null && Files.isDirectory(legacy)) {
+            return new FileAgentSession(sessionId, legacy.toString());
+        }
+
+        if (createIfAbsent == false) {
+            return null;
+        }
+        if (Files.isDirectory(parentDir) == false) {
+            throw new IllegalStateException("Parent session not found: " + parentSessionId);
+        }
+        return new FileAgentSession(sessionId, nested.toString());
+    }
+
+    /** 子任务会话在父会话目录下的存储路径 */
+    static Path subtaskPath(Path parentDir, String taskId) {
+        return parentDir.resolve(SUBTASKS_DIR).resolve(taskId);
     }
 
     /** 获取会话，不存在则新建（= {@code getSession(sessionId, true)}）。 */

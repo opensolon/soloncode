@@ -124,6 +124,22 @@ public class WsGate extends SimpleWebSocketListener {
         host.warmup(Collections.singletonList(TENANT));
     }
 
+    /**
+     * 会话能否永久删除：不占用且没有仍在执行的子任务（子会话存在本会话目录下，还在跑时删了会被写回来）。
+     * 只取已存在的会话，不顺带新建。
+     */
+    public boolean isSessionRemovable(String sessionId) {
+        if (Assert.isEmpty(sessionId)) {
+            return true;
+        }
+        try {
+            AgentSession session = engine.getSessionOrNull(sessionId);
+            return session == null || engine.status(session).isRemovable();
+        } catch (Throwable ignored) {
+            return true;
+        }
+    }
+
     public boolean isSessionBusy(String sessionId) {
         if (Assert.isEmpty(sessionId)) {
             return false;

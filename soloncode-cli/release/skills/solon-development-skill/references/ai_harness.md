@@ -49,11 +49,12 @@ public class DemoApp {
             private Map<String, AgentSession> sessionMap = new ConcurrentHashMap<>();
 
             @Override
-            public AgentSession getSession(String instanceId, boolean createIfAbsent) {
-                // createIfAbsent=false 且不存在时必须返回 null、且无副作用（不建、不缓存）
+            public AgentSession getSession(String sessionId, String parentSessionId, boolean createIfAbsent) {
+                // createIfAbsent=false 且不存在时必须返回 null、且无副作用（不建、不缓存）；
+                // parentSessionId 非 null 表示子会话（如子代理任务），可据此存在父会话之下，不关心可忽略
                 return createIfAbsent
-                        ? sessionMap.computeIfAbsent(instanceId, k -> InMemoryAgentSession.of(k))
-                        : sessionMap.get(instanceId);
+                        ? sessionMap.computeIfAbsent(sessionId, k -> InMemoryAgentSession.of(k))
+                        : sessionMap.get(sessionId);
             }
         };
 

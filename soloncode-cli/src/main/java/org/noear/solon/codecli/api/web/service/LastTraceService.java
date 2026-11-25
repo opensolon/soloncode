@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * 「最后一轮执行过程」还原服务。
@@ -131,7 +132,7 @@ public class LastTraceService {
     /**
      * 还原指定会话最后一轮的执行过程（含子代理过程）。
      *
-     * @param subSessions 子代理会话提供者（null 表示不还原子代理过程）
+     * @param subSessions 子代理会话提供者（null 表示不还原子代理过程）。只会带本会话标识、以只取不建的方式调用
      */
     public Map<String, Object> buildLastTrace(AgentSession session, boolean running, String lastUserMsg,
                                               AgentSessionProvider subSessions) {
@@ -145,6 +146,16 @@ public class LastTraceService {
         ReActTrace trace = TraceUtil.getCurrentTrace(session);
         if (trace == null) {
             return data;
+        }
+
+        // 子会话挂在本会话之下：一律带本会话标识、只读地取（也就只能取到本会话委派的子任务，且不会建出空壳）
+        final Function<String, AgentSession> subtaskOf;
+        if (subSessions == null) {
+            subtaskOf = null;
+        } else {
+            final AgentSessionProvider provider = subSessions;
+            final String parentSessionId = session.getSessionId();
+            subtaskOf = taskId -> provider.getSession(taskId, parentSessionId, false);
         }
 
         Prompt workingMemory = trace.getWorkingMemory();
@@ -161,8 +172,8 @@ public class LastTraceService {
 
         List<Map<String, Object>> events = new ArrayList<>();
         Budget budget = new Budget();
-        extractEvents(workingMemory, trace.getRunId(), events, budget, false, subSessions);
-        extractPendingStep(trace, events, budget, subSessions);
+        extractEvents(workingMemory, trace.getRunId(), events, budget, false, subtaskOf);
+        extractPendingStep(trace, events, budget, subtaskOf);
         boolean truncated = budget.truncated;
 
         if (hasVisible(events) == false) {
@@ -228,10 +239,10 @@ public class LastTraceService {
      *
      * @param currentRunId 当前 trace 的 runId，用于判别历史消息与最终回答
      * @param subtask      是否为子代理过程（子会话无历史渲染，最终回答正文也要回放）
-     * @param subSessions  子代理会话提供者（null 表示不展开子代理过程）
+     * @param subtaskOf    按 task_id 只读取本会话子会话（null 表示不展开子代理过程）
      */
     private void extractEvents(Prompt workingMemory, String currentRunId, List<Map<String, Object>> events,
-                               Budget budget, boolean subtask, AgentSessionProvider subSessions) {
+                               Budget budget, boolean subtask, Function<String, AgentSession> subtaskOf) {
         List<ChatMessage> messages = workingMemory.getMessages();
         int group = 0;
         boolean assistantSeen = false;
@@ -348,8 +359,8 @@ public class LastTraceService {
                         }
                     }
 
-                    if (subSessions != null) {
-                        List<Map<String, Object>> subtasks = extractSubtasks(resultMsg, subSessions, budget);
+                    if (subtaskOf != null) {
+                        List<Map<String, Object>> subtasks = extractSubtasks(resultMsg, subtaskOf, budget);
                         if (subtasks.isEmpty() == false) {
                             turn.put("subtasks", subtasks);
                         }
@@ -374,7 +385,7 @@ public class LastTraceService {
      * 进程中途退出时，委派前那次父快照已把这一步连同索引存下，重启后同样可回放。</p>
      */
     private void extractPendingStep(ReActTrace trace, List<Map<String, Object>> events, Budget budget,
-                                    AgentSessionProvider subSessions) {
+                                    Function<String, AgentSession> subtaskOf) {
         AssistantMessage pending = trace.getLastReasonMessage();
         if (pending == null || Assert.isEmpty(pending.getToolCalls())) {
             return;
@@ -399,7 +410,7 @@ public class LastTraceService {
             events.add(e);
         }
 
-        if (subSessions == null) {
+        if (subtaskOf == null) {
             return;
         }
 
@@ -418,7 +429,7 @@ public class LastTraceService {
                 index = indexFromArgs(call);
             }
 
-            List<Map<String, Object>> subtasks = extractSubtasks((List<?>) index, call.getUuid(), subSessions, budget);
+            List<Map<String, Object>> subtasks = extractSubtasks((List<?>) index, call.getUuid(), subtaskOf, budget);
             if (subtasks.isEmpty()) {
                 continue;
             }
@@ -499,25 +510,26 @@ public class LastTraceService {
     /**
      * 按 task/multitask 结果上的子任务索引取回子代理过程。
      */
-    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, AgentSessionProvider subSessions, Budget budget) {
+    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, Function<String, AgentSession> subtaskOf, Budget budget) {
         Object index = resultMsg.getMetadataAs(TaskTalent.META_SUBTASKS);
         if ((index instanceof List) == false) {
             return new ArrayList<>();
         }
-        return extractSubtasks((List<?>) index, null, subSessions, budget);
+        return extractSubtasks((List<?>) index, null, subtaskOf, budget);
     }
 
     /**
      * 按子任务索引取回子代理过程。
      *
      * <p>取不到子会话（内存提供者已过期、宿主未落盘、新任务还没启动）就跳过该项，前端退回只显示那张工具卡。
-     * 只取不建：{@code getSession(id, false)} 不存在时返回 null 且无副作用。</p>
+     * 只取不建：{@code subtaskOf} 由 {@link #buildLastTrace} 绑定本会话标识构造，内部是 {@code getSession(id, parentId, false)}，
+     * 不存在时返回 null 且无副作用。</p>
      *
      * @param parentCallId 非 null 时只收子会话 parentCallId 与之相等的项（运行中索引的反向校验：
      *                     不等说明还没启动，或已被后来的调用续跑）
      */
     private List<Map<String, Object>> extractSubtasks(List<?> index, String parentCallId,
-                                                      AgentSessionProvider subSessions, Budget budget) {
+                                                      Function<String, AgentSession> subtaskOf, Budget budget) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Object item : index) {
             if ((item instanceof Map) == false) {
@@ -532,7 +544,7 @@ public class LastTraceService {
 
             AgentSession sub;
             try {
-                sub = subSessions.getSession(taskId, false);
+                sub = subtaskOf.apply(taskId);
             } catch (Throwable e) {
                 continue;
             }

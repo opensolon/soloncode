@@ -1164,7 +1164,7 @@ class ImageReplyLifecycleTest {
     private static HarnessEngine bareEngine() {
         try {
             return HarnessEngine.of(Files.createTempDirectory("irq-ws").toString(), null)
-                    .sessionProvider((id, create) -> org.noear.solon.ai.agent.session.InMemoryAgentSession.of(id))
+                    .sessionProvider((id, parentId, create) -> org.noear.solon.ai.agent.session.InMemoryAgentSession.of(id))
                     .build();
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);

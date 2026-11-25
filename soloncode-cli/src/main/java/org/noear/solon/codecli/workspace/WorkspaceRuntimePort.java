@@ -47,6 +47,13 @@ public interface WorkspaceRuntimePort extends WorkspaceMessageGateway {
     boolean isSessionOccupied(HarnessEngine engine, String sessionId);
 
     /**
+     * 会话能否永久删除：不占用，且没有仍在执行的子任务（父流取消后子任务可能还在跑，
+     * 子会话存在父会话目录下，此时删除会被它写回来）。删除、批量清空用它判断，
+     * 与 {@code HarnessHost#closeSession} 同一口径（{@code engine.status(session).isRemovable()}）。
+     */
+    boolean isSessionRemovable(HarnessEngine engine, String sessionId);
+
+    /**
      * 中断指定会话的当前 AI 任务。
      *
      * @return true 表示已发起中断；false 表示会话不存在或没有可中断任务

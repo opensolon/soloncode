@@ -69,24 +69,90 @@ class SessionManagerTest {
         SessionManager manager = new SessionManager(workspace.toString());
         String id = "task-0123456789abcdef0123456789abcdef";
 
-        assertNull(manager.getSession(id, false), "不存在时只取返回 null");
-        assertFalse(Files.exists(sessionsRoot().resolve(id)), "只取不得建出目录");
+        manager.getSession("web-p1");
+        assertNull(manager.getSession(id, "web-p1", false), "不存在时只取返回 null");
+        assertFalse(Files.exists(sessionsRoot().resolve("web-p1").resolve(SessionManager.SUBTASKS_DIR)), "只取不得建出目录");
 
-        AgentSession created = manager.getSession(id, true);
-        assertTrue(Files.isDirectory(sessionsRoot().resolve(id)), "子任务会话与主会话同在 sessions 下");
+        AgentSession created = manager.getSession(id, "web-p1", true);
         assertNull(manager.getLoadedSession(id), "子任务会话不常驻内存");
 
-        AgentSession reopened = manager.getSession(id, false);
+        AgentSession reopened = manager.getSession(id, "web-p1", false);
         assertNotNull(reopened, "目录存在时从磁盘重开");
         assertNotSame(created, reopened);
         assertNull(manager.getLoadedSession(id));
 
+        // 不合完整格式的 ID 按主会话校验：越界新建抛 IAE、只取返回 null
         assertThrows(IllegalArgumentException.class, () -> manager.getSession("task-../x", true));
         assertNull(manager.getSession("task-../x", false));
 
         // 只是前缀相同、不合完整格式的按主会话对待（正常缓存）
         AgentSession lookalike = manager.getSession("task-board", true);
         assertSame(lookalike, manager.getLoadedSession("task-board"));
+    }
+
+    @Test
+    void subtaskSessionsWithParentAreNestedUnderParent() throws IOException {
+        SessionManager manager = new SessionManager(workspace.toString());
+        String id = "task-0123456789abcdef0123456789abcdef";
+        Path nested = sessionsRoot().resolve("web-p1").resolve(SessionManager.SUBTASKS_DIR).resolve(id);
+
+        // 父会话不存在：只取返回 null，新建拒绝（不为已删除的父会话建空壳）
+        assertNull(manager.getSession(id, "web-p1", false));
+        assertThrows(IllegalStateException.class, () -> manager.getSession(id, "web-p1", true));
+        assertFalse(Files.exists(sessionsRoot().resolve("web-p1")), "不得把父会话目录建出来");
+
+        manager.getSession("web-p1");
+        AgentSession created = manager.getSession(id, "web-p1", true);
+        assertNotNull(created);
+        assertTrue(Files.isDirectory(nested), "子任务会话存在父会话目录之下");
+        assertFalse(Files.exists(sessionsRoot().resolve(id)), "不再平铺在 sessions 下");
+        assertNull(manager.getLoadedSession(id), "子任务会话不常驻内存");
+        assertNotNull(manager.getSession(id, "web-p1", false), "同一父会话可取回");
+
+        // 别的父会话取不到，且不留空壳
+        manager.getSession("web-p2");
+        assertNull(manager.getSession(id, "web-p2", false));
+        assertFalse(Files.exists(sessionsRoot().resolve("web-p2").resolve(SessionManager.SUBTASKS_DIR)));
+
+        // 非法父会话 ID（含越界、子任务 ID）：只取 null，新建抛 IAE
+        for (String bad : new String[]{"../x", "a/b", "", id}) {
+            assertNull(manager.getSession(id, bad, false), bad);
+            assertThrows(IllegalArgumentException.class, () -> manager.getSession(id, bad, true), bad);
+        }
+
+        // 删父会话目录即连带删除子会话
+        try (Stream<Path> paths = Files.walk(sessionsRoot().resolve("web-p1"))) {
+            paths.sorted(Comparator.reverseOrder()).forEach(p -> p.toFile().delete());
+        }
+        assertNull(manager.getSession(id, "web-p1", false));
+    }
+
+    @Test
+    void legacyFlatSubtaskSessionIsStillReadableWithParent() throws IOException {
+        SessionManager manager = new SessionManager(workspace.toString());
+        String id = "task-fedcba9876543210fedcba9876543210";
+        manager.getSession("web-p1");
+        Files.createDirectories(sessionsRoot().resolve(id)); // 旧版本留下的平铺子会话
+
+        assertNotNull(manager.getSession(id, "web-p1", false), "平铺的旧子会话仍可取回（回放、续跑）");
+        assertNotNull(manager.getSession(id, "web-p1", true), "已有旧数据时不再另建嵌套目录");
+        assertFalse(Files.exists(sessionsRoot().resolve("web-p1").resolve(SessionManager.SUBTASKS_DIR)),
+                "只读兼容，不迁移");
+        assertNotNull(manager.getSession(id, false), "不带父会话标识也能只读取到旧数据");
+        assertNull(manager.getLoadedSession(id), "子任务会话不常驻内存");
+    }
+
+    /** 不带父会话标识新建子任务会话一律拒绝：不再产生新的平铺数据 */
+    @Test
+    void subtaskSessionCannotBeCreatedWithoutParent() {
+        SessionManager manager = new SessionManager(workspace.toString());
+        String id = "task-00112233445566778899aabbccddeeff";
+
+        assertThrows(IllegalArgumentException.class, () -> manager.getSession(id, true));
+        assertThrows(IllegalArgumentException.class, () -> manager.getSession(id));
+        assertThrows(IllegalArgumentException.class, () -> manager.getSession(id, null, true));
+        assertNull(manager.getSession(id, false));
+        assertFalse(Files.exists(sessionsRoot().resolve(id)), "不得建出平铺目录");
     }
 
     @Test

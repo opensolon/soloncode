@@ -32,7 +32,8 @@ import org.noear.solon.ai.harness.agent.TaskTalent;
  *   <li>Web：{@code web-*} 用户会话与 {@code auto-*} 自动化会话；</li>
  *   <li>桌面：纯数字主键（1~18 位，防路径穿越，与 {@code DesktopSessionIds} 同口径）；</li>
  *   <li>子代理任务：引擎生成的 {@code task-<32 位十六进制>}（以 {@link TaskTalent#isTaskId} 为准）。
- *       不属于任何入口（各入口都拒绝它），只用于会话存储分流（不常驻内存、按过期清理）。</li>
+ *       不属于任何入口（各入口都拒绝它），只用于会话存储分流（存在父会话目录之下、随父会话删除，
+ *       不常驻内存、另按过期清理；见 {@link SessionManager}）。</li>
  * </ul>
  *
  * <p>新增入口（第四种形态）时，只需在此加一个谓词并在注册点复用它，

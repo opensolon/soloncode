@@ -254,6 +254,17 @@ public class WebGate extends SimpleWebSocketListener implements WorkspaceRuntime
         }
     }
 
+    @Override
+    public boolean isSessionRemovable(HarnessEngine engine, String sessionId) {
+        try {
+            AgentSession session = engine.getSessionOrNull(sessionId);
+            return session == null || engine.status(session).isRemovable();
+        } catch (Exception e) {
+            LOG.warn("[WebGate] removable check failed for session {}: {}", sessionId, e.getMessage());
+            return true;
+        }
+    }
+
     /**
      * 广播原始 JSON 字符串到指定工作区的所有 WebSocket 连接（不注入 sessionId，系统级事件用）。
      */

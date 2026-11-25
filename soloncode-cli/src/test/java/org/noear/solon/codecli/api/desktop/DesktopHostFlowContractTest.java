@@ -55,7 +55,7 @@ class DesktopHostFlowContractTest {
         model.setApiUrl("http://localhost:1/v1"); // 连接即失败：ReAct 把错误收成回答文本，本轮很快结束
         model.setApiKey("test");
         engine = HarnessEngine.of(Files.createDirectories(tmp.resolve("ws")).toString(), tmp.resolve("home").toString())
-                .sessionProvider((id, create) -> create ? sessions.computeIfAbsent(id, InMemoryAgentSession::of) : sessions.get(id))
+                .sessionProvider((id, parentId, create) -> create ? sessions.computeIfAbsent(id, InMemoryAgentSession::of) : sessions.get(id))
                 .modelAdd(model)
                 .defaultModel("fake")
                 .extensionAdd(QueueExtension.builder().build())

@@ -556,7 +556,7 @@ public class LastTraceServiceTest {
         /* 子代理跑在自己的子会话里：主 trace 只有一次 task 调用，结果消息带 _subtasks 索引，
          * 回放据此从子会话提供者取回子 trace。子会话没有历史渲染，最终回答正文也要回放。 */
         Map<String, AgentSession> store = new HashMap<>();
-        AgentSessionProvider subSessions = (id, create) ->
+        AgentSessionProvider subSessions = (id, parentId, create) ->
                 create ? store.computeIfAbsent(id, InMemoryAgentSession::of) : store.get(id);
         String taskId = "task-0123456789abcdef0123456789abcdef";
 
@@ -565,7 +565,7 @@ public class LastTraceServiceTest {
         subTrace.getWorkingMemory().addMessage(newToolCallMessage(null, read));
         subTrace.getWorkingMemory().addMessage(ChatMessage.ofTool("ok", "read", "call_s1"));
         addFinalAnswer(subTrace, "子任务结论");
-        AgentSession sub = subSessions.getSession(taskId, true);
+        AgentSession sub = subSessions.getSession(taskId, null, true);
         sub.getContext().put("__explore", subTrace);
         Map<String, Object> meta = new HashMap<>();
         meta.put("agentName", "explore");
@@ -604,7 +604,7 @@ public class LastTraceServiceTest {
 
         // 子会话取不到（过期 / 未落盘）：退回普通工具卡
         List<Map<?, ?>> fallback = events(service.buildLastTrace(newSession(trace), false, null,
-                (id, create) -> null));
+                (id, parentId, create) -> null));
         assertNull(fallback.get(0).get("subtasks"));
     }
 
@@ -657,7 +657,7 @@ public class LastTraceServiceTest {
     @Test
     public void pending_multitask_should_attach_started_subtasks_via_running_index() {
         Map<String, AgentSession> store = new HashMap<>();
-        AgentSessionProvider subSessions = (id, create) -> store.get(id);
+        AgentSessionProvider subSessions = (id, parentId, create) -> store.get(id);
         String started = "task-0123456789abcdef0123456789abcdef";
         String queued = "task-fedcba9876543210fedcba9876543210";
 
@@ -705,7 +705,7 @@ public class LastTraceServiceTest {
         trace.setExtra(TaskTalent.EXTRA_RUNNING_SUBTASKS, running);
         putSubSession(store, taskId, "other-call", TaskTalent.STATUS_RUNNING);
 
-        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, (id, c) -> store.get(id)));
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, (id, parentId, c) -> store.get(id)));
         assertEquals(Collections.singletonList("tool"), kinds(events), "只剩已完成的 bash");
     }
 
@@ -716,7 +716,7 @@ public class LastTraceServiceTest {
         AssistantMessage done = (AssistantMessage) trace.getWorkingMemory().getMessages().get(1);
         trace.setLastReasonMessage(done);
 
-        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null, (id, c) -> null));
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null, (id, parentId, c) -> null));
         assertEquals(Collections.singletonList("tool"), kinds(events));
     }
 
@@ -734,11 +734,35 @@ public class LastTraceServiceTest {
         trace.setLastReasonMessage(newToolCallMessage(null, task));
         putSubSession(store, taskId, task.getUuid(), TaskTalent.STATUS_RUNNING);
 
-        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, (id, c) -> store.get(id)));
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, (id, parentId, c) -> store.get(id)));
         assertEquals(Arrays.asList("tool", "tool"), kinds(events));
         Map<?, ?> st = (Map<?, ?>) ((List<?>) events.get(1).get("subtasks")).get(0);
         assertEquals(taskId, st.get("taskId"));
         assertEquals("接着查", st.get("description"));
+    }
+
+    @Test
+    public void subtask_lookup_should_carry_parent_session_id() {
+        // 子会话挂在父会话之下：只带本会话 ID 取，且只取不建
+        Map<String, AgentSession> store = new HashMap<>();
+        String taskId = "task-0123456789abcdef0123456789abcdef";
+        ToolCall task = new ToolCall("0", "call_t", TaskTalent.TOOL_TASK, "{}", new HashMap<>());
+        ReActTrace trace = mainTraceWithOneDoneStep();
+        trace.setLastReasonMessage(newToolCallMessage(null, task));
+        Map<String, Object> running = new HashMap<>();
+        running.put(task.getUuid(), Collections.singletonList(indexItem(taskId, 1)));
+        trace.setExtra(TaskTalent.EXTRA_RUNNING_SUBTASKS, running);
+        putSubSession(store, taskId, task.getUuid(), TaskTalent.STATUS_RUNNING);
+
+        List<String> calls = new ArrayList<>();
+        AgentSessionProvider nested = (id, parentId, create) -> {
+            calls.add(id + "@" + parentId + ":" + create);
+            return "s1".equals(parentId) ? store.get(id) : null;
+        };
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, nested));
+        assertEquals(Arrays.asList("tool", "tool"), kinds(events));
+        assertEquals(Collections.singletonList(taskId + "@s1:false"), calls);
     }
 
     private AssistantMessage newToolCallMessage(String content, ToolCall call) {

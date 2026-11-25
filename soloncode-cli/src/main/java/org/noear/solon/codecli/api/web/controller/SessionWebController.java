@@ -183,7 +183,7 @@ public class SessionWebController extends AbstractWebController {
                 if (meta.isPinned()) {
                     continue;
                 }
-                if (runtimePort().isSessionOccupied(engine(), sessionId)) {
+                if (runtimePort().isSessionRemovable(engine(), sessionId) == false) {
                     skippedBusy++;
                     continue;
                 }
@@ -276,7 +276,8 @@ public class SessionWebController extends AbstractWebController {
         SessionManager targetSessions = activeWorkspaceSession ? sessionManager()
                 : (targetContext == null ? null : targetContext.getSessionManager());
 
-        if (targetEngine != null && runtimePort().isSessionOccupied(targetEngine, sessionId)) {
+        // 子任务会话存在本会话目录下：还有子任务在跑（如刚取消）时不删，否则会被它写回来
+        if (targetEngine != null && runtimePort().isSessionRemovable(targetEngine, sessionId) == false) {
             return Result.failure(409, "Session is running");
         }
 

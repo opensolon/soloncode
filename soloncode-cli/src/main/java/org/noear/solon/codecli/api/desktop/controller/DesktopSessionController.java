@@ -236,7 +236,8 @@ public class DesktopSessionController extends AbstractDesktopController {
             return Result.succeed();
         }
         boolean activeWorkspace = isActiveWorkspace(workspaceRoot);
-        if (activeWorkspace && wsGate.isSessionBusy(sessionId)) {
+        // 子任务会话存在本会话目录下：还有子任务在跑（如刚取消）时不删，否则会被它写回来
+        if (activeWorkspace && wsGate.isSessionRemovable(sessionId) == false) {
             return Result.failure(409, "Session is running");
         }
         if (activeWorkspace) {

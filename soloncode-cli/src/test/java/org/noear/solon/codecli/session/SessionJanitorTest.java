@@ -112,4 +112,37 @@ public class SessionJanitorTest {
         assertTrue(Files.isDirectory(oldNumeric), "非 web- / task- 前缀不动");
         assertTrue(Files.isDirectory(oldLookalike), "只是前缀相同、不合子任务 ID 格式的目录不动");
     }
+
+    @Test
+    @DisplayName("父会话下的子任务会话过期即删，subtasks 清空后删掉，父会话本身不动")
+    public void cleanExpiredNestedSubtaskSessions() throws Exception {
+        long expired = System.currentTimeMillis() - SessionJanitor.SUBTASK_TTL_MS - 60_000L;
+
+        Path cli = mkSession("cli");
+        Files.write(cli.resolve("cli.messages.ndjson"), "{}\n".getBytes());
+        Path cliSubtasks = cli.resolve(SessionManager.SUBTASKS_DIR);
+        Path oldTask = Files.createDirectories(cliSubtasks.resolve("task-0123456789abcdef0123456789abcdef"));
+        Files.write(oldTask.resolve("x.messages.ndjson"), "{}\n".getBytes());
+        Files.setLastModifiedTime(oldTask, FileTime.fromMillis(expired));
+
+        Path web = mkSession("web-keep");
+        Files.write(web.resolve("web-keep.messages.ndjson"), "{}\n".getBytes());
+        Path webSubtasks = web.resolve(SessionManager.SUBTASKS_DIR);
+        Path oldWebTask = Files.createDirectories(webSubtasks.resolve("task-1123456789abcdef0123456789abcdef"));
+        Files.setLastModifiedTime(oldWebTask, FileTime.fromMillis(expired));
+        Path liveWebTask = Files.createDirectories(webSubtasks.resolve("task-fedcba9876543210fedcba9876543210"));
+        Path oddDir = Files.createDirectories(webSubtasks.resolve("task-board"));
+        Files.setLastModifiedTime(oddDir, FileTime.fromMillis(expired));
+
+        List<String> removed = SessionJanitor.cleanSessions(tmp);
+
+        assertTrue(removed.contains("cli/task-0123456789abcdef0123456789abcdef"), removed.toString());
+        assertTrue(removed.contains("web-keep/task-1123456789abcdef0123456789abcdef"), removed.toString());
+        assertEquals(2, removed.size(), removed.toString());
+        assertFalse(Files.exists(cliSubtasks), "subtasks 清空后删掉");
+        assertTrue(Files.isDirectory(cli) && Files.isDirectory(web), "父会话不动");
+        assertFalse(Files.exists(oldWebTask));
+        assertTrue(Files.isDirectory(liveWebTask), "未过期的保留");
+        assertTrue(Files.isDirectory(oddDir), "不合子任务 ID 格式的不动");
+    }
 }
