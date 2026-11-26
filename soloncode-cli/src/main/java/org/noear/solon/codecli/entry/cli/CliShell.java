@@ -187,7 +187,7 @@ public class CliShell implements Runnable {
                     terminal.writer().println();
                     terminal.flush();
 
-                    input = reader.readLine(CYAN + "❯ " + RESET).trim();
+                    input = reader.readLine(CYAN + "❯ " + RESET + DIM + workspaceShort() + RESET + " ").trim();
                 } catch (UserInterruptException e) {
                     // Ctrl+C，或后台轮次结束后打断 readLine（由循环顶部接着处理）
                     continue;
@@ -363,6 +363,23 @@ public class CliShell implements Runnable {
                 RESET + "@(tab)" + DIM + " agent" + RESET);
 
         terminal.flush();
+    }
+
+
+    /**
+     * 输入提示处显示的工作目录名，只取最后一段，避免提示符过长。
+     *
+     * <p>启动欢迎信息里的路径只在开头出现一次，对话过程中看不到当前在哪个项目。</p>
+     */
+    private String workspaceShort() {
+        String path = engine.getWorkspace();
+        if (Assert.isEmpty(path)) {
+            return "";
+        }
+        String normalized = path.replace('\\', '/');
+        int idx = normalized.lastIndexOf('/');
+        String name = idx >= 0 ? normalized.substring(idx + 1) : normalized;
+        return Assert.isEmpty(name) ? path : name;
     }
 
 
