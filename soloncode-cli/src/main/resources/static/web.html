@@ -88,7 +88,7 @@
                 </svg>
                 <span style="margin-left:6px;font-size:var(--fs-sm);" data-i18n="sidebar.settings">设置</span>
             </button>
-            <a class="security-header-btn" id="securityHeaderBtn" href="/web/admin" title="安全与用户" aria-label="安全与用户" style="display:flex">
+            <a class="security-header-btn" id="securityHeaderBtn" href="/web/admin" title="安全与用户" aria-label="安全与用户" data-i18n-title="header.security" data-i18n-aria="header.security" style="display:flex">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
             </a>
             <div class="sidebar-user-menu" id="userHeaderMenu">
@@ -559,7 +559,7 @@
             <div class="git-commit-bar" id="gitCommitBar">
                 <div class="git-commit-input-wrap">
                     <textarea class="git-commit-input" id="gitCommitMsg" placeholder="审查摘要..." data-i18n-placeholder="git.reviewPlaceholder" rows="1" aria-haspopup="listbox" aria-controls="gitCommitHistory"></textarea>
-                    <div class="git-commit-history" id="gitCommitHistory" role="listbox" aria-label="Git 提交历史" style="display:none"></div>
+                    <div class="git-commit-history" id="gitCommitHistory" role="listbox" aria-label="Git 提交历史" data-i18n-aria="git.commitHistoryLabel" style="display:none"></div>
                 </div>
                 <div class="git-commit-actions">
                     <button class="git-summary-btn" id="gitSummaryBtn" title="AI 生成变更摘要" data-i18n-title="git.generateSummaryTitle">

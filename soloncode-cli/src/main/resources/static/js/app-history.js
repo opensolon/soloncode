@@ -60,23 +60,28 @@ function runHistorySearch(keyword) {
         renderSearchResults(kw, hits);
     }).fail(function() {
         if (reqId !== searchRequestId) return;
-        renderSearchResults(kw, []);
+        // 请求失败与「没有匹配」分开提示，免得误以为确实没有记录
+        renderSearchResults(kw, [], 'history.searchFailed');
     });
 }
 
-function renderSearchResults(keyword, hits) {
+function renderSearchResults(keyword, hits, emptyKey) {
     var $box = $('#historySearchResults');
     var html = '';
 
     if (!hits.length) {
-        html = '<div class="sidebar-search-empty">' + escapeHtml(I18n.t('history.searchEmpty')) + '</div>';
+        // 带 data-i18n，切换语言时由 I18n.apply 就地更新
+        var key = emptyKey || 'history.searchEmpty';
+        html = '<div class="sidebar-search-empty" data-i18n="' + key + '">' + escapeHtml(I18n.t(key)) + '</div>';
     } else {
         for (var i = 0; i < hits.length; i++) {
             var h = hits[i];
             html += '<div class="search-hit" data-session="' + escapeHtml(h.sessionId) + '">'
                 + '<div class="search-hit-label">' + escapeHtml(h.label || h.sessionId) + '</div>'
                 + '<div class="search-hit-snippet">'
-                + '<span class="search-hit-role">' + escapeHtml(I18n.t(h.role === 'USER' ? 'history.searchRoleUser' : 'history.searchRoleAi')) + '</span>'
+                + (function (roleKey) {
+                    return '<span class="search-hit-role" data-i18n="' + roleKey + '">' + escapeHtml(I18n.t(roleKey)) + '</span>';
+                })(h.role === 'USER' ? 'history.searchRoleUser' : 'history.searchRoleAi')
                 + highlightKeyword(escapeHtml(h.content || ''), escapeHtml(keyword))
                 + '</div>'
                 + '</div>';
