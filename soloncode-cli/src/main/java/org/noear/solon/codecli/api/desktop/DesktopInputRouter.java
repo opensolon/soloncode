@@ -18,7 +18,6 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
@@ -89,17 +88,9 @@ final class DesktopInputRouter {
         AgentSession session = engine.getSession(sessionId);
 
         if ("[(sec)interrupt]".equals(req.getInput())) {
-            if (gate.goal != null && gate.goal.get(sessionId) != null) {
-                // goal 轮次：只停流，不落取消消息（历史由 goal.remove 收尾）。
-                // 不能用用户停止（INTERRUPT_ALL）：它会补写取消消息，而 goal 循环会把历史里的取消文案当作本轮输出的一部分。
-                gate.host.admin(WsGate.TENANT).interrupt(sessionId, InterruptMode.CANCEL_STREAM);
-                // remove 门面内含「先摘调度再清除」
-                gate.goal.remove(sessionId);
-                return;
-            }
-
-            // 普通轮次：用户停止（清积压 + 落取消消息 + 停流）。与 Web 同一写法：有轮次被停掉时，
-            // reason + done 由本轮的 DesktopRunSink#finished 发；没有在跑的轮次时这里兜底（前端可能仍停在流式态）
+            // 用户停止（清积压 + 暂停 goal + 落取消消息 + 停流），goal 轮次与普通轮次同一写法，与 Web / CLI 一致。
+            // goal 由插件在停流之前暂停（可在面板恢复）；被停的 goal 轮次按 skip("cancelled") 计，取消文案不会当成本轮结果。
+            // 有轮次被停掉时，reason + done 由本轮的 DesktopRunSink#finished 发；没有在跑的轮次时这里兜底（前端可能仍停在流式态）
             HarnessResult<Boolean> r = gate.host.interrupt(WsGate.TENANT, sessionId);
             LOG.info("用户已取消任务: {}", r);
             if (Boolean.TRUE.equals(r.getValue()) == false) {

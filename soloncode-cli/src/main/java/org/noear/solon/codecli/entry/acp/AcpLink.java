@@ -145,8 +145,8 @@ public class AcpLink implements Runnable {
                 })
                 .cancelHandler(req -> {
                     // 停止就是停止：停流由骨架代办，本轮不再往客户端投递事件，终态一定是 CANCELLED。
-                    // 只停当前一轮（一问一答，没有积压可保留）
-                    host.admin(TENANT).interrupt(req.sessionId(), InterruptMode.CANCEL_STREAM);
+                    // 客户端发来的取消就是用户停止，与 Web / 桌面 / CLI 同一写法：清积压、暂停 goal、写取消消息、停流
+                    host.interrupt(TENANT, req.sessionId());
                     return Mono.empty();
                 })
                 .closeSessionHandler(req -> {

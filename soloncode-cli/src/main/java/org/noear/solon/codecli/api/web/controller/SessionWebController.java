@@ -26,7 +26,6 @@ import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.channel.ImGateway;
 import org.noear.solon.codecli.api.web.event.WebEvent;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
-import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.codecli.session.MessageLineUtil;
 import org.noear.solon.codecli.session.SessionJanitor;
 import org.noear.solon.codecli.session.SessionManager;
@@ -812,16 +811,10 @@ public class SessionWebController extends AbstractWebController {
         }
 
         if (!canWriteSession(sessionId)) return Result.failure(404, "Session not found");
-        // 按当前请求工作区上下文取 WebGate，避免非默认工作区会话中断时推送串到默认工作区
+        // 按当前请求工作区上下文取 WebGate，避免非默认工作区会话中断时推送串到默认工作区。
+        // 用户停止只调这一次：清排队、暂停 goal（goal 插件在停流之前暂停）、写取消消息、停流都由框架完成
         if (!runtimePort().interruptSession(currentContext(), sessionId)) {
             return Result.failure(500, "Failed to cancel session queue; task was not interrupted");
-        }
-
-        // 暂停该 session 的活跃 Goal，防止 Goal 调度器在 interrupt 后立即重新触发
-        GoalExtension goal = currentContext().getGoalExtension();
-        // pause 门面内含摘调度配对；仅活跃 goal 会被暂停
-        if (goal != null && goal.pause(sessionId).isOk()) {
-            LOG.info("[SessionWebController] Goal of session '{}' paused due to session interrupt", sessionId);
         }
 
         return Result.succeed();

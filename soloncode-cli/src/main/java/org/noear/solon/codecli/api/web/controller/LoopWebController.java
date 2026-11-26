@@ -22,6 +22,7 @@ import org.noear.solon.annotation.Param;
 import org.noear.solon.codecli.api.web.AbstractWebController;
 import org.noear.solon.codecli.workspace.WorkspaceContext;
 import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.extension.goal.GoalExtension;
 import org.noear.solon.ai.harness.extension.goal.GoalSpec;
 import org.noear.solon.ai.harness.extension.goal.GoalPatch;
@@ -180,10 +181,11 @@ public class LoopWebController extends AbstractWebController {
      */
     private Result updateSessionGoal(GoalExtension goal, String sessionId,
                                      String prompt, Long maxTokens, Long maxDurationMs, String locale) {
-        // 暂停 → 停流 → 停等 → 改写 → 恢复由门面一步完成；停流走 Web 渠道（清积压、推终态帧）
+        // 暂停 → 停流 → 停等 → 改写 → 恢复由门面一步完成。停流只停 goal 这一轮（CANCEL_STREAM）：
+        // 保留用户排队、不写取消消息（update 的约定：不要用 INTERRUPT_ALL）。经骨架停，取消屏障与终态帧才生效
         WorkspaceContext ctx = currentContext();
         Runnable stopper = runtimePort() == null ? null
-                : () -> runtimePort().interruptSession(ctx, sessionId);
+                : () -> runtimePort().sessionAdmin(ctx).interrupt(sessionId, InterruptMode.CANCEL_STREAM);
         GoalPatch patch = GoalPatch.create()
                 .objective(prompt)
                 .maxTokens(maxTokens)

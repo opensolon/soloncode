@@ -10,6 +10,9 @@ import org.noear.solon.ai.agent.react.intercept.HITLStrategy;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
+import org.noear.solon.ai.harness.extension.goal.GoalExtension;
+import org.noear.solon.ai.harness.extension.goal.GoalSpec;
+import org.noear.solon.ai.harness.extension.goal.GoalStatus;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.net.websocket.WebSocket;
 
@@ -52,18 +55,25 @@ class DesktopHostFlowContractTest {
     }
 
     private WsGate gate() throws Exception {
+        return gate(null);
+    }
+
+    private WsGate gate(GoalExtension goal) throws Exception {
         ChatConfig model = new ChatConfig();
         model.setName("fake");
         model.setModel("fake-model");
         model.setApiUrl("http://localhost:1/v1"); // 连接即失败：ReAct 把错误收成回答文本，本轮很快结束
         model.setApiKey("test");
-        engine = HarnessEngine.of(Files.createDirectories(tmp.resolve("ws")).toString(), tmp.resolve("home").toString())
+        HarnessEngine.Builder builder = HarnessEngine.of(Files.createDirectories(tmp.resolve("ws")).toString(), tmp.resolve("home").toString())
                 .sessionProvider((id, parentId, create) -> create ? sessions.computeIfAbsent(id, InMemoryAgentSession::of) : sessions.get(id))
                 .modelAdd(model)
                 .defaultModel("fake")
-                .extensionAdd(QueueExtension.builder().build())
-                .build();
-        return new WsGate(engine, null, null);
+                .extensionAdd(QueueExtension.builder().build());
+        if (goal != null) {
+            builder.extensionAdd(goal);
+        }
+        engine = builder.build();
+        return new WsGate(engine, null, goal);
     }
 
     private WebSocket socket(String sessionId) {
@@ -149,6 +159,25 @@ class DesktopHostFlowContractTest {
         assertEquals(2, types.size(), types.toString());
         assertEquals("reason", types.get(0));
         assertEquals("done", types.get(1));
+    }
+
+    /**
+     * 有 goal 的会话点停止：与普通轮次同一写法（host.interrupt），goal 由插件暂停而不是被删除，
+     * 前端照样收到停止回执。原来走单独的 goal 分支：CANCEL_STREAM + goal.remove，目标与进度都丢了，也不发回执。
+     */
+    @Test
+    void interruptPausesGoalInsteadOfRemovingIt() throws Exception {
+        GoalExtension goal = GoalExtension.builder().jobManager(null).build();
+        WsGate gate = gate(goal);
+        WebSocket socket = socket("106");
+        engine.getSession("106");
+        assertTrue(goal.create("106", GoalSpec.of("目标").runNow(false)).isOk());
+
+        gate.onMessage(socket, "{\"input\":\"[(sec)interrupt]\"}");
+
+        assertNotNull(goal.get("106"), "停止不得删除 goal");
+        assertEquals(GoalStatus.PAUSED, goal.get("106").getStatus(), "停止应暂停 goal（可在面板恢复）");
+        assertEquals("[reason, done]", types().toString(), "没有在跑的轮次时与普通轮次一样兜底回执");
     }
 
     @Test
