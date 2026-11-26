@@ -16,7 +16,10 @@ import org.noear.solon.ai.harness.extension.goal.GoalStatus;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.net.websocket.WebSocket;
 
+import com.sun.net.httpserver.HttpServer;
+
 import java.lang.reflect.Field;
+import java.net.InetSocketAddress;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -59,10 +64,14 @@ class DesktopHostFlowContractTest {
     }
 
     private WsGate gate(GoalExtension goal) throws Exception {
+        return gate(goal, "http://localhost:1/v1"); // 连接即失败：ReAct 把错误收成回答文本，本轮很快结束
+    }
+
+    private WsGate gate(GoalExtension goal, String apiUrl) throws Exception {
         ChatConfig model = new ChatConfig();
         model.setName("fake");
         model.setModel("fake-model");
-        model.setApiUrl("http://localhost:1/v1"); // 连接即失败：ReAct 把错误收成回答文本，本轮很快结束
+        model.setApiUrl(apiUrl);
         model.setApiKey("test");
         HarnessEngine.Builder builder = HarnessEngine.of(Files.createDirectories(tmp.resolve("ws")).toString(), tmp.resolve("home").toString())
                 .sessionProvider((id, parentId, create) -> create ? sessions.computeIfAbsent(id, InMemoryAgentSession::of) : sessions.get(id))
@@ -178,6 +187,59 @@ class DesktopHostFlowContractTest {
         assertNotNull(goal.get("106"), "停止不得删除 goal");
         assertEquals(GoalStatus.PAUSED, goal.get("106").getStatus(), "停止应暂停 goal（可在面板恢复）");
         assertEquals("[reason, done]", types().toString(), "没有在跑的轮次时与普通轮次一样兜底回执");
+    }
+
+    /**
+     * goal 这一轮正在跑时点停止：停流之前 goal 已是 PAUSED（插件钩子先于停流）；被停的一轮不计迭代、不计错误，
+     * 不向前端发 error；goal 保留、可恢复，也不会再拉起下一轮。前端收到 goal_status PAUSED 即收尾（与面板「暂停」同一套事件）。
+     */
+    @Test
+    void interruptDuringGoalRoundPausesGoalWithoutError() throws Exception {
+        CountDownLatch requested = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            requested.countDown();
+            try {
+                release.await(30, TimeUnit.SECONDS); // 模型调用一直挂着，直到测试放行
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            exchange.sendResponseHeaders(500, -1);
+            exchange.close();
+        });
+        server.start();
+        try {
+            GoalExtension goal = GoalExtension.builder().jobManager(null).build();
+            WsGate gate = gate(goal, "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions");
+            WebSocket socket = socket("107");
+            AgentSession session = engine.getSession("107");
+            gate.streamHub.begin("107", socket); // 与 startGoalStream 一样：后台轮次沿用这条流
+            assertTrue(goal.create("107", GoalSpec.of("目标").runNow(false)).isOk());
+            int iteration = goal.get("107").getCurrentIteration();
+
+            assertTrue(goal.trigger("107").isOk());
+            assertTrue(requested.await(30, TimeUnit.SECONDS), "goal 这一轮应已在调模型：" + types());
+            assertEquals(1, count("goal_round"), types().toString());
+
+            gate.onMessage(socket, "{\"input\":\"[(sec)interrupt]\"}");
+            assertEquals(GoalStatus.PAUSED, goal.get("107").getStatus(), "停流之前 goal 就应已暂停");
+
+            release.countDown();
+            await(() -> engine.isIdle(session), "被停的一轮应收尾");
+            Thread.sleep(200);
+
+            assertNotNull(goal.get("107"), "停止不得删除 goal");
+            assertEquals(GoalStatus.PAUSED, goal.get("107").getStatus(), "被停的一轮不得把 goal 熔断或改回运行");
+            assertEquals(iteration, goal.get("107").getCurrentIteration(), "被停的一轮按跳过计，不加迭代");
+            assertEquals(0, count("error"), "用户停止不是失败：" + types());
+            assertEquals(1, count("goal_round"), "暂停后不得再拉起下一轮：" + types());
+            assertTrue(sent.stream().anyMatch(n -> "goal_status".equals(n.get("type").getString())
+                    && "PAUSED".equals(n.get("status").getString())), "前端靠 goal_status PAUSED 收尾：" + types());
+        } finally {
+            release.countDown();
+            server.stop(0);
+        }
     }
 
     @Test
