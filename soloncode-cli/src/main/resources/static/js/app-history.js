@@ -4,6 +4,146 @@
 
 /* ===== History ===== */
 
+/* ===== 聊天记录检索 ===== */
+/* 跨会话模糊检索：输入关键词后列出所有命中的消息片段，点击可跳到对应会话 */
+var searchTimer = null;
+var searchRequestId = 0;
+
+function initHistorySearch() {
+    var $input = $('#historySearchInput');
+    if (!$input.length) return;
+
+    $input.on('input', function() {
+        var kw = $(this).val();
+        $('#historySearchClear').toggle(!!kw);
+
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function() { runHistorySearch(kw); }, 200);
+    });
+
+    $input.on('keydown', function(e) {
+        if (e.keyCode === 27) { // Esc 清除
+            clearHistorySearch();
+            e.stopPropagation();
+        }
+    });
+
+    $('#historySearchClear').on('click', function() {
+        clearHistorySearch();
+        $input.focus();
+    });
+}
+
+function clearHistorySearch() {
+    if (searchTimer) { clearTimeout(searchTimer); searchTimer = null; }
+    searchRequestId++;
+    $('#historySearchInput').val('');
+    $('#historySearchClear').hide();
+    $('#historySearchResults').removeClass('active').empty();
+    $('#historyList').show();
+}
+
+function runHistorySearch(keyword) {
+    var kw = (keyword || '').trim();
+    if (!kw) {
+        clearHistorySearch();
+        return;
+    }
+
+    var reqId = ++searchRequestId;
+
+    $.get('/web/chat/search', { keyword: kw, limit: 50 }, function(resp) {
+        // 丢弃过期请求的结果，避免快速输入时串台
+        if (reqId !== searchRequestId) return;
+
+        var hits = (resp && resp.data) || [];
+        renderSearchResults(kw, hits);
+    }).fail(function() {
+        if (reqId !== searchRequestId) return;
+        renderSearchResults(kw, []);
+    });
+}
+
+function renderSearchResults(keyword, hits) {
+    var $box = $('#historySearchResults');
+    var html = '';
+
+    if (!hits.length) {
+        html = '<div class="sidebar-search-empty">未找到相关记录</div>';
+    } else {
+        for (var i = 0; i < hits.length; i++) {
+            var h = hits[i];
+            html += '<div class="search-hit" data-session="' + escapeHtml(h.sessionId) + '">'
+                + '<div class="search-hit-label">' + escapeHtml(h.label || h.sessionId) + '</div>'
+                + '<div class="search-hit-snippet">'
+                + '<span class="search-hit-role">' + (h.role === 'USER' ? '我' : 'AI') + '</span>'
+                + highlightKeyword(escapeHtml(h.content || ''), escapeHtml(keyword))
+                + '</div>'
+                + '</div>';
+        }
+    }
+
+    $box.html(html).addClass('active');
+    $('#historyList').hide();
+
+    $box.find('.search-hit').on('click', function() {
+        var sid = $(this).attr('data-session');
+        openSessionById(sid);
+    });
+}
+
+/* 在已转义的文本里高亮已转义的关键词 */
+function highlightKeyword(escapedText, escapedKeyword) {
+    if (!escapedKeyword) return escapedText;
+    var lowerText = escapedText.toLowerCase();
+    var lowerKw = escapedKeyword.toLowerCase();
+    var out = '';
+    var from = 0;
+    var idx;
+
+    while ((idx = lowerText.indexOf(lowerKw, from)) >= 0) {
+        out += escapedText.substring(from, idx);
+        out += '<mark>' + escapedText.substr(idx, escapedKeyword.length) + '</mark>';
+        from = idx + escapedKeyword.length;
+    }
+    out += escapedText.substring(from);
+    return out;
+}
+
+/* 按 sessionId 打开会话：已在侧边栏则直接切换，否则先刷新列表再切换 */
+function openSessionById(sessionId) {
+    if (!sessionId) return;
+
+    var idx = -1;
+    for (var i = 0; i < chatHistory.length; i++) {
+        if (chatHistory[i].sessionId === sessionId) { idx = i; break; }
+    }
+
+    if (idx >= 0) {
+        selectSession(idx);
+    } else {
+        // 会话不在当前列表（例如超过 50 条被裁掉），重新拉取后再定位
+        $.get('/web/chat/sessions', function(resp) {
+            try {
+                var list = resp.data || [];
+                chatHistory = [];
+                for (var j = 0; j < list.length; j++) {
+                    chatHistory.push({ label: list[j].label, sessionId: list[j].sessionId });
+                }
+                updateHistoryUI();
+                for (var k = 0; k < chatHistory.length; k++) {
+                    if (chatHistory[k].sessionId === sessionId) {
+                        selectSession(k);
+                        return;
+                    }
+                }
+            } catch (e) {}
+        });
+    }
+}
+
+$(function() { initHistorySearch(); });
+
 /* 记住“当前活动会话”，刷新或下次打开时自动恢复 */
 /* 自定义 composing 标志，替代 e.isComposing（macOS 输入法组合态下 Enter 时序问题） */
 var composing = false;
