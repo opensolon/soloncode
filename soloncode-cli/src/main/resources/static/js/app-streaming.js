@@ -1179,6 +1179,8 @@ var AgentEventDispatcher = {
             sessionId: raw.sessionId,
             runId: raw.runId,
             taskId: raw.taskId,
+            // 同一 taskId 续跑时靠它区分各次调用（每次调用一个 task 组）；漏掉它会退回按 taskId 合组
+            parentCallId: raw.parentCallId,
             reasonId: raw.reasonId,
             agentName: raw.agentName,
             taskDescription: raw.taskDescription,
