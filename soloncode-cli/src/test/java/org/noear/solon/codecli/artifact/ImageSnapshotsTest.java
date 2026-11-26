@@ -538,10 +538,13 @@ class ImageSnapshotsTest {
         Files.move(root, root.resolveSibling("original-root"));
         symlink(root, outside);
         assertThrows(IOException.class, () -> ImageSnapshots.readSecure(root, key, target));
-        Files.delete(root);
-        Files.createDirectory(root);
-        image(root.resolve("a.png"), "png", 2, 2);
-        assertThrows(IOException.class, () -> ImageSnapshots.readSecure(root, key, target));
+        if (key != null) {
+            // 无 fileKey 的平台（Windows）无法通过指纹发现根目录被重建，此场景不适用。
+            Files.delete(root);
+            Files.createDirectory(root);
+            image(root.resolve("a.png"), "png", 2, 2);
+            assertThrows(IOException.class, () -> ImageSnapshots.readSecure(root, key, target));
+        }
     }
 
     @Test
@@ -586,7 +589,10 @@ class ImageSnapshotsTest {
                 () -> SecureImageReader.read(root, key, target, reserved));
         assertEquals(ImageLoadException.Reason.LIMIT, grown.getReason());
         assertThrows(IOException.class, () -> SecureImageReader.size(root, key, target, -1));
-        assertThrows(IOException.class, () -> SecureImageReader.size(root, null, target, 4));
+        if (key != null) {
+            // Windows 默认文件系统无 fileKey，null 根身份属于合法降级而非无效参数。
+            assertThrows(IOException.class, () -> SecureImageReader.size(root, null, target, 4));
+        }
         assertThrows(IOException.class, () -> SecureImageReader.size(root, key, root, 4));
     }
 
@@ -596,11 +602,14 @@ class ImageSnapshotsTest {
         Path file = image(Files.createDirectories(root.resolve("one/two")).resolve("a ' ; 中文.png"), "png", 2, 2);
         byte[] bytes = Files.readAllBytes(file);
         Object key = rootKey(root);
-        assertNotNull(key);
+        // Windows 默认文件系统不提供 fileKey（key 为 null 属预期）；仅在平台提供指纹时，
+        // null 根身份才构成无效参数。new Object() 与任何真实指纹都不相等，两个平台都拒绝。
         assertArrayEquals(bytes, SecureImageReader.read(root, key, file, bytes.length));
         assertThrows(IOException.class, () -> SecureImageReader.read(root, key, file, bytes.length - 1));
         assertThrows(IOException.class, () -> SecureImageReader.read(root, key, file, -1));
-        assertThrows(IOException.class, () -> SecureImageReader.read(root, null, file, bytes.length));
+        if (key != null) {
+            assertThrows(IOException.class, () -> SecureImageReader.read(root, null, file, bytes.length));
+        }
         assertThrows(IOException.class, () -> SecureImageReader.read(root, new Object(), file, bytes.length));
         assertThrows(IOException.class, () -> SecureImageReader.read(root, key, root.relativize(file), bytes.length));
         Path outside = image(temp.resolve("outside.png"), "png", 1, 1).toRealPath();

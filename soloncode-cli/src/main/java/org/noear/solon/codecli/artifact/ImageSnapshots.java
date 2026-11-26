@@ -258,9 +258,11 @@ public final class ImageSnapshots {
             Path root = rootPath.toRealPath();
             BasicFileAttributes rootAttributes = Files.readAttributes(root, BasicFileAttributes.class,
                     LinkOption.NOFOLLOW_LINKS);
-            if (!rootAttributes.isDirectory() || rootAttributes.fileKey() == null) {
-                throw new IOException("无法验证工作区根目录身份");
+            if (!rootAttributes.isDirectory()) {
+                throw new IOException("工作区根目录不是目录");
             }
+            // fileKey 在 Windows 默认文件系统恒为 null；null 由 SecureImageReader 按平台规则降级校验。
+            Object rootKey = rootAttributes.fileKey();
             Path base = cwd == null || cwd.isEmpty() ? root : Paths.get(cwd);
             if (!base.isAbsolute()) {
                 base = root.resolve(base);
@@ -277,7 +279,7 @@ public final class ImageSnapshots {
             if (!real.startsWith(root)) {
                 throw new IOException("图片真实路径越出工作区");
             }
-            return new ResolvedImage(root, rootAttributes.fileKey(), real);
+            return new ResolvedImage(root, rootKey, real);
         } catch (InvalidPathException | NullPointerException e) {
             throw new IOException("图片路径无效", e);
         }

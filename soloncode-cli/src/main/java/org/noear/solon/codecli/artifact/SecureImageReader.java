@@ -3,17 +3,22 @@ package org.noear.solon.codecli.artifact;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Objects;
 
 /**
  * Java 8 NIO 有界读取；工作区应可信，读取期间不应被不可信进程修改。
  * 路径前后检查并非原子操作，不能阻止同目录恶意进程的全部 TOCTOU 攻击，
  * 也不能通过路径属性证明已打开通道的 fileKey。Java 8 没有通用 O_NONBLOCK，
  * 因此不能保证普通文件在检查后被换成 FIFO 时，打开或读取不会阻塞。
+ * <p>Windows 默认文件系统的 fileKey 恒为 null，此时跳过指纹比对并降级为
+ * 路径逐级链接拒绝 + toRealPath 复核 + 前后大小/修改时间一致性防护；
+ * 非默认文件系统（如 zip）缺少 fileKey 时仍拒绝，不降级。</p>
  */
 final class SecureImageReader {
     private SecureImageReader() {
@@ -24,8 +29,8 @@ final class SecureImageReader {
         try {
             requireAbsoluteNormalized(root);
             requireAbsoluteNormalized(target);
-            if (rootKey == null || maxBytes < 0 || target.equals(root) || !target.startsWith(root)) {
-                throw new IOException("图片读取路径、根身份或预算无效");
+            if (maxBytes < 0 || target.equals(root) || !target.startsWith(root)) {
+                throw new IOException("图片读取路径或预算无效");
             }
             return (int) inspect(root, rootKey, target, maxBytes).size();
         } catch (RuntimeException e) {
@@ -36,8 +41,8 @@ final class SecureImageReader {
         try {
             requireAbsoluteNormalized(root);
             requireAbsoluteNormalized(target);
-            if (rootKey == null || maxBytes < 0 || target.equals(root) || !target.startsWith(root)) {
-                throw new IOException("图片读取路径、根身份或预算无效");
+            if (maxBytes < 0 || target.equals(root) || !target.startsWith(root)) {
+                throw new IOException("图片读取路径或预算无效");
             }
 
             BasicFileAttributes before = inspect(root, rootKey, target, maxBytes);
@@ -60,7 +65,7 @@ final class SecureImageReader {
                 }
 
                 BasicFileAttributes after = inspect(root, rootKey, target, maxBytes);
-                if (!before.fileKey().equals(after.fileKey()) || before.size() != after.size()
+                if (!Objects.equals(before.fileKey(), after.fileKey()) || before.size() != after.size()
                         || !before.lastModifiedTime().equals(after.lastModifiedTime())
                         || after.size() != bytes.length || channel.size() != bytes.length) {
                     throw new IOException("图片身份、大小或修改时间已改变");
@@ -97,8 +102,14 @@ final class SecureImageReader {
         // 包括 root 以上的祖先，以及 target 本身；不能仅检查 root 内的相对路径。
         rejectLinks(target);
         BasicFileAttributes rootAttributes = attributes(root);
+        Object actualRootKey = rootAttributes.fileKey();
+        // Windows 默认文件系统不提供 fileKey（恒为 null），仅此时允许无指纹降级；
+        // zip 等非默认文件系统缺少 fileKey 仍拒绝，避免混淆平台限制与不可验证身份。
+        if (actualRootKey == null && root.getFileSystem() != FileSystems.getDefault()) {
+            throw new IOException("工作区根目录缺少文件身份标识");
+        }
         if (!rootAttributes.isDirectory() || rootAttributes.isSymbolicLink() || rootAttributes.isOther()
-                || rootAttributes.fileKey() == null || !rootKey.equals(rootAttributes.fileKey())) {
+                || !Objects.equals(rootKey, actualRootKey)) {
             throw new IOException("无法验证工作区根目录身份");
         }
         Path real = target.toRealPath();
@@ -110,7 +121,7 @@ final class SecureImageReader {
             throw new ImageLoadException(ImageLoadException.Reason.LIMIT, "图片超过读取预算");
         }
         if (!attributes.isRegularFile() || attributes.isSymbolicLink() || attributes.isOther()
-                || attributes.fileKey() == null || attributes.size() < 0) {
+                || attributes.size() < 0) {
             throw new IOException("图片不是可验证的普通文件或超过读取预算");
         }
         return attributes;
