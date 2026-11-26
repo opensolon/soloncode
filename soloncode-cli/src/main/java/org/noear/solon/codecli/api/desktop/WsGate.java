@@ -72,11 +72,15 @@ public class WsGate extends SimpleWebSocketListener {
     /** 宿主骨架的租户键（桌面端只有一个引擎） */
     static final String TENANT = "desktop";
 
-    /** 桌面请求级审批器：按当前模式决定文件修改和命令是否在执行前暂停。 */
+    /**
+     * 桌面请求级审批器：按当前模式决定文件修改和命令是否在执行前暂停。
+     * bash_start 与 bash 同样是执行命令，按 bash 审批（否则开启异步命令会话后可绕过）。
+     */
     final HITLInterceptor desktopHitlInterceptor = new HITLInterceptor()
             .onTool("write", (trace, args) -> desktopApprovalReason(trace, "write"))
             .onTool("edit", (trace, args) -> desktopApprovalReason(trace, "edit"))
-            .onTool("bash", (trace, args) -> desktopApprovalReason(trace, "bash"));
+            .onTool("bash", (trace, args) -> desktopApprovalReason(trace, "bash"))
+            .onTool("bash_start", (trace, args) -> desktopApprovalReason(trace, "bash"));
 
     final HarnessEngine engine;
     final AgentSettings agentSettings;

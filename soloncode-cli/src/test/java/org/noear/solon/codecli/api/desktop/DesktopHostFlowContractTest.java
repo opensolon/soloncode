@@ -5,12 +5,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
+import org.noear.solon.ai.agent.react.intercept.HITLInterceptor;
+import org.noear.solon.ai.agent.react.intercept.HITLStrategy;
 import org.noear.solon.ai.agent.session.InMemoryAgentSession;
 import org.noear.solon.ai.chat.ChatConfig;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.extension.queue.QueueExtension;
 import org.noear.solon.net.websocket.WebSocket;
 
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -86,6 +89,15 @@ class DesktopHostFlowContractTest {
         return types().stream().filter(type::equals).count();
     }
 
+    /** 按拦截器里登记的策略求值（策略表是私有的，测试经反射读取）；该工具没有登记策略时返回 null */
+    @SuppressWarnings("unchecked")
+    private static String evalTool(HITLInterceptor hitl, String toolName, Map<String, Object> args) throws Exception {
+        Field f = HITLInterceptor.class.getDeclaredField("strategyMap");
+        f.setAccessible(true);
+        HITLStrategy strategy = ((Map<String, HITLStrategy>) f.get(hitl)).get(toolName);
+        return strategy == null ? null : strategy.evaluate(null, args);
+    }
+
     private static void await(Supplier<Boolean> cond, String message) throws InterruptedException {
         long deadline = System.currentTimeMillis() + 30_000;
         while (System.currentTimeMillis() < deadline) {
@@ -111,6 +123,19 @@ class DesktopHostFlowContractTest {
         ONode terminal = sent.get(sent.size() - 1);
         assertTrue(terminal.get("sequence").getLong() > 0, "流内终态经流中转站投递（带序号、可回放）：" + terminal.toJson());
         assertEquals("101", terminal.get("sessionId").getString());
+    }
+
+    /** 桌面审批模式：bash_start 与 bash 同样审批（否则开启异步命令会话后可绕过）；bash_wait 只作用于已启动的会话，不单独审批 */
+    @Test
+    void desktopApprovalCoversBashStart() throws Exception {
+        WsGate gate = gate();
+        Map<String, Object> args = new ConcurrentHashMap<>();
+        args.put("command", "touch a.txt");
+
+        // 无会话时按默认模式（需要审批）
+        assertNotNull(evalTool(gate.desktopHitlInterceptor, "bash", args));
+        assertNotNull(evalTool(gate.desktopHitlInterceptor, "bash_start", args), "bash_start 不得绕过桌面审批");
+        assertNull(evalTool(gate.desktopHitlInterceptor, "bash_wait", args));
     }
 
     @Test
