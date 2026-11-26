@@ -603,7 +603,11 @@ function finalizeTaskGroups(sess, stopped) {
  */
 function applyTaskDoneChunk(sess, chunk) {
     if (!sess || !chunk || !chunk.taskId) return;
-    var segment = ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName);
+    /* 结算只认同一次调用的组：本轮索引里的同 ID 组属于另一次调用时不处理
+     * （否则 ensureStreamSegment 会把它移出索引、为一个结束信号新建空组，或把状态记到别的调用上） */
+    var indexed = sess.taskSegments && sess.taskSegments[chunk.taskId];
+    if (chunk.parentCallId && indexed && indexed.parentCallId && indexed.parentCallId !== chunk.parentCallId) return;
+    var segment = ensureStreamSegment(sess, chunk.taskId, chunk.taskDescription, chunk.agentName, false, chunk.parentCallId);
     if (!segment || !segment.taskId) return;
 
     var status = (chunk.status === 'error' || chunk.status === 'interrupted') ? chunk.status : 'done';

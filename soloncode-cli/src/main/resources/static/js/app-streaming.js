@@ -1485,6 +1485,7 @@ function processWebEventNow(sess, webEvt) {
                 if (typeof applyTaskDoneChunk === 'function') {
                     applyTaskDoneChunk(sess, {
                         taskId: p.taskId || taskId,
+                        parentCallId: parentCallId,
                         parentTaskId: p.parentTaskId,
                         status: p.status,
                         taskDescription: taskDescription || p.title || p.taskDescription

@@ -40,7 +40,8 @@ import org.slf4j.LoggerFactory;
  *   <li>第一次输出（reply 或 prepare）时复位后端 done 门与前端流门（system.reset）：调度窗口内就被取消、
  *       又没有回执的一轮根本不开始，只补一个 done；</li>
  *   <li>prepare：会话模型回写、装配 SAEP 管道（推理强度、图片拦截器、cwd）；</li>
- *   <li>finished：失败补 IM 终态；用户停止且已开流时发 error → IM 取消回执 → trace；最后发 done 并释放管道。</li>
+ *   <li>finished：取消或失败时先给未结算的子任务组补 task.done(interrupted)；失败补 IM 终态；
+ *       用户停止且已开流时发 error → IM 取消回执 → trace；最后发 done 并释放管道。</li>
  * </ul>
  *
  * @author noear
@@ -125,6 +126,13 @@ final class WebRunSink implements RunSink {
                     return;
                 }
                 begin(); // 开流前失败：先解封前端流门，错误才看得见
+            }
+            if (pipeline != null && (outcome.isCancelled() || outcome.isFailed())) {
+                // 停止后子代理事件不再下发：未结算的子任务组由后端明确标为被中断（不受停止屏障影响，广播到所有页面），
+                // 不靠发起停止的那个页面自己猜；先于 error / trace / done，组先结算
+                for (WebEvent<?> e : pipeline.interruptOpenTasks()) {
+                    gate.emitToClient(ctx, sessionId, e);
+                }
             }
             if (outcome.isFailed()) {
                 onFailed(outcome);
