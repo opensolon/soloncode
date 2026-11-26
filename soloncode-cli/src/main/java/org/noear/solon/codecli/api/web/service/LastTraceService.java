@@ -172,7 +172,7 @@ public class LastTraceService {
 
         List<Map<String, Object>> events = new ArrayList<>();
         Budget budget = new Budget();
-        extractEvents(workingMemory, trace.getRunId(), events, budget, false, subtaskOf);
+        extractEvents(workingMemory.getMessages(), trace.getRunId(), events, budget, false, subtaskOf);
         extractPendingStep(trace, events, budget, subtaskOf);
         boolean truncated = budget.truncated;
 
@@ -237,13 +237,13 @@ public class LastTraceService {
     /**
      * 线性扫描 WorkingMemory，按原序抽出可回放事件。
      *
+     * @param messages     WorkingMemory 消息（子代理过程为按调用切出的那一段）
      * @param currentRunId 当前 trace 的 runId，用于判别历史消息与最终回答
      * @param subtask      是否为子代理过程（子会话无历史渲染，最终回答正文也要回放）
      * @param subtaskOf    按 task_id 只读取本会话子会话（null 表示不展开子代理过程）
      */
-    private void extractEvents(Prompt workingMemory, String currentRunId, List<Map<String, Object>> events,
+    private void extractEvents(List<ChatMessage> messages, String currentRunId, List<Map<String, Object>> events,
                                Budget budget, boolean subtask, Function<String, AgentSession> subtaskOf) {
-        List<ChatMessage> messages = workingMemory.getMessages();
         int group = 0;
         boolean assistantSeen = false;
 
@@ -360,7 +360,7 @@ public class LastTraceService {
                     }
 
                     if (subtaskOf != null) {
-                        List<Map<String, Object>> subtasks = extractSubtasks(resultMsg, subtaskOf, budget);
+                        List<Map<String, Object>> subtasks = extractSubtasks(resultMsg, callId, subtaskOf, budget);
                         if (subtasks.isEmpty() == false) {
                             turn.put("subtasks", subtasks);
                         }
@@ -429,7 +429,7 @@ public class LastTraceService {
                 index = indexFromArgs(call);
             }
 
-            List<Map<String, Object>> subtasks = extractSubtasks((List<?>) index, call.getUuid(), subtaskOf, budget);
+            List<Map<String, Object>> subtasks = extractSubtasks((List<?>) index, call.getUuid(), true, subtaskOf, budget);
             if (subtasks.isEmpty()) {
                 continue;
             }
@@ -510,12 +510,13 @@ public class LastTraceService {
     /**
      * 按 task/multitask 结果上的子任务索引取回子代理过程。
      */
-    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, Function<String, AgentSession> subtaskOf, Budget budget) {
+    private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, String callId,
+                                                      Function<String, AgentSession> subtaskOf, Budget budget) {
         Object index = resultMsg.getMetadataAs(TaskTalent.META_SUBTASKS);
         if ((index instanceof List) == false) {
             return new ArrayList<>();
         }
-        return extractSubtasks((List<?>) index, null, subtaskOf, budget);
+        return extractSubtasks((List<?>) index, callId, false, subtaskOf, budget);
     }
 
     /**
@@ -525,10 +526,15 @@ public class LastTraceService {
      * 只取不建：{@code subtaskOf} 由 {@link #buildLastTrace} 绑定本会话标识构造，内部是 {@code getSession(id, parentId, false)}，
      * 不存在时返回 null 且无副作用。</p>
      *
-     * @param parentCallId 非 null 时只收子会话 parentCallId 与之相等的项（运行中索引的反向校验：
-     *                     不等说明还没启动，或已被后来的调用续跑）
+     * <p>按调用切片：同一子任务续跑多次时，子会话里是多次调用连在一起的过程，每次调用只取带自己调用戳
+     * （{@link TaskTalent#META_PARENT_CALL_ID}）的那一段，见 {@link #sliceByCall}；成败优先取索引项上本次调用的
+     * status / failureKind（子会话 meta 只记最近一次）。</p>
+     *
+     * @param callId        这些子任务所属的父 task/multitask 调用（ToolCall uuid）；null 时不切片（旧口径）
+     * @param requireLatest 只收子会话 parentCallId 与 callId 相等的项（运行中索引的反向校验：
+     *                      不等说明还没启动，或已被后来的调用续跑）
      */
-    private List<Map<String, Object>> extractSubtasks(List<?> index, String parentCallId,
+    private List<Map<String, Object>> extractSubtasks(List<?> index, String callId, boolean requireLatest,
                                                       Function<String, AgentSession> subtaskOf, Budget budget) {
         List<Map<String, Object>> out = new ArrayList<>();
         for (Object item : index) {
@@ -553,8 +559,8 @@ public class LastTraceService {
             }
 
             Object meta = sub.getContext().get(TaskTalent.META_SUBTASK);
-            if (parentCallId != null && ((meta instanceof Map) == false
-                    || parentCallId.equals(asString(((Map<?, ?>) meta).get("parentCallId"))) == false)) {
+            String latestCallId = (meta instanceof Map) ? asString(((Map<?, ?>) meta).get("parentCallId")) : null;
+            if (requireLatest && (callId == null || callId.equals(latestCallId) == false)) {
                 continue;
             }
 
@@ -568,14 +574,20 @@ public class LastTraceService {
             }
 
             List<Map<String, Object>> subEvents = new ArrayList<>();
-            extractEvents(memory, subTrace.getRunId(), subEvents, budget, true, null);
+            extractEvents(sliceByCall(memory.getMessages(), callId, latestCallId), subTrace.getRunId(),
+                    subEvents, budget, true, null);
 
             Map<String, Object> st = new LinkedHashMap<>();
             st.put("taskId", taskId);
             st.put("index", ref.get("index"));
             st.put("agentName", agentName);
             st.put("description", asString(ref.get("description")));
-            if (meta instanceof Map) {
+            if (ref.get("status") != null) {
+                // 本次调用自己的结果（不随之后的续跑改变）
+                st.put("status", asString(ref.get("status")));
+                st.put("failureKind", asString(ref.get("failureKind")));
+            } else if (meta instanceof Map && (callId == null || latestCallId == null || callId.equals(latestCallId))) {
+                // 运行中索引 / 旧数据：只有最近一次调用才能借用子会话 meta 的状态
                 st.put("status", asString(((Map<?, ?>) meta).get("status")));
                 st.put("failureKind", asString(((Map<?, ?>) meta).get("failureKind")));
             }
@@ -588,6 +600,51 @@ public class LastTraceService {
 
     private static String asString(Object v) {
         return (v == null) ? null : String.valueOf(v);
+    }
+
+    /**
+     * 切出属于某次调用的子过程消息。
+     *
+     * <ul>
+     *   <li>有调用戳的：按戳；</li>
+     *   <li>没戳、且在最后一条有戳消息之后的：属于最近一次调用（子会话 meta 的 parentCallId，可能还在跑）。
+     *       TaskTalent 只在续跑开始前给上一次调用补戳，最近一次调用的消息不带戳；</li>
+     *   <li>没戳、夹在有戳消息之间的：跳过（只有压缩摘要会这样，本来也不回放）。</li>
+     * </ul>
+     *
+     * <p>旧数据完全没有戳：整段归最近一次调用，较早的调用只显示结果。callId 或 latestCallId 为 null 时不切片（旧口径）。
+     * 工具调用与其结果带同一个戳，切片后仍相邻，不影响 {@link #findToolResult}。</p>
+     *
+     * @param callId       要取的调用
+     * @param latestCallId 子会话 meta 记的最近一次调用
+     */
+    static List<ChatMessage> sliceByCall(List<ChatMessage> messages, String callId, String latestCallId) {
+        if (callId == null || latestCallId == null) {
+            return messages;
+        }
+
+        int lastStamped = -1;
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i).hasMetadata(TaskTalent.META_PARENT_CALL_ID)) {
+                lastStamped = i;
+                break;
+            }
+        }
+
+        boolean ownsTail = callId.equals(latestCallId);
+        List<ChatMessage> out = new ArrayList<>();
+        for (int i = 0; i < messages.size(); i++) {
+            ChatMessage msg = messages.get(i);
+            Object stamp = msg.getMetadataAs(TaskTalent.META_PARENT_CALL_ID);
+            if (stamp != null) {
+                if (callId.equals(String.valueOf(stamp))) {
+                    out.add(msg);
+                }
+            } else if (i > lastStamped && ownsTail) {
+                out.add(msg);
+            }
+        }
+        return out;
     }
 
     /**

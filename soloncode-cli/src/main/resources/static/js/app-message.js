@@ -619,6 +619,18 @@ function applyTaskDoneChunk(sess, chunk) {
 }
 
 /**
+ * 同一 taskId 的新一次调用（续跑，parentCallId 变了）开始前，把上一次调用的组移出本轮索引：
+ * 它保留自己的终态，之后带该 taskId 的事件进新组。还没结算的按 done 结算（移出索引后 finalizeTaskGroups 不再管它）。
+ */
+function detachTaskSegment(sess, segment) {
+    if (!sess || !segment || !segment.taskId) return;
+    if (!isTaskGroupTerminal(segment.status)) setTaskGroupStatus(segment, 'done');
+    if (sess.taskSegments[segment.taskId] === segment) delete sess.taskSegments[segment.taskId];
+    if (sess.taskGroups[segment.taskId] === segment.groupEl) delete sess.taskGroups[segment.taskId];
+    if (sess.currentStreamSegment === segment) sess.currentStreamSegment = null;
+}
+
+/**
  * 子任务续跑：把已结算（done/error）的 task-group 拨回 running。
  * setTaskGroupStatus 里 error 是粘性的（防迟到事件把红叉洗掉），续跑是唯一允许撤销终态的入口。
  */
@@ -676,6 +688,8 @@ function updateTaskGroupTitle(segment) {
 function createTaskGroupElement(sess, segment) {
     var group = $('<div>').addClass('task-group is-running')[0];
     group.setAttribute('data-task-id', segment.taskId);
+    // 发起本次调用的父 task/multitask 调用：同一 taskId 续跑多次时，每次调用一个组（组键 parentCallId + taskId）
+    if (segment.parentCallId) group.setAttribute('data-parent-call-id', segment.parentCallId);
     group.setAttribute('data-stream-segment-id', segment.id);
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
     // L1：状态图标(22px) + title(文本+可选 agent-badge 贴字) + stats + toggle(右)；L2：最近 tool 动作。
@@ -749,22 +763,33 @@ function createTaskGroupElement(sess, segment) {
 }
 
 /* 在已渲染 DOM 中查找指定 taskId 的 task-group（resetStreamState 清索引但保留 DOM 的迟到场景）。
- * 倒序取最新一个：子任务跨轮续跑时同一 taskId 会在新气泡里另建一组。 */
-function findTaskGroupEl(sess, taskId) {
+ * 倒序取最新一个：子任务续跑时同一 taskId 每次调用另建一组。
+ * parentCallId（可选）：只认这次调用的组（组键 parentCallId + taskId）；没记调用的组（旧版后端）也认。 */
+function findTaskGroupEl(sess, taskId, parentCallId) {
     if (!sess || !sess.container || !taskId) return null;
     var els = sess.container.querySelectorAll('.task-group[data-task-id]');
     for (var i = els.length - 1; i >= 0; i--) {
-        if (els[i].getAttribute('data-task-id') === taskId) return els[i];
+        if (els[i].getAttribute('data-task-id') !== taskId) continue;
+        var owner = els[i].getAttribute('data-parent-call-id');
+        if (!parentCallId || !owner || owner === parentCallId) return els[i];
     }
     return null;
 }
 
-/* 为 taskId 保持唯一的 task-group；主代理输出仍按连续流片段追加，避免任务组重复创建。
- * fresh=true：本轮索引里没有时直接新建，不复用 DOM 里更早消息中的同 ID 分组（task.start 用）。 */
-function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh) {
+/* 为 taskId 保持当前的 task-group（本轮索引指向该 taskId 最近一次调用的组）；主代理输出仍按连续流片段追加，避免任务组重复创建。
+ * fresh=true：本轮索引里没有时直接新建，不复用 DOM 里更早消息中的同 ID 分组（task.start 用）。
+ * parentCallId（可选）：发起本次调用的父工具调用，新建时记在组上；复用 DOM 里的组时只认同一次调用的。 */
+function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh, parentCallId) {
     ensureAssistantBubble(sess);
     if (taskId) {
         var taskSegment = sess.taskSegments[taskId];
+        if (taskSegment && parentCallId && taskSegment.parentCallId && taskSegment.parentCallId !== parentCallId) {
+            /* 同一 taskId 的另一次调用（续跑的 task.start，或中途连上 WS 漏了它的 task.start）：不能接进上一次的组，
+             * 在当前位置新建（本轮索引里还在，说明没有「清了索引但留了 DOM」的可复用组） */
+            detachTaskSegment(sess, taskSegment);
+            taskSegment = null;
+            fresh = true;
+        }
         if (taskSegment) {
             // 描述/代理名可能晚于建组到达（首个事件未带），补上后同步重绘 L1 标题
             var titleChanged = false;
@@ -783,7 +808,7 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh) {
         // ★ 迟到 chunk 场景：resetStreamState 清空了内存索引但保留了已渲染 DOM。
         //   若该 taskId 的 task-group 已存在，复用外壳重建索引（不新建 DOM、不重复建组），
         //   避免“每个思考消息新建一个分组 + 同一 taskId 出现多个 task-group”。
-        var existingGroup = fresh ? null : findTaskGroupEl(sess, taskId);
+        var existingGroup = fresh ? null : findTaskGroupEl(sess, taskId, parentCallId);
         if (existingGroup) {
             var now = Date.now();
             var bodyEl = $(existingGroup).find('.task-group-body')[0] || null;
@@ -791,6 +816,7 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh) {
                 id: 'task-' + (++sess.streamSegmentSeq),
                 laneKey: 'task:' + taskId,
                 taskId: taskId,
+                parentCallId: existingGroup.getAttribute('data-parent-call-id') || parentCallId || null,
                 taskDescription: taskDescription || null,
                 agentName: agentName || null,
                 bodyEl: bodyEl,
@@ -825,6 +851,7 @@ function ensureStreamSegment(sess, taskId, taskDescription, agentName, fresh) {
             id: 'task-' + (++sess.streamSegmentSeq),
             laneKey: 'task:' + taskId,
             taskId: taskId,
+            parentCallId: parentCallId || null,
             taskDescription: taskDescription || null,
             agentName: agentName || null,
             bodyEl: null,
@@ -1746,7 +1773,9 @@ function resolveTaskSegmentFromCard(sess, card) {
     var group = $(card).closest('.task-group')[0];
     if (!group) return null;
     var taskId = group.getAttribute('data-task-id');
-    return (taskId && sess.taskSegments[taskId]) || null;
+    var segment = taskId && sess.taskSegments[taskId];
+    // 同一 taskId 续跑后索引指向最新一次调用的组；卡片在较早那组里时不能借用它
+    return (segment && segment.groupEl === group) ? segment : null;
 }
 
 /* meta：工具结果的元信息（{isError} 等），供 renderer 使用；缺省为空对象 */

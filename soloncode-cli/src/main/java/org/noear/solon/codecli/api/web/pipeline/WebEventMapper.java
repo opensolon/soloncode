@@ -66,6 +66,7 @@ public class WebEventMapper {
         String parentRunId = null;
         String taskAgentName = null;
         String taskId = null;
+        String parentCallId = null;
         String taskDescription = null;
         boolean isMultitask = false;
         int taskIndex = 0;
@@ -83,6 +84,7 @@ public class WebEventMapper {
 
                 parentRunId = twc.getParentRunId();
                 taskId = twc.getTaskId();
+                parentCallId = twc.getParentCallId();
                 taskAgentName = twc.getTaskAgentName();
                 taskDescription = twc.getTaskDescription();
                 isMultitask = twc.isMultitask();
@@ -175,6 +177,15 @@ public class WebEventMapper {
                 WebEvent<?> trace = onRunEndEvent(session, (RunEndEvent) event);
                 fillMeta(trace, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
                 result.add(trace);
+            }
+        }
+
+        // 发起本次委派的父调用：同一 taskId 续跑时靠它区分各次调用（前端每次调用一个 task 组）
+        if (parentCallId != null) {
+            for (WebEvent<?> evt : result) {
+                if (evt.getTaskId() != null && evt.getParentCallId() == null) {
+                    evt.setParentCallId(parentCallId);
+                }
             }
         }
 

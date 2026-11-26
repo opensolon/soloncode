@@ -1378,6 +1378,8 @@ function processWebEventNow(sess, webEvt) {
         var event = webEvt.event;
         var p = webEvt.payload || {};
         var taskId = webEvt.taskId;
+        // 发起本次子任务调用的父工具调用：同一 taskId 续跑时靠它区分各次调用（每次调用一个 task 组）
+        var parentCallId = webEvt.parentCallId || null;
         var reasonId = webEvt.reasonId;
         var agentName = webEvt.agentName;
         // 子任务描述来自信封层（每个子代理事件都带），流式首个事件即可确定 task 组标题
@@ -1408,7 +1410,7 @@ function processWebEventNow(sess, webEvt) {
 
         if (isVisualEvent || isActionEndWithoutPending) {
             // 注意：不能用 p.title —— tool.start/tool.end 的 title 是工具标题，会污染 task 组标题
-            segment = ensureStreamSegment(sess, taskId, taskDescription, agentName);
+            segment = ensureStreamSegment(sess, taskId, taskDescription, agentName, false, parentCallId);
         } else if (event === 'tool.end' && taskId && sess.taskSegments[taskId]) {
             segment = sess.taskSegments[taskId];
             sess.currentStreamSegment = segment;
@@ -1464,12 +1466,15 @@ function processWebEventNow(sess, webEvt) {
                 // 子代理 ReAct 一启动就建组占位：早于首个 thought.delta，
                 // 补上「子代理构建 + 首次模型调用」这段界面空白；后续事件按 taskId 复用同一组。
                 if (taskId) {
-                    /* 同一 taskId 再次 task.start = 子任务续跑（模型带 task_id 重试）：
-                     *  - 本轮流里已有该组：接在原组后面，并从终态拨回 running；
+                    /* 同一 taskId 再次 task.start = 子任务续跑（模型带 task_id 接着做）。每次调用一个组：
+                     *  - 发起调用变了（parentCallId 不同）：ensureStreamSegment 把上一次的组移出索引（保留它的终态），
+                     *    在当前位置（模型「接着做」那句话之下）新建一组；
+                     *  - 后端没给 parentCallId（旧版本）：接在本轮原组后面，并从终态拨回 running；
                      *  - 只有更早消息里有同 ID 的组（跨轮续跑）：在本轮气泡里新建，不回头往旧消息里追加。 */
                     var resumedSeg = sess.taskSegments[taskId];
-                    segment = ensureStreamSegment(sess, taskId, taskDescription || p.title, agentName || p.agentName, !resumedSeg);
-                    if (resumedSeg) reopenTaskGroup(segment);
+                    segment = ensureStreamSegment(sess, taskId, taskDescription || p.title, agentName || p.agentName,
+                        !resumedSeg, parentCallId);
+                    if (resumedSeg && segment === resumedSeg) reopenTaskGroup(segment);
                     sourceEl = segment && segment.groupEl;
                 }
                 break;
@@ -1974,7 +1979,7 @@ function replayLastTrace(sess, data, anchorRow) {
         /* 子代理过程：后端从子会话取回了子 trace，就像实时流那样还原成 task-group，
          * 并同样隐藏 task/multitask 主卡。取不到子会话（过期 / 未落盘）时不带 subtasks，退回普通工具卡。 */
         if (e.kind === 'tool' && e.subtasks && e.subtasks.length) {
-            replayed += replaySubtasks(sess, runId, e.subtasks, running);
+            replayed += replaySubtasks(sess, runId, e.subtasks, running, e.callId);
             continue;
         }
 
@@ -2050,12 +2055,13 @@ function replayTraceEvent(sess, runId, reasonId, e, running, task) {
 }
 
 /* 回放子代理过程：task.start → 子事件（带 taskId）→ task.done，复用实时流的 task-group 渲染。
+ *  - 组键 parentCallId + taskId（parentCallId = 所属 task/multitask 调用的 callId）：同一子任务续跑过多次时，
+ *    每次调用一组，后端已按调用切好各自那段过程与成败；
  *  - 实时流已建过该组（运行中刷新、WS 早于快照）：交给实时流继续，不重复回放；
- *  - 同一子任务续跑过多次时，子会话里已是完整过程，第一次出现时整段回放，后面的同 ID 自然跳过；
  *  - 终态：success → 绿勾；failure → 红叉；仍是 running 而整轮已结束（进程中途退出）或因用户停止而失败
  *    （failureKind=cancelled/interrupted）= 被中断，落 warn，与主过程未完成的工具卡一致；
  *  - 仍在跑：不发 task.done，任务组保持运行中，之后的实时事件按 taskId 接在同一组后面。 */
-function replaySubtasks(sess, runId, subtasks, running) {
+function replaySubtasks(sess, runId, subtasks, running, parentCallId) {
     // 先收尾主过程里当前组的思考块：后续内容进入 task-group，没有事件会再帮它停转
     finishReplayThinkingBlocks(sess);
 
@@ -2063,9 +2069,10 @@ function replaySubtasks(sess, runId, subtasks, running) {
     for (var i = 0; i < subtasks.length; i++) {
         var st = subtasks[i];
         if (!st || !st.taskId) continue;
-        if (findTaskGroupEl(sess, st.taskId)) continue;
+        if (findTaskGroupEl(sess, st.taskId, parentCallId)) continue;
 
-        var task = { taskId: st.taskId, agentName: st.agentName || null, taskDescription: st.description || null };
+        var task = { taskId: st.taskId, parentCallId: parentCallId || null,
+            agentName: st.agentName || null, taskDescription: st.description || null };
         processWebEventNow(sess, makeReplayEvent(sess, runId, null, 'task.start',
             { taskId: st.taskId, title: st.description, agentName: st.agentName }, task));
 
@@ -2073,7 +2080,7 @@ function replaySubtasks(sess, runId, subtasks, running) {
         for (var j = 0; j < evs.length; j++) {
             var e = evs[j];
             if (!e || !e.kind || e.kind === 'steer') continue;
-            var reasonId = 'replay-' + (runId || 'last') + '-t' + st.taskId + '-g' + (e.group || 1);
+            var reasonId = 'replay-' + (runId || 'last') + '-t' + st.taskId + (parentCallId ? '-c' + parentCallId : '') + '-g' + (e.group || 1);
             replayTraceEvent(sess, runId, reasonId, e, running, task);
         }
         finishReplayThinkingBlocks(sess);
@@ -2120,7 +2127,7 @@ function collectReplayedGroups(sess, events) {
         if (e.subtasks && e.subtasks.length) {
             var allSeen = true;
             for (var k = 0; k < e.subtasks.length; k++) {
-                if (!e.subtasks[k] || !findTaskGroupEl(sess, e.subtasks[k].taskId)) { allSeen = false; break; }
+                if (!e.subtasks[k] || !findTaskGroupEl(sess, e.subtasks[k].taskId, e.callId)) { allSeen = false; break; }
             }
             if (allSeen) stat[g].seen++;
         } else if (sess.container.querySelector('[data-call-id="' + e.callId + '"]')) {
@@ -2258,7 +2265,7 @@ function replaySteers(sess, texts, seen) {
 }
 
 /* 合成一个与实时流同构的 webEvent；replay 标记供渲染层区分「回放」与「实时」。
- * task（可选）= { taskId, agentName, taskDescription }：子代理事件的信封字段，决定归入哪个 task-group */
+ * task（可选）= { taskId, parentCallId, agentName, taskDescription }：子代理事件的信封字段，决定归入哪个 task-group */
 function makeReplayEvent(sess, runId, reasonId, event, payload, task) {
     return {
         event: event,
@@ -2266,6 +2273,7 @@ function makeReplayEvent(sess, runId, reasonId, event, payload, task) {
         sessionId: sess.sessionId,
         runId: runId || null,
         taskId: task ? task.taskId : null,
+        parentCallId: task ? (task.parentCallId || null) : null,
         reasonId: reasonId,
         agentName: task ? task.agentName : null,
         taskDescription: task ? task.taskDescription : null,

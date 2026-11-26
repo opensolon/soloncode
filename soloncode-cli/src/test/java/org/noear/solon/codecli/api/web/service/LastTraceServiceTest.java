@@ -608,6 +608,131 @@ public class LastTraceServiceTest {
         assertNull(fallback.get(0).get("subtasks"));
     }
 
+    /**
+     * 同一子任务在同一轮里先失败、再带 task_id 续跑：主 trace 有两次 task 调用（A、B），子会话里是两次运行连在一起的过程。
+     * stamped=true：与 TaskTalent 写出的一致——A 的消息在续跑前补了戳，最近一次 B 的不带戳、归 meta；索引项带各自 status。
+     * false：旧数据（都没有）。
+     */
+    private List<Map<?, ?>> twoCallsOnOneSubtask(boolean stamped, String[] callIds) {
+        Map<String, AgentSession> store = new HashMap<>();
+        String taskId = "task-0123456789abcdef0123456789abcdef";
+
+        ToolCall taskA = new ToolCall("0", "call_tA", TaskTalent.TOOL_TASK, "{}", new HashMap<>());
+        ToolCall taskB = new ToolCall("0", "call_tB", TaskTalent.TOOL_TASK, "{}", new HashMap<>());
+        callIds[0] = taskA.getUuid();
+        callIds[1] = taskB.getUuid();
+
+        // 子会话：第一次 read_a 后失败；续跑指令后 read_b，再给出结论
+        ReActTrace subTrace = new ReActTrace();
+        ToolCall readA = new ToolCall("0", "call_ra", "read", "{}", new HashMap<>());
+        ToolCall readB = new ToolCall("0", "call_rb", "read", "{}", new HashMap<>());
+        ChatMessage[] runA = {ChatMessage.ofUser("去查"), newToolCallMessage("先看 a", readA),
+                ChatMessage.ofTool("a", "read", "call_ra"), ChatMessage.ofAssistant("限流了")};
+        ChatMessage[] runB = {ChatMessage.ofUser("继续"), newToolCallMessage("再看 b", readB),
+                ChatMessage.ofTool("b", "read", "call_rb"), ChatMessage.ofAssistant("结论 B")};
+        for (ChatMessage m : runA) {
+            if (stamped) m.addMetadata(TaskTalent.META_PARENT_CALL_ID, taskA.getUuid());
+            subTrace.getWorkingMemory().addMessage(m);
+        }
+        for (ChatMessage m : runB) {
+            subTrace.getWorkingMemory().addMessage(m);
+        }
+        AgentSession sub = InMemoryAgentSession.of(taskId);
+        sub.getContext().put("__explore", subTrace);
+        Map<String, Object> meta = new HashMap<>();
+        meta.put("agentName", "explore");
+        meta.put("traceKey", "__explore");
+        meta.put("status", TaskTalent.STATUS_SUCCESS);
+        meta.put("parentCallId", taskB.getUuid());
+        sub.getContext().put(TaskTalent.META_SUBTASK, meta);
+        store.put(taskId, sub);
+
+        ReActTrace trace = new ReActTrace();
+        ToolCall[] calls = {taskA, taskB};
+        String[] statuses = {TaskTalent.STATUS_FAILURE, TaskTalent.STATUS_SUCCESS};
+        for (int i = 0; i < 2; i++) {
+            trace.getWorkingMemory().addMessage(newToolCallMessage(null, calls[i]));
+            Map<String, Object> ref = indexItem(taskId, 1);
+            if (stamped) {
+                ref.put("status", statuses[i]);
+                if (i == 0) ref.put("failureKind", "rate_limit");
+            }
+            ToolResult result = i == 0 ? ToolResult.error("<task_result>A</task_result>") : ToolResult.success("<task_result>B</task_result>");
+            result.metas().put(TaskTalent.META_SUBTASKS, Collections.singletonList(ref));
+            trace.getWorkingMemory().addMessage(ChatMessage.ofTool(result, TaskTalent.TOOL_TASK, calls[i].getId(), false));
+        }
+
+        return events(service.buildLastTrace(newSession(trace), false, null, (id, parentId, c) -> store.get(id)));
+    }
+
+    private static Map<?, ?> onlySubtask(Map<?, ?> turn) {
+        List<?> subtasks = (List<?>) turn.get("subtasks");
+        assertNotNull(subtasks, String.valueOf(turn));
+        assertEquals(1, subtasks.size());
+        return (Map<?, ?>) subtasks.get(0);
+    }
+
+    private static List<Object> subTexts(Map<?, ?> st) {
+        List<Object> out = new ArrayList<>();
+        for (Object o : (List<?>) st.get("events")) {
+            Map<?, ?> e = (Map<?, ?>) o;
+            out.add("tool".equals(e.get("kind")) ? "tool:" + e.get("result") : e.get("text"));
+        }
+        return out;
+    }
+
+    @Test
+    public void resumed_subtask_should_replay_each_call_with_its_own_slice_and_status() {
+        String[] callIds = new String[2];
+        List<Map<?, ?>> events = twoCallsOnOneSubtask(true, callIds);
+        assertEquals(2, events.size());
+        assertEquals(callIds[0], events.get(0).get("callId"));
+        assertEquals(callIds[1], events.get(1).get("callId"));
+
+        Map<?, ?> a = onlySubtask(events.get(0));
+        Map<?, ?> b = onlySubtask(events.get(1));
+        // 各回放各的，不重叠
+        assertEquals(Arrays.asList("先看 a", "tool:a", "限流了"), subTexts(a));
+        assertEquals(Arrays.asList("再看 b", "tool:b", "结论 B"), subTexts(b));
+        // 第一次的失败不被子会话 meta（只记最近一次）刷成成功
+        assertEquals(TaskTalent.STATUS_FAILURE, a.get("status"));
+        assertEquals("rate_limit", a.get("failureKind"));
+        assertEquals(TaskTalent.STATUS_SUCCESS, b.get("status"));
+    }
+
+    @Test
+    public void legacy_subtask_without_stamps_should_give_whole_process_to_latest_call() {
+        String[] callIds = new String[2];
+        List<Map<?, ?>> events = twoCallsOnOneSubtask(false, callIds);
+
+        Map<?, ?> a = onlySubtask(events.get(0));
+        Map<?, ?> b = onlySubtask(events.get(1));
+        // 旧数据分不出来：较早的调用只留组、不借最近一次的状态；整段归最近一次（不再重复回放两份）
+        assertEquals(Collections.emptyList(), subTexts(a));
+        assertNull(a.get("status"));
+        assertEquals(Arrays.asList("先看 a", "tool:a", "限流了", "再看 b", "tool:b", "结论 B"), subTexts(b));
+        assertEquals(TaskTalent.STATUS_SUCCESS, b.get("status"));
+    }
+
+    @Test
+    public void unstamped_tail_should_belong_to_latest_call() {
+        // 最近一次调用（续跑指令及之后）不带戳：最后一条有戳消息之后的都归它（运行中刷新也一样）
+        List<ChatMessage> messages = new ArrayList<>();
+        ChatMessage oldRun = ChatMessage.ofAssistant("旧");
+        oldRun.addMetadata(TaskTalent.META_PARENT_CALL_ID, "A");
+        ChatMessage summary = ChatMessage.ofUser("压缩摘要");
+        ChatMessage resume = ChatMessage.ofUser("继续");
+        ChatMessage tail = ChatMessage.ofAssistant("新");
+        messages.add(summary);
+        messages.add(oldRun);
+        messages.add(resume);
+        messages.add(tail);
+
+        assertEquals(Arrays.asList(oldRun), LastTraceService.sliceByCall(messages, "A", "B"), "夹在中间没戳的（摘要）跳过");
+        assertEquals(Arrays.asList(resume, tail), LastTraceService.sliceByCall(messages, "B", "B"));
+        assertSame(messages, LastTraceService.sliceByCall(messages, "A", null), "不知道最近一次时不切片");
+    }
+
     // ---------- 执行中的那一步（调用只在 lastReasonMessage 里） ----------
 
     /** 子会话：一步 read 工具，状态与发起它的父调用按参数给 */

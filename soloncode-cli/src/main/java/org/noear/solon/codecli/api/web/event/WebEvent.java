@@ -53,6 +53,12 @@ public class WebEvent<T> implements Serializable {
     private String taskId;
 
     /**
+     * 发起该子任务调用的父 task / multitask 工具调用 id (可选)：与 taskId 平级，等于父流 tool.start 的 callId。
+     * 同一子任务带 task_id 续跑时 taskId 不变、本字段不同，前端据此每次调用建一个 task 组（组键 parentCallId + taskId）。
+     */
+    private String parentCallId;
+
+    /**
      * 推理轮次标识 (可选)：同一 reasonId 的思考/正文/工具事件归属同一 reason 组，
      * 前端据此将同一轮输出分组，避免后一轮最终消息错接到前一轮分组。
      */
