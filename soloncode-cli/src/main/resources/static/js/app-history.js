@@ -69,14 +69,14 @@ function renderSearchResults(keyword, hits) {
     var html = '';
 
     if (!hits.length) {
-        html = '<div class="sidebar-search-empty">未找到相关记录</div>';
+        html = '<div class="sidebar-search-empty">' + escapeHtml(I18n.t('history.searchEmpty')) + '</div>';
     } else {
         for (var i = 0; i < hits.length; i++) {
             var h = hits[i];
             html += '<div class="search-hit" data-session="' + escapeHtml(h.sessionId) + '">'
                 + '<div class="search-hit-label">' + escapeHtml(h.label || h.sessionId) + '</div>'
                 + '<div class="search-hit-snippet">'
-                + '<span class="search-hit-role">' + (h.role === 'USER' ? '我' : 'AI') + '</span>'
+                + '<span class="search-hit-role">' + escapeHtml(I18n.t(h.role === 'USER' ? 'history.searchRoleUser' : 'history.searchRoleAi')) + '</span>'
                 + highlightKeyword(escapeHtml(h.content || ''), escapeHtml(keyword))
                 + '</div>'
                 + '</div>';
