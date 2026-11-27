@@ -1,10 +1,14 @@
 
 ### vNEXT
 
+
+### v2026.11.28
+
 * 添加 soloncode 异步 task
 * 添加 soloncode 图片对话识别功能（例：“看下 xxx.jpg”）
 * 添加 soloncode web 新建文件
 * 添加 soloncode web 新建文件夹
+* 修复 soloncode web 手动编辑保存文件失败的问题
 
 ### v2026.11.26
 
