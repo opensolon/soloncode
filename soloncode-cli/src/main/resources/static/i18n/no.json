@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Kunne ikke hente leverandørinformasjon",
   "provider.loadFailed": "Kunne ikke laste leverandørlisten",
   "provider.manualTag": "Manuell",
+  "provider.visionTag": "Bilde",
   "provider.contextEditTip": "Klikk for å redigere kontekstlengde",
   "provider.contextSet": "Angi lengde",
   "provider.contextEditTitle": "Kontekstlengde",

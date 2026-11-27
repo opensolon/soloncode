@@ -153,6 +153,11 @@ public class DesktopModelController extends AbstractDesktopController {
             if (Assert.isNotEmpty(provider)) {
                 config.setStandard(provider);
             }
+            // 供应商接口给了可输入类型（Anthropic、Ollama、OpenRouter 等）就带上，没给保持不限制
+            if (mi.getInputModalities() != null) {
+                config.setInputModalities(mi.getInputModalities());
+                item.put("inputModalities", mi.getInputModalities());
+            }
             engine.removeModel(mi.getId());
             engine.addModel(config);
             list.add(item);

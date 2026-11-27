@@ -11,6 +11,7 @@ import org.noear.solon.codecli.config.entity.ModelDo;
 import org.noear.solon.codecli.config.entity.ProviderDo;
 import org.noear.solon.codecli.model.discovery.ModelApiUrl;
 import org.noear.solon.codecli.model.discovery.ModelInfo;
+import org.noear.solon.codecli.model.discovery.ModelModalities;
 import org.noear.solon.codecli.model.discovery.ModelsAdapter;
 import org.noear.solon.codecli.model.discovery.ModelsFetchException;
 import org.noear.solon.codecli.model.discovery.ModelsFetchReason;
@@ -579,6 +580,10 @@ public class LlmSettingController extends BaseSettingsController {
                     item.put("contextLength", contextLength);
                     item.put("context_length", contextLength);
                 }
+                List<String> inputModalities = resolveInputModalities(model.getInputModalities(), modelId);
+                if (inputModalities != null) {
+                    item.put("inputModalities", inputModalities);
+                }
                 modelList.add(item);
             }
 
@@ -659,6 +664,9 @@ public class LlmSettingController extends BaseSettingsController {
                 modelDo.setVisibled(provider.isEnabled());
                 modelDo.setSelected(modelInfo.isSelected());
 
+                // 可输入类型：供应商接口 → models.dev → 不限制
+                modelDo.setInputModalities(resolveInputModalities(modelInfo.getInputModalities(), modelId));
+
                 // 设置 contextLength：优先模型名后缀，其次 maxInputTokens，再次 maxTokens，最后从 models.json 查询
                 long suffixLength = parseContextLengthSuffix(modelInfo.getId());
                 if (suffixLength > 0) {
@@ -686,6 +694,11 @@ public class LlmSettingController extends BaseSettingsController {
 
                     existingModel.setVisibled(provider.isEnabled());
                     existingModel.setSelected(modelInfo.isSelected());
+
+                    // 可输入类型只在未声明时补上：用户在编辑页填过的值不覆盖
+                    if (existingModel.getInputModalities() == null) {
+                        existingModel.setInputModalities(resolveInputModalities(modelInfo.getInputModalities(), modelId));
+                    }
 
                     // 更新 contextLength：优先模型名后缀，其次 maxInputTokens，再次 maxTokens，最后从 models.json 查询
                     long newContextLength = 0;
@@ -770,6 +783,7 @@ public class LlmSettingController extends BaseSettingsController {
             if (modelNode.hasKey("manual")) {
                 modelInfo.setManual(modelNode.get("manual").getBoolean());
             }
+            modelInfo.setInputModalities(ModelModalities.of(modelNode.get("inputModalities")));
             // 勾选状态：默认选中
             modelInfo.setSelected(modelNode.hasKey("selected") ? modelNode.get("selected").getBoolean() : true);
 
@@ -784,6 +798,19 @@ public class LlmSettingController extends BaseSettingsController {
         }
 
         return models;
+    }
+
+    /**
+     * 可输入类型的取值顺序（同 opencode：接口返回的优先，其次 models.dev）：
+     * 供应商接口给出的 → models.dev 按模型 id 查到的 → null（不限制）。
+     * 模型名后缀（[1m] 等）只管上下文长度，与此无关。
+     */
+    private List<String> resolveInputModalities(List<String> reported, String modelId) {
+        List<String> normalized = ModelModalities.normalize(reported);
+        if (normalized != null) {
+            return normalized;
+        }
+        return modelSpecService.getInputModalities(modelId);
     }
 
     private long resolveContextLength(ModelInfo modelInfo) {
@@ -950,6 +977,9 @@ public class LlmSettingController extends BaseSettingsController {
             if (suffixLength > 0) {
                 modelDo.setContextLength(suffixLength);
             }
+
+            // 可输入类型：提交里带了（来自拉取结果）就用，否则查 models.dev
+            modelDo.setInputModalities(resolveInputModalities(ModelModalities.of(modelNode.get("inputModalities")), modelId));
 
             // 设置超时时间（只在显式传入时生效；否吴交给「模型默认」兜底）
             if (timeout > 0) {

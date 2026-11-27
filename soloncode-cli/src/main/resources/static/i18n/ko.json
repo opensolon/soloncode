@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "공급업체 상세 정보 가져오기 실패",
   "provider.loadFailed": "공급업체 목록 로드 실패",
   "provider.manualTag": "수동",
+  "provider.visionTag": "이미지",
   "provider.contextEditTip": "클릭하여 컨텍스트 길이 편집",
   "provider.contextSet": "길이 설정",
   "provider.contextEditTitle": "컨텍스트 길이",

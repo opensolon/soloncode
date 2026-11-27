@@ -522,6 +522,8 @@
                                 // 拉来的值为空则保留用户此前设置的值，避免手填的上下文长度被清空
                                 maxInputTokens: incomingMax || (prev ? prev.maxInputTokens : 0) || 0,
                                 maxTokens: incomingMaxOut || (prev ? prev.maxTokens : 0) || 0,
+                                // 可输入类型：本次拉到的优先（接口或 models.dev），没有则保留此前的
+                                inputModalities: (m && Array.isArray(m.inputModalities) && m.inputModalities.length) ? m.inputModalities : (prev ? prev.inputModalities : undefined),
                                 selected: prev ? prev.selected : undefined,
                                 manual: false
                             });
@@ -609,11 +611,17 @@
             var ctxEditBtn = '<button class="provider-model-ctx-btn" title="' + escapeAttr(I18n.t('provider.contextEditTip')) + '"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>';
             // actions 区回归纯按钮：编辑长度 + 删除
             var actionsHtml = '<div class="provider-model-actions">' + ctxEditBtn + removeBtn + '</div>';
+            // 可看图标记：可输入类型含 image 时显示，title 列出全部类型
+            var modalities = Array.isArray(model.inputModalities) ? model.inputModalities : [];
+            var visionTag = modalities.indexOf('image') >= 0
+                ? '<span class="provider-model-vision-tag" title="' + escapeAttr(modalities.join(', ')) + '">' + escapeHtml(I18n.t('provider.visionTag')) + '</span>'
+                : '';
             html += '<label class="provider-model-item' + (!selected ? ' unselected' : '') + '" data-model-id="' + escapeAttr(model.id) + '">' +
                 '<input type="checkbox" ' + (selected ? 'checked' : '') + ' class="provider-model-check"/>' +
                 '<div class="provider-model-info">' +
                     '<span class="provider-model-name">' + escapeHtml(model.id) + '</span>' +
                     manualTag +
+                    visionTag +
                     contextView +
                 '</div>' +
                 actionsHtml +
@@ -764,6 +772,9 @@
             }
             if (m.maxTokens) {
                 model.maxTokens = m.maxTokens;
+            }
+            if (Array.isArray(m.inputModalities) && m.inputModalities.length) {
+                model.inputModalities = m.inputModalities;
             }
             model.selected = m.selected !== false;
             return model;

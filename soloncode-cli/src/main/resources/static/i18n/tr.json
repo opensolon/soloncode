@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Sağlayıcı ayrıntıları yüklenemedi",
   "provider.loadFailed": "Sağlayıcı listesi yüklenemedi",
   "provider.manualTag": "Manuel",
+  "provider.visionTag": "Görsel",
   "provider.contextEditTip": "Bağlam uzunluğunu düzenlemek için tıklayın",
   "provider.contextSet": "Uzunluğu ayarla",
   "provider.contextEditTitle": "Bağlam uzunluğu",

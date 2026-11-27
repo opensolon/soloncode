@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Dohvaćanje detalja dobavljača nije uspjelo",
   "provider.loadFailed": "Učitavanje popisa dobavljača nije uspjelo",
   "provider.manualTag": "Ručno",
+  "provider.visionTag": "Slika",
   "provider.contextEditTip": "Kliknite za uređivanje dužine konteksta",
   "provider.contextSet": "Postavi dužinu",
   "provider.contextEditTitle": "Dužina konteksta",

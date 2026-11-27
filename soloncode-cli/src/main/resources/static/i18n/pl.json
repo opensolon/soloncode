@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Nie udało się pobrać szczegółów dostawcy",
   "provider.loadFailed": "Nie udało się załadować listy dostawców",
   "provider.manualTag": "Ręczny",
+  "provider.visionTag": "Obraz",
   "provider.contextEditTip": "Kliknij, aby edytować długość kontekstu",
   "provider.contextSet": "Ustaw długość",
   "provider.contextEditTitle": "Długość kontekstu",

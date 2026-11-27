@@ -1043,6 +1043,7 @@
   "provider.loadDetailFailed": "Anbieterdetails konnten nicht geladen werden",
   "provider.loadFailed": "Anbieterliste konnte nicht geladen werden",
   "provider.manualTag": "Manuell",
+  "provider.visionTag": "Bild",
   "provider.contextEditTip": "Zum Bearbeiten der Kontextlänge klicken",
   "provider.contextSet": "Länge festlegen",
   "provider.contextEditTitle": "Kontextlänge",

@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "প্রোভাইডার বিবরণ লোড ব্যর্থ",
   "provider.loadFailed": "প্রোভাইডার তালিকা লোড ব্যর্থ",
   "provider.manualTag": "ম্যানুয়াল",
+  "provider.visionTag": "ছবি",
   "provider.contextEditTip": "কনটেক্সট দৈর্ঘ্য সম্পাদনা করতে ক্লিক করুন",
   "provider.contextSet": "দৈর্ঘ্য সেট করুন",
   "provider.contextEditTitle": "কনটেক্সট দৈর্ঘ্য",

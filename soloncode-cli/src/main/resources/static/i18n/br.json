@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Falha ao carregar os detalhes do provedor",
   "provider.loadFailed": "Falha ao carregar a lista de provedores",
   "provider.manualTag": "Manual",
+  "provider.visionTag": "Imagem",
   "provider.contextEditTip": "Clique para editar o comprimento do contexto",
   "provider.contextSet": "Definir comprimento",
   "provider.contextEditTitle": "Comprimento do contexto",

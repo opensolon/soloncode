@@ -5,6 +5,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.model.discovery.ModelApiUrl;
 import org.noear.solon.codecli.model.discovery.ModelInfo;
+import org.noear.solon.codecli.model.discovery.ModelModalities;
 import org.noear.solon.codecli.model.discovery.ModelsAdapter;
 import org.noear.solon.codecli.model.discovery.ModelsFetchException;
 import org.noear.solon.codecli.model.discovery.ModelsFetchReason;
@@ -38,7 +39,8 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
 
     @Override
     public List<ModelInfo> fetchModels(String userAgent, String baseUrl, Map<String, String> headers, String apiKey) {
-        final String modelsUrl = buildModelsUrl(baseUrl);
+        // 接口默认一页 20 条，不带 limit 会漏掉后面的模型；1000 是接口允许的上限
+        final String modelsUrl = buildModelsUrl(baseUrl) + "?limit=1000";
         // 地址非法时立即失败，不必白等一轮连接超时
         ModelsHttp.requireHttpUrl(modelsUrl, "Anthropic");
 
@@ -70,6 +72,7 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
                         ModelsFetchReason.INVALID_RESPONSE, 200, null);
             }
             for (ONode item : data.getArray()) {
+                Map<String, Object> capabilities = parseCapabilities(item.get("capabilities"));
                 ModelInfo modelInfo = ModelInfo.builder()
                         .id(item.get("id").getString())
                         .object(item.get("type").getString())
@@ -79,7 +82,8 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
                         .displayName(item.get("display_name").getString())
                         .maxInputTokens(item.get("max_input_tokens").getLong())
                         .maxTokens(item.get("max_tokens").getLong())
-                        .capabilities(parseCapabilities(item.get("capabilities")))
+                        .capabilities(capabilities)
+                        .inputModalities(inputModalitiesOf(capabilities))
                         .build();
                 result.add(modelInfo);
             }
@@ -103,6 +107,25 @@ public class AnthropicModelsAdapter implements ModelsAdapter {
         } catch (Exception e) {
             return System.currentTimeMillis() / 1000;
         }
+    }
+
+    /**
+     * capabilities.image_input.supported → 可输入类型；接口没给 capabilities（旧版或兼容网关）时返回 null。
+     * pdf_input 不取：框架没有文档类媒体。
+     */
+    static List<String> inputModalitiesOf(Map<String, Object> capabilities) {
+        if (capabilities == null) {
+            return null;
+        }
+        Object image = capabilities.get("image_input");
+        if (image instanceof Map == false) {
+            return null;
+        }
+        Object supported = ((Map<?, ?>) image).get("supported");
+        if (supported instanceof Boolean == false) {
+            return null;
+        }
+        return ModelModalities.ofVision((Boolean) supported);
     }
 
     private Map<String, Object> parseCapabilities(ONode node) {

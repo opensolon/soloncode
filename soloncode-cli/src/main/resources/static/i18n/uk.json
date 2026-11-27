@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Не вдалося отримати деталі провайдера",
   "provider.loadFailed": "Не вдалося завантажити список провайдерів",
   "provider.manualTag": "Вручну",
+  "provider.visionTag": "Зображення",
   "provider.contextEditTip": "Натисніть, щоб змінити довжину контексту",
   "provider.contextSet": "Задати довжину",
   "provider.contextEditTitle": "Довжина контексту",

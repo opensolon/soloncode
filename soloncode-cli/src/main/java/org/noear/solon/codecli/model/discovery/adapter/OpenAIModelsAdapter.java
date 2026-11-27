@@ -5,6 +5,7 @@ import org.noear.snack4.ONode;
 import org.noear.solon.codecli.config.ProxyConfig;
 import org.noear.solon.codecli.model.discovery.ModelApiUrl;
 import org.noear.solon.codecli.model.discovery.ModelInfo;
+import org.noear.solon.codecli.model.discovery.ModelModalities;
 import org.noear.solon.codecli.model.discovery.ModelsAdapter;
 import org.noear.solon.codecli.model.discovery.ModelsFetchException;
 import org.noear.solon.codecli.model.discovery.ModelsFetchReason;
@@ -70,7 +71,9 @@ public class OpenAIModelsAdapter implements ModelsAdapter {
             ONode data = root.get("data");
             if (data.isArray()) {
                 for (ONode item : data.getArray()) {
-                    result.add(item.toBean(ModelInfo.class));
+                    ModelInfo modelInfo = item.toBean(ModelInfo.class);
+                    fillExtras(modelInfo, item);
+                    result.add(modelInfo);
                 }
             } else {
                 // 状态码正常但结构不是模型列表，多为地址或协议选错
@@ -86,5 +89,24 @@ public class OpenAIModelsAdapter implements ModelsAdapter {
         }
 
         return result;
+    }
+
+    /**
+     * 标准 OpenAI 只返回 id/owned_by；OpenRouter 会多给 architecture.input_modalities 与 context_length，有就读
+     */
+    static void fillExtras(ModelInfo modelInfo, ONode item) {
+        // toBean 不认下划线字段，owned_by 要自己取
+        if (modelInfo.getOwnedBy() == null) {
+            modelInfo.setOwnedBy(item.get("owned_by").getString());
+        }
+
+        modelInfo.setInputModalities(ModelModalities.of(item.get("architecture").get("input_modalities")));
+
+        if (modelInfo.getMaxInputTokens() == null || modelInfo.getMaxInputTokens() <= 0) {
+            long contextLength = item.get("context_length").getLong();
+            if (contextLength > 0) {
+                modelInfo.setMaxInputTokens(contextLength);
+            }
+        }
     }
 }

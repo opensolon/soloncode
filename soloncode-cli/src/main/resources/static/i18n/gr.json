@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Η λήψη λεπτομερειών παρόχου απέτυχε",
   "provider.loadFailed": "Η φόρτωση της λίστας παρόχων απέτυχε",
   "provider.manualTag": "Χειροκίνητο",
+  "provider.visionTag": "Εικόνα",
   "provider.contextEditTip": "Κάντε κλικ για επεξεργασία του μήκους περιβάλλοντος",
   "provider.contextSet": "Ορισμός μήκους",
   "provider.contextEditTitle": "Μήκος περιβάλλοντος",

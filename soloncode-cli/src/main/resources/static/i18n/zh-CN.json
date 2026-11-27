@@ -1046,6 +1046,7 @@
   "provider.loadDetailFailed": "获取供应商详情失败",
   "provider.loadFailed": "加载供应商列表失败",
   "provider.manualTag": "手动",
+  "provider.visionTag": "看图",
   "provider.contextEditTip": "点击编辑上下文长度",
   "provider.contextSet": "设置长度",
   "provider.contextEditTitle": "上下文长度",

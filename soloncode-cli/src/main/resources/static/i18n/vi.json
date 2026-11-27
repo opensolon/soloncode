@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Lấy chi tiết nhà cung cấp thất bại",
   "provider.loadFailed": "Tải danh sách nhà cung cấp thất bại",
   "provider.manualTag": "Thủ công",
+  "provider.visionTag": "Hình ảnh",
   "provider.contextEditTip": "Nhấp để chỉnh sửa độ dài ngữ cảnh",
   "provider.contextSet": "Đặt độ dài",
   "provider.contextEditTitle": "Độ dài ngữ cảnh",

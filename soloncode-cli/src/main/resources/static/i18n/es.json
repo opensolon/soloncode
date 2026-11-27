@@ -1043,6 +1043,7 @@
   "provider.loadDetailFailed": "Error al obtener los detalles del proveedor",
   "provider.loadFailed": "Error al cargar la lista de proveedores",
   "provider.manualTag": "Manual",
+  "provider.visionTag": "Imagen",
   "provider.contextEditTip": "Haga clic para editar la longitud de contexto",
   "provider.contextSet": "Establecer longitud",
   "provider.contextEditTitle": "Longitud de contexto",

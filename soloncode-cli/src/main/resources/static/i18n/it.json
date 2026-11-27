@@ -1043,6 +1043,7 @@
   "provider.loadDetailFailed": "Recupero dettagli fornitore non riuscito",
   "provider.loadFailed": "Caricamento elenco fornitori non riuscito",
   "provider.manualTag": "Manuale",
+  "provider.visionTag": "Immagine",
   "provider.contextEditTip": "Fai clic per modificare la lunghezza del contesto",
   "provider.contextSet": "Imposta lunghezza",
   "provider.contextEditTitle": "Lunghezza del contesto",

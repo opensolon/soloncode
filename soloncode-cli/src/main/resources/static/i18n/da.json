@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Kunne ikke indlæse udbyderdetaljer",
   "provider.loadFailed": "Kunne ikke indlæse udbyderlisten",
   "provider.manualTag": "Manuel",
+  "provider.visionTag": "Billede",
   "provider.contextEditTip": "Klik for at redigere kontekstlængde",
   "provider.contextSet": "Angiv længde",
   "provider.contextEditTitle": "Kontekstlængde",

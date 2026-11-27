@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "فشل جلب تفاصيل موفر الخدمة",
   "provider.loadFailed": "فشل تحميل قائمة موفري الخدمة",
   "provider.manualTag": "يدوي",
+  "provider.visionTag": "صور",
   "provider.contextEditTip": "انقر لتحرير طول السياق",
   "provider.contextSet": "تعيين الطول",
   "provider.contextEditTitle": "طول السياق",

@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "取得供應商詳細資料失敗",
   "provider.loadFailed": "載入供應商清單失敗",
   "provider.manualTag": "手動",
+  "provider.visionTag": "看圖",
   "provider.contextEditTip": "點擊編輯上下文長度",
   "provider.contextSet": "設定長度",
   "provider.contextEditTitle": "上下文長度",

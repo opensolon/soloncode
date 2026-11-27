@@ -1043,6 +1043,7 @@
   "provider.loadDetailFailed": "Échec du chargement des détails du fournisseur",
   "provider.loadFailed": "Échec du chargement de la liste des fournisseurs",
   "provider.manualTag": "Manuel",
+  "provider.visionTag": "Image",
   "provider.contextEditTip": "Cliquez pour modifier la longueur du contexte",
   "provider.contextSet": "Définir la longueur",
   "provider.contextEditTitle": "Longueur du contexte",

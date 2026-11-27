@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "Не удалось загрузить сведения о поставщике",
   "provider.loadFailed": "Не удалось загрузить список поставщиков",
   "provider.manualTag": "Вручную",
+  "provider.visionTag": "Изображения",
   "provider.contextEditTip": "Нажмите, чтобы изменить длину контекста",
   "provider.contextSet": "Задать длину",
   "provider.contextEditTitle": "Длина контекста",

@@ -1043,6 +1043,7 @@
   "provider.loadDetailFailed": "プロバイダー詳細の取得に失敗しました",
   "provider.loadFailed": "プロバイダーリストの読み込みに失敗しました",
   "provider.manualTag": "手動",
+  "provider.visionTag": "画像",
   "provider.contextEditTip": "クリックしてコンテキスト長を編集",
   "provider.contextSet": "長さを設定",
   "provider.contextEditTitle": "コンテキスト長",

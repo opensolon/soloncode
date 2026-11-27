@@ -1046,6 +1046,7 @@
   "provider.loadDetailFailed": "Failed to load provider details",
   "provider.loadFailed": "Failed to load provider list",
   "provider.manualTag": "Manual",
+  "provider.visionTag": "Vision",
   "provider.contextEditTip": "Click to edit context length",
   "provider.contextSet": "Set length",
   "provider.contextEditTitle": "Context length",

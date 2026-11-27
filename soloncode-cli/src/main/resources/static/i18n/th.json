@@ -1038,6 +1038,7 @@
   "provider.loadDetailFailed": "รับรายละเอียดผู้ให้บริการไม่สำเร็จ",
   "provider.loadFailed": "โหลดรายการผู้ให้บริการล้มเหลว",
   "provider.manualTag": "ด้วยตนเอง",
+  "provider.visionTag": "รูปภาพ",
   "provider.contextEditTip": "คลิกเพื่อแก้ไขความยาวบริบท",
   "provider.contextSet": "ตั้งค่าความยาว",
   "provider.contextEditTitle": "ความยาวบริบท",

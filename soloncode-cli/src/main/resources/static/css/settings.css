@@ -1874,6 +1874,18 @@ select[disabled] {
     border-radius: 3px;
 }
 
+/* 可看图标记（可输入类型含 image） */
+.provider-model-vision-tag {
+    display: inline-block;
+    flex-shrink: 0;
+    font-size: var(--fs-2xs);
+    color: var(--accent, #3b82f6);
+    background: rgba(59, 130, 246, 0.1);
+    padding: 1px 4px;
+    border-radius: 3px;
+    cursor: default;
+}
+
 /* 手动模型的删除按钮 */
 .provider-model-remove-btn {
     cursor: pointer;

@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -28,6 +29,12 @@ public class ModelInfo {
     private Long maxInputTokens;
     private Long maxTokens;
     private Map<String, Object> capabilities;
+
+    /**
+     * 可输入类型（text/image/audio/video），由供应商接口给出；null 表示接口没有给，
+     * 同步到模型配置时再查 models.dev，仍查不到就不限制
+     */
+    private List<String> inputModalities;
 
     /** 是否为手动添加的模型（动态刷新时不被清除） */
     @Builder.Default
