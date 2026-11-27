@@ -598,7 +598,7 @@ function finalizeTaskGroups(sess, stopped) {
 
 /**
  * 处理后端 task_done WebEvent：子代理任务结束时立即结算对应 task-group。
- * status=error → 红叉（可附带错误文本）；其它 → 绿勾。
+ * status=error → 红叉（可附带错误文本）；interrupted（被停止）→ 警示图标；其它 → 绿勾。
  * 不依赖主流 done；主流 finalizeTaskGroups 仍作兜底。
  */
 function applyTaskDoneChunk(sess, chunk) {
@@ -624,11 +624,12 @@ function applyTaskDoneChunk(sess, chunk) {
 
 /**
  * 同一 taskId 的新一次调用（续跑，parentCallId 变了）开始前，把上一次调用的组移出本轮索引：
- * 它保留自己的终态，之后带该 taskId 的事件进新组。还没结算的按 done 结算（移出索引后 finalizeTaskGroups 不再管它）。
+ * 它保留自己的终态，之后带该 taskId 的事件进新组。还没结算的按 interrupted 结算（移出索引后 finalizeTaskGroups 不再管它）：
+ * 同一任务能开始下一次调用，说明上一次已结束；成功结束一定发 task.done，没收到就只可能是被停止。
  */
 function detachTaskSegment(sess, segment) {
     if (!sess || !segment || !segment.taskId) return;
-    if (!isTaskGroupTerminal(segment.status)) setTaskGroupStatus(segment, 'done');
+    if (!isTaskGroupTerminal(segment.status)) setTaskGroupStatus(segment, 'interrupted');
     if (sess.taskSegments[segment.taskId] === segment) delete sess.taskSegments[segment.taskId];
     if (sess.taskGroups[segment.taskId] === segment.groupEl) delete sess.taskGroups[segment.taskId];
     if (sess.currentStreamSegment === segment) sess.currentStreamSegment = null;
@@ -692,7 +693,7 @@ function updateTaskGroupTitle(segment) {
 function createTaskGroupElement(sess, segment) {
     var group = $('<div>').addClass('task-group is-running')[0];
     group.setAttribute('data-task-id', segment.taskId);
-    // 发起本次调用的父 task/multitask 调用：同一 taskId 续跑多次时，每次调用一个组（组键 parentCallId + taskId）
+    // 发起本次调用的父 task / task_start 调用：同一 taskId 续跑多次时，每次调用一个组（组键 parentCallId + taskId）
     if (segment.parentCallId) group.setAttribute('data-parent-call-id', segment.parentCallId);
     group.setAttribute('data-stream-segment-id', segment.id);
     if (sess.currentRunId) group.setAttribute('data-run-id', sess.currentRunId);
@@ -1101,7 +1102,7 @@ function appendReasonChunk(sess, segment, text, reasonId, agentName) {
     // 新 reasonId 到来时，先结束同 segment 内其他 reasonId 的思考块，
     // 防止上一个思考块的 spinner 无限旋转（与 appendContentChunk / appendActionStartChunk 行为一致）。
     // ★ 必须按 segment 隔离（遍历 segment.reasonEntries），不能遍历全局 sess.reasonGroups：
-    //   multitask 并行时多个 task-group 的思考流会交错到达，全局遍历会把其它子任务正在
+    //   多个后台子任务（task_start）并行时，各 task-group 的思考流会交错到达，全局遍历会把其它子任务正在
     //   流式输出的思考块强行结束，造成思考流被反复截断、重建，视觉上表现为“每个思考消息一个分组”。
     if (segment) {
         for (var _rid in segment.reasonEntries) {

@@ -16,5 +16,4 @@ public class TaskDonePayload implements Serializable {
     private String parentTaskId;
     private String title;
     private String status;
-    private boolean isMultitask;
 }

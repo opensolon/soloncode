@@ -17,7 +17,6 @@ package org.noear.solon.codecli.api.desktop;
 
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
-import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -30,7 +29,7 @@ import org.noear.solon.core.util.Assert;
  * 桌面端 ReAct 流事件 → WebSocket 协议消息的转换器（无状态）。
  *
  * <p>从原 {@code WsGate} 中拆出 {@code onReasonDeltaEvent / onToolCallStartEvent /
- * onToolCallEndEvent / onReasonEndEvent} 四个纯转换方法：
+ * onToolCallEndEvent} 三个纯转换方法：
  * 输入事件、输出 JSON 字符串，不触碰 WebSocket、session attrs 与流状态。</p>
  *
  * <p>agent 前缀规则：子 Agent 的工具名带 {@code agentName/toolName} 前缀并附加
@@ -77,8 +76,7 @@ final class DesktopEventConverter {
             return null;
         }
 
-        if (TaskTalent.TOOL_MULTITASK.equals(toolCallStartEvent.getToolName()) ||
-                TaskTalent.TOOL_TASK.equals(toolCallStartEvent.getToolName()) ||
+        if (TaskTalent.isTaskTool(toolCallStartEvent.getToolName()) ||
                 MemoryTalent.isMemoryTool(toolCallStartEvent.getToolName()) ||
                 GoalTalent.isGoalTool(toolCallStartEvent.getToolName())) {
             return null;
@@ -115,8 +113,7 @@ final class DesktopEventConverter {
             return null;
         }
 
-        if (TaskTalent.TOOL_MULTITASK.equals(toolCallEndEvent.getToolName()) ||
-                TaskTalent.TOOL_TASK.equals(toolCallEndEvent.getToolName()) ||
+        if (TaskTalent.isTaskTool(toolCallEndEvent.getToolName()) ||
                 MemoryTalent.isMemoryTool(toolCallEndEvent.getToolName()) ||
                 GoalTalent.isGoalTool(toolCallEndEvent.getToolName())) {
             return null;
@@ -147,24 +144,5 @@ final class DesktopEventConverter {
         }
 
         return node.toJson();
-    }
-
-    String onReasonEndEvent(ReasonEndEvent reasonEndEvent, String finalSessionId) {
-        if (reasonEndEvent.hasMeta(TaskTalent.TOOL_MULTITASK)) {
-            String content = reasonEndEvent.getText();
-            if (Assert.isNotEmpty(content)) {
-                ONode node = new ONode().set("type", "text")
-                        .set("sessionId", finalSessionId)
-                        .set("text", "\n" + content);
-
-                String agentName = reasonEndEvent.getTrace().getAgentName();
-                if (!engine.getName().equals(agentName)) {
-                    node.set("agentName", agentName);
-                }
-
-                return node.toJson();
-            }
-        }
-        return null;
     }
 }

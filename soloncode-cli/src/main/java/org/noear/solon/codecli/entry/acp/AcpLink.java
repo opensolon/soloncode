@@ -15,7 +15,6 @@ import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
 import org.noear.solon.ai.agent.react.task.PlanEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
-import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.talents.cli.TerminalTalent;
@@ -357,16 +356,6 @@ public class AcpLink implements Runnable {
                 return acpContext.sendThought(event.getText());
             }
         }
-        // === ThoughtChunk（多任务并行） ===
-        else if (event instanceof ReasonEndEvent) {
-            ReasonEndEvent thoughtChunk = (ReasonEndEvent) event;
-            if (thoughtChunk.hasMeta(TaskTalent.TOOL_MULTITASK)) {
-                String content = thoughtChunk.getText();
-                if (Assert.isNotEmpty(content)) {
-                    return acpContext.sendThought(content);
-                }
-            }
-        }
         // === 工具执行开始阶段：发 pending ToolCall 骨架卡 ===
         else if (event instanceof ToolCallStartEvent) {
             ToolCallStartEvent startChunk = (ToolCallStartEvent) event;
@@ -458,11 +447,10 @@ public class AcpLink implements Runnable {
 
     /**
      * 内部工具（不向 ACP 客户端展示）判定，与 WebStreamBuilder 保持一致：
-     * 任务分发工具（task/multitask）、记忆工具、目标工具。
+     * 任务分发工具（task / task_start / task_wait / task_stop）、记忆工具、目标工具。
      */
     private boolean isInternalTool(String toolName) {
-        return TaskTalent.TOOL_MULTITASK.equals(toolName)
-                || TaskTalent.TOOL_TASK.equals(toolName)
+        return TaskTalent.isTaskTool(toolName)
                 || MemoryTalent.isMemoryTool(toolName)
                 || GoalTalent.isGoalTool(toolName);
     }

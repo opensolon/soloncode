@@ -736,7 +736,7 @@ body {
  .agent-badge { display: inline-flex; align-items: center; padding: 0 6px; margin-left: 6px; font-size: var(--fs-2xs); font-weight: 600; line-height: 18px; border-radius: 4px; background: var(--accent-fill, var(--accent)); color: #fff; vertical-align: middle; white-space: nowrap; }
 .reason-group-think-header .agent-badge { font-size: var(--fs-3xs); line-height: 15px; padding: 0 5px; }
 
-/* Task group: wraps reason-group + tool-cards for multitask subagent output */
+/* Task group: wraps reason-group + tool-cards for subagent output (task / task_start) */
 .task-group { position: relative; margin: 0; border: none; border-left: 4px solid var(--reason-group-think-border); border-radius: 0; overflow: hidden; background: var(--reason-group-think-bg); transition: border-left-color 0.15s; }
 /* running/done 统一灰色左边框；仅 error 用红色强提示 */
 .task-group.is-error { border-left-color: var(--error-border); }

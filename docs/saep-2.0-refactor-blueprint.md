@@ -141,10 +141,10 @@ Agent 发起外部工具调用，包含入参。`args` 为结构化入参对象�
 
 ### 3.4 任务生命周期类 (Task)
 
-> `task.start` 仅定义了常量，当前后端映射器并未产出该事件（子代理 task 组由首条携带 `taskId` 的事件隐式开启）。
+> `task.start` 在子代理 ReAct 启动时发出（`taskId`, `parentTaskId`, `title`, `agentName`），前端据此先建 task 组占位。
 
 #### `task.done` (子代理任务完成)
-子代理 ReAct 运行结束时发出，用于前端结算对应的 task 组。`status` 取 `done` / `error`；`isMultitask` 标识是否属于并行多任务。
+子代理 ReAct 运行结束时发出，用于前端结算对应的 task 组。`status` 取 `done` / `error` / `interrupted`（本轮结束或被停止时，已开始未结束的组由宿主补发）。
 
 > 关键：只有子代理（`taskId != null`）才发 `task.done`；主代理整轮结束发的是 `system.trace`。两者在映射器里互斥，以避免“子代理任务完成后也输出 trace”。
 ```json
@@ -155,8 +155,7 @@ Agent 发起外部工具调用，包含入参。`args` 为结构化入参对象�
     "taskId": "task-build-1",
     "parentTaskId": "run-root",
     "title": "重构用户认证逻辑",
-    "status": "done",
-    "isMultitask": false
+    "status": "done"
   }
 }
 ```
@@ -307,8 +306,8 @@ Agent 遇到高危操作或需要用户决策，阻塞流并请求客户端干�
 | `thought.delta` | `delta` | ✅ |
 | `tool.start` | `callId`, `name`, `title`, `args` | ✅ |
 | `tool.end` | `callId`, `name`, `title`, `result`, `isError`, `diff`, `args` | ✅ |
-| `task.start` | — | ❌（仅常量） |
-| `task.done` | `taskId`, `parentTaskId`, `title`, `status`, `isMultitask` | ✅（仅子代理） |
+| `task.start` | `taskId`, `parentTaskId`, `title`, `agentName` | ✅（仅子代理） |
+| `task.done` | `taskId`, `parentTaskId`, `title`, `status` | ✅（仅子代理） |
 | `hitl.pending` | `callId`, `toolName`, `toolTitle`, `args`, `command`, `comment` | ✅ |
 | `hitl.resolved` | — | ❌（仅常量） |
 | `system.trace` | `model`, `totalTokens`, `inputTokens`, `outputTokens`, `elapsedSeconds`, `finalAnswer` | ✅（仅主代理） |

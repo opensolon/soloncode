@@ -72,7 +72,7 @@ import java.util.function.Function;
  *
  * <h3>子代理过程</h3>
  * <p>子代理跑在自己的子会话里（task_id 即子会话 ID），主 trace 只留一次 task 调用与最终产出。
- * task/multitask 的结果消息带 {@link TaskTalent#META_SUBTASKS} 索引，据此从子会话提供者取回
+ * task / task_start 的结果消息带 {@link TaskTalent#META_SUBTASKS} 索引，据此从子会话提供者取回
  * 子 trace，用同一套线性扫描抽出事件，挂在该工具事件的 {@code subtasks} 上，供前端还原成 task-group。
  * 子会话是新建的空会话，没有历史渲染，所以子代理的最终回答正文也要回放。</p>
  *
@@ -313,6 +313,11 @@ public class LastTraceService {
                     continue;
                 }
 
+                ToolMessage resultMsg = findToolResult(messages, i, call, c);
+                if (isRejectedDelegation(call, resultMsg)) {
+                    continue;
+                }
+
                 Map<String, Object> turn = new LinkedHashMap<>();
                 turn.put("kind", KIND_TOOL);
                 // 同一条 AssistantMessage 的思考、正文与工具卡共享 group（前端据此生成 reasonId）
@@ -324,7 +329,6 @@ public class LastTraceService {
                 // tool.start 用模型给的原始参数（与实时流一致：展示层过滤只作用于 tool.end）
                 turn.put("args", copyArgs(call.getArguments()));
 
-                ToolMessage resultMsg = findToolResult(messages, i, call, c);
                 if (resultMsg == null) {
                     // 工具已发起但结果未落库：仍在执行中 / 被中断
                     turn.put("done", false);
@@ -376,7 +380,7 @@ public class LastTraceService {
      * 回放「还没写进工作记忆的那一步」：工具执行期间，引擎要等这一步的工具全部执行完，才把调用与结果
      * 成对写进工作记忆，此前调用只在 {@link ReActTrace#getLastReasonMessage()} 里。
      *
-     * <p>输出这一步的思考与正文；工具只输出能关联到子会话的 task/multitask 调用（done=false，挂上子代理过程）。
+     * <p>输出这一步的思考与正文；工具只输出能关联到子会话的 task / task_start 调用（done=false，挂上子代理过程）。
      * 其余调用不输出：同一批里排在前面的可能已执行完，但结果无处可取，画出来只会是一张假的转圈卡片；
      * 运行中的那张卡由实时 tool.end 补上。</p>
      *
@@ -420,7 +424,7 @@ public class LastTraceService {
                 continue;
             }
             if (TaskTalent.TOOL_TASK.equals(call.getName()) == false
-                    && TaskTalent.TOOL_MULTITASK.equals(call.getName()) == false) {
+                    && TaskTalent.TOOL_TASK_START.equals(call.getName()) == false) {
                 continue;
             }
 
@@ -445,6 +449,22 @@ public class LastTraceService {
             turn.put("subtasks", subtasks);
             events.add(turn);
         }
+    }
+
+    /**
+     * 没有启动子任务就被拒的 task / task_start 调用（结果是错误且不带子任务索引：续跑撞车、找不到代理、嵌套、父代理已停止等）。
+     * 实时流里它没有任何卡片（task 系列是内部工具、也没有 task.start），回放同样不画，否则刷新后多出一张。
+     * 不带索引但成功的是 4.1.1 的旧数据，仍按普通工具卡显示。
+     */
+    static boolean isRejectedDelegation(ToolCall call, ToolMessage resultMsg) {
+        if (resultMsg == null || resultMsg.isError() == false) {
+            return false;
+        }
+        if (TaskTalent.TOOL_TASK.equals(call.getName()) == false
+                && TaskTalent.TOOL_TASK_START.equals(call.getName()) == false) {
+            return false;
+        }
+        return (resultMsg.getMetadataAs(TaskTalent.META_SUBTASKS) instanceof List) == false;
     }
 
     /** 这一步是否已成对写进工作记忆（按调用 uuid 判定） */
@@ -479,36 +499,24 @@ public class LastTraceService {
             return out;
         }
 
-        if (TaskTalent.TOOL_TASK.equals(call.getName())) {
-            addArgsItem(out, args, 1);
-        } else if (args.get("tasks") instanceof List) {
-            int i = 0;
-            for (Object t : (List<?>) args.get("tasks")) {
-                i++;
-                if (t instanceof Map) {
-                    Map<?, ?> op = (Map<?, ?>) t;
-                    addArgsItem(out, op, op.get("index") == null ? i : op.get("index"));
-                }
-            }
-        }
+        addArgsItem(out, args);
         return out;
     }
 
-    private static void addArgsItem(List<Map<String, Object>> out, Map<?, ?> op, Object index) {
+    private static void addArgsItem(List<Map<String, Object>> out, Map<?, ?> op) {
         String taskId = asString(op.get("task_id"));
         if (TaskTalent.isTaskId(taskId) == false) {
             return;
         }
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("taskId", taskId);
-        item.put("index", index);
         item.put("agentName", asString(op.get("agent_name")));
         item.put("description", asString(op.get("description")));
         out.add(item);
     }
 
     /**
-     * 按 task/multitask 结果上的子任务索引取回子代理过程。
+     * 按 task / task_start 结果上的子任务索引取回子代理过程（旧版本数据可能一次多项）。
      */
     private List<Map<String, Object>> extractSubtasks(ToolMessage resultMsg, String callId,
                                                       Function<String, AgentSession> subtaskOf, Budget budget) {
@@ -530,7 +538,7 @@ public class LastTraceService {
      * （{@link TaskTalent#META_PARENT_CALL_ID}）的那一段，见 {@link #sliceByCall}；成败优先取索引项上本次调用的
      * status / failureKind（子会话 meta 只记最近一次）。</p>
      *
-     * @param callId        这些子任务所属的父 task/multitask 调用（ToolCall uuid）；null 时不切片（旧口径）
+     * @param callId        这些子任务所属的父 task / task_start 调用（ToolCall uuid）；null 时不切片（旧口径）
      * @param requireLatest 只收子会话 parentCallId 与 callId 相等的项（运行中索引的反向校验：
      *                      不等说明还没启动，或已被后来的调用续跑）
      */
@@ -579,7 +587,6 @@ public class LastTraceService {
 
             Map<String, Object> st = new LinkedHashMap<>();
             st.put("taskId", taskId);
-            st.put("index", ref.get("index"));
             st.put("agentName", agentName);
             st.put("description", asString(ref.get("description")));
             if (ref.get("status") != null) {

@@ -20,7 +20,6 @@ import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.ReActOptionsAmend;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
-import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallStartEvent;
 import org.noear.solon.ai.chat.ChatModel;
@@ -158,8 +157,6 @@ final class DesktopRunSink implements RunSink {
             msg = converter.onToolCallStartEvent((ToolCallStartEvent) event, sessionId);
         } else if (event instanceof ToolCallEndEvent) {
             msg = converter.onToolCallEndEvent((ToolCallEndEvent) event, sessionId);
-        } else if (event instanceof ReasonEndEvent) {
-            msg = converter.onReasonEndEvent((ReasonEndEvent) event, sessionId);
         }
         if (Assert.isNotEmpty(msg)) {
             gate.streamHub.emit(sessionId, msg);

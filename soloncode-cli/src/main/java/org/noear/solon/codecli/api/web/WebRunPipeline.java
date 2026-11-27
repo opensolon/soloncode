@@ -96,7 +96,8 @@ public final class WebRunPipeline {
     }
 
     /**
-     * 本轮被取消或失败时，给还没结算的子任务组各补一个 status=interrupted 的 task.done（取出即清空，只补一次）。
+     * 本轮结束时（被取消、失败，或正常完成但有随轮次结束被取消的后台子任务），给还没结算的子任务组各补一个
+     * status=interrupted 的 task.done（取出即清空，只补一次）。
      *
      * <p>停止之后子代理的事件不再下发，前端只能靠本页「是否点过停止」去猜：别的标签页、IM 或程序发起的停止，
      * 本页会把还在运行的组按完成结算（绿勾），刷新后才变成「被中断」。由后端明确告知，所有页面一致，
@@ -112,7 +113,6 @@ public final class WebRunPipeline {
                     .parentTaskId(sp == null ? null : sp.getParentTaskId())
                     .title(sp == null ? start.getTaskDescription() : sp.getTitle())
                     .status(TASK_STATUS_INTERRUPTED)
-                    .isMultitask(sp != null && sp.isMultitask())
                     .build());
             done.setSessionId(start.getSessionId());
             done.setRunId(start.getRunId());

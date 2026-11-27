@@ -41,12 +41,11 @@ public final class ToolViewUtil {
     /**
      * 是否为内部工具（不在对话流中渲染工具卡片）。
      *
-     * <p>task/multitask 由 task-group 承载，memory/goal 属于系统侧动作。</p>
+     * <p>task / task_start / task_wait / task_stop 由 task-group 承载，memory/goal 属于系统侧动作。</p>
      */
     public static boolean isInternalTool(String toolName) {
         return Assert.isEmpty(toolName) ||
-                TaskTalent.TOOL_MULTITASK.equals(toolName) ||
-                TaskTalent.TOOL_TASK.equals(toolName) ||
+                TaskTalent.isTaskTool(toolName) ||
                 MemoryTalent.isMemoryTool(toolName) ||
                 GoalTalent.isGoalTool(toolName);
     }
@@ -54,16 +53,19 @@ public final class ToolViewUtil {
     /**
      * 历史回放时是否隐藏该工具卡片。
      *
-     * <p>与 {@link #isInternalTool(String)} 故意不同：实时流里 task/multitask 被隐藏，是因为
+     * <p>与 {@link #isInternalTool(String)} 故意不同：实时流里委派工具被隐藏，是因为
      * 子代理自己的工具事件会另外汇聚成一个 task-group 来承载它；而子代理的过程记在它自己的
      * trace 里，主 trace 的 WorkingMemory 只留下一次 task 调用与其最终产出。回放若同样隐藏，
      * 整段子代理工作就会凭空消失（用户看到的正是「有些工具调用没显示」）。因此回放放行
-     * task/multitask，退化为一张普通工具卡展示其最终产出。</p>
+     * task / task_start：带子任务索引的换成子过程卡片，没有索引的退化为一张普通工具卡展示其产出。
+     * task_wait / task_stop 两条路径都隐藏：它们取回的结果就是子过程卡片的结论，再出一张卡是重复。</p>
      *
      * <p>memory/goal 属于系统侧动作，两条路径下都不展示。</p>
      */
     public static boolean isReplayHidden(String toolName) {
         return Assert.isEmpty(toolName) ||
+                TaskTalent.TOOL_TASK_WAIT.equals(toolName) ||
+                TaskTalent.TOOL_TASK_STOP.equals(toolName) ||
                 MemoryTalent.isMemoryTool(toolName) ||
                 GoalTalent.isGoalTool(toolName);
     }
