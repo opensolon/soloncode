@@ -9,9 +9,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.stubbing.Answer;
+import org.noear.solon.ai.agent.Agent;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentTrace;
+import org.noear.solon.ai.agent.react.ReActAgent;
 import org.noear.solon.ai.agent.react.ReActRequest;
 import org.noear.solon.ai.agent.react.ReActResponse;
 import org.noear.solon.ai.agent.react.ReActTrace;
@@ -38,7 +40,9 @@ import org.noear.solon.ai.harness.command.CommandRegistry;
 import org.noear.solon.ai.harness.command.MarkdownCommand;
 import org.noear.solon.ai.harness.command.ParsedCommand;
 import org.noear.solon.ai.harness.command.builtin.ClearCommand;
+import org.noear.solon.ai.harness.command.builtin.ContinueCommand;
 import org.noear.solon.ai.harness.command.builtin.HelpCommand;
+import org.noear.solon.ai.harness.command.builtin.ModelCommand;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
@@ -125,12 +129,14 @@ public class AcpStdioTest {
         when(engine.getExtension(any())).thenReturn(Optional.empty());
         when(engine.interrupt(any(), any())).thenReturn(HarnessResult.ok(true));
 
-        // 斜杠命令："/" 前缀 + 引擎工作区；注册表与生产一致只含 help / markdown / 终端命令
+        // 斜杠命令："/" 前缀 + 引擎工作区；注册表覆盖已发布类与终端/改写类（后者不得漏出）
         when(engine.getCommandPrefix()).thenReturn("/");
         when(engine.getWorkspace()).thenReturn(tempDir.toString());
         when(engine.getLocale()).thenReturn(Locale.ENGLISH);
         CommandRegistry commands = new CommandRegistry();
         commands.register(new HelpCommand());
+        commands.register(new ContinueCommand());
+        commands.register(new ModelCommand());
         commands.register(new MarkdownCommand("review", "Review $ARGUMENTS", "Review changes", null));
         MarkdownCommand disabled = spy(new MarkdownCommand("disabled", "unused", "Disabled", null));
         doReturn(false).when(disabled).isEnabled();
@@ -990,11 +996,13 @@ public class AcpStdioTest {
         assertEquals(sessionId, announcement.at("/params/sessionId").asText());
         JsonNode list = announcement.at("/params/update/availableCommands");
         assertTrue(list.isArray());
-        assertEquals(2, list.size());
-        assertEquals("help", list.get(0).path("name").asText());
-        assertEquals("[command]", list.get(0).at("/input/hint").asText());
-        assertEquals("review", list.get(1).path("name").asText());
-        assertEquals("Review changes", list.get(1).path("description").asText());
+        assertEquals(4, list.size());
+        assertEquals("continue", list.get(0).path("name").asText());
+        assertEquals("help", list.get(1).path("name").asText());
+        assertEquals("[command]", list.get(1).at("/input/hint").asText());
+        assertEquals("model", list.get(2).path("name").asText());
+        assertEquals("review", list.get(3).path("name").asText());
+        assertEquals("Review changes", list.get(3).path("description").asText());
 
         for (String method : Arrays.asList("session/load", "session/resume")) {
             start = client.received.size();
@@ -1006,10 +1014,10 @@ public class AcpStdioTest {
             assertNull(resp.get("error"), method + " error: " + resp);
             JsonNode update = singleAnnouncementSince(start);
             assertEquals(sessionId, update.at("/params/sessionId").asText());
-            assertEquals(2, update.at("/params/update/availableCommands").size(), method);
+            assertEquals(4, update.at("/params/update/availableCommands").size(), method);
         }
 
-        // 非引擎工作区的会话：Markdown 自定义命令不外借，只广播 help
+        // 非引擎工作区的会话：Markdown 自定义命令不外借，只广播会话级内置命令
         Path other = tempDir.resolve("other-ws");
         java.nio.file.Files.createDirectories(other);
         start = client.received.size();
@@ -1019,8 +1027,8 @@ public class AcpStdioTest {
         JsonNode resp = request("session/new", p);
         assertNull(resp.get("error"), resp.toString());
         JsonNode otherList = singleAnnouncementSince(start).at("/params/update/availableCommands");
-        assertEquals(1, otherList.size());
-        assertEquals("help", otherList.get(0).path("name").asText());
+        assertEquals(Arrays.asList("continue", "help", "model"),
+                otherList.findValuesAsText("name"), otherList.toString());
     }
 
     /** 从 start 起恰好一条命令广播（多一条少一条都算失败） */
@@ -1085,6 +1093,109 @@ public class AcpStdioTest {
         assertEquals("end_turn", resp.at("/result/stopReason").asText(), resp.toString());
 
         assertEquals(Arrays.asList("Review main", "/clear", "/review main [fixture.txt]"), texts);
+    }
+
+    @Test
+    @DisplayName("/model：列出模型、切换会话模型并回广播 config_option_update，全程不起任务")
+    void prompt_modelSwitchPublishesFullConfigWithoutRunningAnAgent() throws Exception {
+        String sessionId = newSession();
+
+        ChatConfig gpt5 = new ChatConfig();
+        gpt5.setName("gpt-5");
+        gpt5.setModel("gpt-5");
+        gpt5.setStandard("openai");
+        ChatConfig alt = new ChatConfig();
+        alt.setName("alt-model");
+        alt.setModel("alt-model");
+        alt.setStandard("openai");
+        when(engine.getModels()).thenReturn(Arrays.asList(gpt5, alt));
+        when(engine.getModelOrDef("alt-model")).thenReturn(alt);
+
+        // /model ls：列出启用模型（不夹带 ANSI 控制符）
+        int start = client.received.size();
+        JsonNode lsResp = prompt(sessionId, "/model ls");
+        assertEquals("end_turn", lsResp.at("/result/stopReason").asText(), lsResp.toString());
+        String listText = client.received.subList(start, client.received.size()).stream()
+                .filter(node -> "session/update".equals(node.path("method").asText()))
+                .map(node -> node.at("/params/update"))
+                .filter(u -> "agent_message_chunk".equals(u.path("sessionUpdate").asText()))
+                .map(u -> u.at("/content/text").asText())
+                .collect(Collectors.joining());
+        assertTrue(listText.contains("gpt-5"), listText);
+        assertTrue(listText.contains("alt-model"), listText);
+        assertFalse(listText.contains("\u001b"), listText);
+
+        // /model alt-model：写入会话选择并回广播全量 configOptions（先于响应）
+        start = client.received.size();
+        JsonNode swResp = prompt(sessionId, "/model alt-model");
+        assertEquals("end_turn", swResp.at("/result/stopReason").asText(), swResp.toString());
+        assertEquals("alt-model", engine.getSessionModel(backendSession(sessionId)));
+        List<JsonNode> updates = client.received.subList(start, client.received.size()).stream()
+                .filter(node -> "session/update".equals(node.path("method").asText()))
+                .filter(node -> sessionId.equals(node.at("/params/sessionId").asText()))
+                .filter(node -> "config_option_update".equals(node.at("/params/update/sessionUpdate").asText()))
+                .collect(Collectors.toList());
+        assertEquals(1, updates.size(), updates.toString());
+        JsonNode options = updates.get(0).at("/params/update/configOptions");
+        assertTrue(options.isArray());
+        assertEquals("alt-model", findOption(options, AcpSessionConfig.MODEL).get("currentValue").asText());
+        assertNotNull(findOption(options, "effort"));
+        assertNotNull(findOption(options, "mode"));
+
+        // /model not-found：不改选择、不回广播
+        start = client.received.size();
+        JsonNode nfResp = prompt(sessionId, "/model not-found");
+        assertEquals("end_turn", nfResp.at("/result/stopReason").asText(), nfResp.toString());
+        assertEquals("alt-model", engine.getSessionModel(backendSession(sessionId)));
+        assertTrue(client.received.subList(start, client.received.size()).stream()
+                .noneMatch(node -> "config_option_update".equals(node.at("/params/update/sessionUpdate").asText())));
+        verify(engine, never()).handle(any(HarnessInput.class));
+    }
+
+    @Test
+    @DisplayName("/continue：只续未完成的轨迹；无 trace 或已收口时只回执、不动历史")
+    void prompt_continueOnlyResumesAnUnfinishedTrace() throws Exception {
+        String sessionId = newSession();
+
+        // 无 trace：只回执 COMMAND_CONTINUE_NONE，不进引擎
+        JsonNode none = prompt(sessionId, "/continue");
+        assertEquals("end_turn", none.at("/result/stopReason").asText(), none.toString());
+        verify(engine, never()).handle(any(HarnessInput.class));
+
+        // 已收口轨迹（route=end）：同样不续流、不动历史
+        AgentSession session = backendSession(sessionId);
+        ReActTrace trace = spy(new ReActTrace());
+        doReturn(Prompt.of("work")).when(trace).getOriginalPrompt();
+        trace.setRoute(Agent.ID_END);
+        session.getContext().put(TraceUtil.TRACE_KEY_MAIN, trace);
+        session.getMessages().add(new AssistantMessage("finished", ""));
+
+        JsonNode ended = prompt(sessionId, "/continue");
+        assertEquals("end_turn", ended.at("/result/stopReason").asText(), ended.toString());
+        verify(engine, never()).handle(any(HarnessInput.class));
+        assertEquals(Agent.ID_END, trace.getRoute());
+        assertEquals("finished", ((AssistantMessage) session.getMessages().get(0)).getText());
+
+        // 未完成轨迹（route=reason）：直接以空文本 resume，不命令识别、不动已完成答复
+        trace.setRoute(ReActAgent.ID_REASON);
+        List<HarnessInput> captured = new CopyOnWriteArrayList<>();
+        ReActRequest react = mock(ReActRequest.class);
+        when(react.stream()).thenReturn(Flux.empty());
+        doAnswer(inv -> {
+            HarnessInput in = inv.getArgument(0);
+            captured.add(in);
+            return InputOutcome.task(null, "main", "gpt-5", react);
+        }).when(engine).handle(any(HarnessInput.class));
+
+        JsonNode resumed = prompt(sessionId, "/continue");
+        assertEquals("end_turn", resumed.at("/result/stopReason").asText(), resumed.toString());
+        assertEquals(1, captured.size());
+        HarnessInput resume = captured.get(0);
+        assertTrue(resume.isResume());
+        assertNull(resume.getText());
+        assertFalse(resume.isCommandAware());
+        assertSame(session, resume.getSession());
+        assertEquals("finished", ((AssistantMessage) session.getMessages().get(0)).getText());
     }
 
     // ─────────────────── 线协议客户端 ───────────────────

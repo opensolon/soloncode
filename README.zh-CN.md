@@ -127,7 +127,7 @@ ACP 与终端 CLI 共用 SolonCode 的会话执行和持久化逻辑；每个 AC
 
 **斜杠命令**
 
-创建、加载或恢复会话时，SolonCode 通过标准 `available_commands_update` 广播可用指令。在 ACP 客户端中输入 `/help` 查看列表；与引擎工作区一致时，也可运行已加载的 Markdown 自定义命令。依赖终端、改写历史或调度后台任务的命令不会发布。
+创建、加载或恢复会话时，SolonCode 通过标准 `available_commands_update` 广播可用指令。在 ACP 客户端中输入 `/help` 查看列表、`/model` 列出或切换当前会话模型、`/continue` 续跑仍未结束的上次轮次（不撤回已完成答复）。与引擎工作区一致时，也可运行已加载的 Markdown 自定义命令。依赖终端、改写历史或调度后台任务的命令不会发布。
 
 **审批与权限**
 

@@ -8,11 +8,13 @@ import com.agentclientprotocol.sdk.error.AcpProtocolException;
 import com.agentclientprotocol.sdk.json.TypeRef;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import com.agentclientprotocol.sdk.spec.AcpSchema;
+import org.noear.solon.ai.agent.Agent;
 import org.noear.solon.ai.agent.AgentEvent;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.AgentSessionProvider;
 import org.noear.solon.ai.agent.AgentTrace;
 import org.noear.solon.ai.agent.react.AbsReActEvent;
+import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.intercept.ContextSizeEvent;
 import org.noear.solon.ai.agent.react.intercept.HITL;
@@ -28,6 +30,7 @@ import org.noear.solon.ai.chat.message.AssistantMessage;
 import org.noear.solon.ai.chat.message.ChatMessage;
 import org.noear.solon.ai.chat.message.ToolMessage;
 import org.noear.solon.ai.chat.message.UserMessage;
+import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
 import org.noear.solon.ai.talents.cli.TerminalTalent;
 import org.noear.solon.ai.chat.content.ImageBlock;
@@ -37,18 +40,23 @@ import org.noear.solon.ai.harness.agent.TaskTalent;
 import org.noear.solon.ai.harness.command.Command;
 import org.noear.solon.ai.harness.command.MarkdownCommand;
 import org.noear.solon.ai.harness.command.ParsedCommand;
+import org.noear.solon.ai.harness.command.builtin.ContinueCommand;
 import org.noear.solon.ai.harness.command.builtin.HelpCommand;
+import org.noear.solon.ai.harness.command.builtin.ModelCommand;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.HostSignal;
 import org.noear.solon.ai.harness.host.RunOutcome;
 import org.noear.solon.ai.harness.host.RunPrep;
 import org.noear.solon.ai.harness.host.RunSink;
+import org.noear.solon.ai.harness.i18n.HarnessI18n;
+import org.noear.solon.ai.harness.i18n.HarnessI18nKeys;
 import org.noear.solon.ai.harness.input.BusyPolicy;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.RejectReason;
 import org.noear.solon.ai.harness.session.HarnessAttrs;
+import org.noear.solon.ai.harness.util.TraceUtil;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
@@ -88,6 +96,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -298,14 +307,33 @@ public class AcpLink implements Runnable {
                     Command selected = command == null ? null : available.stream()
                             .filter(item -> item.name().equals(command.getName()))
                             .findFirst().orElse(null);
-                    String help = selected instanceof HelpCommand
-                            ? HelpCommand.formatHelp(available, command.argAt(0), false, agentRuntime.getLocale()) : null;
+                    Supplier<Mono<Void>> localReply = null;
+                    if (selected instanceof HelpCommand) {
+                        localReply = () -> acpContext.sendMessage(
+                                HelpCommand.formatHelp(available, command.argAt(0), false, agentRuntime.getLocale()));
+                    } else if (selected instanceof ModelCommand) {
+                        localReply = () -> modelCommand(agentRef.get(), acpContext, session, command);
+                    } else if (selected instanceof ContinueCommand) {
+                        if (command.argCount() != 0) {
+                            localReply = () -> acpContext.sendMessage(
+                                    HelpCommand.formatHelp(available, "continue", false, agentRuntime.getLocale()));
+                        } else {
+                            ReActTrace trace = TraceUtil.getCurrentTrace(session);
+                            if (trace == null || Prompt.isEmpty(trace.getOriginalPrompt()) || Agent.ID_END.equals(trace.getRoute())) {
+                                localReply = () -> acpContext.sendMessage(
+                                        HarnessI18n.get(agentRuntime.getLocale(), HarnessI18nKeys.COMMAND_CONTINUE_NONE));
+                            } else {
+                                // 只续未完成的轨迹，不调用会撤掉末尾消息的 CLI /continue。
+                                input = HarnessInput.of((String) null).resume(true);
+                            }
+                        }
+                    }
                     // 忙时直接拒绝：一问一答，排队的那一轮没有出口。
                     return prompt(acpContext, sessionId, input
                             .commandAware(selected instanceof MarkdownCommand)
                             .agentAware(false)
                             .whenBusy(BusyPolicy.REJECT)
-                            .selectedModel(snapshot.model), context, snapshot, help);
+                            .selectedModel(snapshot.model), context, snapshot, localReply);
                 })
                 .build();
 
@@ -314,9 +342,9 @@ public class AcpLink implements Runnable {
     }
 
     /**
-     * 本会话可发布 / 可执行的斜杠命令：只含 {@link HelpCommand} 与（工作区即引擎工作区时）
-     * 已启用的 {@link MarkdownCommand}。终端专属、改写历史、排队 / 插话 / 后台调度等
-     * CLI 命令在 ACP 侧没有出口，一律不发布。
+     * 本会话可发布 / 可执行的斜杠命令：{@link HelpCommand}、会话级的 {@link ContinueCommand}
+     * 与 {@link ModelCommand}，外加（工作区即引擎工作区时）已启用的 {@link MarkdownCommand}。
+     * 终端专属、改写历史、排队 / 插话 / 后台调度等 CLI 命令在 ACP 侧没有出口，一律不发布。
      */
     private List<Command> availableCommands(String cwd) {
         if (!"/".equals(agentRuntime.getCommandPrefix())) {
@@ -327,6 +355,8 @@ public class AcpLink implements Runnable {
         return agentRuntime.getCommandRegistry().all().stream()
                 .filter(command -> !command.terminalOnly())
                 .filter(command -> command.getClass() == HelpCommand.class
+                        || command.getClass() == ContinueCommand.class
+                        || command.getClass() == ModelCommand.class
                         || (includeMarkdown && command.getClass() == MarkdownCommand.class))
                 .filter(command -> SLASH_COMMAND_NAME.matcher(command.name()).matches()
                         && command.name().equals(command.name().toLowerCase(Locale.ROOT)))
@@ -354,10 +384,48 @@ public class AcpLink implements Runnable {
         Locale locale = agentRuntime.getLocale();
         List<AcpSchema.AvailableCommand> commands = availableCommands(cwd).stream()
                 .map(command -> new AcpSchema.AvailableCommand(command.name(), command.description(locale),
-                        command instanceof HelpCommand ? new AcpSchema.AvailableCommandInput("[command]") : null))
+                        command instanceof HelpCommand ? new AcpSchema.AvailableCommandInput("[command]")
+                                : command instanceof ModelCommand ? new AcpSchema.AvailableCommandInput("[ls | help | model]")
+                                : null))
                 .collect(Collectors.toList());
         return agent.sendSessionUpdate(sessionId,
                 new AcpSchema.AvailableCommandsUpdate("available_commands_update", commands));
+    }
+
+    /**
+     * {@code /model} 的 ACP 版实现：列模型、帮助与切换都只对当前会话生效。
+     *
+     * <p>切换经 {@link AcpSessionConfig#set} 持久化会话选择并回广播全量 configOptions
+     * （标准 config_option_update），与 set_config_option 同一条写路径；不触碰全局模型。</p>
+     */
+    private Mono<Void> modelCommand(AcpAsyncAgent agent, PromptContext context, AgentSession session,
+                                    ParsedCommand command) {
+        Locale locale = agentRuntime.getLocale();
+        String value = command.getArgsJoined();
+        if ("help".equals(value)) {
+            return context.sendMessage(HelpCommand.formatHelp(Collections.singletonList(new ModelCommand()),
+                    "model", false, locale));
+        }
+        if (value.isEmpty() || "ls".equals(value)) {
+            String list = String.join("\n", ModelCommand.formatModels(agentRuntime.getModels(),
+                    sessionConfig.snapshot(session).model, locale)).replaceAll("\\x1b\\[[0-9;]*m", "");
+            return context.sendMessage(list);
+        }
+        if (agentRuntime.status(session).isOccupied()) {
+            return Mono.error(new AcpProtocolException(AcpErrorCodes.CONCURRENT_PROMPT,
+                    "Session is busy: " + context.getSessionId()));
+        }
+        List<AcpSchema.SessionConfigOption> options;
+        try {
+            options = sessionConfig.set(session, AcpSessionConfig.MODEL, value);
+        } catch (AcpProtocolException e) {
+            if (e.getCode() != AcpErrorCodes.INVALID_PARAMS) {
+                return Mono.error(e);
+            }
+            return context.sendMessage(HarnessI18n.fmt(locale, HarnessI18nKeys.COMMAND_MODEL_NOT_FOUND, "name", value));
+        }
+        return agent.sendSessionUpdate(context.getSessionId(), new AcpSchema.ConfigOptionUpdate("config_option_update", options))
+                .then(context.sendMessage(HarnessI18n.fmt(locale, HarnessI18nKeys.COMMAND_MODEL_SWITCHED, "name", value)));
     }
 
     /**
@@ -373,7 +441,8 @@ public class AcpLink implements Runnable {
      */
     private Mono<AcpSchema.PromptResponse> prompt(PromptContext acpContext, String sessionId,
                                                   HarnessInput input, AcpSessionContext context,
-                                                  AcpSessionConfig.Snapshot snapshot, String help) {
+                                                  AcpSessionConfig.Snapshot snapshot,
+                                                  Supplier<Mono<Void>> localReply) {
         final AtomicInteger toolCallCounter = new AtomicInteger(0);
         final AcpTurn turn = new AcpTurn();
 
@@ -384,9 +453,9 @@ public class AcpLink implements Runnable {
                     "Session already has an active turn: " + sessionId));
         }
 
-        Mono<AcpSchema.PromptResponse> work = help != null
-                ? Mono.defer(() -> acpContext.sendMessage(help)
-                        .thenReturn(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN)))
+        Mono<AcpSchema.PromptResponse> work = localReply != null
+                ? Mono.defer(localReply)
+                        .thenReturn(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN))
                 : host.stream(TENANT, sessionId, input, prepare(context, snapshot))
                 .concatMap(signal -> toAcp(signal, acpContext, sessionId, toolCallCounter,
                         context, snapshot, turn))
