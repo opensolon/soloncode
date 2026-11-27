@@ -89,10 +89,12 @@ public class FilerWebController extends AbstractWebController {
     @Post
     @Mapping("/web/chat/filer/write")
     public Result<Map> fileWrite(@Body String body,
-                                 @Param(value = "mount", required = false) String workspace) throws Exception {
+                                 @Param(value = "mount", required = false) String workspace,
+                                 @Param(value = "path", required = false) String queryPath) throws Exception {
         ONode json = parseJsonBody(body);
         ONode pathNode = json == null ? null : json.get("path");
-        String path = (pathNode != null && pathNode.isString()) ? pathNode.getString() : null;
+        // 路径优先取请求体，缺省时回退查询串（与 /web/chat/filer/read 传参方式一致）
+        String path = (pathNode != null && pathNode.isString()) ? pathNode.getString() : queryPath;
         ONode contentNode = json == null ? null : json.get("content");
         String content = (contentNode != null && contentNode.isString()) ? contentNode.getString() : null;
         return fileService().write(workspace, path, content);

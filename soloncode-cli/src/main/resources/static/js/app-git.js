@@ -2004,7 +2004,7 @@
         fetch(url + '?' + query, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: content })
+            body: JSON.stringify({ path: st.apiPath, content: content })
         })
         .then(function(r) { return r.json(); })
         .then(function(res) {
@@ -2034,6 +2034,7 @@
     function gitActionError(res) {
         if (!res) return I18n.t('toast.unknownError');
         if (res.message) return res.message;
+        if (res.description) return res.description;
         if (res.data && res.data.message) return res.data.message;
         return I18n.t('toast.unknownError');
     }
