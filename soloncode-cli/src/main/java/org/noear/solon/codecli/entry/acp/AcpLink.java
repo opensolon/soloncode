@@ -918,11 +918,10 @@ public class AcpLink implements Runnable {
 
     /**
      * 内部工具（不向 ACP 客户端展示）判定，与 WebStreamBuilder 保持一致：
-     * 任务分发工具（task/multitask）、记忆工具、目标工具。
+     * 任务分发工具（task / task_start / task_wait / task_stop）、记忆工具、目标工具。
      */
     private boolean isInternalTool(String toolName) {
-        return TaskTalent.TOOL_MULTITASK.equals(toolName)
-                || TaskTalent.TOOL_TASK.equals(toolName)
+        return TaskTalent.isTaskTool(toolName)
                 || MemoryTalent.isMemoryTool(toolName)
                 || GoalTalent.isGoalTool(toolName);
     }

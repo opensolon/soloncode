@@ -23,7 +23,6 @@ import org.noear.solon.ai.agent.react.ReActTrace;
 import org.noear.solon.ai.chat.ChatModel;
 import org.noear.solon.ai.agent.react.RunEndEvent;
 import org.noear.solon.ai.agent.react.task.ReasonDeltaEvent;
-import org.noear.solon.ai.agent.react.task.ReasonEndEvent;
 import org.noear.solon.ai.agent.react.task.ToolCallEndEvent;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.agent.TaskTalent;
@@ -179,8 +178,6 @@ class CliHostSink implements HostSink {
         public void event(AgentEvent chunk) {
             if (chunk instanceof ReasonDeltaEvent) {
                 onReasonDelta((ReasonDeltaEvent) chunk);
-            } else if (chunk instanceof ReasonEndEvent) {
-                onReasonEnd((ReasonEndEvent) chunk);
             } else if (chunk instanceof ToolCallEndEvent) {
                 onToolCallEnd((ToolCallEndEvent) chunk);
             } else if (chunk instanceof RunEndEvent) {
@@ -251,19 +248,6 @@ class CliHostSink implements HostSink {
             return text.replace("\n", "\n  ");
         }
 
-        private void onReasonEnd(ReasonEndEvent e) {
-            // 仅在多任务并行且有内容时输出
-            if (e.hasMeta(TaskTalent.TOOL_MULTITASK)) {
-                String content = e.getText();
-                if (Assert.isNotEmpty(content)) {
-                    terminal.writer().println();
-                    terminal.writer().print("  " + content.trim().replace("\n", "\n  "));
-                    terminal.writer().println();
-                    terminal.flush();
-                }
-            }
-        }
-
         private void onRunEnd(RunEndEvent e) {
             ReActTrace trace = e.getTrace();
             if (trace == null) {
@@ -280,7 +264,7 @@ class CliHostSink implements HostSink {
                 return;
             }
             String toolName = e.getToolName();
-            if (TaskTalent.TOOL_MULTITASK.equals(toolName) || TaskTalent.TOOL_TASK.equals(toolName)
+            if (TaskTalent.isTaskTool(toolName)
                     || MemoryTalent.isMemoryTool(toolName) || GoalTalent.isGoalTool(toolName)) {
                 return;
             }

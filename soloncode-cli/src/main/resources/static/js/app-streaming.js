@@ -558,7 +558,7 @@ function discardPendingSteers(sess) {
  * steer_applied 可能紧跟 thought.delta 到达，后面既没有正文也没有工具事件，
  * 因而常规的 appendContentChunk / appendActionStartChunk 无机会调用
  * finishThinkingBlock，思考 header 会一直保留 streaming/spinner 状态。
- * 只收尾当前 segment，不能遍历全局 reasonGroups，否则 multitask 并行时会截断
+ * 只收尾当前 segment，不能遍历全局 reasonGroups，否则多个后台子任务并行时会截断
  * 其它子代理仍在输出的思考流。
  */
 function finishThinkingBeforeSteer(sess) {
@@ -582,7 +582,7 @@ function finishThinkingBeforeSteer(sess) {
 /** thought.done 专用：结束指定 segment 内某个 reasonId 的思考块（停转转）。
  *
  * 后端 THINKING_END 帧（思考流闭合）转发为 thought.done，事件本身携带 reasonId。
- * 只收尾匹配的那一组，不能遍历 segment.reasonEntries 全量：multitask 并行时多个
+ * 只收尾匹配的那一组，不能遍历 segment.reasonEntries 全量：多个后台子任务并行时多个
  * task-group 的思考流交错到达，全量收尾会截断其它子任务仍在流式输出的思考块。
  * 匹配不到（该轮无思考块，如纯文本轮）时静默跳过；segment 缺失时兑底旧式单槽。
  */
@@ -1980,7 +1980,7 @@ function replayLastTrace(sess, data, anchorRow) {
          * 组内多段交替是安全的：正文到来时 finishThinkingBlock 会把思考块收尾并置空，
          * 下一段思考于是新建一个块，按 DOM 顺序追加在正文之后。 */
         /* 子代理过程：后端从子会话取回了子 trace，就像实时流那样还原成 task-group，
-         * 并同样隐藏 task/multitask 主卡。取不到子会话（过期 / 未落盘）时不带 subtasks，退回普通工具卡。 */
+         * 并同样隐藏 task / task_start 主卡。取不到子会话（过期 / 未落盘）时不带 subtasks，退回普通工具卡。 */
         if (e.kind === 'tool' && e.subtasks && e.subtasks.length) {
             replayed += replaySubtasks(sess, runId, e.subtasks, running, e.callId);
             continue;
@@ -2058,7 +2058,7 @@ function replayTraceEvent(sess, runId, reasonId, e, running, task) {
 }
 
 /* 回放子代理过程：task.start → 子事件（带 taskId）→ task.done，复用实时流的 task-group 渲染。
- *  - 组键 parentCallId + taskId（parentCallId = 所属 task/multitask 调用的 callId）：同一子任务续跑过多次时，
+ *  - 组键 parentCallId + taskId（parentCallId = 所属 task / task_start 调用的 callId）：同一子任务续跑过多次时，
  *    每次调用一组，后端已按调用切好各自那段过程与成败；
  *  - 实时流已建过该组（运行中刷新、WS 早于快照）：交给实时流继续，不重复回放；
  *  - 终态：success → 绿勾；failure → 红叉；仍是 running 而整轮已结束（进程中途退出）或因用户停止而失败
@@ -2126,7 +2126,7 @@ function collectReplayedGroups(sess, events) {
         var g = e.group || 1;
         if (!stat[g]) stat[g] = { total: 0, seen: 0 };
         stat[g].total++;
-        // 带子代理过程的 task/multitask 不出主卡：以它的 task-group 是否都已在 DOM 为准
+        // 带子代理过程的 task / task_start 不出主卡：以它的 task-group 是否都已在 DOM 为准
         if (e.subtasks && e.subtasks.length) {
             var allSeen = true;
             for (var k = 0; k < e.subtasks.length; k++) {

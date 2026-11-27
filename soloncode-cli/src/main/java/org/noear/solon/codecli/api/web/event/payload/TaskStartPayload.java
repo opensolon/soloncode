@@ -20,7 +20,4 @@ public class TaskStartPayload implements Serializable {
     private String parentTaskId;
     private String title;
     private String agentName;
-    /** multitask 中的声明序号（1 起）；单任务恒为 1 */
-    private int taskIndex;
-    private boolean isMultitask;
 }

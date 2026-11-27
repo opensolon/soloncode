@@ -68,8 +68,6 @@ public class WebEventMapper {
         String taskId = null;
         String parentCallId = null;
         String taskDescription = null;
-        boolean isMultitask = false;
-        int taskIndex = 0;
 
         if (event instanceof TaskWrapEvent) {
             TaskWrapEvent twc = (TaskWrapEvent) event;
@@ -87,8 +85,6 @@ public class WebEventMapper {
                 parentCallId = twc.getParentCallId();
                 taskAgentName = twc.getTaskAgentName();
                 taskDescription = twc.getTaskDescription();
-                isMultitask = twc.isMultitask();
-                taskIndex = twc.getTaskIndex();
                 event = twc.getRealEvent();
             }
         }
@@ -118,7 +114,7 @@ public class WebEventMapper {
             fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
             result.add(evt);
         } else if (event instanceof ReasonEndEvent) {
-            WebEvent<?> evt = onReasonEndEvent(session, (ReasonEndEvent) event, taskAgentName, isMultitask);
+            WebEvent<?> evt = onReasonEndEvent(session, (ReasonEndEvent) event);
             fillMeta(evt, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
             result.add(evt);
         } else if (event instanceof HITLPendingEvent) {
@@ -160,7 +156,7 @@ public class WebEventMapper {
             if (taskId != null) {
                 // 子代理 ReAct 启动：发 task.start 让前端先建 task-group 占位。
                 // 主代理的 RunStartEvent 不外发（整轮开始由 HTTP 响应自身表达，无需事件）。
-                WebEvent<?> taskStart = onTaskStartEvent(parentRunId, taskId, taskIndex, taskAgentName, taskDescription, isMultitask);
+                WebEvent<?> taskStart = onTaskStartEvent(parentRunId, taskId, taskAgentName, taskDescription);
                 fillMeta(taskStart, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
                 result.add(taskStart);
             }
@@ -169,7 +165,7 @@ public class WebEventMapper {
                 // 子代理 ReAct 结束：仅发 task.done 让前端结算对应 task-group，
                 // 绝不输出 system.trace —— trace 是整轮主代理的收尾统计，子代理输出会导致
                 // 前端在 task-group 外多渲染一条 trace 徽标（“子代理任务完成后也输出 trace”）。
-                WebEvent<?> taskDone = onTaskDoneEvent((RunEndEvent) event, parentRunId, taskId, taskAgentName, taskDescription, isMultitask);
+                WebEvent<?> taskDone = onTaskDoneEvent((RunEndEvent) event, parentRunId, taskId, taskDescription);
                 fillMeta(taskDone, session, parentRunId, taskId, reasonId, taskAgentName, taskDescription, event.getRunId());
                 result.add(taskDone);
             } else {
@@ -349,7 +345,7 @@ public class WebEventMapper {
     /**
      * 专门向 im 推行执行过程
      */
-    private WebEvent<?> onReasonEndEvent(AgentSession session, ReasonEndEvent event, String taskAgentName, boolean isMultitask) {
+    private WebEvent<?> onReasonEndEvent(AgentSession session, ReasonEndEvent event) {
         //如果流已取消，则不输出
 
         String sessionId = session.getSessionId();
@@ -387,29 +383,28 @@ public class WebEventMapper {
         return WebEvent.EMPTY;
     }
 
-    private WebEvent<?> onTaskStartEvent(String runId, String taskId, int taskIndex,
-                                         String taskAgentName, String taskDescription, boolean isMultitask) {
+    private WebEvent<?> onTaskStartEvent(String runId, String taskId,
+                                         String taskAgentName, String taskDescription) {
         return WebEvent.of(WebEventNames.TASK_START, TaskStartPayload.builder()
                 .taskId(taskId)
                 .parentTaskId(runId)
                 .title(taskDescription)
                 .agentName(taskAgentName)
-                .taskIndex(taskIndex)
-                .isMultitask(isMultitask)
                 .build());
     }
 
     private WebEvent<?> onTaskDoneEvent(RunEndEvent event, String runId, String taskId,
-                                        String taskAgentName, String taskDescription, boolean isMultitask) {
-        // 与任务结果同口径：模型服务失败 / 回合用尽才算失败。不看 isAbnormal()：
-        // returnDirect 工具与 Feedback 也会标异常结束，但任务是完成了的
-        boolean failed = (event != null && TaskTalent.failureKindOf(event) != null);
+                                        String taskDescription) {
+        // 与任务结果同口径：被停止（task_stop、轮次结束、父代理被停止）为被中断，模型服务失败 / 回合用尽算失败。
+        // 不看 isAbnormal()：returnDirect 工具与 Feedback 也会标异常结束，但任务是完成了的
+        String failureKind = (event == null) ? null : TaskTalent.failureKindOf(event);
+        String status = failureKind == null ? "done"
+                : (TaskTalent.isStopKind(failureKind) ? "interrupted" : "error");
         return WebEvent.of(WebEventNames.TASK_DONE, TaskDonePayload.builder()
                 .taskId(taskId)
                 .parentTaskId(runId)
                 .title(taskDescription)
-                .status(failed ? "error" : "done")
-                .isMultitask(isMultitask)
+                .status(status)
                 .build());
     }
 

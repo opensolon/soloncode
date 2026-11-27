@@ -53,7 +53,7 @@ public class WebEvent<T> implements Serializable {
     private String taskId;
 
     /**
-     * 发起该子任务调用的父 task / multitask 工具调用 id (可选)：与 taskId 平级，等于父流 tool.start 的 callId。
+     * 发起该子任务调用的父 task / task_start 工具调用 id (可选)：与 taskId 平级，等于父流 tool.start 的 callId。
      * 同一子任务带 task_id 续跑时 taskId 不变、本字段不同，前端据此每次调用建一个 task 组（组键 parentCallId + taskId）。
      */
     private String parentCallId;

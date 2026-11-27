@@ -111,6 +111,35 @@ public class LastTraceServiceTest {
     }
 
     @Test
+    public void rejected_delegation_should_not_be_replayed() {
+        /* 没启动子任务就被拒的 task_start（如续跑撞车）实时流里没有卡片，刷新后也不能多出一张；
+         * 不带索引但成功的（4.1.1 旧数据）仍按普通工具卡显示；别的工具的错误照常显示。 */
+        ReActTrace trace = new ReActTrace();
+
+        ToolCall rejected = new ToolCall("0", "call_1", TaskTalent.TOOL_TASK_START, "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, rejected));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool(
+                ToolResult.error("<task_result>ERROR: still running</task_result>"), TaskTalent.TOOL_TASK_START, "call_1", false));
+
+        ToolCall legacy = new ToolCall("1", "call_2", TaskTalent.TOOL_TASK, "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, legacy));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool(
+                ToolResult.success("<task_result>ok</task_result>"), TaskTalent.TOOL_TASK, "call_2", false));
+
+        ToolCall bad = new ToolCall("2", "call_3", "edit", "{}", new HashMap<>());
+        trace.getWorkingMemory().addMessage(newToolCallMessage(null, bad));
+        trace.getWorkingMemory().addMessage(ChatMessage.ofTool(
+                ToolResult.error("文件不存在"), "edit", "call_3", false));
+
+        List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), false, null));
+        List<Object> names = new ArrayList<>();
+        for (Map<?, ?> e : events) {
+            names.add(e.get("name"));
+        }
+        assertEquals(Arrays.asList(TaskTalent.TOOL_TASK, "edit"), names, "被拒的委派不回放");
+    }
+
+    @Test
     public void tool_error_flag_should_be_replayed() {
         /* 成败由结构化标记回放：前端据此渲染错误样式，不再匹配「成功完成」之类文案
          * （文案随语言变化，匹配必然失效）。 */
@@ -757,12 +786,11 @@ public class LastTraceServiceTest {
         store.put(taskId, sub);
     }
 
-    private Map<String, Object> indexItem(String taskId, int index) {
+    private Map<String, Object> indexItem(String taskId, int n) {
         Map<String, Object> item = new HashMap<>();
         item.put("taskId", taskId);
-        item.put("index", index);
         item.put("agentName", "explore");
-        item.put("description", "d" + index);
+        item.put("description", "d" + n);
         return item;
     }
 
@@ -780,25 +808,23 @@ public class LastTraceServiceTest {
     }
 
     @Test
-    public void pending_multitask_should_attach_started_subtasks_via_running_index() {
+    public void pending_task_start_should_attach_started_subtask_via_running_index() {
         Map<String, AgentSession> store = new HashMap<>();
         AgentSessionProvider subSessions = (id, parentId, create) -> store.get(id);
         String started = "task-0123456789abcdef0123456789abcdef";
-        String queued = "task-fedcba9876543210fedcba9876543210";
 
         ReActTrace trace = mainTraceWithOneDoneStep();
         ToolCall sibling = new ToolCall("0", "call_g", "grep", "{}", new HashMap<>());
-        ToolCall multi = new ToolCall("1", "call_m", TaskTalent.TOOL_MULTITASK, "{}", new HashMap<>());
+        ToolCall multi = new ToolCall("1", "call_m", TaskTalent.TOOL_TASK_START, "{}", new HashMap<>());
         trace.setLastReasonMessage(new AssistantMessage("分头去查", "拆成两路", Arrays.asList(sibling, multi), null));
         Map<String, Object> running = new HashMap<>();
-        running.put(multi.getUuid(), Arrays.asList(indexItem(started, 1), indexItem(queued, 2)));
+        running.put(multi.getUuid(), Arrays.asList(indexItem(started, 1)));
         trace.setExtra(TaskTalent.EXTRA_RUNNING_SUBTASKS, running);
-        // 已启动的有子会话；排队中的还没有
         putSubSession(store, started, multi.getUuid(), TaskTalent.STATUS_RUNNING);
 
         List<Map<?, ?>> events = events(service.buildLastTrace(newSession(trace), true, null, subSessions));
         assertEquals(Arrays.asList("tool", "thinking", "note", "tool"), kinds(events),
-                "执行中的一步：思考、正文与能关联到子会话的 multitask；同批的 grep 不输出");
+                "执行中的一步：思考、正文与能关联到子会话的 task_start；同批的 grep 不输出");
         assertEquals(2, events.get(1).get("group"), "执行中的一步单独成组");
         assertEquals(2, events.get(3).get("group"));
 
@@ -806,7 +832,7 @@ public class LastTraceServiceTest {
         assertEquals(multi.getUuid(), turn.get("callId"));
         assertEquals(false, turn.get("done"));
         List<?> subtasks = (List<?>) turn.get("subtasks");
-        assertEquals(1, subtasks.size(), "还没启动的不挂");
+        assertEquals(1, subtasks.size());
         Map<?, ?> st = (Map<?, ?>) subtasks.get(0);
         assertEquals(started, st.get("taskId"));
         assertEquals(TaskTalent.STATUS_RUNNING, st.get("status"));

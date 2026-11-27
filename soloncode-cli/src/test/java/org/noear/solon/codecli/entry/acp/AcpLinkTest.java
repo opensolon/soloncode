@@ -32,7 +32,7 @@ import static org.mockito.Mockito.*;
  *   <li>buildToolTitle — 简化/全量模式、start/end 阶段、子代理前缀</li>
  *   <li>buildToolContent — write/edit diff、其余文本块、空输出</li>
  *   <li>buildLocations — file_path/offset 提取</li>
- *   <li>isInternalTool — task/multitask/memory_/goal_ 过滤</li>
+ *   <li>isInternalTool — task/task_start/task_wait/task_stop/memory_/goal_ 过滤</li>
  *   <li>resolveToolCallId — callId 优先、序号兜底</li>
  *   <li>summary — 截断逻辑</li>
  *   <li>firstNonEmpty — 多 key 回退</li>
@@ -744,9 +744,11 @@ public class AcpLinkTest {
     }
 
     @Test
-    @DisplayName("isInternalTool: multitask → true")
-    void isInternalTool_multitask() {
-        assertTrue(invokeIsInternalTool("multitask"));
+    @DisplayName("isInternalTool: task_start / task_wait / task_stop → true")
+    void isInternalTool_backgroundTask() {
+        assertTrue(invokeIsInternalTool("task_start"));
+        assertTrue(invokeIsInternalTool("task_wait"));
+        assertTrue(invokeIsInternalTool("task_stop"));
     }
 
     @Test

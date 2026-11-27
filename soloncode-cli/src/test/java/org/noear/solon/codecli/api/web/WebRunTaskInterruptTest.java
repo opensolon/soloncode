@@ -66,8 +66,7 @@ class WebRunTaskInterruptTest {
     private static TaskWrapEvent wrap(String parentCallId, String taskId, AgentEvent real) {
         ReActTrace parent = mock(ReActTrace.class);
         when(parent.getRunId()).thenReturn("run-1");
-        TaskTalent.MultiTaskOp op = new TaskTalent.MultiTaskOp();
-        op.index = 1;
+        TaskTalent.SingleTaskOp op = new TaskTalent.SingleTaskOp();
         op.agent_name = "explore";
         op.description = "查代码 " + taskId;
         return new TaskWrapEvent(parent, parentCallId, taskId, op, true, real);
@@ -128,9 +127,10 @@ class WebRunTaskInterruptTest {
     }
 
     @Test
-    void completedRunDoesNotEmit() throws Exception {
+    void completedRunInterruptsBackgroundLeftovers() throws Exception {
+        // 正常完成时还开着的组只可能是随这一轮结束被取消的后台子任务（task_start）：同样补「被中断」
         List<String> emitted = runFinished(outcome(RunOutcome.End.COMPLETED, null));
-        assertFalse(emitted.contains(WebEventNames.TASK_DONE + ":interrupted"), "正常完成的一轮不补：" + emitted);
+        assertTrue(emitted.contains(WebEventNames.TASK_DONE + ":interrupted"), "后台子任务随轮次结束被取消，应补：" + emitted);
     }
 
     /** 本轮有一个已开始、未结束的子任务组，然后以 outcome 结束：返回下发给前端的事件（task.done 带状态） */

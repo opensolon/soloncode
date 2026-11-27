@@ -127,9 +127,11 @@ final class WebRunSink implements RunSink {
                 }
                 begin(); // 开流前失败：先解封前端流门，错误才看得见
             }
-            if (pipeline != null && (outcome.isCancelled() || outcome.isFailed())) {
+            if (pipeline != null) {
                 // 停止后子代理事件不再下发：未结算的子任务组由后端明确标为被中断（不受停止屏障影响，广播到所有页面），
-                // 不靠发起停止的那个页面自己猜；先于 error / trace / done，组先结算
+                // 不靠发起停止的那个页面自己猜；先于 error / trace / done，组先结算。
+                // 正常完成也要补：后台子任务（task_start）没取回的随这一轮结束被取消，它的结束事件不再转发
+                // （同步 task 在本轮内一定已结算，不会留在这里）
                 for (WebEvent<?> e : pipeline.interruptOpenTasks()) {
                     gate.emitToClient(ctx, sessionId, e);
                 }
