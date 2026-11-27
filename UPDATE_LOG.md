@@ -1,6 +1,8 @@
 
 ### vNEXT
 
+* 添加 soloncode 异步 task
+* 添加 soloncode 图片对话识别功能（例：“看下 xxx.jpg”）
 
 ### v2026.11.26
 
