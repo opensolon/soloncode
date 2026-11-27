@@ -34,6 +34,10 @@ import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.InterruptMode;
 import org.noear.solon.ai.harness.agent.TaskTalent;
+import org.noear.solon.ai.harness.command.Command;
+import org.noear.solon.ai.harness.command.MarkdownCommand;
+import org.noear.solon.ai.harness.command.ParsedCommand;
+import org.noear.solon.ai.harness.command.builtin.HelpCommand;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.host.HarnessHost;
 import org.noear.solon.ai.harness.host.HostSignal;
@@ -59,9 +63,11 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 
+import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -71,6 +77,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -82,6 +89,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 public class AcpLink implements Runnable {
     private static final Logger LOG = LoggerFactory.getLogger(AcpLink.class);
@@ -103,6 +111,12 @@ public class AcpLink implements Runnable {
      */
     private static final Pattern SESSION_ID_PATTERN = Pattern.compile(
             "acp-(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+
+    /**
+     * 可发布为 ACP 斜杠命令的命令名形态：字母 / 数字 / `_` `.` `:` `-`，且必须全小写——
+     * 名字不规则的注册项不进补全清单，客户端无从输入的命令没有意义。
+     */
+    private static final Pattern SLASH_COMMAND_NAME = Pattern.compile("[\\p{L}\\p{N}_.:-]+");
 
     private final HarnessEngine agentRuntime;
     private final AcpAgentTransport agentTransport;
@@ -142,7 +156,7 @@ public class AcpLink implements Runnable {
     }
 
     public AcpAsyncAgent createAgent(AcpAgentTransport transport) {
-        // 会话建立/恢复响应要在结果之前回放历史，回放走 agent 自身的 session/update 通道
+        // 会话建立/恢复响应要在结果之前回放历史、广播可用命令，都走 agent 自身的 session/update 通道
         final AtomicReference<AcpAsyncAgent> agentRef = new AtomicReference<>();
 
         AcpAsyncAgent agent = AcpAgent.async(new AcpSetupTransport(transport))
@@ -180,8 +194,10 @@ public class AcpLink implements Runnable {
 
                     sessionStates.put(sessionId, new AcpSessionContext(cwd, req.mcpServers()));
 
-                    return Mono.just(new AcpSchema.NewSessionResponse(sessionId, null, null,
-                            Collections.singletonMap(CONFIG_OPTIONS, (Object) sessionConfig.options(session))));
+                    // 先广播可用斜杠命令（available_commands_update），再给响应
+                    return announceCommands(agentRef.get(), sessionId, cwd)
+                            .thenReturn(new AcpSchema.NewSessionResponse(sessionId, null, null,
+                                    Collections.singletonMap(CONFIG_OPTIONS, (Object) sessionConfig.options(session))));
                 })
                 .loadSessionHandler(req -> {
                     // load 恢复已存在的会话：校验身份与归属、绑定工作区，再把历史回放给客户端
@@ -190,18 +206,18 @@ public class AcpLink implements Runnable {
                     Map<String, Object> meta =
                             Collections.singletonMap(CONFIG_OPTIONS, (Object) sessionConfig.options(session));
                     AcpAsyncAgent acpAgent = agentRef.get();
-                    if (acpAgent == null) {
-                        return Mono.just(new AcpSchema.LoadSessionResponse(null, null, meta));
-                    }
-                    // 先回放（保持消息序），再给结果
+                    // 先回放（保持消息序），再广播可用命令，最后给结果
                     return replayHistory(acpAgent, session)
-                            .then(Mono.just(new AcpSchema.LoadSessionResponse(null, null, meta)));
+                            .then(Mono.defer(() -> announceCommands(acpAgent, req.sessionId(),
+                                    agentRuntime.getSessionCwd(session))))
+                            .thenReturn(new AcpSchema.LoadSessionResponse(null, null, meta));
                 })
                 .resumeSessionHandler(req -> {
                     // resume 与 load 同校验，只是不回放（本地入口自己持有对话上下文）
                     AgentSession session = attachSession(req.sessionId(), req.cwd(), req.mcpServers());
-                    return Mono.just(new AcpSchema.ResumeSessionResponse(null, null,
-                            Collections.singletonMap(CONFIG_OPTIONS, (Object) sessionConfig.options(session))));
+                    return announceCommands(agentRef.get(), req.sessionId(), agentRuntime.getSessionCwd(session))
+                            .thenReturn(new AcpSchema.ResumeSessionResponse(null, null,
+                                    Collections.singletonMap(CONFIG_OPTIONS, (Object) sessionConfig.options(session))));
                 })
                 .setSessionConfigOptionHandler(req -> {
                     String sessionId = req.sessionId();
@@ -274,18 +290,74 @@ public class AcpLink implements Runnable {
                     // Read the saved selection; HarnessHost binds the input to the session by ID.
                     AcpSessionConfig.Snapshot snapshot = sessionConfig.snapshot(session);
 
-                    // ACP 客户端文本不构成命令语义，与既有直通行为保持一致。
-                    // 忙时直接拒绝：一问一答，排队的那一轮没有出口（本次响应返回后没人接续发）
-                    return prompt(acpContext, sessionId, toInput(request, context.getCwd())
-                            .commandAware(false)
+                    HarnessInput input = toInput(request, context.getCwd());
+                    // Only a text-only prompt can invoke a command, never text assembled from attachments.
+                    ParsedCommand command = request.prompt().stream().allMatch(AcpSchema.TextContent.class::isInstance)
+                            ? ParsedCommand.parse(input.getText()) : null;
+                    List<Command> available = command == null ? Collections.emptyList() : availableCommands(context.getCwd());
+                    Command selected = command == null ? null : available.stream()
+                            .filter(item -> item.name().equals(command.getName()))
+                            .findFirst().orElse(null);
+                    String help = selected instanceof HelpCommand
+                            ? HelpCommand.formatHelp(available, command.argAt(0), false, agentRuntime.getLocale()) : null;
+                    // 忙时直接拒绝：一问一答，排队的那一轮没有出口。
+                    return prompt(acpContext, sessionId, input
+                            .commandAware(selected instanceof MarkdownCommand)
                             .agentAware(false)
                             .whenBusy(BusyPolicy.REJECT)
-                            .selectedModel(snapshot.model), context, snapshot);
+                            .selectedModel(snapshot.model), context, snapshot, help);
                 })
                 .build();
 
         agentRef.set(agent);
         return agent;
+    }
+
+    /**
+     * 本会话可发布 / 可执行的斜杠命令：只含 {@link HelpCommand} 与（工作区即引擎工作区时）
+     * 已启用的 {@link MarkdownCommand}。终端专属、改写历史、排队 / 插话 / 后台调度等
+     * CLI 命令在 ACP 侧没有出口，一律不发布。
+     */
+    private List<Command> availableCommands(String cwd) {
+        if (!"/".equals(agentRuntime.getCommandPrefix())) {
+            return Collections.emptyList();
+        }
+        boolean includeMarkdown = isEngineWorkspace(cwd);
+        // ACP does not share the terminal or support commands that rewrite history or schedule background turns.
+        return agentRuntime.getCommandRegistry().all().stream()
+                .filter(command -> !command.terminalOnly())
+                .filter(command -> command.getClass() == HelpCommand.class
+                        || (includeMarkdown && command.getClass() == MarkdownCommand.class))
+                .filter(command -> SLASH_COMMAND_NAME.matcher(command.name()).matches()
+                        && command.name().equals(command.name().toLowerCase(Locale.ROOT)))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 会话工作区是否就是引擎工作区：只有一致时才发布该工作区加载的 Markdown 自定义命令，
+     * 其它目录的会话不能借用引擎工作区的私有命令。
+     */
+    private boolean isEngineWorkspace(String cwd) {
+        String workspace = agentRuntime.getWorkspace();
+        if (workspace == null || workspace.isEmpty()) {
+            return false;
+        }
+        try {
+            return Files.isSameFile(Paths.get(cwd), Paths.get(workspace));
+        } catch (IOException | InvalidPathException e) {
+            return false;
+        }
+    }
+
+    /** 会话建立（new / load / resume）响应之前，以标准 available_commands_update 广播可用命令 */
+    private Mono<Void> announceCommands(AcpAsyncAgent agent, String sessionId, String cwd) {
+        Locale locale = agentRuntime.getLocale();
+        List<AcpSchema.AvailableCommand> commands = availableCommands(cwd).stream()
+                .map(command -> new AcpSchema.AvailableCommand(command.name(), command.description(locale),
+                        command instanceof HelpCommand ? new AcpSchema.AvailableCommandInput("[command]") : null))
+                .collect(Collectors.toList());
+        return agent.sendSessionUpdate(sessionId,
+                new AcpSchema.AvailableCommandsUpdate("available_commands_update", commands));
     }
 
     /**
@@ -301,7 +373,7 @@ public class AcpLink implements Runnable {
      */
     private Mono<AcpSchema.PromptResponse> prompt(PromptContext acpContext, String sessionId,
                                                   HarnessInput input, AcpSessionContext context,
-                                                  AcpSessionConfig.Snapshot snapshot) {
+                                                  AcpSessionConfig.Snapshot snapshot, String help) {
         final AtomicInteger toolCallCounter = new AtomicInteger(0);
         final AcpTurn turn = new AcpTurn();
 
@@ -312,7 +384,10 @@ public class AcpLink implements Runnable {
                     "Session already has an active turn: " + sessionId));
         }
 
-        Mono<AcpSchema.PromptResponse> work = host.stream(TENANT, sessionId, input, prepare(context, snapshot))
+        Mono<AcpSchema.PromptResponse> work = help != null
+                ? Mono.defer(() -> acpContext.sendMessage(help)
+                        .thenReturn(new AcpSchema.PromptResponse(AcpSchema.StopReason.END_TURN)))
+                : host.stream(TENANT, sessionId, input, prepare(context, snapshot))
                 .concatMap(signal -> toAcp(signal, acpContext, sessionId, toolCallCounter,
                         context, snapshot, turn))
                 .onErrorResume(e -> {

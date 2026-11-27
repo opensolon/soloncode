@@ -4,6 +4,7 @@ import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
 import com.agentclientprotocol.sdk.json.AcpJsonMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
@@ -32,6 +33,12 @@ import org.noear.solon.ai.chat.prompt.Prompt;
 import org.noear.solon.ai.chat.tool.ToolCall;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
+import org.noear.solon.ai.harness.command.CommandDispatcher;
+import org.noear.solon.ai.harness.command.CommandRegistry;
+import org.noear.solon.ai.harness.command.MarkdownCommand;
+import org.noear.solon.ai.harness.command.ParsedCommand;
+import org.noear.solon.ai.harness.command.builtin.ClearCommand;
+import org.noear.solon.ai.harness.command.builtin.HelpCommand;
 import org.noear.solon.ai.harness.hitl.HitlCard;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.harness.input.InputOutcome;
@@ -40,6 +47,7 @@ import org.noear.solon.ai.harness.session.OwnerCheck;
 import org.noear.solon.ai.harness.session.SessionSelections;
 import org.noear.solon.ai.harness.session.SessionStatus;
 import org.noear.solon.ai.harness.util.TraceUtil;
+import org.noear.solon.codecli.command.builtin.ExitCommand;
 import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionManager;
 import reactor.core.publisher.Flux;
@@ -116,6 +124,22 @@ public class AcpStdioTest {
         }).when(engine).setSessionCwd(any(), anyString());
         when(engine.getExtension(any())).thenReturn(Optional.empty());
         when(engine.interrupt(any(), any())).thenReturn(HarnessResult.ok(true));
+
+        // 斜杠命令："/" 前缀 + 引擎工作区；注册表与生产一致只含 help / markdown / 终端命令
+        when(engine.getCommandPrefix()).thenReturn("/");
+        when(engine.getWorkspace()).thenReturn(tempDir.toString());
+        when(engine.getLocale()).thenReturn(Locale.ENGLISH);
+        CommandRegistry commands = new CommandRegistry();
+        commands.register(new HelpCommand());
+        commands.register(new MarkdownCommand("review", "Review $ARGUMENTS", "Review changes", null));
+        MarkdownCommand disabled = spy(new MarkdownCommand("disabled", "unused", "Disabled", null));
+        doReturn(false).when(disabled).isEnabled();
+        commands.register(disabled);
+        commands.register(new ClearCommand());
+        commands.register(new ExitCommand());
+        when(engine.getCommandRegistry()).thenReturn(commands);
+        when(engine.getSessionCwd(any())).thenAnswer(
+                inv -> (String) ((AgentSession) inv.getArgument(0)).attrs().get(HarnessEngine.ATTR_CWD));
 
         ChatConfig model = new ChatConfig();
         model.setName("gpt-5");
@@ -205,6 +229,12 @@ public class AcpStdioTest {
         block.put("type", "text");
         block.put("text", text);
         return request("session/prompt", p);
+    }
+
+    /** session/update 里的可用命令广播（new / load / resume 前奏，与轮次更新分开断言） */
+    private static boolean isCommandAnnouncement(JsonNode node) {
+        return "session/update".equals(node.path("method").asText())
+                && "available_commands_update".equals(node.at("/params/update/sessionUpdate").asText());
     }
 
     /** 从 configOptions 数组里取指定 id 的 select 节点 */
@@ -552,6 +582,7 @@ public class AcpStdioTest {
         assertEquals("end_turn", response.at("/result/stopReason").asText(), response.toString());
         return client.received.stream()
                 .filter(node -> "session/update".equals(node.path("method").asText()))
+                .filter(node -> !isCommandAnnouncement(node))
                 .map(node -> node.at("/params/update"))
                 .filter(update -> !"config_option_update".equals(update.path("sessionUpdate").asText()))
                 .collect(Collectors.toList());
@@ -810,6 +841,9 @@ public class AcpStdioTest {
         List<Integer> updateIdx = new ArrayList<>();
         for (int i = 0; i < client.received.size(); i++) {
             JsonNode node = client.received.get(i);
+            if (isCommandAnnouncement(node)) {
+                continue;
+            }
             if ("session/update".equals(node.path("method").asText())) {
                 kinds.add(node.at("/params/update/sessionUpdate").asText());
                 updateIdx.add(i);
@@ -852,11 +886,14 @@ public class AcpStdioTest {
         p.putArray("mcpServers");
         JsonNode resumed = request("session/resume", p);
         assertNull(resumed.get("error"), resumed.toString());
-        assertTrue(client.received.stream().noneMatch(node -> "session/update".equals(node.path("method").asText())));
+        assertTrue(client.received.stream()
+                .noneMatch(node -> "session/update".equals(node.path("method").asText())
+                        && !isCommandAnnouncement(node)));
         JsonNode response = request("session/load", p);
         assertNull(response.get("error"), response.toString());
         List<JsonNode> updates = client.received.stream()
                 .filter(node -> "session/update".equals(node.path("method").asText()))
+                .filter(node -> !isCommandAnnouncement(node))
                 .peek(node -> assertEquals(sessionId, node.at("/params/sessionId").asText()))
                 .map(node -> node.at("/params/update"))
                 .collect(Collectors.toList());
@@ -940,6 +977,114 @@ public class AcpStdioTest {
         assertNull(resp.get("error"), "prompt after foreign cancel: " + resp);
         assertEquals("end_turn", resp.at("/result/stopReason").asText(), resp.toString());
         verify(engine, never()).interrupt(any(), any());
+    }
+
+    // ─────────────────── 斜杠命令 ───────────────────
+
+    @Test
+    @DisplayName("session/new、load、resume：响应前以 available_commands_update 广播可用命令")
+    void setup_announcesAvailableCommandsWithoutAPrompt() throws Exception {
+        int start = client.received.size();
+        String sessionId = newSession();
+        JsonNode announcement = singleAnnouncementSince(start);
+        assertEquals(sessionId, announcement.at("/params/sessionId").asText());
+        JsonNode list = announcement.at("/params/update/availableCommands");
+        assertTrue(list.isArray());
+        assertEquals(2, list.size());
+        assertEquals("help", list.get(0).path("name").asText());
+        assertEquals("[command]", list.get(0).at("/input/hint").asText());
+        assertEquals("review", list.get(1).path("name").asText());
+        assertEquals("Review changes", list.get(1).path("description").asText());
+
+        for (String method : Arrays.asList("session/load", "session/resume")) {
+            start = client.received.size();
+            ObjectNode p = params();
+            p.put("sessionId", sessionId);
+            p.put("cwd", tempDir.toString());
+            p.putArray("mcpServers");
+            JsonNode resp = request(method, p);
+            assertNull(resp.get("error"), method + " error: " + resp);
+            JsonNode update = singleAnnouncementSince(start);
+            assertEquals(sessionId, update.at("/params/sessionId").asText());
+            assertEquals(2, update.at("/params/update/availableCommands").size(), method);
+        }
+
+        // 非引擎工作区的会话：Markdown 自定义命令不外借，只广播 help
+        Path other = tempDir.resolve("other-ws");
+        java.nio.file.Files.createDirectories(other);
+        start = client.received.size();
+        ObjectNode p = params();
+        p.put("cwd", other.toString());
+        p.putArray("mcpServers");
+        JsonNode resp = request("session/new", p);
+        assertNull(resp.get("error"), resp.toString());
+        JsonNode otherList = singleAnnouncementSince(start).at("/params/update/availableCommands");
+        assertEquals(1, otherList.size());
+        assertEquals("help", otherList.get(0).path("name").asText());
+    }
+
+    /** 从 start 起恰好一条命令广播（多一条少一条都算失败） */
+    private JsonNode singleAnnouncementSince(int start) {
+        List<JsonNode> updates = client.received.subList(start, client.received.size()).stream()
+                .filter(AcpStdioTest::isCommandAnnouncement)
+                .collect(Collectors.toList());
+        assertEquals(1, updates.size(), "announcements since " + start);
+        return updates.get(0);
+    }
+
+    @Test
+    @DisplayName("prompt: 仅已广播的命令生效——/help 直接回执、/review 展开任务、/clear 与含附件文本按原文")
+    void prompt_runsOnlyAdvertisedSlashCommands() throws Exception {
+        String sessionId = newSession();
+
+        // /help 不经引擎：直接回执命令清单（只列已发布的命令）
+        JsonNode helpResp = prompt(sessionId, "/help");
+        assertEquals("end_turn", helpResp.at("/result/stopReason").asText(), helpResp.toString());
+        verify(engine, never()).handle(any(HarnessInput.class));
+        String helpText = client.received.stream()
+                .filter(node -> "session/update".equals(node.path("method").asText()))
+                .map(node -> node.at("/params/update"))
+                .filter(u -> "agent_message_chunk".equals(u.path("sessionUpdate").asText()))
+                .map(u -> u.at("/content/text").asText())
+                .collect(Collectors.joining());
+        assertTrue(helpText.contains("/help -"), helpText);
+        assertTrue(helpText.contains("/review -"), helpText);
+        assertFalse(helpText.contains("/exit"), helpText);
+        assertFalse(helpText.contains("/clear"), helpText);
+
+        // 命令感知只放给已发布的 Markdown 命令；未发布的 /clear 按原文发给模型
+        List<String> texts = new CopyOnWriteArrayList<>();
+        ReActRequest react = mock(ReActRequest.class);
+        when(react.stream()).thenReturn(Flux.empty());
+        doAnswer(inv -> {
+            HarnessInput in = inv.getArgument(0);
+            if (in.isCommandAware()) {
+                return CommandDispatcher.dispatch(engine, in, ParsedCommand.parse(in.getText()));
+            }
+            texts.add(in.getText());
+            return InputOutcome.task(null, "main", "gpt-5", react);
+        }).when(engine).handle(any(HarnessInput.class));
+
+        assertEquals("end_turn", prompt(sessionId, "/review main").at("/result/stopReason").asText());
+        assertEquals("end_turn", prompt(sessionId, "/clear").at("/result/stopReason").asText());
+
+        // 混有附件块时 "/review main" 不解析为命令：拼出的原文原样送模型，不展开
+        Path fixture = tempDir.resolve("fixture.txt");
+        java.nio.file.Files.write(fixture, "x".getBytes(StandardCharsets.UTF_8));
+        ObjectNode p = params();
+        p.put("sessionId", sessionId);
+        ArrayNode blocks = p.putArray("prompt");
+        ObjectNode block = blocks.addObject();
+        block.put("type", "text");
+        block.put("text", "/review main");
+        ObjectNode link = blocks.addObject();
+        link.put("type", "resource_link");
+        link.put("name", "fixture.txt");
+        link.put("uri", fixture.toUri().toString());
+        JsonNode resp = request("session/prompt", p);
+        assertEquals("end_turn", resp.at("/result/stopReason").asText(), resp.toString());
+
+        assertEquals(Arrays.asList("Review main", "/clear", "/review main [fixture.txt]"), texts);
     }
 
     // ─────────────────── 线协议客户端 ───────────────────

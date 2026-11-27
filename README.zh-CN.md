@@ -125,6 +125,10 @@ ACP 与终端 CLI 共用 SolonCode 的会话执行和持久化逻辑；每个 AC
 | `_soloncode_thinking_mode` | `_soloncode_thinking_mode` | `auto` / `on` / `off` | 思考模式开关，独立于推理强度（自定义类别，非标准 ID） |
 | `mode` | `mode` | `ask` / `reject`（启用 HITL 时）；`configured`（未启用） | ACP 侧对 HITL 审批卡的处置方式 |
 
+**斜杠命令**
+
+创建、加载或恢复会话时，SolonCode 通过标准 `available_commands_update` 广播可用指令。在 ACP 客户端中输入 `/help` 查看列表；与引擎工作区一致时，也可运行已加载的 Markdown 自定义命令。依赖终端、改写历史或调度后台任务的命令不会发布。
+
 **审批与权限**
 
 工具审批沿用 SolonCode 的 HITL 体系（`general.hitlEnabled` 及既有工具/权限规则，ACP 不会放宽或绕过）：
