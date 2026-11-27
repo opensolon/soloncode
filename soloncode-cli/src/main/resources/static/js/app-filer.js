@@ -207,7 +207,7 @@
         return !!name && name !== '.' && name.indexOf('..') < 0 && !INVALID_CREATE_NAME_RE.test(name);
     }
 
-    /** 弹出名称输入框；校验不通过时提示并保留弹窗 */
+    /** 弹出名称输入框；校验不通过时在输入框下方提示并保留弹窗 */
     function promptCreateEntry(info, type) {
         var layer = window.layui && window.layui.layer;
         if (!layer || typeof layer.prompt !== 'function') return;
@@ -218,11 +218,16 @@
             value: '',
             maxlength: 255,
             success: function($layero) {
+                // 错误提示放在弹窗内（.filer-create-error，配色走主题变量），不用 layui tips 的黑色气泡；
+                // 输入框同时设 maxlength，layui 自带的超长 tips 也就不会出现
+                var $input = $layero.find('.layui-layer-input').attr('maxlength', 255);
+                var $error = $('<div class="filer-create-error" role="alert"></div>').insertAfter($input);
                 // 回车等同点击确定；输入法组合态下的回车（确认候选词）不提交。
                 // jQuery 事件对象不带 isComposing，需读 originalEvent；Safari 先发 compositionend
                 // 再发 keyCode 229 的 keydown，故同时判 229 并自记组合态（同 app-history.js isInputComposing）
                 var composingName = false;
-                $layero.find('.layui-layer-input')
+                $input
+                    .on('input', function() { $error.text(''); })
                     .on('compositionstart', function() { composingName = true; })
                     .on('compositionend', function() { setTimeout(function() { composingName = false; }, 0); })
                     .on('keydown', function(ev) {
@@ -235,7 +240,9 @@
         }, function(value, index, $input) {
             var name = (value || '').trim();
             if (!isValidCreateName(name)) {
-                layer.tips(I18n.t('filer.invalidName', '名称不能为空，不能含 / \\ : * ? " < > | 或 ..'), $input, { tips: 1 });
+                $input.siblings('.filer-create-error')
+                    .text(I18n.t('filer.invalidName', '名称不能为空，不能含 / \\ : * ? " < > | 或 ..'));
+                $input.focus();
                 return;
             }
             layer.close(index);

@@ -142,6 +142,28 @@ public class FileEditorWebContractTest {
         }
     }
 
+    @Test
+    @DisplayName("新建文件弹窗（layer.prompt）两种主题都跟随主题变量与皮肤，输入框无 focus 外圈")
+    void createPromptFollowsThemeAndSkin() throws IOException {
+        String js = resourceText("/static/js/app-filer.js");
+        String css = resourceText("/static/css/app.css");
+
+        String prompt = js.substring(js.indexOf("function promptCreateEntry(info, type)"), js.indexOf("function createEntry(info, name, type)"));
+        assertFalse(prompt.contains("layer.tips"), "校验错误不得用 layer.tips 的黑色气泡");
+        assertTrue(prompt.contains("filer-create-error"));
+
+        // 不带 [data-theme] 前缀：亮色主题也要生效
+        assertRule(css, ".layui-layer.layui-layer-prompt", "background-color: var(--bg-primary)");
+        assertRule(css, ".layui-layer-prompt .layui-layer-input", "background-color: var(--bg-input-box)",
+                "color: var(--text-primary)", "border: 1px solid var(--border-input)", "outline: none");
+        assertRule(css, ".layui-layer-prompt .layui-layer-input:focus-visible", "outline: none", "border-color: var(--accent)");
+        assertRule(css, ".layui-layer-prompt .layui-layer-btn .layui-layer-btn0",
+                "background-color: var(--accent-fill, var(--accent))");
+        assertRule(css, ".layui-layer-prompt .filer-create-error", "color: var(--error-text)");
+        assertFalse(css.contains("background-color: var(--accent) !important"),
+                "白字实心按钮必须用 --accent-fill（contrast 暗色皮肤 --accent 为浅灰）");
+    }
+
     private String resourceText(String path) throws IOException {
         try (InputStream in = FileEditorWebContractTest.class.getResourceAsStream(path)) {
             if (in == null) {

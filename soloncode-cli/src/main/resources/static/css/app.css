@@ -2714,7 +2714,8 @@ body.memory-active .main-header { display: none; }
 }
 [data-theme="dark"] .layui-layer-btn0 {
     border-color: transparent !important;
-    background-color: var(--accent) !important;
+    /* 白字实心按钮用 --accent-fill：contrast 皮肤暗色下 --accent 是 #e0e0e0，白字会看不见 */
+    background-color: var(--accent-fill, var(--accent)) !important;
     color: #fff !important;
 }
 [data-theme="dark"] .layui-layer-btn1 {
@@ -2762,6 +2763,65 @@ body.memory-active .main-header { display: none; }
     background-color: var(--bg-input-box);
     color: var(--text-primary);
     border-color: var(--border-input);
+}
+
+/* ===== LayUI prompt（输入弹窗，如「新建文件」）跟随主题与皮肤 =====
+ * 上面的适配只在暗色主题生效；亮色主题下 layer 是 layui 自带配色（纯白底、#1e9fff 按钮、固定 14px），
+ * 不跟 --accent 与皮肤。prompt 在两种主题下都改用主题变量，字号走 --fs-*（跟随用户字号缩放）。
+ * 输入框按全站输入框惯例：去掉 theme.css *:focus-visible 的外圈 outline，聚焦只把边框换成强调色。 */
+.layui-layer.layui-layer-prompt {
+    background-color: var(--bg-primary);
+    box-shadow: var(--shadow-lg);
+}
+.layui-layer-prompt .layui-layer-title {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-bottom-color: var(--border-color);
+    font-size: var(--fs-md);
+}
+.layui-layer-prompt .layui-layer-content {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+}
+.layui-layer-prompt .layui-layer-input {
+    background-color: var(--bg-input-box);
+    color: var(--text-primary);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    font-size: var(--fs-md);
+    outline: none;
+    transition: border-color 0.2s;
+}
+.layui-layer-prompt .layui-layer-input:focus,
+.layui-layer-prompt .layui-layer-input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+}
+.layui-layer-prompt .layui-layer-btn a {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    border-radius: 6px;
+    font-size: var(--fs-base);
+}
+.layui-layer-prompt .layui-layer-btn .layui-layer-btn0 {
+    border-color: transparent;
+    background-color: var(--accent-fill, var(--accent));
+    color: #fff;
+}
+.layui-layer-prompt .layui-layer-btn .layui-layer-btn0:hover {
+    opacity: 1;
+    filter: brightness(1.08);
+}
+/* 名称校验错误（app-filer.js promptCreateEntry），取代 layer.tips 的黑色气泡；预留一行高度，出错时弹窗不跳 */
+.layui-layer-prompt .filer-create-error {
+    width: 260px;
+    max-width: 100%;
+    margin: 6px auto 0;
+    min-height: calc(var(--fs-sm) * 1.5);
+    color: var(--error-text);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
 }
 
 /* ===== File Viewer (文件内容查看器) ===== */
