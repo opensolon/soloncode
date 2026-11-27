@@ -26,7 +26,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.InputStreamReader;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -482,6 +484,126 @@ public class FileService {
         data.put("lastModified", file.lastModified());
 
         return Result.succeed(data);
+    }
+
+    /** 新建类型：文件 */
+    public static final String CREATE_TYPE_FILE = "file";
+
+    /** 新建类型：文件夹 */
+    public static final String CREATE_TYPE_DIRECTORY = "directory";
+
+    /** 新建名称中不允许出现的字符（含路径分隔符，保证只建一层） */
+    private static final String INVALID_NAME_CHARS = "/\\:*?\"<>|";
+
+    /**
+     * 在工作区目录下新建一个空文件或一个文件夹（文件面板右键「新建文件 / 新建文件夹」）。
+     *
+     * <p>安全模型与 {@link #write(String, String, String)} 一致：目录路径含 ".." 拒绝、
+     * 解析后必须落在工作区根目录内、挂载必须可写、严格来源下符号链接目录拒绝。新建专属约束：</p>
+     * <ul>
+     *   <li>名称只能是单层（不得含路径分隔符等非法字符），不会顺带创建中间目录</li>
+     *   <li>所在目录必须已存在且是目录</li>
+     *   <li>目标已存在返回 409；由 {@link Files#createFile} / {@link Files#createDirectory}
+     *       原子判定，检查与创建之间并发出现同名项也不会覆盖已有内容</li>
+     * </ul>
+     *
+     * @param workspaceId 工作区标识（"workspace" 或挂载别名如 "@solon-ai"）
+     * @param dir         所在目录的相对路径，基于工作区根目录；为空表示根目录
+     * @param name        新文件或文件夹的名称（单层）
+     * @param type        {@link #CREATE_TYPE_FILE} 或 {@link #CREATE_TYPE_DIRECTORY}
+     * @return 新建项信息，包含 path、name、type
+     */
+    public Result<Map> create(String workspaceId, String dir, String name, String type) {
+        if (!CREATE_TYPE_FILE.equals(type) && !CREATE_TYPE_DIRECTORY.equals(type)) {
+            return Result.failure(400, "Invalid type: " + type);
+        }
+        if (dir == null) dir = "";
+        if (dir.contains("..")) {
+            return Result.failure(400, "Invalid path");
+        }
+        String fileName = name == null ? "" : name.trim();
+        if (!isValidCreateName(fileName)) {
+            return Result.failure(400, "Invalid name: " + fileName);
+        }
+
+        // 如果 workspaceId 未指定（null 或空），尝试从路径中的 @xxx/ 前缀解析
+        if (workspaceId == null || workspaceId.isEmpty()) {
+            String[] parsed = parseWorkspaceFromPath(dir);
+            workspaceId = parsed[0];
+            dir = parsed[1];
+        }
+
+        Path rootPath;
+        try {
+            rootPath = resolveRoot(workspaceId);
+        } catch (IllegalArgumentException e) {
+            return Result.failure(404, e.getMessage());
+        }
+
+        // 非默认工作区必须校验挂载可写
+        if (!"workspace".equals(workspaceId)) {
+            Mount mount = engine.getMount(workspaceId);
+            if (mount == null || !mount.isWritable()) {
+                return Result.failure(403, "Mount is readonly: " + workspaceId);
+            }
+        }
+        boolean followLinks = shouldFollowExternalLinks(workspaceId);
+
+        Path parent = rootPath.resolve(dir).toAbsolutePath().normalize();
+        if (!parent.startsWith(rootPath)) {
+            return Result.failure(403, "Access denied");
+        }
+        // 严格来源：链接目录不得作为新建位置，否则会把内容写到根外
+        if (!followLinks && !dir.isEmpty() && Files.isSymbolicLink(parent)) {
+            return Result.failure(403, "Access denied: symlink");
+        }
+        if (!Files.isDirectory(parent)) {
+            return Result.failure(404, "Directory not found");
+        }
+
+        Path target = parent.resolve(fileName).normalize();
+        if (!target.startsWith(parent) || !target.getParent().equals(parent)) {
+            return Result.failure(400, "Invalid name: " + fileName);
+        }
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            return Result.failure(409, "Already exists: " + fileName);
+        }
+
+        try {
+            if (CREATE_TYPE_DIRECTORY.equals(type)) {
+                Files.createDirectory(target);
+            } else {
+                Files.createFile(target);
+            }
+        } catch (FileAlreadyExistsException e) {
+            return Result.failure(409, "Already exists: " + fileName);
+        } catch (Exception e) {
+            return Result.failure(500, "Failed to create: " + e.getMessage());
+        }
+
+        String relPath = dir.isEmpty() ? fileName : (dir.replaceAll("[\\\\/]+$", "") + "/" + fileName);
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("path", relPath);
+        data.put("name", fileName);
+        data.put("type", type);
+        return Result.succeed(data);
+    }
+
+    /**
+     * 新建名称校验：非空、不是 "." 或含 ".."（读写接口一律拒绝含 ".." 的路径，建出来也打不开），
+     * 不含路径分隔符、Windows 非法字符与控制字符。
+     */
+    static boolean isValidCreateName(String name) {
+        if (name == null || name.isEmpty() || ".".equals(name) || name.contains("..")) {
+            return false;
+        }
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c < 0x20 || c == 0x7F || INVALID_NAME_CHARS.indexOf(c) >= 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

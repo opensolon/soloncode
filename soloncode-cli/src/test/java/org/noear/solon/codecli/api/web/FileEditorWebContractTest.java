@@ -98,6 +98,50 @@ public class FileEditorWebContractTest {
         assertFalse(unordered >= 0, "mode 依赖不得使用无序并行加载");
     }
 
+    @Test
+    @DisplayName("文件树右键新建：只在可写目录出现，先展开再 diff，新文件接入现有查看/编辑流程")
+    void contextMenuCreatesEntriesInWritableDirectories() throws IOException {
+        String js = resourceText("/static/js/app-filer.js");
+
+        String menu = js.substring(js.indexOf("function showFilerContextMenu(e, info)"), js.indexOf("function promptCreateEntry(info, type)"));
+        assertTrue(menu.contains("if (info.isDirectory && info.writable)"), "新建项只给可写目录");
+        assertTrue(menu.contains("promptCreateEntry(info, 'file')"));
+        assertTrue(menu.contains("promptCreateEntry(info, 'directory')"));
+
+        String entry = js.substring(js.indexOf("function initFilerContextMenu()"), js.indexOf("function filerUrl(basePath, params)"));
+        assertTrue(entry.contains("hasClass('file-workspace-readonly')"), "可写判定必须跟随工作区根节点的只读标记");
+
+        String create = js.substring(js.indexOf("function createEntry(info, name, type)"), js.indexOf("function revealCreatedEntry(info)"));
+        assertTrue(create.contains("'/web/chat/filer/create'"));
+        assertTrue(create.contains("res.description || res.message"), "失败提示必须读后端 description");
+        assertTrue(create.contains("window.openFileViewer(viewPath"), "新建文件后直接打开查看器");
+        assertTrue(create.contains("{ mount: info.wsId || 'workspace' }"),
+                "必须显式传所属工作区，否则按最近展开的根解析，会读写到别的挂载里的同名文件");
+
+        String prompt = js.substring(js.indexOf("function promptCreateEntry(info, type)"), js.indexOf("function createEntry(info, name, type)"));
+        assertTrue(prompt.contains("oe.isComposing") && prompt.contains("ev.keyCode === 229") && prompt.contains("compositionstart"),
+                "回车提交必须避开输入法组合态（jQuery 事件不带 isComposing）");
+
+        String fileClick = js.substring(js.indexOf("// 文件：单击打开查看器，双击加入对话"));
+        assertTrue(fileClick.contains("window.openFileViewer(viewPath, node.name, undefined, { mount: wsId })"),
+                "文件树点文件也必须显式传所属工作区");
+
+        String reveal = js.substring(js.indexOf("function revealCreatedEntry(info)"), js.indexOf("function initFilerContextMenu()"));
+        int open = reveal.indexOf("$children.addClass('open')");
+        int diff = reveal.indexOf("diffDir(info.wsId, info.relPath)");
+        assertTrue(open >= 0 && diff > open, "diffDir 只处理已展开目录，必须先展开再刷新");
+
+        String[] locales = {"ar", "bn", "br", "bs", "da", "de", "en", "es", "fr", "gr", "it",
+                "ja", "ko", "no", "pl", "ru", "th", "tr", "uk", "vi", "zh-CN", "zh-TW"};
+        for (String locale : locales) {
+            String json = resourceText("/static/i18n/" + locale + ".json");
+            for (String key : new String[]{"filer.ctxNewFile", "filer.ctxNewFolder", "filer.newFileTitle",
+                    "filer.newFolderTitle", "filer.invalidName", "filer.nameExists", "filer.createFailed"}) {
+                assertTrue(json.contains("\"" + key + "\""), locale + " missing " + key);
+            }
+        }
+    }
+
     private String resourceText(String path) throws IOException {
         try (InputStream in = FileEditorWebContractTest.class.getResourceAsStream(path)) {
             if (in == null) {

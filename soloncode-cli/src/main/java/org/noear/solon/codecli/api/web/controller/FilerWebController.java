@@ -101,6 +101,34 @@ public class FilerWebController extends AbstractWebController {
     }
 
     /**
+     * 在目录下新建空文件或文件夹接口（文件面板右键菜单）。
+     *
+     * <p>请求体 {@code {"path": "所在目录", "name": "新名称", "type": "file"|"directory"}}，
+     * 挂载走查询串 {@code mount}。各字段优先取请求体，缺省时回退同名查询串（与 write 一致）。</p>
+     */
+    @Post
+    @Mapping("/web/chat/filer/create")
+    public Result<Map> fileCreate(@Body String body,
+                                  @Param(value = "mount", required = false) String workspace,
+                                  @Param(value = "path", required = false) String queryPath,
+                                  @Param(value = "name", required = false) String queryName,
+                                  @Param(value = "type", required = false) String queryType) throws Exception {
+        ONode json = parseJsonBody(body);
+        String dir = bodyString(json, "path", queryPath);
+        String name = bodyString(json, "name", queryName);
+        String type = bodyString(json, "type", queryType);
+        return fileService().create(workspace, dir, name, type);
+    }
+
+    /**
+     * 取请求体中的字符串字段，没有时回退给定值。
+     */
+    private String bodyString(ONode json, String key, String fallback) {
+        ONode node = json == null ? null : json.get(key);
+        return (node != null && node.isString()) ? node.getString() : fallback;
+    }
+
+    /**
      * 从 JSON 请求体中解析出 ONode（解析失败返回 null）。
      */
     private ONode parseJsonBody(String body) {

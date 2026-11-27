@@ -1640,6 +1640,7 @@ body {
 .filer-context-menu { position: fixed; z-index: 9999; display: none; min-width: 180px; padding: 4px; background: var(--bg-input-box); border: 1px solid var(--border-color); border-radius: 10px; box-shadow: var(--shadow-lg); animation: drop-up 0.12s ease-out; }
 .filer-context-menu-item { padding: 7px 12px; border-radius: 6px; font-size: var(--fs-base); color: var(--text-primary); cursor: pointer; white-space: nowrap; transition: background 0.12s; }
 .filer-context-menu-item:hover { background: var(--bg-hover); }
+.filer-context-menu-sep { height: 1px; margin: 4px 6px; background: var(--border-color); }
 
 .file-node-row {
     display: flex;

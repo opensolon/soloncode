@@ -124,6 +124,13 @@
             $menu.append($item);
         }
 
+        // 0. 新建文件 / 新建文件夹（仅可写工作区或挂载中的目录）
+        if (info.isDirectory && info.writable) {
+            addItem('filer.ctxNewFile', '新建文件', function() { promptCreateEntry(info, 'file'); });
+            addItem('filer.ctxNewFolder', '新建文件夹', function() { promptCreateEntry(info, 'directory'); });
+            $menu.append($('<div>').addClass('filer-context-menu-sep'));
+        }
+
         // 1. 复制路径
         addItem('filer.ctxCopyPath', '复制路径', function() {
             var text = info.realPath || info.displayPath;
@@ -191,6 +198,104 @@
         }, 0);
     }
 
+    /* ---- 新建文件 / 文件夹 ----
+     * 名称只能是单层（不允许带子目录），规则与后端 FileService.isValidCreateName 一致：
+     * 非空、不是 "."、不含 ".."（读写接口拒绝含 ".." 的路径）、不含路径分隔符与非法字符。 */
+    var INVALID_CREATE_NAME_RE = /[\/\\:*?"<>|\x00-\x1f\x7f]/;
+
+    function isValidCreateName(name) {
+        return !!name && name !== '.' && name.indexOf('..') < 0 && !INVALID_CREATE_NAME_RE.test(name);
+    }
+
+    /** 弹出名称输入框；校验不通过时提示并保留弹窗 */
+    function promptCreateEntry(info, type) {
+        var layer = window.layui && window.layui.layer;
+        if (!layer || typeof layer.prompt !== 'function') return;
+        var isDir = type === 'directory';
+        layer.prompt({
+            title: isDir ? I18n.t('filer.newFolderTitle', '新建文件夹') : I18n.t('filer.newFileTitle', '新建文件'),
+            formType: 0,
+            value: '',
+            maxlength: 255,
+            success: function($layero) {
+                // 回车等同点击确定；输入法组合态下的回车（确认候选词）不提交。
+                // jQuery 事件对象不带 isComposing，需读 originalEvent；Safari 先发 compositionend
+                // 再发 keyCode 229 的 keydown，故同时判 229 并自记组合态（同 app-history.js isInputComposing）
+                var composingName = false;
+                $layero.find('.layui-layer-input')
+                    .on('compositionstart', function() { composingName = true; })
+                    .on('compositionend', function() { setTimeout(function() { composingName = false; }, 0); })
+                    .on('keydown', function(ev) {
+                        var oe = ev.originalEvent || ev;
+                        if (ev.key !== 'Enter' || composingName || oe.isComposing || ev.keyCode === 229) return;
+                        ev.preventDefault();
+                        $layero.find('.layui-layer-btn0').trigger('click');
+                    });
+            }
+        }, function(value, index, $input) {
+            var name = (value || '').trim();
+            if (!isValidCreateName(name)) {
+                layer.tips(I18n.t('filer.invalidName', '名称不能为空，不能含 / \\ : * ? " < > | 或 ..'), $input, { tips: 1 });
+                return;
+            }
+            layer.close(index);
+            createEntry(info, name, type);
+        });
+    }
+
+    /** 调用 /web/chat/filer/create；成功后展开并刷新所在目录，新文件直接打开查看器（可编辑） */
+    function createEntry(info, name, type) {
+        var url = '/web/chat/filer/create';
+        if (info.wsId && info.wsId !== 'workspace') {
+            url += '?mount=' + encodeURIComponent(info.wsId);
+        }
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: info.relPath || '', name: name, type: type })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(res) {
+            if (!res || res.code !== 200) {
+                var msg = (res && res.code === 409)
+                    ? I18n.t('filer.nameExists', '同名文件或文件夹已存在')
+                    : ((res && (res.description || res.message)) || I18n.t('filer.createFailed', '新建失败'));
+                showToast(msg, 'error');
+                return;
+            }
+            var data = res.data || {};
+            var newPath = data.path || (info.relPath ? info.relPath + '/' + name : name);
+            revealCreatedEntry(info);
+            if (type === 'file' && typeof window.openFileViewer === 'function') {
+                var viewPath = (info.wsId !== 'workspace' && info.wsId.indexOf('@') === 0) ? info.wsId + '/' + newPath : newPath;
+                // 显式指定所属工作区：不带 @ 前缀的路径否则会按 activeFilerWorkspace（最近展开的根）解析，
+                // 在默认工作区新建时若刚展开过挂载，会去挂载里读写同名文件
+                window.openFileViewer(viewPath, data.name || name, undefined, { mount: info.wsId || 'workspace' });
+            }
+        })
+        .catch(function() {
+            showToast(I18n.t('filer.createFailed', '新建失败'), 'error');
+        });
+    }
+
+    /**
+     * 展开新建项所在的目录并立即 diff 刷新（不等文件监听推送）。
+     * diffDir 只处理已展开的目录，所以必须先展开；子容器为空时 diffChildren 也能补齐全部节点。
+     */
+    function revealCreatedEntry(info) {
+        var $node = info.$node;
+        if (!$node || !$node.length || !$.contains(document.documentElement, $node[0])) return;
+        var $children = $node.children('.file-node-children');
+        if (!$children.length) return;
+        if (!$children.hasClass('open')) {
+            $children.addClass('open');
+            $node.children('.file-node-row').children('.file-arrow').addClass('open');
+        }
+        $node.removeAttr('data-dirty');
+        if (info.isWsRoot) window.activeFilerWorkspace = info.wsId;
+        diffDir(info.wsId, info.relPath);
+    }
+
     /** 文件树右键菜单入口（事件委托） */
     function initFilerContextMenu() {
         $treeEl.on('contextmenu', function(e) {
@@ -206,10 +311,18 @@
             var relPath = isWsRoot ? '' : ($nodeEl.attr('data-path') || '');
             var nodeType = $nodeEl.attr('data-type') || (isWsRoot ? 'directory' : '');
             var isDirectory = nodeType === 'directory';
+            // 可写：所属工作区根节点未标只读；无根节点的扁平树就是默认工作区，按可写处理
+            var $wsRootEl = $nodeEl.closest('[data-workspace-id]');
+            var writable = !$wsRootEl.length || !$wsRootEl.children('.file-node-row').hasClass('file-workspace-readonly');
 
             loadWsPathCache(function() {
                 var info = {
                     isDirectory: isDirectory,
+                    isWsRoot: isWsRoot,
+                    writable: writable,
+                    wsId: wsId,
+                    relPath: relPath,
+                    $node: $nodeEl,
                     realPath: resolveRealPath(wsId, relPath),
                     displayPath: isWsRoot ? (wsId === 'workspace' ? (wsPathCache.launchPath || wsId) : wsId) : (wsId !== 'workspace' ? wsId + '/' + relPath : relPath),
                     openPath: isDirectory ? resolveOpenPath(wsId, relPath) : null,
@@ -726,7 +839,8 @@
                     var wsId = getNodeWorkspaceId($nodeEl);
                     var viewPath = (wsId !== 'workspace' && wsId.indexOf('@') === 0) ? wsId + '/' + node.path : node.path;
                     if (typeof window.openFileViewer === 'function') {
-                        window.openFileViewer(viewPath, node.name);
+                        // 显式指定所属工作区，不依赖 activeFilerWorkspace（最近展开的根，可能是别的挂载）
+                        window.openFileViewer(viewPath, node.name, undefined, { mount: wsId });
                     }
                 },
                 function() {
