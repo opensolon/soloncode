@@ -534,6 +534,8 @@
   "llm.timeout": "Délai d'attente (facultatif)",
   "llm.timeoutPlaceholder": "120s (120 secondes par défaut)",
   "llm.concurrency": "Concurrence des sous-agents (facultatif)",
+  "llm.inputModalities": "Types d'entrée (facultatif)",
+  "llm.inputModalitiesPlaceholder": "text,image (vide = sans limite)",
   "llm.concurrencyPlaceholder": "5 (suit le réglage général)",
   "llm.concurrencyInvalid": "La concurrence des sous-agents doit être un entier positif",
   "llm.title": "Modèles",

@@ -529,6 +529,8 @@
   "llm.timeout": "Час очікування (необов'язково)",
   "llm.timeoutPlaceholder": "120s (за замовчуванням 120 с)",
   "llm.concurrency": "Паралелізм субагентів (необовʼязково)",
+  "llm.inputModalities": "Типи введення (необов'язково)",
+  "llm.inputModalitiesPlaceholder": "text,image (порожньо = без обмежень)",
   "llm.concurrencyPlaceholder": "5 (за загальними налаштуваннями)",
   "llm.concurrencyInvalid": "Паралелізм субагентів має бути додатним цілим числом",
   "llm.title": "Моделі",

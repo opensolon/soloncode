@@ -534,6 +534,8 @@
   "llm.timeout": "Timeout (optional)",
   "llm.timeoutPlaceholder": "120s (Standard 120s)",
   "llm.concurrency": "Subagent-Parallelität (optional)",
+  "llm.inputModalities": "Eingabetypen (optional)",
+  "llm.inputModalitiesPlaceholder": "text,image (leer = keine Begrenzung)",
   "llm.concurrencyPlaceholder": "5 (Standard: Allgemeine Einstellung)",
   "llm.concurrencyInvalid": "Subagent-Parallelität muss eine positive Ganzzahl sein",
   "llm.title": "Modelle",

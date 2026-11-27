@@ -529,6 +529,8 @@
   "llm.timeout": "টাইমআউট সময় (ঐচ্ছিক)",
   "llm.timeoutPlaceholder": "120s (ডিফল্ট 120 সেকেন্ড)",
   "llm.concurrency": "সাব-এজেন্ট সমবর্তিতা (ঐচ্ছিক)",
+  "llm.inputModalities": "ইনপুট ধরন (ঐচ্ছিক)",
+  "llm.inputModalitiesPlaceholder": "text,image (খালি = কোনো সীমা নেই)",
   "llm.concurrencyPlaceholder": "5 (সাধারণ সেটিং অনুসরণ)",
   "llm.concurrencyInvalid": "সাব-এজেন্ট সমবর্তিতা একটি ধনাত্মক পূর্ণসংখ্যা হতে হবে",
   "llm.title": "মডেল",

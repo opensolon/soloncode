@@ -59,6 +59,7 @@ import org.noear.solon.ai.harness.session.HarnessAttrs;
 import org.noear.solon.ai.harness.util.TraceUtil;
 import org.noear.solon.ai.talents.memory.MemoryTalent;
 import org.noear.solon.ai.harness.extension.goal.GoalTalent;
+import org.noear.solon.codecli.util.AttachmentImages;
 import org.noear.solon.codecli.api.web.service.LastTraceService;
 import org.noear.solon.codecli.config.AgentFlags;
 import org.noear.solon.codecli.config.AgentSettings;
@@ -1429,7 +1430,7 @@ public class AcpLink implements Runnable {
             } else if (cp instanceof AcpSchema.ImageContent) {
                 AcpSchema.ImageContent image = (AcpSchema.ImageContent) cp;
                 if (Assert.isEmpty(image.uri())) {
-                    media.media(ImageBlock.ofBase64(image.data(), image.mimeType()));
+                    media.media(AttachmentImages.of(image.data(), image.mimeType()));
                 } else {
                     media.media(ImageBlock.ofUrl(image.uri(), image.mimeType()));
                 }
@@ -1514,7 +1515,7 @@ public class AcpLink implements Runnable {
             }
 
             if (mimeType != null && mimeType.startsWith("image/")) {
-                media.media(ImageBlock.ofBase64(blob, mimeType));
+                media.media(AttachmentImages.of(blob, mimeType));
             } else {
                 // 尝试解码为文本
                 try {

@@ -529,6 +529,8 @@
   "llm.timeout": "المهلة (اختياري)",
   "llm.timeoutPlaceholder": "120s (الافتراضي 120 ثانية)",
   "llm.concurrency": "تزامن الوكلاء الفرعيين (اختياري)",
+  "llm.inputModalities": "أنواع الإدخال (اختياري)",
+  "llm.inputModalitiesPlaceholder": "text,image (فارغ = بلا حد)",
   "llm.concurrencyPlaceholder": "5 (يتبع الإعداد العام)",
   "llm.concurrencyInvalid": "يجب أن يكون تزامن الوكلاء الفرعيين عددًا صحيحًا موجبًا",
   "llm.title": "النماذج",

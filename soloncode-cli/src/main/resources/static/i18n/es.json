@@ -534,6 +534,8 @@
   "llm.timeout": "Tiempo de espera (opcional)",
   "llm.timeoutPlaceholder": "120s (predeterminado 120 s)",
   "llm.concurrency": "Concurrencia de subagentes (opcional)",
+  "llm.inputModalities": "Tipos de entrada (opcional)",
+  "llm.inputModalitiesPlaceholder": "text,image (vacío = sin límite)",
   "llm.concurrencyPlaceholder": "5 (sigue la configuración general)",
   "llm.concurrencyInvalid": "La concurrencia de subagentes debe ser un entero positivo",
   "llm.title": "Modelos",

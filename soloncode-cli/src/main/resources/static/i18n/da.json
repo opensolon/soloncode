@@ -529,6 +529,8 @@
   "llm.timeout": "Timeout (valgfrit)",
   "llm.timeoutPlaceholder": "120s (standard 120 sek.)",
   "llm.concurrency": "Underagent-parallellitet (valgfri)",
+  "llm.inputModalities": "Inputtyper (valgfrit)",
+  "llm.inputModalitiesPlaceholder": "text,image (tom = ingen grænse)",
   "llm.concurrencyPlaceholder": "5 (følger generelle indstillinger)",
   "llm.concurrencyInvalid": "Underagent-parallellitet skal være et positivt heltal",
   "llm.title": "Modeller",

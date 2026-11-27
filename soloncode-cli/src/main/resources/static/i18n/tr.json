@@ -529,6 +529,8 @@
   "llm.timeout": "Zaman Aşımı (isteğe bağlı)",
   "llm.timeoutPlaceholder": "120s (varsayılan 120 saniye)",
   "llm.concurrency": "Alt ajan eşzamanlılığı (isteğe bağlı)",
+  "llm.inputModalities": "Girdi türleri (isteğe bağlı)",
+  "llm.inputModalitiesPlaceholder": "text,image (boş = sınırsız)",
   "llm.concurrencyPlaceholder": "5 (genel ayarı izler)",
   "llm.concurrencyInvalid": "Alt ajan eşzamanlılığı pozitif bir tam sayı olmalıdır",
   "llm.title": "Modeller",

@@ -534,6 +534,8 @@
   "llm.timeout": "Timeout (facoltativo)",
   "llm.timeoutPlaceholder": "120s (predefinito 120 secondi)",
   "llm.concurrency": "Concorrenza dei sotto-agenti (opzionale)",
+  "llm.inputModalities": "Tipi di input (facoltativo)",
+  "llm.inputModalitiesPlaceholder": "text,image (vuoto = nessun limite)",
   "llm.concurrencyPlaceholder": "5 (segue le impostazioni generali)",
   "llm.concurrencyInvalid": "La concorrenza dei sotto-agenti deve essere un intero positivo",
   "llm.title": "Modelli",

@@ -529,6 +529,8 @@
   "llm.timeout": "Limit czasu (opcjonalnie)",
   "llm.timeoutPlaceholder": "120s (domyślnie 120 sekund)",
   "llm.concurrency": "Współbieżność podagentów (opcjonalnie)",
+  "llm.inputModalities": "Typy wejścia (opcjonalnie)",
+  "llm.inputModalitiesPlaceholder": "text,image (puste = bez limitu)",
   "llm.concurrencyPlaceholder": "5 (zgodnie z ustawieniami ogólnymi)",
   "llm.concurrencyInvalid": "Współbieżność podagentów musi być dodatnią liczbą całkowitą",
   "llm.title": "Modele",

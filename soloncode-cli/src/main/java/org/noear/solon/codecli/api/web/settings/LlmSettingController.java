@@ -124,6 +124,9 @@ public class LlmSettingController extends BaseSettingsController {
         if (config.getConcurrency() > 0) {
             item.put("concurrency", config.getConcurrency());
         }
+        if (config.getInputModalities() != null) {
+            item.put("inputModalities", config.getInputModalities());
+        }
         item.put("isDefault", settings().getDefaultModel() != null && settings().getDefaultModel().equals(config.getNameOrModel()));
 
         return Result.succeed(item);
@@ -168,6 +171,7 @@ public class LlmSettingController extends BaseSettingsController {
         // 模型名带 [1m]/[256k] 后缀时，服务端统一剥离并回填上下文长度
         applyModelContextSuffix(config);
         ModelApiUrl.normalize(config);
+        normalizeInputModalities(config);
 
         engine().addModel(config);
 
@@ -231,6 +235,12 @@ public class LlmSettingController extends BaseSettingsController {
             config.setConcurrency(oldConfig.getConcurrency());
         }
 
+        // 输入类型：请求里没带（null）表示未改动，继承旧值；带了空列表表示清掉改回不限制
+        if (config.getInputModalities() == null && oldConfig != null) {
+            config.setInputModalities(oldConfig.getInputModalities());
+        }
+        normalizeInputModalities(config);
+
         // 先移除旧配置
         engine().removeModel(originalName);
         engine().addModel(config);
@@ -268,6 +278,25 @@ public class LlmSettingController extends BaseSettingsController {
             }
         }
         return Result.failure("Model not found: " + name);
+    }
+
+    /**
+     * 规范化输入类型：空列表（或只有空白项）归为 null，不写进 settings.json。
+     * 空白与大小写由 {@link ChatConfig#acceptsInput} 比较时处理，这里不改写。
+     */
+    static void normalizeInputModalities(ChatConfig config) {
+        if (config.getInputModalities() != null) {
+            boolean declared = false;
+            for (String m : config.getInputModalities()) {
+                if (m != null && m.trim().isEmpty() == false) {
+                    declared = true;
+                    break;
+                }
+            }
+            if (declared == false) {
+                config.setInputModalities(null);
+            }
+        }
     }
 
     // ==================== 设置：供应商管理 ====================

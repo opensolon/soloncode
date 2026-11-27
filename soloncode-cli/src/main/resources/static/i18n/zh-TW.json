@@ -531,6 +531,8 @@
   "llm.timeout": "逾時時間（可選）",
   "llm.timeoutPlaceholder": "120s（預設 120 秒）",
   "llm.concurrency": "子代理並發數（可選）",
+  "llm.inputModalities": "可輸入類型（可選）",
+  "llm.inputModalitiesPlaceholder": "text,image（留空不限制）",
   "llm.concurrencyPlaceholder": "5（預設跟隨通用設定）",
   "llm.concurrencyInvalid": "子代理並發數需為正整數",
   "llm.title": "模型",

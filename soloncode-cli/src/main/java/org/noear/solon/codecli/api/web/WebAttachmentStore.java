@@ -21,6 +21,7 @@ import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.core.handle.UploadedFile;
 import org.noear.solon.core.util.IoUtil;
 import org.noear.solon.lang.Nullable;
+import org.noear.solon.codecli.util.AttachmentImages;
 import org.noear.solon.codecli.workspace.WorkspaceFiles;
 
 import java.nio.file.Files;
@@ -110,7 +111,7 @@ public final class WebAttachmentStore {
 
                 String relative = WorkspaceFiles.UPLOADS_DIR + "/" + fileName;
                 if (isImageAttachment(ext, declaredType)) {
-                    result.media(ImageBlock.ofBase64(Base64.getEncoder().encodeToString(bytes),
+                    result.media(AttachmentImages.of(Base64.getEncoder().encodeToString(bytes),
                             extensionToMime(ext)).filePath(relative));
                 } else {
                     result.reference(relative);

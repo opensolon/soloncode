@@ -529,6 +529,8 @@
   "llm.timeout": "Vrijeme čekanja (opcionalno)",
   "llm.timeoutPlaceholder": "120s (zadano 120 sekundi)",
   "llm.concurrency": "Paralelnost podagenata (opcionalno)",
+  "llm.inputModalities": "Tipovi unosa (opcionalno)",
+  "llm.inputModalitiesPlaceholder": "text,image (prazno = bez ograničenja)",
   "llm.concurrencyPlaceholder": "5 (prati opće postavke)",
   "llm.concurrencyInvalid": "Paralelnost podagenata mora biti pozitivan cijeli broj",
   "llm.title": "Modeli",

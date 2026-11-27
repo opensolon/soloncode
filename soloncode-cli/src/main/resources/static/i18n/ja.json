@@ -534,6 +534,8 @@
   "llm.timeout": "タイムアウト（任意）",
   "llm.timeoutPlaceholder": "120s（デフォルト 120 秒）",
   "llm.concurrency": "サブエージェント同時実行数（任意）",
+  "llm.inputModalities": "入力タイプ（任意）",
+  "llm.inputModalitiesPlaceholder": "text,image（空欄は制限なし）",
   "llm.concurrencyPlaceholder": "5（既定では一般設定に従う）",
   "llm.concurrencyInvalid": "サブエージェント同時実行数は正の整数で指定してください",
   "llm.title": "モデル",

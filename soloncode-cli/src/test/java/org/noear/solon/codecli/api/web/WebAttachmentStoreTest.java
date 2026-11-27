@@ -21,10 +21,14 @@ import org.noear.solon.core.handle.UploadedFile;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,6 +127,23 @@ class WebAttachmentStoreTest {
         //第二个附件没有类型声明，按文件处理
         assertEquals(1, result.getMediaBlocks().size());
         assertEquals(1, result.getReferences().size());
+    }
+
+    @Test
+    void largeImageIsScaledButFileKeepsOriginal() throws Exception {
+        //整页截图：高度超过 Anthropic 的 8000px 上限，发给模型前按 read 读图的规则缩放
+        ByteArrayOutputStream png = new ByteArrayOutputStream();
+        assertTrue(ImageIO.write(new BufferedImage(1280, 9000, BufferedImage.TYPE_INT_RGB), "png", png));
+        UploadedFile file = new UploadedFile("image/png", new ByteArrayInputStream(png.toByteArray()), "page.png");
+
+        InputAttachments result = WebAttachmentStore.toAttachments(workspace.toString(), files(file), types("image"));
+
+        ImageBlock image = (ImageBlock) result.getMediaBlocks().get(0);
+        BufferedImage sent = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(image.getData())));
+        assertTrue(sent.getHeight() <= 1568, "height=" + sent.getHeight());
+        assertEquals(".files/uploads/page.png", image.getFilePath());
+        //落盘的仍是原图
+        assertEquals(png.size(), Files.size(workspace.resolve(".files/uploads/page.png")));
     }
 
     private static UploadedFile upload(String name, String content) {

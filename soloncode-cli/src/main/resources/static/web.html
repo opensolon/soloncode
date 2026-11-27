@@ -1426,6 +1426,15 @@
                                                 </div>
                                             </div>
                                             <div class="form-group">
+                                                <label data-i18n="llm.inputModalities">可输入类型（可选）</label>
+                                                <input type="text" id="llmInputModalities" placeholder="text,image（留空不限制）" data-i18n-placeholder="llm.inputModalitiesPlaceholder" list="inputModalitiesList" autocomplete="off"/>
+                                                <datalist id="inputModalitiesList">
+                                                    <option value="text">
+                                                    <option value="text,image">
+                                                </datalist>
+                                            </div>
+                                            
+                                            <div class="form-group">
                                                 <div class="form-label-row">
                                                     <label data-i18n="llm.defaultOptions">默认选项（可选，JSON 格式）</label>
                                                     <button type="button" class="provider-model-icon-btn" id="llmFormatJsonBtn" title="格式化 JSON" data-i18n-title="llm.formatJson">

@@ -531,6 +531,8 @@
   "llm.timeout": "Thời gian chờ (tùy chọn)",
   "llm.timeoutPlaceholder": "120s (mặc định 120 giây)",
   "llm.concurrency": "Số sub-agent song song (tùy chọn)",
+  "llm.inputModalities": "Loại đầu vào (tùy chọn)",
+  "llm.inputModalitiesPlaceholder": "text,image (để trống = không giới hạn)",
   "llm.concurrencyPlaceholder": "5 (theo cài đặt chung)",
   "llm.concurrencyInvalid": "Số sub-agent song song phải là số nguyên dương",
   "llm.title": "Mô hình",

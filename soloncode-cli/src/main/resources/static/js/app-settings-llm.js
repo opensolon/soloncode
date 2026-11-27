@@ -133,7 +133,7 @@
     function resetLlmForm() {
         llmEditName = null;
         $llmSaveBtn.text(I18n.t('common.save'));
-        $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmConcurrency, #llmDefaultOptions').val('');
+        $('#llmStandard, #llmApiUrl, #llmApiKey, #llmModel, #llmName, #llmTimeout, #llmContextLength, #llmConcurrency, #llmDefaultOptions, #llmInputModalities').val('');
         $('#llmProvider').val('');
         $('#llmIsDefaultModel').prop('checked', false);
         setScopeValue('llmScope', 'user');
@@ -171,6 +171,8 @@
         $("#llmIsDefaultModel").prop("checked", !!item.isDefault);
         // 回显 provider（隐藏表单，编辑时保持关联）
         $('#llmProvider').val(item.provider || '');
+        // 多模态：输入类型（逗号分隔）
+        $('#llmInputModalities').val($.isArray(item.inputModalities) ? item.inputModalities.join(',') : '');
     }
 
     function buildLlmBodyObj() {
@@ -202,6 +204,9 @@
         if (optionsText) {
             try { bodyObj.defaultOptions = JSON.parse(optionsText); } catch (e) { showToast(I18n.t('llm.defaultOptionsInvalid'), 'error'); return null; }
         }
+        // 输入类型总是提交：空列表表示清掉、改回不限制，后端不会继承旧值
+        var modalitiesRaw = $('#llmInputModalities').val().trim();
+        bodyObj.inputModalities = modalitiesRaw ? modalitiesRaw.split(/[,，\s]+/).filter(function (m) { return m; }) : [];
         // 编辑时保持 provider 关联（隐藏表单）
         var providerVal = $('#llmProvider').val();
         if (providerVal) {

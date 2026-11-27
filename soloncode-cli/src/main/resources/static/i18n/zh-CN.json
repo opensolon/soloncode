@@ -537,6 +537,8 @@
   "llm.timeout": "超时时间（可选）",
   "llm.timeoutPlaceholder": "120s（默认 120 秒）",
   "llm.concurrency": "子代理并发数（可选）",
+  "llm.inputModalities": "可输入类型（可选）",
+  "llm.inputModalitiesPlaceholder": "text,image（留空不限制）",
   "llm.concurrencyPlaceholder": "5（默认跟随通用设置）",
   "llm.concurrencyInvalid": "子代理并发数需为正整数",
   "llm.title": "模型",

@@ -537,6 +537,8 @@
   "llm.timeout": "Timeout (optional)",
   "llm.timeoutPlaceholder": "120s (default 120s)",
   "llm.concurrency": "Sub-agent concurrency (optional)",
+  "llm.inputModalities": "Input types (optional)",
+  "llm.inputModalitiesPlaceholder": "text,image (empty = no limit)",
   "llm.concurrencyPlaceholder": "5 (defaults to General setting)",
   "llm.concurrencyInvalid": "Sub-agent concurrency must be a positive integer",
   "llm.title": "Models",

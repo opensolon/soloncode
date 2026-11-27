@@ -18,7 +18,6 @@ package org.noear.solon.codecli.api.desktop;
 import org.noear.snack4.ONode;
 import org.noear.solon.ai.agent.AgentSession;
 import org.noear.solon.ai.agent.react.intercept.HITLAction;
-import org.noear.solon.ai.chat.content.ImageBlock;
 import org.noear.solon.ai.harness.HarnessEngine;
 import org.noear.solon.ai.harness.HarnessResult;
 import org.noear.solon.ai.harness.host.Disposition;
@@ -27,6 +26,7 @@ import org.noear.solon.ai.harness.input.AgentMentions;
 import org.noear.solon.ai.harness.input.InputAttachments;
 import org.noear.solon.ai.harness.input.HarnessInput;
 import org.noear.solon.ai.i18n.AiI18n;
+import org.noear.solon.codecli.util.AttachmentImages;
 import org.noear.solon.codecli.util.ReasoningSupportUtil;
 import org.noear.solon.core.util.Assert;
 import org.noear.solon.net.websocket.WebSocket;
@@ -231,7 +231,7 @@ final class DesktopInputRouter {
                     createdFiles.add(target);
                 }
                 if (DesktopAttachmentSupport.isMultimodalImage(att)) {
-                    attachResult.media(ImageBlock.ofBase64(
+                    attachResult.media(AttachmentImages.of(
                             Base64.getEncoder().encodeToString(bytes), att.getMimeType()).filePath(savedName));
                 } else {
                     attachResult.reference(savedName);

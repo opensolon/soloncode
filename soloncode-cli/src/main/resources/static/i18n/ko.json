@@ -529,6 +529,8 @@
   "llm.timeout": "시간 초과(선택)",
   "llm.timeoutPlaceholder": "120초(기본 120초)",
   "llm.concurrency": "서브에이전트 동시 실행 수(선택)",
+  "llm.inputModalities": "입력 유형 (선택)",
+  "llm.inputModalitiesPlaceholder": "text,image (비우면 제한 없음)",
   "llm.concurrencyPlaceholder": "5(기본값은 일반 설정 따름)",
   "llm.concurrencyInvalid": "서브에이전트 동시 실행 수는 양의 정수여야 합니다",
   "llm.title": "모델",

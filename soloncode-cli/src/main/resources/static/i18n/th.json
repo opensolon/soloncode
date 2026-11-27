@@ -531,6 +531,8 @@
   "llm.timeout": "ระยะเวลาหมดเวลา (ไม่บังคับ)",
   "llm.timeoutPlaceholder": "120s (ค่าเริ่มต้น 120 วินาที)",
   "llm.concurrency": "จำนวนซับเอเจนต์พร้อมกัน (ไม่บังคับ)",
+  "llm.inputModalities": "ประเภทอินพุต (ไม่บังคับ)",
+  "llm.inputModalitiesPlaceholder": "text,image (เว้นว่าง = ไม่จำกัด)",
   "llm.concurrencyPlaceholder": "5 (ตามการตั้งค่าทั่วไป)",
   "llm.concurrencyInvalid": "จำนวนซับเอเจนต์พร้อมกันต้องเป็นจำนวนเต็มบวก",
   "llm.title": "โมเดล",

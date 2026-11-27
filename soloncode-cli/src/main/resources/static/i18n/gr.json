@@ -529,6 +529,8 @@
   "llm.timeout": "Χρόνος λήξης (προαιρετικά)",
   "llm.timeoutPlaceholder": "120s (προεπιλογή 120 δευτερόλεπτα)",
   "llm.concurrency": "Παραλληλία υποπρακτόρων (προαιρετικό)",
+  "llm.inputModalities": "Τύποι εισόδου (προαιρετικό)",
+  "llm.inputModalitiesPlaceholder": "text,image (κενό = χωρίς όριο)",
   "llm.concurrencyPlaceholder": "5 (ακολουθεί τις γενικές ρυθμίσεις)",
   "llm.concurrencyInvalid": "Η παραλληλία υποπρακτόρων πρέπει να είναι θετικός ακέραιος",
   "llm.title": "Μοντέλα",
