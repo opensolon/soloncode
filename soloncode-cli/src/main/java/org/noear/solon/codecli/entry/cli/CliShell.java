@@ -70,7 +70,6 @@ public class CliShell implements Runnable {
 
     /** 单租户：CLI 只服务默认工作区这一个引擎 */
     private final static String TENANT = "cli";
-    private final static String SESSION_ID_CLI = "cli";
 
     /** 判定「全部轮次已结束」时的静默窗口：上一轮结束到续发的下一轮开出之间有极短空档 */
     private final static long SETTLE_QUIET_MS = 150;
@@ -143,8 +142,8 @@ public class CliShell implements Runnable {
             }
         }
 
-        printWelcome(engine.getSession(sessionId));
         AgentSession session = host().openSession(TENANT, sessionId, null);
+        printWelcome(session);
         // 恢复出的积压可能已经开跑：先在前台跑完
         awaitRuns(session);
         return session;
@@ -158,7 +157,7 @@ public class CliShell implements Runnable {
             return;
         }
 
-        AgentSession session = prepare(SESSION_ID_CLI);
+        AgentSession session = prepare(SessionIdOwnership.CLI_SESSION_ID);
 
         try {
             submit(session, input);
@@ -172,7 +171,7 @@ public class CliShell implements Runnable {
      */
     @Override
     public void run() {
-        AgentSession session = prepare(SESSION_ID_CLI);
+        AgentSession session = prepare(SessionIdOwnership.CLI_SESSION_ID);
 
         while (true) {
             try {

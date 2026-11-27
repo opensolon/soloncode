@@ -14,6 +14,8 @@ import org.noear.solon.codecli.config.AgentSettings;
 import org.noear.solon.codecli.session.SessionManager;
 
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -69,7 +71,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(new AcpSchema.TextContent("你好")));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertEquals("你好", input.getText());
         assertTrue(input.getAttachments().hasAny() == false);
@@ -83,7 +85,7 @@ public class AcpLinkTest {
                         new AcpSchema.TextContent("第一段"),
                         new AcpSchema.TextContent("第二段")));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 多段 TextContent 拼接为单段正文，用空格连接
         assertEquals("第一段 第二段", input.getText());
@@ -97,7 +99,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(img));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 图片走 media 通道（URL 形态），正文为空（引擎会补默认描述文本）
         assertTrue(input.getAttachments().hasMedia());
@@ -112,7 +114,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(img));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertTrue(input.getAttachments().hasMedia());
         assertEquals(1, input.getAttachments().getMediaBlocks().size());
@@ -127,7 +129,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, img));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertTrue(input.getAttachments().hasMedia());
         assertEquals(1, input.getAttachments().getMediaBlocks().size());
@@ -140,25 +142,11 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.emptyList());
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 空输入：正文 null、无媒资（handle 时会判 IGNORED）
         assertNull(input.getText());
         assertTrue(input.getAttachments().hasAny() == false);
-    }
-
-    @Test
-    @DisplayName("toInput: 会话必须绑定到输入（否则续轮丢上下文）")
-    void toInput_bindsSession() {
-        AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
-                "sid", Collections.singletonList(new AcpSchema.TextContent("你好")));
-
-        AgentSession session = mock(AgentSession.class);
-        HarnessInput input = acpLink.toInput(req, session, null);
-
-        // 回归护栏：session 必须随 input 进入 handle，
-        // 传 null 会让 ReActRequest 回落临时 InMemoryAgentSession（多轮上下文丢失、快照不落盘）
-        assertSame(session, input.getSession());
     }
 
     // ─────────────────── toInput: ResourceLink ───────────────────
@@ -172,7 +160,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, link));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertEquals("请分析这个文件 [src/main/doc.md]", input.getText());
     }
@@ -185,7 +173,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        HarnessInput input = acpLink.toInput(req, null, "/workspace");
+        HarnessInput input = acpLink.toInput(req, "/workspace");
 
         assertEquals("[src/Foo.java]", input.getText());
     }
@@ -198,7 +186,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        HarnessInput input = acpLink.toInput(req, null, "/workspace");
+        HarnessInput input = acpLink.toInput(req, "/workspace");
 
         assertEquals("[src/App.java]", input.getText());
     }
@@ -211,7 +199,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        HarnessInput input = acpLink.toInput(req, null, "/workspace");
+        HarnessInput input = acpLink.toInput(req, "/workspace");
 
         assertEquals("[/etc/config.xml]", input.getText());
     }
@@ -224,7 +212,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertEquals("[src/App.java]", input.getText());
     }
@@ -237,7 +225,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 空 URI 时不添加任何内容（正文 null、无媒资）
         assertNull(input.getText());
@@ -255,7 +243,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, link1, link2));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertEquals("对比这两个文件 [src/a.txt] [src/b.txt]", input.getText());
     }
@@ -268,7 +256,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(link));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertEquals("[src/App.java]", input.getText());
     }
@@ -284,7 +272,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Arrays.asList(text, link, img));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 文本和 [path] 拼接为单段正文，图片走 media
         assertEquals("看这个文件和图片 [src/App.java]", input.getText());
@@ -302,7 +290,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertTrue(input.getText().contains("hello from embedded"));
         assertTrue(input.getText().contains("File: file:///tmp/test.txt"));
@@ -317,7 +305,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertTrue(input.getAttachments().hasMedia());
         assertEquals(1, input.getAttachments().getMediaBlocks().size());
@@ -334,7 +322,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         assertTrue(input.getText().contains("hello"));
     }
@@ -350,7 +338,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 二进制内容应给出 Binary resource 提示（0xFF 0xFE 0x00 解码为 UTF-8 时可能成功但内容乱码）
         // 这里只验证正文构建成功
@@ -364,7 +352,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // null resource：静默跳过，无正文无媒资
         assertNull(input.getText());
@@ -380,7 +368,7 @@ public class AcpLinkTest {
         AcpSchema.PromptRequest req = new AcpSchema.PromptRequest(
                 "sid", Collections.singletonList(resource));
 
-        HarnessInput input = acpLink.toInput(req, null, null);
+        HarnessInput input = acpLink.toInput(req, null);
 
         // 空 text：静默跳过，无正文无媒资
         assertNull(input.getText());
@@ -930,6 +918,103 @@ public class AcpLinkTest {
         assertTrue(title.contains("content=line1 line2 line3"));
     }
 
+    // ─────────────────── AcpSetupTransport.withSetupOptions ───────────────────
+
+    @Test
+    @DisplayName("withSetupOptions: NewSessionResponse 的载体键提升为顶层 configOptions")
+    void setupOptions_newSessionLifted() {
+        List<Object> options = Collections.singletonList(Collections.singletonMap("id", "model"));
+        Map<String, Object> meta = Collections.singletonMap(
+                AcpLink.CONFIG_OPTIONS, (Object) options);
+        AcpSchema.JSONRPCResponse response = new AcpSchema.JSONRPCResponse(
+                AcpSchema.JSONRPC_VERSION, 1L,
+                new AcpSchema.NewSessionResponse("sid-1", null, null, meta), null);
+
+        AcpSchema.JSONRPCMessage out = AcpLink.AcpSetupTransport.withSetupOptions(response);
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) ((AcpSchema.JSONRPCResponse) out).result();
+        assertEquals("sid-1", result.get("sessionId"));
+        assertSame(options, result.get("configOptions"));
+        assertFalse(result.containsKey("_meta"), "载体键被提升后不应残留 _meta: " + result);
+    }
+
+    @Test
+    @DisplayName("withSetupOptions: load/resume 同样提升；其余 _meta 键保留")
+    void setupOptions_loadResumeLiftedKeepsOtherMeta() {
+        List<Object> options = Collections.emptyList();
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put(AcpLink.CONFIG_OPTIONS, options);
+        meta.put("custom", "v");
+
+        AcpSchema.JSONRPCResponse load = new AcpSchema.JSONRPCResponse(
+                AcpSchema.JSONRPC_VERSION, 2L,
+                new AcpSchema.LoadSessionResponse(null, null, meta), null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> loadResult = (Map<String, Object>)
+                ((AcpSchema.JSONRPCResponse) AcpLink.AcpSetupTransport.withSetupOptions(load)).result();
+        assertSame(options, loadResult.get("configOptions"));
+        assertEquals("v", ((Map<?, ?>) loadResult.get("_meta")).get("custom"));
+
+        AcpSchema.JSONRPCResponse resume = new AcpSchema.JSONRPCResponse(
+                AcpSchema.JSONRPC_VERSION, 3L,
+                new AcpSchema.ResumeSessionResponse(null, null, meta), null);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> resumeResult = (Map<String, Object>)
+                ((AcpSchema.JSONRPCResponse) AcpLink.AcpSetupTransport.withSetupOptions(resume)).result();
+        assertSame(options, resumeResult.get("configOptions"));
+    }
+
+    @Test
+    @DisplayName("withSetupOptions: 无载体键或非 setup 响应原样放行")
+    void setupOptions_untouched() {
+        AcpSchema.JSONRPCResponse plain = new AcpSchema.JSONRPCResponse(
+                AcpSchema.JSONRPC_VERSION, 4L,
+                new AcpSchema.NewSessionResponse("sid", null, null, null), null);
+        assertSame(plain, AcpLink.AcpSetupTransport.withSetupOptions(plain));
+
+        AcpSchema.JSONRPCResponse other = new AcpSchema.JSONRPCResponse(
+                AcpSchema.JSONRPC_VERSION, 5L, "some-result", null);
+        assertSame(other, AcpLink.AcpSetupTransport.withSetupOptions(other));
+    }
+
+    // ─────────────────── requireCwd ───────────────────
+
+    @Test
+    @DisplayName("requireCwd: 缺省 / 空白 / 相对 / 不存在路径一律按 INVALID_PARAMS 拒绝（不回落进程目录）")
+    void requireCwd_rejectsInvalid() {
+        assertInvalidParams(() -> invokeRequireCwd("relative/path"));
+        assertInvalidParams(() -> invokeRequireCwd("does/not/exist-" + UUID.randomUUID()));
+        assertInvalidParams(() -> invokeRequireCwd(null));
+        assertInvalidParams(() -> invokeRequireCwd(""));
+        assertInvalidParams(() -> invokeRequireCwd("   "));
+    }
+
+    @Test
+    @DisplayName("requireCwd: 存在的绝对目录接受并归一化；file:// URI 同样支持")
+    void requireCwd_acceptsAbsoluteDir() throws Exception {
+        Path dir = Files.createTempDirectory("acp-cwd");
+        try {
+            String canonical = dir.toRealPath().toString();
+            assertEquals(canonical, invokeRequireCwd(dir.toString()));
+            assertEquals(canonical, invokeRequireCwd(dir.toUri().toString()));
+        } finally {
+            Files.deleteIfExists(dir);
+        }
+    }
+
+    /** 反射调用包装了 InvocationTargetException：沿 cause 链找 AcpProtocolException 校验错误码 */
+    private void assertInvalidParams(Runnable call) {
+        RuntimeException ex = assertThrows(RuntimeException.class, call::run);
+        Throwable t = ex;
+        while (t != null && !(t instanceof com.agentclientprotocol.sdk.error.AcpProtocolException)) {
+            t = t.getCause();
+        }
+        assertNotNull(t, "expected AcpProtocolException in cause chain of " + ex);
+        assertEquals(com.agentclientprotocol.sdk.error.AcpErrorCodes.INVALID_PARAMS,
+                ((com.agentclientprotocol.sdk.error.AcpProtocolException) t).getCode());
+    }
+
     // ─────────────────── 反射辅助方法 ───────────────────
 
     private AcpSchema.ToolKind invokeResolveToolKind(String toolName) {
@@ -983,6 +1068,11 @@ public class AcpLinkTest {
     private void invokeRemoveBackendSession(String sessionId) {
         invokeTyped("removeBackendSession",
                 new Class<?>[]{String.class}, new Object[]{sessionId});
+    }
+
+    private String invokeRequireCwd(String cwd) {
+        return invokeTyped("requireCwd",
+                new Class<?>[]{String.class}, new Object[]{cwd});
     }
 
     @SuppressWarnings("unchecked")

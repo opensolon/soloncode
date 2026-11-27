@@ -98,6 +98,48 @@ npm run tauri:dev
 
 开发模式连接 4808 端口，不会自动启动或探测后端进程。更多内容请查看 [Desktop README](soloncode-desktop/README.md) 和 [SolonCode Desk 入门指南](docs/soloncode-desk-getting-started.md)。
 
+## ACP 协议（编辑器接入）
+
+SolonCode 支持 ACP（Agent Client Protocol）v1，通过 stdio 与 Zed、JetBrains 等编辑器/客户端对接：
+
+```bash
+soloncode acp
+# 或
+java -jar soloncode-cli.jar acp
+```
+
+启动后 stdout 仅承载 JSON-RPC 报文（日志、更新检查等一律走 stderr），客户端按 ACP v1 完成 `initialize` 握手后即可创建会话。
+
+实时推理中，思考增量通过 `agent_thought_chunk` 回传，正文增量通过 `agent_message_chunk` 回传，工具按调用 ID 发送开始和结果。关闭思考只影响思考流，不会隐藏正文；轮次结束不会重复发送已经流出的正文。`usage_update` 回传当前上下文的估算 Token 数和模型窗口大小（包括压缩后的变化），不代表累计用量或费用。
+
+ACP 与终端 CLI 共用 SolonCode 的会话执行和持久化逻辑；每个 ACP 对话使用自己的 `sessionId`。新一轮提问不会额外把上一轮的原始工具调用和结果注入模型上下文。`session/load` 使用同一会话的 `last-trace`，在最后一条答复前回放最近一轮可恢复的思考和已结束的工具调用，不重复输出答复。`session/resume` 不回放。
+
+**会话配置项（configOptions）**
+
+`session/new`、`session/load`、`session/resume` 的响应在 `configOptions` 字段里发布四个会话级选择器，客户端可用 `session/set_config_option` 随时修改（轮次进行中不可改）：
+
+| id | 类别 | 可选值 | 说明 |
+| --- | --- | --- | --- |
+| `model` | `model` | 已启用的模型 | 会话级模型选择，回落顺序：会话选择 → 默认模型 → 第一个启用模型 |
+| `effort` | `thought_level` | `auto` + 当前模型支持的推理档 | 推理强度；`auto` 不注入，交由模型默认 |
+| `_soloncode_thinking_mode` | `_soloncode_thinking_mode` | `auto` / `on` / `off` | 思考模式开关，独立于推理强度（自定义类别，非标准 ID） |
+| `mode` | `mode` | `ask` / `reject`（启用 HITL 时）；`configured`（未启用） | ACP 侧对 HITL 审批卡的处置方式 |
+
+**审批与权限**
+
+工具审批沿用 SolonCode 的 HITL 体系（`general.hitlEnabled` 及既有工具/权限规则，ACP 不会放宽或绕过）：
+
+* `ask`（默认）：每张挂起卡向客户端发 `session/request_permission`（提供 `allow-once` / `reject-once`）；答复 `allow-once` 才批准，其余一律按拒绝处理；答复 `cancelled` 则整轮停止、本批卡按「拒绝、不续流」收尾。
+* `reject`：不询问客户端，挂起卡直接拒绝。
+* `configured`：HITL 未启用时的唯一取值，表示由服务端策略决定，并非对外开放的「绕过审批」开关。
+
+**会话恢复范围**
+
+* `session/load` 会校验会话 ID 归属（仅限本端发放的 `acp-` 前缀 ID 形态），把磁盘历史回放为 `session/update`（用户文本、助手思考与正文、按调用 ID 配对的工具卡），并绑定工作目录；请求目录与已绑定工作区不一致时按参数错误拒绝，活跃会话不会被静默改挂到别的目录。
+* `session/resume` 做同样的认领校验但不回放历史，适合本地已持有对话上下文的客户端。
+* `cwd` 仅接受存在的绝对目录（支持 `file://` URI 与 Windows 路径），相对或非法路径一律拒绝，不会回落到进程目录。
+* 客户端经 `mcpServers` 传入的 MCP 配置当前**不生效**（能力声明里 http/sse 均不广告，不假装实现了完整的 MCP 客户端侧协议）；本机配置的 MCP 工具照常可用。不支持的块类型（如 audio）同样不广告。
+
 ## 文档
 
 更多配置说明请查看我们的 [官方文档](https://solon.noear.org/article/soloncode)。
