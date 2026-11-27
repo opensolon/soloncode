@@ -29,6 +29,7 @@ import org.noear.solon.scheduling.annotation.EnableScheduling;
 import org.noear.solon.web.cors.CrossFilter;
 import org.slf4j.bridge.SLF4JBridgeHandler;
 
+import java.io.PrintStream;
 import java.net.URL;
 
 /**
@@ -39,8 +40,19 @@ import java.net.URL;
  */
 @EnableScheduling
 public class App {
+    /**
+     * ACP 模式下保留的协议输出通道：进程启动时 stdout 即换到 stderr，
+     * 之后任何日志 / 更新提示都不会混进 JSON-RPC 报文。
+     */
+    private static PrintStream acpOutput;
 
     public static void main(String[] args) {
+        // ACP 的 stdout 是 JSON-RPC 协议通道：最先把它保留出来并把 stdout 切到 stderr
+        if (args.length > 0 && AgentFlags.FLAG_ACP.equals(args[0])) {
+            acpOutput = System.out;
+            System.setOut(System.err);
+        }
+
         // 0. 存储目录启动归一化（必须最早：删临时测试目录 + v1 改名 ws-，须在日志 WS_KEY 设置前完成，
         //    否则日志 appender 会按旧 v1 key 重建出已改名的空目录）
         WorkspaceStartupMigrator.migrateIfNeeded();
@@ -66,6 +78,13 @@ public class App {
 
         //工作区存储目录观测报告（阶段一：只统计 v1/v2/缺元数据/双布局分布，不迁移不删除）
         WorkspaceStorageReport.reportIfNeeded();
+    }
+
+    /**
+     * ACP 协议的写出通道：acp 模式下是进程启动时保留的原始 stdout，其余模式即 stdout 本身。
+     */
+    static PrintStream acpOutput() {
+        return acpOutput == null ? System.out : acpOutput;
     }
 
     private static void initAgentProperties(SolonApp app) throws Exception {

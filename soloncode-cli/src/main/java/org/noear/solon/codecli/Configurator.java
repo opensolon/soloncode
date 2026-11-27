@@ -1,6 +1,7 @@
 package org.noear.solon.codecli;
 
 import com.agentclientprotocol.sdk.agent.transport.StdioAcpAgentTransport;
+import com.agentclientprotocol.sdk.json.AcpJsonMapper;
 import com.agentclientprotocol.sdk.spec.AcpAgentTransport;
 import org.noear.solon.Solon;
 import org.noear.solon.ai.harness.HarnessEngine;
@@ -124,7 +125,6 @@ public class Configurator {
         // 容器扩展订阅已由 WorkspaceManager.createWorkspaceContext 统一完成
         //（agentRuntime 即默认工作区 engine），此处禁止重复订阅，否则同一扩展被注册两遍
 
-        CliShell cliShell = new CliShell(agentRuntime, agentSettings);
         String flag = Solon.cfg().argx().flagAt(0);
 
         // help 优先于其它一切分支：不做更新检查，保证帮助输出可被工具链解析
@@ -139,6 +139,14 @@ public class Configurator {
             haltWith(0);  // 退出进程（退出码 0）
             return;
         }
+
+        // ACP uses stdin/stdout directly; do not initialize a JLine terminal for it.
+        if (AgentFlags.FLAG_ACP.equals(flag)) {
+            runAcp(agentRuntime, agentSettings);
+            return;
+        }
+
+        CliShell cliShell = new CliShell(agentRuntime, agentSettings);
 
         // stream 的 stdout 是严格 JSONL 协议通道，不能夹入版本更新文本。
         // 常驻 SDK 通道也不应在启动时做联网更新检查。
@@ -175,11 +183,6 @@ public class Configurator {
             if (AgentFlags.FLAG_WEB.equals(flag)) { // java -jar soloncode.jar web // soloncode web
                 runWebServe(agentRuntime, agentSettings, cliShell, sessionManager);
                 openBrowser();
-                return;
-            }
-
-            if (AgentFlags.FLAG_ACP.equals(flag)) { // java -jar soloncode.jar acp // soloncode acp
-                runAcp(agentRuntime, agentSettings, cliShell);
                 return;
             }
 
@@ -410,16 +413,11 @@ public class Configurator {
     }
 
 
-    private void runAcp(HarnessEngine agentRuntime, AgentSettings settings, CliShell cliShell) {
-        AcpAgentTransport agentTransport = new StdioAcpAgentTransport();
+    private void runAcp(HarnessEngine agentRuntime, AgentSettings settings) {
+        // stdout 已保留为协议专用通道（见 App.main）：写报文用保留通道，System.out 此时是 stderr
+        AcpAgentTransport agentTransport = new StdioAcpAgentTransport(
+                AcpJsonMapper.createDefault(), System.in, App.acpOutput());
 
         new AcpLink(agentRuntime, agentTransport, settings).run();
-
-//        if (cliShell == null) {
-//            return;
-//        }
-
-        //不能有打印
-        //cliShell.printWelcome("Acp interface: stdio");
     }
 }
